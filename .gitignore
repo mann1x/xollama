@@ -16,3 +16,7 @@ llama/build
 llama/vendor
 /ollama
 integration/testdata/models/
+
+# agent tooling (local state, not part of the fork)
+.caliber/
+.wolf/
