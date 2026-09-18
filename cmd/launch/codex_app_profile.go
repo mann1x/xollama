@@ -108,6 +108,22 @@ func codexAppRegularProfileRoutingModels(configPath string) map[string]struct{} 
 	return models
 }
 
+// codexAppRequestMTimeSkew absorbs the gap between time.Now(), which reads the
+// fine-grained clock, and file mtimes, which the kernel stamps from a coarse
+// clock that only advances once per timer tick.
+//
+// Without it a session file written immediately after `start` is recorded can
+// carry an mtime a few hundred microseconds BEFORE it and be skipped outright,
+// so the opening prompts of a session are silently never counted. Measured on
+// solidPC: start 14:42:19.515114114Z, mtime of a file created after it
+// 14:42:19.514497780Z.
+//
+// Widening this cannot overcount. The mtime test is only a pre-filter deciding
+// which files are worth opening; whether a line counts is decided per line by
+// codexAppLineIsUserRequest, which enforces the same `start` against the
+// event's own timestamp.
+const codexAppRequestMTimeSkew = 2 * time.Second
+
 func (c *codexAppRequestCursor) scan(root string, start time.Time, allowedModels map[string]struct{}) uint64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -137,7 +153,7 @@ func (c *codexAppRequestCursor) scanLocked(root string, start time.Time, allowed
 	slices.Sort(paths)
 	for _, path := range paths {
 		info, err := os.Stat(path)
-		if err != nil || info.ModTime().Before(start) {
+		if err != nil || info.ModTime().Before(start.Add(-codexAppRequestMTimeSkew)) {
 			continue
 		}
 		offset := c.files[path]
