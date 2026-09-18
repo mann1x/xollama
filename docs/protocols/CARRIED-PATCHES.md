@@ -156,3 +156,50 @@ This is an **integration** conflict: it appears only when the fixes are combined
 which is precisely what this fork is and what no individual upstream PR can see.
 Expect more of these as patches accumulate, and keep them in their own commits
 rather than folding them into a carried merge — they are ours, not the PR's.
+
+## Fork-originated fixes, not yet sent upstream
+
+These are defects we found in upstream's own tree while working here. They are
+not carried PRs from `mann1x/ollama` — they originate in this fork and should be
+offered upstream, at which point they retire from this list like any other.
+
+The reason they are listed rather than merely fixed: an upstream sync will
+reintroduce the unfixed form if upstream has not taken them, so a reviewer needs
+to know these diffs are deliberate and whose they are.
+
+| Fix | File | Why it is upstream's | Status |
+|---|---|---|---|
+| Skip permission tests when running as root | `cmd/internal/fileutil/files_test.go` | uid 0 bypasses the mode bits three tests assert on, so `chmod 0o444` does not block the write and `expected error, got nil` fires. Fails identically at tag `v0.34.2`. The file already guards the same class of problem for Windows; root was simply missed. | fixed here, **to send** |
+| `gofmt` | `integration/vision_test_data_test.go` | Missing blank line between a base64 const and the next doc comment. Unformatted at `v0.34.2`; CI's gofmt gate flags it on any change to the file. | fixed here, **to send** |
+| Session-file mtime pre-filter loses the first prompts | `cmd/launch/codex_app_profile.go` | `start` comes from `time.Now()` (fine-grained clock); file mtimes come from the kernel's coarse clock, which advances once per timer tick. A session file written just after `start` is recorded carries an *earlier* mtime and is skipped entirely. Measured: start `14:42:19.515114114Z`, mtime of a file created after it `14:42:19.514497780Z`. | fixed here, **to send** |
+
+The root guard follows the file's existing idiom rather than inventing one:
+
+```go
+func requirePermissionEnforcement(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("permission tests unreliable on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: permission bits are not enforced, so the error under test cannot occur")
+	}
+}
+```
+
+Verified in **both** directions, which is the part that matters for a skip: as
+root the three tests skip and the package passes; compiled with `go test -c` and
+run as `nobody`, all three genuinely execute and pass. A guard that turns a
+suite green by making a test run nowhere is worse than the failure it hides.
+
+
+The `cmd/launch` fix is a two-second tolerance on the mtime comparison:
+
+```go
+if err != nil || info.ModTime().Before(start.Add(-codexAppRequestMTimeSkew)) {
+```
+
+It cannot overcount. The mtime test only decides which files are worth opening;
+whether a line counts is decided per line by `codexAppLineIsUserRequest`, which
+enforces the same `start` against the event's own timestamp. Proven in both
+directions: reverting the tolerance reproduces the failure, restoring it passes.
