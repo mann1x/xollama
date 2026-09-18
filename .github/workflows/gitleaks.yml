@@ -1,0 +1,55 @@
+# xollama secret scan — the backstop behind .githooks/pre-commit.
+#
+# The hook is the primary gate, but it is bypassable (`git commit --no-verify`,
+# XOLLAMA_SKIP_GITLEAKS=1) and only runs on clones that ran
+# `git config core.hooksPath .githooks`. This runs on the server, where neither
+# applies.
+#
+# Scope is the FULL history, not just the diff: a diff-only scan cannot catch a
+# secret that was force-pushed in or landed while the hook was off. It costs
+# ~8s for this repo's 7076 commits. As of 2026-09-18 the whole history is
+# clean; the 139 inherited ollama findings are all explained false positives
+# and are allowlisted with reasons in .gitleaks.toml.
+name: gitleaks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: shallow would silently scan almost nothing and pass.
+          fetch-depth: 0
+
+      # Pinned rather than @latest so a result is reproducible and an upstream
+      # rule change cannot turn a green PR red without a commit here.
+      - name: Install gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          set -euo pipefail
+          curl -sSfL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          sudo install -m 0755 /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Scan history
+        run: |
+          # -v prints the finding (file/line/rule) into the job log; without it
+          # the log says only "leaks found: N". --redact keeps the secret out of
+          # a log that is public on a public repo.
+          gitleaks git . \
+            --config .gitleaks.toml \
+            --redact \
+            --no-banner \
+            -v

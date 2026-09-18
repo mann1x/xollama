@@ -1,0 +1,11 @@
+# gitleaks fingerprint ignores.
+#
+# Prefer an allowlist entry in .gitleaks.toml over a line here: an allowlist
+# says WHY, and is pinned by value and path. A fingerprint here is opaque and
+# silently survives the string changing.
+#
+# Use this file only for a historical commit that cannot be rewritten -- the
+# fingerprint form is `<commit>:<path>:<rule>:<line>`.
+#
+# Current findings are handled by allowlists in .gitleaks.toml (see sections 1
+# and 2 there). This file is intentionally empty.

@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# xollama pre-commit — secret scan gate.
+#
+# This is the PRIMARY gate. A scan you run manually after `git commit` reports
+# after the fact and gates nothing; see the incident note at the top of
+# .gitleaks.toml for what that cost once already.
+#
+# Enable it once per clone (git does not do this for you):
+#
+#     git config core.hooksPath .githooks
+#
+# Escape hatches, for when you know why: `git commit --no-verify`, or
+# XOLLAMA_SKIP_GITLEAKS=1. CI re-scans the full history either way.
+set -uo pipefail
+
+if [ "${XOLLAMA_SKIP_GITLEAKS:-0}" = "1" ]; then
+    echo "pre-commit: gitleaks skipped (XOLLAMA_SKIP_GITLEAKS=1)" >&2
+else
+    if command -v gitleaks >/dev/null 2>&1; then
+        if ! gitleaks git --staged --config .gitleaks.toml --redact --no-banner -v; then
+            cat >&2 <<'MSG'
+
+pre-commit: gitleaks found a secret in the STAGED changes — commit refused.
+
+If it is real:   revoke it at the provider FIRST, then remove it from the diff.
+If it is not:    add an allowlist entry to .gitleaks.toml explaining WHY,
+                 pinned by value (and by path where it belongs to one file).
+                 Do not add a bare path to quiet the scan.
+MSG
+            exit 1
+        fi
+    else
+        # Not fatal: a clone without gitleaks should still be able to commit.
+        # CI is the backstop and is not skippable.
+        echo "pre-commit: gitleaks not installed, skipping scan (CI still gates)" >&2
+    fi
+fi
+
+# core.hooksPath makes git ignore .git/hooks entirely, so anything installed
+# there by other tooling (caliber) would silently stop running. Chain it.
+if [ -x .git/hooks/pre-commit ]; then
+    .git/hooks/pre-commit "$@" || exit $?
+fi
+
+exit 0

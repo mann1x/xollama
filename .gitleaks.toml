@@ -1,0 +1,150 @@
+title = "xollama gitleaks config"
+
+# Secret scanning for xollama. Enforced at commit time by .githooks/pre-commit
+# (`gitleaks git --staged`) and in CI by .github/workflows/gitleaks.yml.
+#
+# WHY THIS EXISTS. On 2026-05-23 a live HuggingFace token was committed to a
+# PUBLIC sibling repo (mann1x/omnimergekit) as a shell convenience fallback:
+#
+#     export HF_TOKEN="${HF_TOKEN:-hf_...}"     # <- the literal was the leak
+#
+# It sat in history for a week, was scraped/auto-revoked, and cost a
+# `git filter-repo` history rewrite plus a force-push. Two lessons are baked in:
+#
+#   1. The gate must be a PRE-COMMIT HOOK, not a scan you remember to run.
+#      A scan in the same shell block as `git commit` cannot gate anything --
+#      it reports after the fact.
+#   2. Write `${VAR:?message}` (fail loud when unset), never `${VAR:-literal}`
+#      (silently substitute a hardcoded secret).
+#
+# This repo is PUBLIC and carries 5771 commits of upstream ollama history, so
+# the working-tree scan matters more than usual: anything added here is
+# published the moment it is pushed.
+#
+# MAINTAINING THE ALLOWLIST. Every entry below was added against a finding that
+# was read and understood first. Rules of thumb:
+#   - Allowlist by VALUE (the specific string) over by FILE. A file-wide
+#     allowlist means the next, real secret added to that file walks through.
+#   - Use `condition = "AND"` to pin a value to the file it legitimately lives
+#     in, so the same string elsewhere still trips the gate.
+#   - NEVER allowlist a path just to make the scan quiet. If a finding is real,
+#     revoke at the provider FIRST, then scrub history.
+
+[extend]
+useDefault = true
+
+# --------------------------------------------------------------------------
+# CUSTOM RULE — the shape the default ruleset misses, and the shape that
+# caused the incident this config exists because of.
+#
+# VERIFIED (opencoti, 2026-08-01) against gitleaks 8.30.1 with useDefault and
+# no custom config:
+#
+#     HF_TOKEN=hf_Qjm...RLW                        -> CAUGHT
+#     export HF_TOKEN="hf_Qjm...RLW"               -> CAUGHT
+#     export HF_TOKEN="${HF_TOKEN:-hf_Qjm...RLW}"  -> MISSED
+#
+# The provider rules anchor on a preceding delimiter; inside a shell
+# parameter-expansion default the preceding character is `-` (from `:-`), which
+# is not in that set, so the rule never fires.
+#
+# Deliberately value-agnostic: a non-empty hardcoded default on a variable
+# named *TOKEN/*KEY/*SECRET/*PASSWORD is wrong on its own terms. The correct
+# form is unaffected by construction -- `:?` is not `:-`/`:=`.
+# --------------------------------------------------------------------------
+
+[[rules]]
+id = "xollama-shell-credential-fallback"
+description = "Hardcoded credential literal as a shell parameter-expansion default (${VAR:-secret}); use ${VAR:?message} instead"
+regex = '''(?i)\$\{[a-z_][a-z0-9_]*(token|key|secret|password|passwd|credential|auth|pat)[a-z0-9_]*[ \t]*:[-=][ \t]*([^\s}"'#$]{8,})\}'''
+secretGroup = 2
+keywords = ["token", "key", "secret", "password", "passwd", "credential", "auth"]
+
+# --------------------------------------------------------------------------
+# 1. Generated / local-only state, never committed. Listed so a full
+#    working-tree scan is usable rather than drowned.
+# --------------------------------------------------------------------------
+
+[[allowlists]]
+description = "Build output, agent tooling state, and local caches. None of it is tracked."
+paths = [
+  '''^build/''',
+  '''^dist/''',
+  '''^\.caliber/''',
+  '''^\.wolf/''',
+  '''^graphify-out/''',
+  '''(^|/)node_modules/''',
+  '''^llama/vendor/''',
+]
+
+# --------------------------------------------------------------------------
+# 2. Not secrets: upstream ollama false positives.
+#
+#    A full-history scan (7076 commits, 2026-09-18) produced 139 findings, ALL
+#    of rule `generic-api-key`, and every one was read before being allowlisted
+#    here. There are no real secrets in the inherited history.
+#
+#    Each entry is pinned as narrowly as the finding allows: by value where the
+#    value is a published constant, by path where the path is a fixture corpus
+#    that by construction contains no configuration.
+# --------------------------------------------------------------------------
+
+[[allowlists]]
+description = """
+Model-conversion and tokenizer fixture corpora (132 of the 139 findings, 72 of
+them in model/mllama/testdata/theirs.json alone). These files are maps of
+tensor name -> SHA256 digest, and a digest is exactly what an entropy rule is
+built to flag. They hold no configuration and no credentials.
+
+Scoped to testdata directories only -- NOT to _test.go source, which can
+legitimately contain a hardcoded credential and stays scanned.
+"""
+paths = ['''(^|/)testdata/''']
+
+[[allowlists]]
+description = """
+The RFC 6455 example WebSocket key. `dGhlIHNhbXBsZSBub25jZQ==` is base64 for
+the literal ASCII "the sample nonce" -- the handshake example printed in the
+WebSocket RFC itself, used to drive test handshakes. High entropy, zero
+secrecy. Allowlisted BY VALUE rather than by path because it is a published
+constant: it is equally not-a-secret wherever it appears, and ollama has moved
+it between files at least once (app/codexproxy/proxy_test.go ->
+internal/proxy/codex_desktop_test.go).
+"""
+regexes = ['''dGhlIHNhbXBsZSBub25jZQ==''']
+regexTarget = "line"
+
+[[allowlists]]
+description = """
+GLM-4.6 tool-call parser tags. The finding is triggered by the IDENTIFIER
+(`glm46ArgKeyCloseTag`) matching the generic-api-key keyword list, not by the
+value -- the "secret" is the string `</arg_key>`, a markup tag emitted by the
+model. Pinned to the parser file; an actual key assigned here is still caught.
+"""
+condition = "AND"
+paths = ['''^model/parsers/glm46\.go$''']
+regexes = ['''</?arg_(key|value)>''']
+regexTarget = "line"
+
+[[allowlists]]
+description = """
+The Intel oneAPI management library filename, assigned to `oneapiMgmtName` /
+`OneapiMgmtName` in the pre-0.4 GPU discovery code. A shared-object name, not
+a credential; it trips generic-api-key because the identifier ends in a
+keyword-adjacent token. History-only -- these files no longer exist upstream.
+"""
+condition = "AND"
+paths = ['''^gpu/gpu(_windows)?\.go$''']
+regexes = ['''(?i)oneapimgmtname''']
+regexTarget = "line"
+
+[[allowlists]]
+description = """
+GGUF tensor-name fixture inline in fs/ggml/ggml_test.go (the finding is the
+`token_embd.weight` entry of a tensor map). Same shape as the testdata corpora
+above, but written inline in the test rather than in a testdata file.
+"""
+condition = "AND"
+paths = ['''^fs/ggml/ggml_test\.go$''']
+regexes = ['''token_embd\.weight''']
+regexTarget = "line"
