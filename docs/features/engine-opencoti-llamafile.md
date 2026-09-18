@@ -5,9 +5,10 @@
 > [`docs/evaluations/phase2-engine-ab.md`](../evaluations/phase2-engine-ab.md).
 >
 > **It found that `auto` can route a load into a failure.** opencoti loads 3 of
-> 8 tested models where llama.cpp loads 8 of 8 — every multimodal model fails,
-> because ollama passes `--mmproj` pointing at the model blob itself. Fix the
-> routing policy's missing model axis before Phase 2's knobs.
+> 8 tested models where llama.cpp loads 8 of 8: the pinned artifact's llama.cpp
+> base cannot parse gemma4, gemma3-qat, mistral-small3.1 or qwen3.5, and its
+> VRAM-overflow path aborts. Make `auto` fall back to stock on a failed load
+> before Phase 2's knobs.
 
 ## Why this is cheap
 
@@ -281,10 +282,10 @@ Windows alike. Without it that hardware falls back to CPU.
   upstream" — xollama must not break that.
 
 Phase 2's measurements are now in, and they reorder this: the knob surface is
-not the next thing. `llm/engine/policy.go` decides on platform and compute
-capability alone and has no way to say "not this model", so on a tested platform
-`auto` hands a multimodal model to an engine that cannot load it. Compatibility
-gating comes before any knob.
+not the next thing. `engine.Launch` falls back to stock when the artifact is
+missing, but not when the load itself fails, so on a tested platform `auto`
+turns a model that works into a model that does not. Falling back on a failed
+load comes before any knob.
 
 What the A/B settled about the engines themselves: single-stream throughput is
 parity (within 2%), concurrency at `-np 4` is 27% slower on opencoti, and the

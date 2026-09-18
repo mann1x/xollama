@@ -37,28 +37,40 @@ One 1-token generation per model. `loaded` means the runner started and answered
 | `llama3:latest` | ok | ok | |
 | `qwen2.5:1.5b` | ok | ok | |
 | `tinyllama:latest` | ok | ok | |
-| `gemma4:e4b` | ok | **fails** | CLIP load, `expected 2131 tensors, got 720` |
-| `gemma3:27b-it-qat` | ok | **fails** | CLIP load, `expected 1247 tensors, got 808` |
-| `mistral-small3.1:latest` | ok | **fails** | CLIP load, `expected 585 tensors, got 363` |
+| `gemma4:e4b` | ok | **fails** | `done_getting_tensors: expected 2131, got 720` |
+| `gemma3:27b-it-qat` | ok | **fails** | `done_getting_tensors: expected 1247, got 808` |
+| `mistral-small3.1:latest` | ok | **fails** | `done_getting_tensors: expected 585, got 363` |
 | `qwen3.5:2b` | ok | **fails** | `qwen35.rope.dimension_sections has wrong array length; expected 4, got 3` |
 | `llama3.1:70b-instruct-q3_K_S` | ok | **fails** | `ggml_new_object: not enough space in the context's memory pool` → `signal: aborted` |
 | | **8 / 8** | **3 / 8** | |
 
-Three distinct causes, and they need different answers:
+Two causes, not three, and neither is in our argv.
 
-**a. The projector convention.** ollama passes `--mmproj` pointing at *the same
-blob* as `--model` — its own llama-server reads "the projector is inside this
-GGUF". opencoti's `mtmd` takes `--mmproj` as a standalone CLIP file, opens the
-model as one, and fails on tensor count. This hits **every multimodal model**,
-which is four of the five failures. It is the cheapest to fix and the one most
-likely to be ours rather than the engine's.
+**a. The pinned engine's llama.cpp base is older than these model
+architectures.** Four of the five failures are one cause: the engine cannot
+parse the model file. `qwen3.5` wants a 4-element `rope.dimension_sections` and
+the engine reads 3; the other three abort in `done_getting_tensors` with a
+tensor count that does not match the architecture it resolved.
 
-**b. Architecture lag.** `qwen3.5` needs a 4-element
-`rope.dimension_sections`; the pinned artifact's llama.cpp base reads 3. Nothing
-to fix on our side — it is a pin bump, and it will recur every time a model
-architecture lands upstream before it lands in the engine.
+> **A wrong first reading, corrected.** Each of those four failures also logs
+> `Failed to load CLIP model from <the model blob>`, because ollama passes
+> `--mmproj` pointing at the model file itself — `gemma4:e4b` has no projector
+> layer in its manifest at all, and `llm/llama_server.go:778` special-cases
+> `projectors[0] == modelPath`, so an embedded projector is a first-class
+> upstream concept. It is tempting to read that line as the cause and to call it
+> a convention mismatch. It is not. Re-running `gemma4:e4b` against the artifact
+> directly **with `--mmproj` removed** fails identically
+> (`expected 2131, got 720`), so the CLIP line is noise logged before the real
+> failure. Both engines receive byte-identical params — `engine.Command` adds
+> only `--server`, `--gpu` and `--log-verbosity` — and stock llama-server loads
+> the same argv fine, because it is built from llama.cpp `b10969`
+> (`LLAMA_CPP_VERSION`) while the artifact carries an older base.
 
-**c. The overflow path aborts.** See §5.
+**b. The overflow path aborts.** A separate cause, see §5.
+
+Nothing here is fixable by changing what xollama passes. It is a pin bump, and
+it will recur every time a model architecture lands in llama.cpp before it lands
+in a released artifact.
 
 ## 2. Throughput — single stream
 
@@ -100,7 +112,7 @@ Worth understanding before Phase 3 exposes any knob that changes batching.
 | engine | tool call | thinking channel |
 |---|---|---|
 | llama.cpp | 1 call, `get_weather({"city":"Berlin"})`, no markup leaked into content | separated, 781 thinking chars vs 366 content chars, no channel markup leaked |
-| opencoti | **not measurable** — cannot load `gemma4:e4b` (§1a) | — |
+| opencoti | **not measurable** — cannot parse `gemma4:e4b` (§1a) | — |
 
 The parsers are ours and run above the engine, so nothing suggests they would
 behave differently. But this axis cannot be closed until §1a is fixed, and
@@ -136,16 +148,19 @@ logged as bug-008.
 
 ## What this changes in the plan
 
-- **The routing policy needs a model axis.** `llm/engine/policy.go` decides on
-  platform and compute capability alone. On this host — linux/amd64, compute
-  8.6, a "tested" platform — `auto` routes a multimodal model to an engine that
-  cannot load it. A failed load is a worse outcome than a slow one, and the
-  policy currently cannot express "not this model".
-- **Fix the `--mmproj` convention first.** It is four of the five failures and
-  the only cause plausibly on our side. Dropping `--mmproj` when it equals
-  `--model` would let those models load text-only, but that silently disables
-  vision; routing them to llama.cpp is the honest default until the engine reads
-  an in-GGUF projector.
+- **`auto` must fall back to llama.cpp when an opencoti load fails.** This is
+  the one fix that is ours, and it is the right shape: `engine.Launch` already
+  refuses to fail — a missing artifact or a bad `XOLLAMA_ENGINE_PATH` falls back
+  to stock with the reason logged once — but that philosophy stops at the moment
+  the runner is spawned. A load that fails *after* spawn is terminal today, so
+  on this host `auto` turns a model that works into a model that does not. An
+  architecture allow-list in `llm/engine/policy.go` is the wrong answer: it
+  would have to be edited for every new architecture and would be wrong the day
+  after a pin bump. Retry on stock instead, and log which model forced it.
+- **Bump the engine pin, and report the gap.** The four parse failures are the
+  artifact's llama.cpp base, not our argv. `llm/engine/pin.txt` is at
+  `llamafile-v0.10.5+opencoti.c7`; stock is llama.cpp `b10969`. The four models
+  are the reproduction to hand to opencoti.
 - **Phase 0's low-risk verdict needs its scope written down**, not withdrawn: it
   was measured on `qwen3:4b`, a plain text model on a supported architecture, and
   it holds there.
