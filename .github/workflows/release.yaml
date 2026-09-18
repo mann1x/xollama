@@ -679,7 +679,18 @@ jobs:
               bin/ollama*)               echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
               lib/ollama/*.so*)          echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
               lib/ollama/llama-server*|lib/ollama/llama-quantize*)  echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
+              # cuda_v12 is the LEGACY tier and ships as its own asset. It is
+              # the only payload carrying code for compute 5.x/6.x/7.0
+              # (Maxwell, Pascal, Volta) -- cuda_v13 floors at 7.5 and so does
+              # opencoti-llamafile, so those cards are served from here or not
+              # at all. Splitting it out keeps the base asset roughly half its
+              # former size, which is what makes room for the engine.
+              lib/ollama/cuda_v12)       echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}-cuda12.tar.in ;;
               lib/ollama/cuda_v*)        echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
+              # The engine ships in the base asset: it is the default runner on
+              # every platform in llm/engine/policy.go's tested matrix, and the
+              # runtime never downloads one.
+              lib/ollama/opencoti-llamafile-*) echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
               lib/ollama/vulkan*)        echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
               lib/ollama/mlx*)           echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}-mlx.tar.in ;;
               lib/ollama/include*)       echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}-mlx.tar.in ;;
@@ -774,6 +785,9 @@ jobs:
             dist/install.sh
             dist/ollama-windows-amd64.zip
             dist/ollama-windows-arm64.zip
+            dist/ollama-windows-amd64-cuda12.zip
+            dist/ollama-linux-amd64-cuda12.tar.zst
+            dist/ollama-linux-arm64-cuda12.tar.zst
           )
           for payload in "${required[@]}"; do
             if [ ! -f "$payload" ]; then
@@ -781,6 +795,24 @@ jobs:
               exit 1
             fi
           done
+      - name: Check assets against the GitHub release-asset cap
+        run: |
+          # GitHub refuses a release asset over 2 GiB. Failing here, with the
+          # offending size named, beats failing at upload time after the whole
+          # matrix has run. The margin is deliberate: shipping two engines
+          # means an upstream backend addition can move several assets at once.
+          limit=$((1900 * 1024 * 1024))
+          status=0
+          for payload in dist/*; do
+            [ -f "$payload" ] || continue
+            size=$(stat -c%s "$payload")
+            printf '%8.1f MiB  %s\n' "$(echo "$size / 1048576" | bc -l)" "$payload"
+            if [ "$size" -gt "$limit" ]; then
+              echo "::error::$payload is $((size / 1048576)) MiB, over the 1900 MiB guard (GitHub refuses 2 GiB). Split a payload into its own asset."
+              status=1
+            fi
+          done
+          exit $status
       - name: Generate checksum file
         run: find . -type f -not -name 'sha256sum.txt' | xargs sha256sum | tee sha256sum.txt
         working-directory: dist
