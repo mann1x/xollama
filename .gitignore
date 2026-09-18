@@ -20,3 +20,8 @@ integration/testdata/models/
 # agent tooling (local state, not part of the fork)
 .caliber/
 .wolf/
+
+# LSP engine server registry: machine-resolved absolute binary paths.
+# Regenerate with claude-hooks/scripts/sync_cclsp.py --write --mcp
+cclsp.json
+cclsp.json.bak-*

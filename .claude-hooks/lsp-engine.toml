@@ -1,0 +1,55 @@
+# claude-hooks LSP engine — xollama
+#
+# The engine is the persistent, per-project daemon that keeps language servers
+# warm and answers diagnostics over a UNIX socket. It reads its server registry
+# from <project>/cclsp.json (NOT the same file the `lsp` MCP reads — that one is
+# user-global at $CCLSP_CONFIG_PATH, and the two drift silently; reconcile both
+# with claude-hooks/scripts/sync_cclsp.py --mcp).
+#
+# This file IS committed. cclsp.json is not: it holds machine-resolved absolute
+# binary paths.
+
+[preload]
+# Warm the most-imported files so the first query is not the slow one.
+max_files = 200
+# why: no graphify-out/graph.json in this repo yet, so there is no import graph
+# to rank by. Flip to true after running graphify here.
+use_code_graph = false
+
+[session_locks]
+# Two Claude Code sessions in the same repo share one daemon; the debounce is
+# what stops concurrent edits clobbering each other.
+debounce_seconds = 30.0
+query_timeout_ms = 500
+
+[memory]
+# Soft cap per language server. ollama is a large tree (761 .go files) and
+# gopls is the one that will actually hit this.
+max_files_per_lsp = 500
+
+[compile_aware]
+# Off until smoke-tested. Flip to true once you have run the go command below
+# by hand and are happy with it — it is easier to debug one command than a
+# daemon of them.
+enabled = false
+
+[compile_aware.commands]
+# why: go.mod at the repo root, 761 tracked .go files. `go vet ./...` type-checks
+# the whole module and catches what gopls alone does not (cross-package vet
+# analyses). MEASURED on solidPC 2026-09-18: 7s warm, exit 0, clean on v0.34.2 —
+# comfortably inside the 30s debounce, so it will not queue up behind itself.
+# Deliberately NOT `go build ./...`: this tree builds CGO and the llama bindings,
+# which is minutes, not seconds.
+go = ["go", "vet", "./..."]
+
+# why: app/ui/app is a real TypeScript project (104 .ts/.tsx files, tsconfig.json
+# with three project references, `build: tsc -b`), but app/ui/app/node_modules is
+# NOT installed — `tsc -b` would fail on missing deps on every save and report
+# that failure as a diagnostic. Left commented rather than dropped: uncomment
+# after `cd app/ui/app && npm install`.
+# ts = ["npx", "tsc", "-b", "app/ui/app/tsconfig.json"]
+
+# why: C/C++ (.c/.cpp/.h in llama/compat and mlx/include) is built through
+# CMake with presets, not a standalone check command, and the build is minutes.
+# clangd already gives per-file diagnostics via cclsp.json. No compile-aware
+# entry — this is deliberate, not an omission.
