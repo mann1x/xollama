@@ -151,7 +151,7 @@ func TestLaunchFallsBackToStockWhenNothingIsInstalled(t *testing.T) {
 	t.Setenv(EnvPath, "")
 
 	params := []string{"--model", "m"}
-	name, args := Launch("/usr/local/lib/ollama/llama-server", params, []Device{ada()}, t.TempDir())
+	name, args, _ := Launch("/usr/local/lib/ollama/llama-server", params, []Device{ada()}, t.TempDir())
 
 	if name != "/usr/local/lib/ollama/llama-server" {
 		t.Errorf("name = %q, want the stock binary — a missing artifact must not fail the load", name)
@@ -169,7 +169,7 @@ func TestLaunchIsByteIdenticalToUpstreamWhenOff(t *testing.T) {
 	t.Setenv(EnvPath, "")
 
 	params := []string{"--model", "m", "--port", "1"}
-	name, args := Launch("/stock/llama-server", params, []Device{ada()}, dir)
+	name, args, _ := Launch("/stock/llama-server", params, []Device{ada()}, dir)
 
 	if name != "/stock/llama-server" {
 		t.Errorf("name = %q, want the stock binary", name)
@@ -251,5 +251,39 @@ func TestCommandHandlesJoinedLogVerbosity(t *testing.T) {
 	}
 	if !slices.Contains(args, logVerbosity) {
 		t.Errorf("our verbosity missing: %v", args)
+	}
+}
+
+func TestFallbackOnLoadFailureIsOffByDefault(t *testing.T) {
+	t.Setenv(EnvFallback, "")
+	if FallbackOnLoadFailure() {
+		t.Error("fallback is on by default; a failed opencoti load would silently downgrade to llama.cpp")
+	}
+}
+
+func TestFallbackOnLoadFailureOptIn(t *testing.T) {
+	for _, v := range []string{"1", "true", "TRUE"} {
+		t.Run(v, func(t *testing.T) {
+			t.Setenv(EnvFallback, v)
+			if !FallbackOnLoadFailure() {
+				t.Errorf("%s=%q did not enable the fallback", EnvFallback, v)
+			}
+		})
+	}
+}
+
+func TestLaunchReportsWhichEngineItChose(t *testing.T) {
+	t.Setenv(EnvSelector, "llamacpp")
+	if _, _, used := Launch("/stock/llama-server", []string{"--model", "m"}, []Device{ada()}, t.TempDir()); used {
+		t.Error("reported opencoti while forced to llama.cpp")
+	}
+
+	// Forced to opencoti but with no artifact anywhere: Launch still falls back
+	// before spawning, and must not claim opencoti -- otherwise the opt-in
+	// retry would restart a load that was already on stock.
+	t.Setenv(EnvSelector, "opencoti")
+	t.Setenv(EnvPath, "")
+	if _, _, used := Launch("/stock/llama-server", []string{"--model", "m"}, []Device{ada()}, t.TempDir()); used {
+		t.Error("reported opencoti when no artifact was found")
 	}
 }

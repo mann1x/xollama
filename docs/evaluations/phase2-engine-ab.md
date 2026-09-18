@@ -102,6 +102,13 @@ the full 512 tokens.
 | opencoti | 4.73 s | 433.3 | 111.3 × 4 |
 | | **+36% wall** | **opencoti −27%** | **opencoti −26%** |
 
+> **Provisional — re-measure before acting on it.** During this run opencoti's
+> KV lines were in the per-stream shape (`KV buffer (stream 0) size =`) that
+> `bufferSizeRegex` did not match, so `memGPU` was short by 3584 MiB of CUDA0 KV
+> and the scheduler planned against a wrong figure. No warning fired, because
+> the model and compute lines still matched. The parser is fixed (`memory-scrape`
+> in the hook Registry); the number is not re-taken.
+
 This is the one real performance difference the A/B found: single-stream parity
 does **not** carry over to concurrency. All four opencoti slots reported an
 identical 111.34 tok/s, which is consistent with stricter lockstep batching.

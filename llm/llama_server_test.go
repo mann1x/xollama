@@ -4240,3 +4240,77 @@ func TestMemoryParsingRevisedAllocationSupersedesWholeBlock(t *testing.T) {
 			ocTotal, ocGPU, stockTotal, stockGPU)
 	}
 }
+
+// A multi-slot server without --kv-unified prints per-stream KV lines, and
+// ollama never passes --kv-unified. The old regex required "buffer size =" and
+// so matched none of them: memGPU lost the whole KV cache while the model and
+// compute lines still matched, so no warning fired either. Lines are verbatim
+// from an opencoti -np 4 load of qwen2.5:1.5b on an RTX 3090.
+func TestMemoryParsingCountsPerStreamKVBuffers(t *testing.T) {
+	s := &llamaServerRunner{}
+	w := &memoryParsingWriter{inner: io.Discard, runner: s}
+
+	for _, line := range []string{
+		"load_tensors:        CUDA0 model buffer size =   934.70 MiB\n",
+		"llama_kv_cache:      CUDA0 KV buffer (stream 0) size =  3584.00 MiB\n",
+		"llama_kv_cache:      CUDA0 KV buffer (stream 1) size =   512.00 MiB\n",
+		"sched_reserve:      CUDA0 compute buffer size =   376.14 MiB\n",
+	} {
+		if _, err := w.Write([]byte(line)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	const mib = 1024 * 1024
+	// Each stream is its own allocation and both must be counted.
+	// A variable, not a constant expression: a float constant with a fraction
+	// cannot be converted to uint64 at compile time.
+	totalMiB := 934.70 + 3584.00 + 512.00 + 376.14
+	wantGPU := uint64(totalMiB * float64(mib))
+	if got := s.memGPU; !approxEqual(got, wantGPU) {
+		t.Errorf("memGPU = %d MiB, want %d MiB", got/mib, wantGPU/mib)
+	}
+}
+
+// KVarN caches print "KVarN buffer size", which the kind alternation missed.
+func TestMemoryParsingCountsKVarNAsKV(t *testing.T) {
+	s := &llamaServerRunner{}
+	w := &memoryParsingWriter{inner: io.Discard, runner: s}
+
+	if _, err := w.Write([]byte("llama_kv_cache:      CUDA0 KVarN buffer size =   256.00 MiB\n")); err != nil {
+		t.Fatal(err)
+	}
+
+	const mib = 1024 * 1024
+	if got := s.memGPU; !approxEqual(got, uint64(256*mib)) {
+		t.Errorf("memGPU = %d MiB, want 256 MiB", got/mib)
+	}
+}
+
+// A repeated line for the same stream is a restatement, not a second buffer.
+func TestMemoryParsingDoesNotDoubleCountOneStream(t *testing.T) {
+	s := &llamaServerRunner{}
+	w := &memoryParsingWriter{inner: io.Discard, runner: s}
+
+	for _, line := range []string{
+		"llama_kv_cache:      CUDA0 KV buffer (stream 0) size =     0.00 MiB\n",
+		"llama_kv_cache:      CUDA0 KV buffer (stream 0) size =  3584.00 MiB\n",
+	} {
+		if _, err := w.Write([]byte(line)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	const mib = 1024 * 1024
+	if got := s.memGPU; !approxEqual(got, uint64(3584*mib)) {
+		t.Errorf("memGPU = %d MiB, want 3584 MiB", got/mib)
+	}
+}
+
+func approxEqual(got, want uint64) bool {
+	const tolerance = 1024 * 1024 // 1 MiB, for float MiB rounding
+	if got > want {
+		return got-want < tolerance
+	}
+	return want-got < tolerance
+}

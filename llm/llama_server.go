@@ -168,6 +168,10 @@ type llamaServerRunner struct {
 	launch                  llamaServerLaunchConfig
 	output                  *memoryParsingWriter
 	mmprojOffloadOOMRetried bool
+	// usedOpencoti records which engine served the current process, and
+	// engineFallbackRetried keeps the stock retry to one attempt.
+	usedOpencoti          bool
+	engineFallbackRetried bool
 }
 
 type llamaServerLaunchConfig struct {
@@ -187,6 +191,9 @@ type llamaServerLaunchConfig struct {
 	gpuLibs              []string
 	extraEnvs            map[string]string
 	forceNoMMProjOffload bool
+	// forceStockEngine skips the engine hook entirely. Set only by the
+	// opt-in retry after an opencoti load failed; see XOLLAMA_ENGINE_FALLBACK.
+	forceStockEngine bool
 }
 
 func newLlamaServerHTTPClient() *http.Client {
@@ -367,10 +374,10 @@ func engineDevices(gpus []ml.DeviceInfo) []engine.Device {
 }
 
 // startLlamaServer spawns the upstream llama-server process with appropriate CLI flags.
-func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.Cmd, port int, err error) {
+func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.Cmd, port int, usedOpencoti bool, err error) {
 	exe, err := FindLlamaServer()
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, false, err
 	}
 
 	// Allocate a port
@@ -444,8 +451,12 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	// xollama-hook: engine-select — see docs/features/engine-opencoti-llamafile.md
 	// Resolves which engine serves this load. Returns (exe, params) unchanged
 	// whenever the answer is llama.cpp, which is what keeps the off path
-	// byte-identical to upstream.
-	name, args := engine.Launch(exe, params, engineDevices(launch.gpus), ml.LibOllamaPath)
+	// byte-identical to upstream. forceStockEngine is set only by the opt-in
+	// retry after an opencoti load has already failed.
+	name, args, usedOpencoti := exe, params, false
+	if !launch.forceStockEngine {
+		name, args, usedOpencoti = engine.Launch(exe, params, engineDevices(launch.gpus), ml.LibOllamaPath)
+	}
 
 	// Set up library paths for GPU backend discovery
 	cmd = exec.Command(name, args...)
@@ -462,9 +473,9 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	slog.Debug("subprocess", "", filteredEnv(cmd.Env))
 
 	if err = cmd.Start(); err != nil {
-		return nil, 0, err
+		return nil, 0, false, err
 	}
-	return cmd, port, nil
+	return cmd, port, usedOpencoti, nil
 }
 
 // SetupLlamaServerCommandEnv configures the environment for a llama-server
@@ -1034,13 +1045,14 @@ func legacyEmbeddingsWereRaw(kv *gguf.Metadata) bool {
 }
 
 func (s *llamaServerRunner) startProcess() error {
-	cmd, port, err := startLlamaServer(s.launch, s.output)
+	cmd, port, usedOpencoti, err := startLlamaServer(s.launch, s.output)
 	if err != nil {
 		return err
 	}
 
 	s.cmd = cmd
 	s.port = port
+	s.usedOpencoti = usedOpencoti
 	s.done = make(chan struct{})
 	s.doneErr = nil
 	s.loadStart = time.Now()
@@ -1083,11 +1095,21 @@ func (s *llamaServerRunner) Load(ctx context.Context, systemInfo ml.SystemInfo, 
 		if retryErr != nil {
 			return nil, retryErr
 		}
-		if !retried {
-			return nil, err
-		}
-		if err := s.WaitUntilRunning(ctx); err != nil {
-			return nil, fmt.Errorf("llama-server startup failed after projector CPU offload retry: %w", err)
+		if retried {
+			if err := s.WaitUntilRunning(ctx); err != nil {
+				return nil, fmt.Errorf("llama-server startup failed after projector CPU offload retry: %w", err)
+			}
+		} else {
+			stockRetried, stockErr := s.retryOnStockEngine(err)
+			if stockErr != nil {
+				return nil, stockErr
+			}
+			if !stockRetried {
+				return nil, err
+			}
+			if err := s.WaitUntilRunning(ctx); err != nil {
+				return nil, fmt.Errorf("llama-server startup failed after falling back to the stock engine: %w", err)
+			}
 		}
 	}
 	if err := s.removeSplitDirs(); err != nil {
@@ -1115,6 +1137,33 @@ func (s *llamaServerRunner) Load(ctx context.Context, systemInfo ml.SystemInfo, 
 	}
 
 	return deviceIDs, nil
+}
+
+// retryOnStockEngine restarts a failed opencoti load on stock llama-server.
+//
+// Off unless XOLLAMA_ENGINE_FALLBACK is set. The default is to fail, because a
+// silent downgrade is the worse outcome: the load would succeed with none of
+// the engine's behaviour and nothing in the response would say so, and every
+// A/B against vanilla would quietly become an A/A.
+func (s *llamaServerRunner) retryOnStockEngine(loadErr error) (bool, error) {
+	if !s.usedOpencoti || s.engineFallbackRetried || !engine.FallbackOnLoadFailure() {
+		return false, nil
+	}
+
+	slog.Warn("opencoti-llamafile failed to load this model; falling back to stock llama-server",
+		"model", s.modelPath, "error", loadErr, "enabled_by", engine.EnvFallback)
+	s.engineFallbackRetried = true
+	s.launch.forceStockEngine = true
+
+	if err := s.stopProcess(); err != nil {
+		return false, fmt.Errorf("opencoti load failed: %w; error stopping failed process: %v", loadErr, err)
+	}
+	s.resetLoadAccounting()
+
+	if err := s.startProcess(); err != nil {
+		return false, fmt.Errorf("opencoti load failed: %w; error starting stock retry: %v", loadErr, err)
+	}
+	return true, nil
 }
 
 func (s *llamaServerRunner) retryWithMMProjCPUOffload(loadErr error) (bool, error) {
@@ -2871,6 +2920,10 @@ type memoryBufferKey struct {
 	component string
 	backend   string
 	kind      string
+	// stream is "" for an unstreamed buffer. Each stream of one device is a
+	// separate allocation, so it belongs in the key -- without it the streams
+	// collide and only the last one is counted.
+	stream string
 }
 
 type memoryBuffer struct {
@@ -2886,7 +2939,20 @@ var deviceFreeRegex = regexp.MustCompile(`using device (\S+)\s+\(.*\)\s+-\s+(\d+
 
 // bufferSizeRegex matches llama-server buffer size lines and captures the
 // component so repeated fit/probe values can be replaced by the final load.
-var bufferSizeRegex = regexp.MustCompile(`(?m)(?:^|\n)[^\n:]*?([A-Za-z_][A-Za-z0-9_]*):\s+(\S+)\s+(model|KV|compute|output|RS)\s+buffer size\s*=\s*([\d.]+)\s*MiB`)
+// xollama-hook: memory-scrape — see docs/features/engine-opencoti-llamafile.md
+//
+// A multi-slot server without --kv-unified -- which ollama never passes --
+// prints its KV lines per stream:
+//
+//	llama_kv_cache:      CUDA0 KV buffer (stream 0) size =  3584.00 MiB
+//
+// and KVarN caches say "KVarN buffer" rather than "KV buffer". Both were
+// invisible here, so a -np > 1 load silently under-counted its KV: no warning
+// fired, because the model and compute lines still matched.
+//
+// KVarN precedes KV in the alternation: Go's regexp is leftmost-first, so "KV"
+// would match the prefix of "KVarN" and then fail on the following " buffer".
+var bufferSizeRegex = regexp.MustCompile(`(?m)(?:^|\n)[^\n:]*?([A-Za-z_][A-Za-z0-9_]*):\s+(\S+)\s+(model|KVarN|KV|compute|output|RS)\s+buffer(?:\s+\(stream\s+(\d+)\))?\s+size\s*=\s*([\d.]+)\s*MiB`)
 
 var (
 	offloadedLayersRegex      = regexp.MustCompile(`offloaded\s+(\d+)/(\d+)\s+layers to GPU`)
@@ -2952,7 +3018,13 @@ func (w *memoryParsingWriter) Write(b []byte) (int, error) {
 			for _, match := range bufferSizeRegex.FindAllSubmatch(b, -1) {
 				component := string(match[1])
 				backendName := string(match[2])
-				if mib, err := strconv.ParseFloat(string(match[4]), 64); err == nil {
+				// KVarN is a KV cache under another name; count it as one.
+				kind := string(match[3])
+				if kind == "KVarN" {
+					kind = "KV"
+				}
+				stream := string(match[4])
+				if mib, err := strconv.ParseFloat(string(match[5]), 64); err == nil {
 					if w.buffers == nil {
 						w.buffers = make(map[memoryBufferKey]memoryBuffer)
 					}
@@ -2982,7 +3054,8 @@ func (w *memoryParsingWriter) Write(b []byte) (int, error) {
 					w.buffers[memoryBufferKey{
 						component: component,
 						backend:   backendName,
-						kind:      string(match[3]),
+						kind:      kind,
+						stream:    stream,
 					}] = memoryBuffer{bytes: uint64(mib * 1024 * 1024)}
 					w.updateRunnerMemoryLocked()
 				}

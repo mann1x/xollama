@@ -256,6 +256,10 @@ var (
 	// searching the install directories. A path that does not exist is an
 	// error rather than a reason to keep looking.
 	EnginePath = String("XOLLAMA_ENGINE_PATH")
+	// EngineFallback opts in to retrying a failed opencoti load on stock
+	// llama.cpp. Off by default: a silent downgrade hides that the engine
+	// could not serve the model at all.
+	EngineFallback = Bool("XOLLAMA_ENGINE_FALLBACK")
 
 	LLMLibrary = String("OLLAMA_LLM_LIBRARY")
 	Editor     = String("OLLAMA_EDITOR")
@@ -324,6 +328,7 @@ func AsMap() map[string]EnvVar {
 	ret := map[string]EnvVar{
 		"XOLLAMA_ENGINE":              {"XOLLAMA_ENGINE", Engine(), "Inference engine for GGML loads: auto (default), opencoti, or llamacpp"},
 		"XOLLAMA_ENGINE_PATH":         {"XOLLAMA_ENGINE_PATH", EnginePath(), "Path to an opencoti-llamafile artifact, overriding the search"},
+		"XOLLAMA_ENGINE_FALLBACK":     {"XOLLAMA_ENGINE_FALLBACK", EngineFallback(), "Retry a failed opencoti load on stock llama.cpp (default false: fail instead of downgrading silently)"},
 		"OLLAMA_DEBUG":                {"OLLAMA_DEBUG", LogLevel(), "Show additional debug information (e.g. XOLLAMA_DEBUG=1)"},
 		"OLLAMA_DEBUG_LOG_REQUESTS":   {"OLLAMA_DEBUG_LOG_REQUESTS", DebugLogRequests(), "Log inference request bodies and replay curl commands to a temp directory"},
 		"OLLAMA_GO_TEMPLATE":          {"OLLAMA_GO_TEMPLATE", GoTemplate(true), "Enable Modelfile TEMPLATE based rendering when available"},

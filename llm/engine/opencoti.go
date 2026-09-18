@@ -16,6 +16,10 @@ import (
 // EnvPath points at one opencoti-llamafile artifact and skips discovery.
 const EnvPath = "XOLLAMA_ENGINE_PATH"
 
+// EnvFallback opts in to retrying a failed opencoti load on stock
+// llama-server. Off by default -- see FallbackOnLoadFailure.
+const EnvFallback = "XOLLAMA_ENGINE_FALLBACK"
+
 // artifactPrefix is how a published artifact is named:
 //
 //	opencoti-llamafile-<version>-<tag>-<arch>.llamafile[.exe]
@@ -208,21 +212,33 @@ func gpuFlag(devices []Device) string {
 // XOLLAMA_ENGINE_PATH — falls back to the stock llama-server ollama already
 // found, with the reason logged once. An engine swap is not worth a failed
 // load.
-func Launch(stockExe string, params []string, devices []Device, libOllamaPath string) (string, []string) {
+func Launch(stockExe string, params []string, devices []Device, libOllamaPath string) (string, []string, bool) {
 	decision := Resolve(Host(), devices, envconfig.Var(EnvSelector))
 	if decision.Kind != KindOpencoti {
 		slog.Debug("using stock llama-server", "reason", decision.Reason)
-		return stockExe, params
+		return stockExe, params, false
 	}
 
 	home, _ := os.UserHomeDir()
 	artifact, err := Find(envconfig.Var(EnvPath), DefaultDirs(libOllamaPath, home))
 	if err != nil {
 		slog.Info("falling back to stock llama-server", "reason", decision.Reason, "error", err)
-		return stockExe, params
+		return stockExe, params, false
 	}
 
 	name, args := Command(artifact, params, devices, runtime.GOOS)
 	slog.Info("using opencoti-llamafile", "artifact", artifact, "reason", decision.Reason)
-	return name, args
+	return name, args, true
+}
+
+// FallbackOnLoadFailure reports whether a load that fails on opencoti should be
+// retried on stock llama-server.
+//
+// Off by default, and deliberately so. Retrying silently would turn "this model
+// does not work on the engine you selected" into "this model is quietly slower
+// and has none of the engine's features", and an A/B against vanilla stops
+// meaning anything. Opting in is a statement that availability matters more
+// than knowing which engine answered.
+func FallbackOnLoadFailure() bool {
+	return envconfig.Bool(EnvFallback)()
 }

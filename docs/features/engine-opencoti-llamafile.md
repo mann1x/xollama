@@ -7,8 +7,27 @@
 > **It found that `auto` can route a load into a failure.** opencoti loads 3 of
 > 8 tested models where llama.cpp loads 8 of 8: the pinned artifact's llama.cpp
 > base cannot parse gemma4, gemma3-qat, mistral-small3.1 or qwen3.5, and its
-> VRAM-overflow path aborts. Make `auto` fall back to stock on a failed load
-> before Phase 2's knobs.
+> VRAM-overflow path aborts. Handed to opencoti as
+> `/shared/dev/handover/2026-09-18-xollama-opencoti-phase2-findings.md`; the
+> fork will move to a c8 artifact and re-run the same axes.
+
+## `XOLLAMA_ENGINE_FALLBACK` — opt-in, and off by default
+
+When set, a load that fails on opencoti is retried once on stock llama-server.
+Unset, it fails.
+
+Off is the default on purpose. An automatic fallback reads like a kindness and
+is not one: every model the engine cannot serve would load anyway, with none of
+the engine's behaviour, and nothing in the response would say which engine
+answered. An A/B against vanilla would quietly become an A/A, and the
+compatibility gap this fork exists to measure would stop being visible at all.
+Failing is the honest default; opting in is a statement that availability
+matters more than knowing which engine served the request.
+
+The retry is modelled on upstream's own `retryWithMMProjCPUOffload`: stop the
+process, set `forceStockEngine` on the launch config, reset load accounting,
+start again. It happens at most once per load, and logs a `WARN` naming the
+model and the variable that enabled it.
 
 ## Why this is cheap
 
@@ -282,10 +301,16 @@ Windows alike. Without it that hardware falls back to CPU.
   upstream" — xollama must not break that.
 
 Phase 2's measurements are now in, and they reorder this: the knob surface is
-not the next thing. `engine.Launch` falls back to stock when the artifact is
-missing, but not when the load itself fails, so on a tested platform `auto`
-turns a model that works into a model that does not. Falling back on a failed
-load comes before any knob.
+not the next thing. The compatibility gap is, and it is opencoti's to close --
+five of the eight models fail inside the engine, on argv identical to the one
+stock llama-server accepts. `XOLLAMA_ENGINE_FALLBACK` exists so a user who wants
+availability can have it, but it is off by default and is not a fix.
+
+A second thing the A/B exposed is ours and is fixed: a `-np > 1` load prints its
+KV lines per stream (`KV buffer (stream N) size =`) and the scraper matched none
+of them, so `memGPU` lost the whole KV cache without a warning. That means the
+27% multi-slot gap was measured against a wrong memory plan and has to be
+re-measured on a corrected build before anyone acts on it.
 
 What the A/B settled about the engines themselves: single-stream throughput is
 parity (within 2%), concurrency at `-np 4` is 27% slower on opencoti, and the
