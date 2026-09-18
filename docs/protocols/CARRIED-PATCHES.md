@@ -17,7 +17,22 @@ taken it, and it leaves when upstream does.
 4. A patch with no upstream PR is an xollama feature, not a carried patch.
    It belongs in `docs/features/`.
 
-Status as of **2026-09-18**. All twelve are OPEN against `ollama/ollama`.
+**Status as of 2026-09-18: all twelve are carried on `main`, replayed onto
+v0.34.2, and all twelve are still OPEN against `ollama/ollama`.**
+
+| PR | merge | PR | merge |
+|---|---|---|---|
+| #17563 | `1e384e33` | #17914 | `27e10549` |
+| #17564 | `a765e728` | #18212 | `a6dc8df3` |
+| #17565 | `5dc1d79a` | #18281 | `bb54003d` |
+| #17566 | `2fd06701` | #18288 | `5a80b98b` |
+| #17567 | `43be0f1d` | #18289 | `ddb0fec9` |
+| #17626 | `c7d7a3fb` | #18307 | `0c0db3d9` |
+
+Verified after the replay: `go build ./...` and `go vet ./...` clean, and the
+full `go test ./...` passes except four failures that are **not ours** and fail
+identically on clean v0.34.2 — `cmd/launch` (1) and `cmd/internal/fileutil` (3,
+which assert permission denials and cannot fail when the suite runs as root).
 
 ## Tier 1 — the reason this fork exists
 
@@ -85,3 +100,59 @@ README rewrite and two PNGs and no longer merges.
 #17478 is by an ollama maintainer and covers the OpenAI/Anthropic
 `count_tokens` surface rather than raw tokenization. Carry it if the surface is
 wanted, and expect to retire it: maintainer PRs land.
+
+
+## What the replay found
+
+Five of the twelve needed more than a merge. Recording it here because each one
+is also feedback for the upstream PR, which still has to land on upstream's
+`main` eventually.
+
+**#17566 (think budget) — a clean merge that did not compile.** Git resolved all
+12 overlapping files by itself, and one resolution was wrong: upstream migrated
+`server/routes_test.go` from `fs/ggml` to `fs/gguf` + `internal/testutil/gguf`,
+so the PR's new test still called `createBinFile` with `ggml.KV`. `go build
+./...` passed and said nothing — the package that failed was a test package.
+Only `go vet` caught it. This is the single best argument for the protocol's
+"do not skip a step because the previous one passed".
+
+**#17563 (repeat guard) — conflict, resolved toward the PR.** Upstream's crude
+`tokenRepeat > 100` abort is exactly what the PR replaces, and the variable's
+declaration had already been removed in a hunk that merged cleanly, so keeping
+upstream's side would not have compiled.
+
+**#18289 (runner flags) — does not compile or pass against v0.34.2 as written.**
+Two separate upstream changes broke it: `llm.LlamaServerConfig` gained
+`DraftModelShardPaths []string`, so the PR's `!=` comparison is no longer legal
+on the struct; and storing the launch config in a new `runnerRef` field meant
+any `runnerRef` built outside `getRunner` had a zero value and was always judged
+stale, which broke upstream's passing
+`TestSchedGetRunnerReusesSameDigestWhenModelPathEmpty`. Resolved by deriving
+both sides from their models rather than storing one — equivalent by
+construction, since `runner.model` is fixed for the runner's life and is what
+the launch config was computed from. **The upstream PR should be updated the
+same way.**
+
+**#17567 (libdl) — the file moved.** Upstream relocated `x/mlxrunner/mlx/` to
+`mlx/`, producing a modify/delete conflict. Still needed: `mlx/mlx.go` has no
+`-ldl` and `mlx/dynamic.c` is still the `dlopen` caller. Applied by hand at the
+new path. **The upstream PR needs rebasing onto the new location.**
+
+**#18288 and #17565 — both append tests to `model/parsers/gemma4_test.go`**, as
+do #18281 and #17566 to `llm/llama_server_test.go`. In both cases the two blocks
+shared the file's trailing brace, so a naive "keep both" leaves the first
+function unclosed. Kept both, each with its own closing brace.
+
+### One conflict that belongs to no single PR
+
+`TestChat/TestGenerateParseErrorMidStreamDoesNotWedge` feed a qwen3.5 tool call
+that closes `<parameter>` with `</function>` and assert a 500. #17914 makes that
+exact shape recoverable, so the request now succeeds and the assertion fails.
+The tests are about what `routes.go` does when a parser errors mid-stream, not
+about which inputs a parser rejects, so they now use `qwen3-vl-thinking` with a
+tool call whose JSON is cut off mid-value.
+
+This is an **integration** conflict: it appears only when the fixes are combined,
+which is precisely what this fork is and what no individual upstream PR can see.
+Expect more of these as patches accumulate, and keep them in their own commits
+rather than folding them into a carried merge — they are ours, not the PR's.

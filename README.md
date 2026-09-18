@@ -5,10 +5,12 @@ fixes upstream has not merged, and serves GGUF models on the
 [opencoti-llamafile](https://huggingface.co/ManniX-ITA/opencoti-llamafile)
 engine.
 
-> **Status: scaffolding.** `main` is upstream `v0.34.2` plus this
-> documentation. Nothing below is implemented yet — the carried patches live
-> in [`mann1x/ollama`](https://github.com/mann1x/ollama) and the engine work
-> is planned in [`docs/features/`](docs/features/).
+> **Status.** `main` is upstream `v0.34.2` with all twelve carried patches
+> replayed onto it — see
+> [`docs/protocols/CARRIED-PATCHES.md`](docs/protocols/CARRIED-PATCHES.md).
+> The engine swap is verified but not yet implemented: Phase 0 passed
+> ([`docs/evaluations/phase0-engine-compat.md`](docs/evaluations/phase0-engine-compat.md)),
+> and the design is in [`docs/features/`](docs/features/).
 
 ## Why
 
