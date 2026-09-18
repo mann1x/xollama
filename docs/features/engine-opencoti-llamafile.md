@@ -1,7 +1,13 @@
 # Feature — the opencoti-llamafile engine
 
 > Status: **Phase 1 shipped** (routing, adapter, hook, build-time packaging)
-> — 2026-09-18. Not yet: Phase 2's knobs.
+> — 2026-09-18. Phase 2's A/B is measured:
+> [`docs/evaluations/phase2-engine-ab.md`](../evaluations/phase2-engine-ab.md).
+>
+> **It found that `auto` can route a load into a failure.** opencoti loads 3 of
+> 8 tested models where llama.cpp loads 8 of 8 — every multimodal model fails,
+> because ollama passes `--mmproj` pointing at the model blob itself. Fix the
+> routing policy's missing model axis before Phase 2's knobs.
 
 ## Why this is cheap
 
@@ -274,5 +280,13 @@ Windows alike. Without it that hardware falls back to CPU.
   *off*. The engine's own contract is "off means off, byte-identical to
   upstream" — xollama must not break that.
 
-Phase 2 is deliberately not designed yet. The knob surface should be decided
-against measurements from Phase 1, not guessed at now.
+Phase 2's measurements are now in, and they reorder this: the knob surface is
+not the next thing. `llm/engine/policy.go` decides on platform and compute
+capability alone and has no way to say "not this model", so on a tested platform
+`auto` hands a multimodal model to an engine that cannot load it. Compatibility
+gating comes before any knob.
+
+What the A/B settled about the engines themselves: single-stream throughput is
+parity (within 2%), concurrency at `-np 4` is 27% slower on opencoti, and the
+VRAM-overflow path aborts rather than spilling. See
+[`docs/evaluations/phase2-engine-ab.md`](../evaluations/phase2-engine-ab.md).

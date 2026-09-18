@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 
 	"github.com/ollama/ollama/envconfig"
 )
@@ -145,9 +146,14 @@ func isArtifact(name string) bool {
 const logVerbosity = "5"
 
 func Command(artifact string, params []string, devices []Device, goos string) (string, []string) {
-	args := make([]string, 0, len(params)+3)
-	args = append(args, "--server", "--log-verbosity", logVerbosity)
-	args = append(args, params...)
+	args := make([]string, 0, len(params)+5)
+	args = append(args, "--server")
+	args = append(args, withoutLogVerbosity(params)...)
+	// After the stock params, not before them. llama.cpp's parser takes the
+	// last occurrence of a flag, and ollama passes --log-verbosity 4 of its
+	// own; prepending ours left it inert and the scheduler planning against
+	// the buffer-size lines that level 4 filters out.
+	args = append(args, "--log-verbosity", logVerbosity)
 	if gpu := gpuFlag(devices); gpu != "" {
 		args = append(args, "--gpu", gpu)
 	}
@@ -156,6 +162,24 @@ func Command(artifact string, params []string, devices []Device, goos string) (s
 		return artifact, args
 	}
 	return "sh", append([]string{artifact}, args...)
+}
+
+// withoutLogVerbosity drops any --log-verbosity and its value, so the argv
+// carries exactly one rather than relying on last-wins to be read correctly by
+// whoever next looks at the command line.
+func withoutLogVerbosity(params []string) []string {
+	out := make([]string, 0, len(params))
+	for i := 0; i < len(params); i++ {
+		if params[i] == "--log-verbosity" {
+			i++ // also drop its value
+			continue
+		}
+		if strings.HasPrefix(params[i], "--log-verbosity=") {
+			continue
+		}
+		out = append(out, params[i])
+	}
+	return out
 }
 
 // gpuFlag maps the devices ollama selected onto the artifact's --gpu selector.

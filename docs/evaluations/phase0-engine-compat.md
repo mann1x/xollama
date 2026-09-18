@@ -132,12 +132,15 @@ build.
 
 ## What this changes in the plan
 
-- The engine swap is **confirmed low-risk**. No flag translation layer is
+- The engine swap is **confirmed low-risk for the model measured here** --
+  `qwen3:4b`, plain text, on a supported architecture. Phase 2 measured a
+  wider set and found opencoti loads 3 of 8: see
+  [phase2-engine-ab.md](./phase2-engine-ab.md). No flag translation layer is
   needed beyond `--server`, the APE launch form, and `--gpu`.
 - The scheduler keeps working unmodified: VRAM accounting is exact.
 - One small, well-understood patch to `memoryParsingWriter` before Phase 2
   ships, plus a regression test built from the captured logs.
-- Not yet measured: throughput, multi-slot (`-np > 1`), a Gemma-4 model with
-  its parsers, and a model that actually overflows VRAM (the one case where
-  `fitOverflowingLayersRegex` and rolling-KV spill really matter). Those
-  belong in Phase 2's A/B, not here.
+- Throughput, multi-slot (`-np > 1`), a Gemma-4 model with its parsers, and a
+  model that actually overflows VRAM were left to Phase 2's A/B, which has now
+  run them: [phase2-engine-ab.md](./phase2-engine-ab.md). Single-stream is
+  parity, `-np 4` is 27% slower on opencoti, and the overflow path aborts.

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -196,9 +197,59 @@ func TestCommandRaisesVerbosityForTheMemoryScrapers(t *testing.T) {
 	if i+1 >= len(args) || args[i+1] != logVerbosity {
 		t.Fatalf("--log-verbosity value = %v, want %q", args[i+1:], logVerbosity)
 	}
-	// It must precede the ollama argv, not be buried after a flag that takes
-	// a variable number of values.
-	if j := slices.Index(args, "--model"); j < i {
-		t.Errorf("--log-verbosity at %d comes after ollama's own argv at %d", i, j)
+	// It must come *after* ollama's argv. ollama passes --log-verbosity 4 of
+	// its own and llama.cpp takes the last occurrence, so a leading flag is
+	// inert -- see TestCommandLogVerbosityWinsOverOllamas.
+	if j := slices.Index(args, "--model"); j > i {
+		t.Errorf("--log-verbosity at %d precedes ollama's argv at %d, so ollama's value would win", i, j)
+	}
+}
+
+// Regression: ollama appends --log-verbosity 4 of its own, and llama.cpp's
+// parser takes the last occurrence. Prepending ours left it inert, which is
+// the bug-007 failure returning by a side door: the scheduler plans against
+// buffer-size lines that verbosity 4 filters out.
+func TestCommandLogVerbosityWinsOverOllamas(t *testing.T) {
+	stock := []string{
+		"--model", "/blobs/sha256-abc",
+		"--port", "5991",
+		"--log-verbosity", "4",
+		"--no-log-prefix",
+	}
+
+	_, args := Command("/opt/engine.llamafile", stock, []Device{{Backend: BackendCUDA}}, "linux")
+
+	var seen []int
+	for i, a := range args {
+		if a == "--log-verbosity" {
+			if i+1 >= len(args) {
+				t.Fatalf("--log-verbosity has no value: %v", args)
+			}
+			seen = append(seen, i)
+		}
+	}
+	if len(seen) != 1 {
+		t.Fatalf("argv carries %d --log-verbosity flags, want exactly 1: %v", len(seen), args)
+	}
+	if got := args[seen[0]+1]; got != logVerbosity {
+		t.Errorf("--log-verbosity = %q, want %q", got, logVerbosity)
+	}
+	// Everything else ollama asked for must survive.
+	for _, want := range []string{"--model", "/blobs/sha256-abc", "--port", "5991", "--no-log-prefix"} {
+		if !slices.Contains(args, want) {
+			t.Errorf("argv dropped %q: %v", want, args)
+		}
+	}
+}
+
+func TestCommandHandlesJoinedLogVerbosity(t *testing.T) {
+	_, args := Command("/opt/e.llamafile", []string{"--log-verbosity=4", "--model", "m"}, nil, "linux")
+	for _, a := range args {
+		if strings.HasPrefix(a, "--log-verbosity=") {
+			t.Fatalf("joined form survived: %v", args)
+		}
+	}
+	if !slices.Contains(args, logVerbosity) {
+		t.Errorf("our verbosity missing: %v", args)
 	}
 }
