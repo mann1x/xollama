@@ -1427,6 +1427,17 @@ func (runner *runnerRef) needsReload(ctx context.Context, req *LlmRequest) bool 
 		return true
 	}
 
+	// A runner is keyed on ModelPath, and a Modelfile built FROM another tag
+	// shares that path -- but the two tags can still need different
+	// llama-server flags. usesOllamaRenderedChat() decides DisableJinja, so a
+	// tag with a renderer or parser and a bare tag over the same blob disagree
+	// about --jinja: whichever loads first wins, and the second one is handed a
+	// runner it cannot use. Tool calls on the bare tag then fail with
+	// "tools param requires --jinja flag" until the runner happens to expire.
+	if !reflect.DeepEqual(llamaServerConfigForModel(runner.model), llamaServerConfigForModel(req.model)) {
+		return true
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	if !reflect.DeepEqual(runner.model.AdapterPaths, req.model.AdapterPaths) || // have the adapters changed?
