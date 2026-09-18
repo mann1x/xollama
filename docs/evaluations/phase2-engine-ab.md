@@ -161,6 +161,50 @@ partial offload is forced.
 the path Phase 0 named as unmeasured — where `fitOverflowingLayersRegex` and
 rolling-KV spill actually do something — and it does not survive contact.
 
+## Re-run on a dev build — NOT PINNABLE
+
+> 2026-09-18, after opencoti's patches 0305–0310. Raw:
+> `/srv/ml/xollama-phase2/dev-1831001-NOT-PINNABLE/`. Handed over as
+> `/shared/dev/handover/2026-09-18-xollama-opencoti-devbuild-rerun.md`.
+
+**This build cannot be pinned and nothing below is a release claim.** It is a
+host binary (`/srv/ml/opencoti-dev/opencoti-0.10.5-c7-2609181831001`, sha256
+`9c19b0e6…a766f9a`) that side-loads its CUDA backend from
+`~/.llamafile/v/opencoti-0.10.5-c7/ggml-cuda.so`. There is no single file to
+sha-pin, and the DSO that ran was five minutes newer than the host binary. It
+also self-reports `opencoti-0.10.5-c7`, the same string as the release, so the
+version is not a thing to gate on. `llm/engine/pin.txt` is unchanged and waits
+for a self-contained clean-room artifact.
+
+Both engines were re-measured in the same session with the fixed KV scraper, so
+`memGPU` is correct on both sides this time.
+
+| axis | Sep 3 release | dev 1831001 |
+|---|---|---|
+| compatibility | 3 / 8 | **8 / 8** |
+| single stream | parity | parity (3744 vs 3852 prompt, 76.9 vs 78.3 gen tok/s) |
+| Gemma-4 parsers | not measurable | **parity byte for byte** — same tool call, thinking split to identical 781/366 chars |
+| 70B overflow | abort | **3.66 tok/s at 75.9% resident vs llama.cpp's 2.49 at 56.8%** |
+| multi-slot `-np 4` | −27% (void) | **−25.6%**, 588.9 vs 438.3 tok/s aggregate |
+
+The overflow case inverts: opencoti is now **47% faster than stock** on a
+39.2 GiB model on a 24 GiB card, with 19 points more of it resident. That is
+rolling-KV doing the thing it exists to do, and it is the first measured reason
+to prefer the engine rather than merely tolerate it.
+
+**Multi-slot is the one open deficit**, and it is no longer explainable by the
+artifact's age — this build carries 0305–0310 and so should include the four
+multi-slot host-overhead patches (0274–0277). The per-step timings locate it:
+
+- opencoti's prompt eval **does not scale with token count** — 36, 55, 60 and 60
+  tokens all take 114.4 ms, within 0.07 ms of each other, where llama.cpp's same
+  four take 10.97–35.65 ms and track the count.
+- decode is **perfectly lockstep** — all four slots within 0.03 ms of each other
+  (4544.28–4544.31 ms) against llama.cpp's 0.5 ms spread — at 8.88 ms/token vs
+  6.69, a uniform **+32.7%** per decode step that is exactly the aggregate gap.
+
+Both point at a fixed per-batch host cost rather than per-token work.
+
 ## A bug this campaign found in our own code
 
 The engine hook prepended `--server --log-verbosity 5` to ollama's argv, but

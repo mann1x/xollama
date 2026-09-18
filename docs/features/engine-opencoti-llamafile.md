@@ -8,7 +8,10 @@
 > 8 tested models where llama.cpp loads 8 of 8 — because our baseline is not
 > vanilla llama.cpp: it links ollama's `llama/compat` layer in-process, which is
 > what reads ollama's monolithic registry blobs, and the engine had no
-> equivalent. Its VRAM-overflow path also aborts. Handed to opencoti as
+> equivalent. Its VRAM-overflow path also aborts. **Both fixed on their side:** a
+> local, non-pinnable re-run on dev build 1831001 loads 8 of 8 and turns the
+> overflow case into a 47% win over stock. Multi-slot remains −25.6%. Handed to
+> opencoti as
 > `/shared/dev/handover/2026-09-18-xollama-opencoti-phase2-findings.md`; the
 > fork will move to a c8 artifact and re-run the same axes.
 
