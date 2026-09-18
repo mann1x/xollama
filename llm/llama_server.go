@@ -349,15 +349,21 @@ func FindLlamaServer() (string, error) {
 // engineBackends is the distinct backend of every device this load will use,
 // in the order ollama selected them, for the engine routing policy. An empty
 // result means a CPU-only load.
-func engineBackends(gpus []ml.DeviceInfo) []engine.Backend {
-	backends := make([]engine.Backend, 0, len(gpus))
+func engineDevices(gpus []ml.DeviceInfo) []engine.Device {
+	devices := make([]engine.Device, 0, len(gpus))
 	for _, g := range gpus {
-		b := engine.Backend(g.Library)
-		if !slices.Contains(backends, b) {
-			backends = append(backends, b)
+		// Compute capability rides along because routing needs it: it is the
+		// axis that separates a V100 from a 4090 inside one "CUDA" backend.
+		d := engine.Device{
+			Backend:      engine.Backend(g.Library),
+			ComputeMajor: g.ComputeMajor,
+			ComputeMinor: g.ComputeMinor,
+		}
+		if !slices.Contains(devices, d) {
+			devices = append(devices, d)
 		}
 	}
-	return backends
+	return devices
 }
 
 // startLlamaServer spawns the upstream llama-server process with appropriate CLI flags.
@@ -439,7 +445,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	// Resolves which engine serves this load. Returns (exe, params) unchanged
 	// whenever the answer is llama.cpp, which is what keeps the off path
 	// byte-identical to upstream.
-	name, args := engine.Launch(exe, params, engineBackends(launch.gpus), ml.LibOllamaPath)
+	name, args := engine.Launch(exe, params, engineDevices(launch.gpus), ml.LibOllamaPath)
 
 	// Set up library paths for GPU backend discovery
 	cmd = exec.Command(name, args...)

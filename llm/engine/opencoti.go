@@ -112,11 +112,11 @@ func isArtifact(name string) bool {
 // On anything but Windows the artifact is launched through sh. It is a
 // Cosmopolitan APE, and a kernel without binfmt_misc APE registration cannot
 // exec it directly.
-func Command(artifact string, params []string, backends []Backend, goos string) (string, []string) {
+func Command(artifact string, params []string, devices []Device, goos string) (string, []string) {
 	args := make([]string, 0, len(params)+3)
 	args = append(args, "--server")
 	args = append(args, params...)
-	if gpu := gpuFlag(backends); gpu != "" {
+	if gpu := gpuFlag(devices); gpu != "" {
 		args = append(args, "--gpu", gpu)
 	}
 
@@ -126,12 +126,12 @@ func Command(artifact string, params []string, backends []Backend, goos string) 
 	return "sh", append([]string{artifact}, args...)
 }
 
-// gpuFlag maps the backends of the devices ollama selected onto the artifact's
-// --gpu selector. An empty result means "say nothing and let it probe".
-func gpuFlag(backends []Backend) string {
+// gpuFlag maps the devices ollama selected onto the artifact's --gpu selector.
+// An empty result means "say nothing and let it probe".
+func gpuFlag(devices []Device) string {
 	sawCPU := false
-	for _, b := range backends {
-		switch b {
+	for _, d := range devices {
+		switch d.Backend {
 		case BackendCUDA:
 			return "nvidia"
 		case BackendVulkan:
@@ -140,7 +140,7 @@ func gpuFlag(backends []Backend) string {
 			sawCPU = true
 		}
 	}
-	if sawCPU || len(backends) == 0 {
+	if sawCPU || len(devices) == 0 {
 		return "disable"
 	}
 	return ""
@@ -152,8 +152,8 @@ func gpuFlag(backends []Backend) string {
 // XOLLAMA_ENGINE_PATH — falls back to the stock llama-server ollama already
 // found, with the reason logged once. An engine swap is not worth a failed
 // load.
-func Launch(stockExe string, params []string, backends []Backend, libOllamaPath string) (string, []string) {
-	decision := Resolve(Host(), backends, os.Getenv(EnvSelector))
+func Launch(stockExe string, params []string, devices []Device, libOllamaPath string) (string, []string) {
+	decision := Resolve(Host(), devices, os.Getenv(EnvSelector))
 	if decision.Kind != KindOpencoti {
 		slog.Debug("using stock llama-server", "reason", decision.Reason)
 		return stockExe, params
@@ -166,7 +166,7 @@ func Launch(stockExe string, params []string, backends []Backend, libOllamaPath 
 		return stockExe, params
 	}
 
-	name, args := Command(artifact, params, backends, runtime.GOOS)
+	name, args := Command(artifact, params, devices, runtime.GOOS)
 	slog.Info("using opencoti-llamafile", "artifact", artifact, "reason", decision.Reason)
 	return name, args
 }

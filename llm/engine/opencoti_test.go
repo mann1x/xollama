@@ -88,7 +88,7 @@ func TestFindSurvivesAMissingDir(t *testing.T) {
 
 func TestCommandPassesOllamaArgvThroughUntouched(t *testing.T) {
 	params := []string{"--model", "/blobs/sha256-abc", "--port", "1234", "--no-webui", "-c", "32768"}
-	_, args := Command("/e/oc.llamafile", params, []Backend{BackendCUDA}, "linux")
+	_, args := Command("/e/oc.llamafile", params, []Device{ada()}, "linux")
 
 	// Everything ollama built must still be there, in order.
 	for _, p := range params {
@@ -102,7 +102,7 @@ func TestCommandPassesOllamaArgvThroughUntouched(t *testing.T) {
 }
 
 func TestCommandAddsServerAndLaunchesThroughSh(t *testing.T) {
-	name, args := Command("/e/oc.llamafile", []string{"--model", "m"}, []Backend{BackendCUDA}, "linux")
+	name, args := Command("/e/oc.llamafile", []string{"--model", "m"}, []Device{ada()}, "linux")
 	if name != "sh" {
 		t.Errorf("name = %q, want sh — the artifact is an APE and may not be directly executable", name)
 	}
@@ -115,7 +115,7 @@ func TestCommandAddsServerAndLaunchesThroughSh(t *testing.T) {
 }
 
 func TestCommandRunsTheArtifactDirectlyOnWindows(t *testing.T) {
-	name, args := Command(`C:\e\oc.exe`, []string{"--model", "m"}, []Backend{BackendCUDA}, "windows")
+	name, args := Command(`C:\e\oc.exe`, []string{"--model", "m"}, []Device{ada()}, "windows")
 	if name != `C:\e\oc.exe` {
 		t.Errorf("name = %q, want the artifact itself", name)
 	}
@@ -126,20 +126,20 @@ func TestCommandRunsTheArtifactDirectlyOnWindows(t *testing.T) {
 
 func TestGpuFlag(t *testing.T) {
 	cases := []struct {
-		name     string
-		backends []Backend
-		want     string
+		name    string
+		devices []Device
+		want    string
 	}{
-		{"cuda", []Backend{BackendCUDA}, "nvidia"},
-		{"vulkan", []Backend{BackendVulkan}, "vulkan"},
-		{"cpu only", []Backend{BackendCPU}, "disable"},
+		{"cuda", []Device{ada()}, "nvidia"},
+		{"vulkan", []Device{{Backend: BackendVulkan}}, "vulkan"},
+		{"cpu only", []Device{{Backend: BackendCPU}}, "disable"},
 		{"no devices is cpu only", nil, "disable"},
-		{"cuda wins over a cpu entry", []Backend{BackendCPU, BackendCUDA}, "nvidia"},
+		{"cuda wins over a cpu entry", []Device{{Backend: BackendCPU}, ada()}, "nvidia"},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := gpuFlag(tt.backends); got != tt.want {
-				t.Errorf("gpuFlag(%v) = %q, want %q", tt.backends, got, tt.want)
+			if got := gpuFlag(tt.devices); got != tt.want {
+				t.Errorf("gpuFlag(%v) = %q, want %q", tt.devices, got, tt.want)
 			}
 		})
 	}
@@ -150,7 +150,7 @@ func TestLaunchFallsBackToStockWhenNothingIsInstalled(t *testing.T) {
 	t.Setenv(EnvPath, "")
 
 	params := []string{"--model", "m"}
-	name, args := Launch("/usr/local/lib/ollama/llama-server", params, []Backend{BackendCUDA}, t.TempDir())
+	name, args := Launch("/usr/local/lib/ollama/llama-server", params, []Device{ada()}, t.TempDir())
 
 	if name != "/usr/local/lib/ollama/llama-server" {
 		t.Errorf("name = %q, want the stock binary — a missing artifact must not fail the load", name)
@@ -168,7 +168,7 @@ func TestLaunchIsByteIdenticalToUpstreamWhenOff(t *testing.T) {
 	t.Setenv(EnvPath, "")
 
 	params := []string{"--model", "m", "--port", "1"}
-	name, args := Launch("/stock/llama-server", params, []Backend{BackendCUDA}, dir)
+	name, args := Launch("/stock/llama-server", params, []Device{ada()}, dir)
 
 	if name != "/stock/llama-server" {
 		t.Errorf("name = %q, want the stock binary", name)

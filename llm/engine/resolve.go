@@ -18,44 +18,43 @@ type Decision struct {
 
 // Resolve picks the engine for one load.
 //
-// backends are the Library names of the devices this load will actually use.
-// An empty list means the load is CPU-only, which is a tested configuration,
-// not an unknown one.
+// devices are the accelerators this load will actually use. An empty list
+// means the load is CPU-only, which is a tested configuration, not an unknown
+// one.
 //
-// Under "auto" every backend in play must be tested, not just one of them: a
+// Under "auto" every device in play must be supported, not just one of them: a
 // load spanning a supported and an unsupported device is exactly the case
 // where "probably fine" is wrong.
-func Resolve(p Platform, backends []Backend, selector string) Decision {
+func Resolve(p Platform, devices []Device, selector string) Decision {
 	switch s := strings.ToLower(strings.TrimSpace(selector)); s {
 	case string(KindLlamaCpp):
 		return Decision{KindLlamaCpp, EnvSelector + "=llamacpp"}
 	case string(KindOpencoti):
 		return Decision{KindOpencoti, EnvSelector + "=opencoti (forced, policy not consulted)"}
 	case "", "auto":
-		return auto(p, backends, "")
+		return auto(p, devices, "")
 	default:
-		return auto(p, backends, fmt.Sprintf("ignored unrecognised %s=%q; ", EnvSelector, selector))
+		return auto(p, devices, fmt.Sprintf("ignored unrecognised %s=%q; ", EnvSelector, selector))
 	}
 }
 
-func auto(p Platform, backends []Backend, prefix string) Decision {
-	if len(backends) == 0 {
-		backends = []Backend{BackendCPU}
+func auto(p Platform, devices []Device, prefix string) Decision {
+	if len(devices) == 0 {
+		devices = []Device{{Backend: BackendCPU}}
 	}
-	for _, b := range backends {
-		if !Supports(p, b) {
-			return Decision{KindLlamaCpp, fmt.Sprintf(
-				"%sopencoti-llamafile is not tested on %s/%s with %s", prefix, p.OS, p.Arch, b)}
+	for _, d := range devices {
+		if why := deviceUnsupported(p, d); why != "" {
+			return Decision{KindLlamaCpp, prefix + why}
 		}
 	}
 	return Decision{KindOpencoti, fmt.Sprintf(
-		"%sopencoti-llamafile is tested on %s/%s with %s", prefix, p.OS, p.Arch, join(backends))}
+		"%sopencoti-llamafile is tested on %s/%s with %s", prefix, p.OS, p.Arch, join(devices))}
 }
 
-func join(backends []Backend) string {
-	s := make([]string, len(backends))
-	for i, b := range backends {
-		s[i] = string(b)
+func join(devices []Device) string {
+	s := make([]string, len(devices))
+	for i, d := range devices {
+		s[i] = d.String()
 	}
 	return strings.Join(s, ",")
 }
