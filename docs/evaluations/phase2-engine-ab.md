@@ -46,13 +46,35 @@ One 1-token generation per model. `loaded` means the runner started and answered
 
 Two causes, not three, and neither is in our argv.
 
-**a. The pinned engine's llama.cpp base is older than these model
-architectures.** Four of the five failures are one cause: the engine cannot
-parse the model file. `qwen3.5` wants a 4-element `rope.dimension_sections` and
-the engine reads 3; the other three abort in `done_getting_tensors` with a
-tensor count that does not match the architecture it resolved.
+**a. Our "stock llama.cpp" is not vanilla llama.cpp — it carries ollama's
+compat layer, and the engine did not.** Four of the five failures are one cause,
+and it is not architecture age. ollama's registry blobs are monolithic (text
+weights and the projector tensors in one file — `gemma4:e4b` has 2131 tensors
+while the text model declares 720) and carry converter-specific metadata
+(`qwen35.rope.dimension_sections` with 3 elements). Vanilla llama.cpp rejects
+them. Our baseline loads them because `llama/compat/compat.cmake` patches the
+fetched llama.cpp with `001-llama-cpp-hooks.patch` and links four
+`llama-ollama-compat*` sources into the llama targets in-process. Our own
+baseline log proves the layer fired on the failing model
+(`serve-llamacpp-1789753510.log`):
 
-> **A wrong first reading, corrected.** Each of those four failures also logs
+```
+handle_gemma4_clip: detected Ollama-format gemma4 GGUF used as mmproj; translating
+handle_gemma4: detected Ollama-format gemma4 GGUF; applying compatibility fixes
+compat tensor transform: op=F16->F32 promote tensor=v.patch_embd.weight
+```
+
+So "both engines receive byte-identical params" was true and beside the point:
+the two binaries were not built from equivalent llama.cpp. opencoti had no
+ollama compat layer and behaved like unpatched llama.cpp. opencoti's
+cross-check closes it — an unpatched upstream `llama-server` (b10268) fails on
+these same four blob digests with the identical counts.
+
+The compat layer is **upstream ollama's**, not this fork's: `llama/compat/` is
+byte-identical to `upstream/main` here apart from one carried patch of ours
+(`004-reasoning-budget-line-boundary`, PR #18212) and a README line.
+
+> **A second wrong reading, corrected.** Each of those four failures also logs
 > `Failed to load CLIP model from <the model blob>`, because ollama passes
 > `--mmproj` pointing at the model file itself — `gemma4:e4b` has no projector
 > layer in its manifest at all, and `llm/llama_server.go:778` special-cases
@@ -68,9 +90,9 @@ tensor count that does not match the architecture it resolved.
 
 **b. The overflow path aborts.** A separate cause, see §5.
 
-Nothing here is fixable by changing what xollama passes. It is a pin bump, and
-it will recur every time a model architecture lands in llama.cpp before it lands
-in a released artifact.
+Nothing here is fixable by changing what xollama passes. The engine has to
+carry ollama's compat layer, which opencoti has now ported verbatim (their patch
+0307), and the fix reaches us as a pin bump.
 
 ## 2. Throughput — single stream
 
@@ -164,10 +186,16 @@ logged as bug-008.
   architecture allow-list in `llm/engine/policy.go` is the wrong answer: it
   would have to be edited for every new architecture and would be wrong the day
   after a pin bump. Retry on stock instead, and log which model forced it.
-- **Bump the engine pin, and report the gap.** The four parse failures are the
-  artifact's llama.cpp base, not our argv. `llm/engine/pin.txt` is at
-  `llamafile-v0.10.5+opencoti.c7`; stock is llama.cpp `b10969`. The four models
-  are the reproduction to hand to opencoti.
+- **Bump the engine pin.** Handed to opencoti as
+  `/shared/dev/handover/2026-09-18-xollama-opencoti-phase2-findings.md`; they
+  reproduced all four load failures and the 70B abort on a same-day `dev` build
+  and fixed them (0307 compat-layer port, 0308 rolling-KV metadata budget, 0310
+  projector reservation). No artifact to pin yet: their dev builds side-load the
+  CUDA DSO and are not self-contained, so `pin.txt` waits for a clean-room
+  `.llamafile`.
+- **Any engine we route to must carry `llama/compat`.** That is now a
+  compatibility requirement of the fork, not an implementation detail of one
+  artifact, and it belongs in the pin's acceptance criteria.
 - **Phase 0's low-risk verdict needs its scope written down**, not withdrawn: it
   was measured on `qwen3:4b`, a plain text model on a supported architecture, and
   it holds there.

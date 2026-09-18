@@ -5,9 +5,10 @@
 > [`docs/evaluations/phase2-engine-ab.md`](../evaluations/phase2-engine-ab.md).
 >
 > **It found that `auto` can route a load into a failure.** opencoti loads 3 of
-> 8 tested models where llama.cpp loads 8 of 8: the pinned artifact's llama.cpp
-> base cannot parse gemma4, gemma3-qat, mistral-small3.1 or qwen3.5, and its
-> VRAM-overflow path aborts. Handed to opencoti as
+> 8 tested models where llama.cpp loads 8 of 8 — because our baseline is not
+> vanilla llama.cpp: it links ollama's `llama/compat` layer in-process, which is
+> what reads ollama's monolithic registry blobs, and the engine had no
+> equivalent. Its VRAM-overflow path also aborts. Handed to opencoti as
 > `/shared/dev/handover/2026-09-18-xollama-opencoti-phase2-findings.md`; the
 > fork will move to a c8 artifact and re-run the same axes.
 
