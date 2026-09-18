@@ -30,6 +30,7 @@ import (
 	"github.com/ollama/ollama/app/ui"
 	"github.com/ollama/ollama/app/updater"
 	"github.com/ollama/ollama/app/version"
+	"github.com/ollama/ollama/envconfig"
 )
 
 var (
@@ -38,7 +39,7 @@ var (
 	appStore     *store.Store
 )
 
-var debug = strings.EqualFold(os.Getenv("OLLAMA_DEBUG"), "true") || os.Getenv("OLLAMA_DEBUG") == "1"
+var debug = strings.EqualFold(envconfig.Var("OLLAMA_DEBUG"), "true") || envconfig.Var("OLLAMA_DEBUG") == "1"
 
 var (
 	fastStartup = false
@@ -203,7 +204,7 @@ func main() {
 
 	st := &store.Store{}
 	if devMode {
-		if dbPath := strings.TrimSpace(os.Getenv("OLLAMA_APP_DB_PATH")); dbPath != "" {
+		if dbPath := envconfig.Var("OLLAMA_APP_DB_PATH"); dbPath != "" {
 			st.DBPath = dbPath
 			slog.Debug("using development app database", "path", dbPath)
 		}

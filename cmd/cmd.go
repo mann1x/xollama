@@ -2216,8 +2216,25 @@ func appendEnvDocs(cmd *cobra.Command, envs []envconfig.EnvVar) {
 	envUsage := `
 Environment Variables:
 `
+	// xollama-hook: env-namespace
+	//
+	// AsMap shows the XOLLAMA_ spelling of every variable inherited from
+	// upstream, and keys the map by the OLLAMA_ one. A listed variable
+	// therefore has a working OLLAMA_ fallback exactly when that key is
+	// present -- which is false for XOLLAMA_ENGINE and friends, so they must
+	// not advertise a fallback that does not exist.
+	all := envconfig.AsMap()
+	ollamaFallback := false
 	for _, e := range envs {
-		envUsage += fmt.Sprintf("      %-27s   %s\n", e.Name, e.Description)
+		envUsage += fmt.Sprintf("      %-29s   %s\n", e.Name, e.Description)
+		if rest, ok := strings.CutPrefix(e.Name, envconfig.Prefix); ok {
+			if _, inherited := all["OLLAMA_"+rest]; inherited {
+				ollamaFallback = true
+			}
+		}
+	}
+	if ollamaFallback {
+		envUsage += "\n      Each XOLLAMA_* variable above is also read as OLLAMA_*; XOLLAMA_ wins.\n"
 	}
 
 	cmd.SetUsageTemplate(cmd.UsageTemplate() + envUsage)
@@ -2620,6 +2637,8 @@ func NewCLI() *cobra.Command {
 			appendEnvDocs(cmd, []envconfig.EnvVar{envVars["OLLAMA_EDITOR"], envVars["OLLAMA_HOST"], envVars["OLLAMA_NOHISTORY"]})
 		case serveCmd:
 			appendEnvDocs(cmd, []envconfig.EnvVar{
+				envVars["XOLLAMA_ENGINE"],
+				envVars["XOLLAMA_ENGINE_PATH"],
 				envVars["OLLAMA_DEBUG"],
 				envVars["OLLAMA_HOST"],
 				envVars["OLLAMA_CONTEXT_LENGTH"],

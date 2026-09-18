@@ -90,11 +90,13 @@ Upstream's MIT licence and copyright stay exactly as they are.
 | release source | `ollama.com/download` | `github.com/mann1x/xollama/releases` |
 
 Deliberately unchanged, because they are **data identity**, not product
-identity: the Go module path, the API routes, `~/.ollama`, the `OLLAMA_*`
-environment variables, the `lib/ollama` payload directory, and the `ollama`
-system user with its `/usr/share/ollama` home. That user's home *is* the models
-directory, so keeping it is what lets an existing install's blobs be reused
-instead of re-downloaded.
+identity: the Go module path, the API routes, `~/.ollama`, the `lib/ollama`
+payload directory, and the `ollama` system user with its `/usr/share/ollama`
+home. That user's home *is* the models directory, so keeping it is what lets an
+existing install's blobs be reused instead of re-downloaded.
+
+Every `OLLAMA_*` environment variable also keeps working unchanged, and gains an
+`XOLLAMA_*` spelling that wins — see the next section.
 
 Also deliberately unchanged: every reference to **ollama.com, the Ollama
 account and Cloud models**. Those are upstream's service, which this fork still
@@ -116,6 +118,68 @@ Three things the rename had to get right beyond string replacement:
 - **The Windows uninstaller no longer deletes `~/.ollama/history`.** That path
   is shared with a stock ollama install, which xollama is designed to sit
   beside, so removing it on uninstall would destroy the other install's data.
+
+## The `XOLLAMA_` environment namespace
+
+Every `OLLAMA_*` variable this fork reads can also be set as `XOLLAMA_*`, and
+that value wins:
+
+```sh
+XOLLAMA_HOST=127.0.0.1:11435 xollama serve   # this fork
+OLLAMA_HOST=127.0.0.1:11434 ollama serve     # a stock install, same shell
+```
+
+The prefix is **replaced, not stacked** — `OLLAMA_HOST` is overridden by
+`XOLLAMA_HOST`, never `XOLLAMA_OLLAMA_HOST`.
+
+Both spellings keep working because dropping `OLLAMA_*` would break every
+existing script, systemd drop-in and `launchctl setenv` line pointed at this
+fork, and because upstream's own documentation is written in `OLLAMA_*`. What
+the namespace buys is that the two installations become **separable**: one shell
+can export `OLLAMA_MODELS` for a stock ollama and `XOLLAMA_MODELS` for this one.
+
+### Empty counts as unset, on both spellings
+
+`XOLLAMA_FLASH_ATTENTION=` does not mask `OLLAMA_FLASH_ATTENTION=1`; unset the
+latter instead. Every reader here already treats `""` as unset — `Bool`, `Uint`
+and friends fall through to their default — so there is no way to express "unset
+it" that downstream code could tell apart from "not set". Rather than invent
+one, the fallback is skipped only for a non-empty value.
+
+### Only `OLLAMA_` keys map
+
+`envconfig.AsMap` also lists variables that belong to somebody else, and those
+keep their one real name:
+
+| variable | read by |
+|---|---|
+| `LLAMA_ARG_FIT`, `LLAMA_ARG_FIT_TARGET` | `llama-server`, from the env it inherits |
+| `HSA_OVERRIDE_GFX_VERSION` | the ROCm runtime |
+| `CUDA_VISIBLE_DEVICES`, `HIP_VISIBLE_DEVICES`, `ROCR_VISIBLE_DEVICES`, `GGML_VK_VISIBLE_DEVICES`, `GPU_DEVICE_ORDINAL` | the GPU drivers, in every process of the tree |
+| `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` | Go's own HTTP transport |
+
+An `XOLLAMA_` spelling of any of those would be honoured on our side of the
+process boundary and ignored on theirs. A variable that works halfway is worse
+than one that does not exist, so `XollamaKey` maps `OLLAMA_` keys and nothing
+else, and `xollama serve --help` prints those names as they are.
+
+### Where it is enforced
+
+`envconfig.Var` is the single choke point: `String`, `Bool`, `Uint`, `Uint64`
+and every accessor built on them go through it. Seven call sites used to read
+`os.Getenv("OLLAMA_…")` directly and so ignored the override while still
+advertising it in `--help` —
+`cmd/bench`, `app/cmd/app` (×2), `app/ui`, `app/store`, `mlx/dynamic.go` and
+`server/routes.go`. They now call `envconfig.Var`, and
+`TestNoDirectReadsOfOurOwnEnvironment` (`envconfig/namespace_test.go`) walks the
+tree and fails if a new one appears or an upstream merge puts one back.
+
+`AsMap` brands the `Name` field but **not** the map key. `cmd/cmd.go` and
+`discover/runner.go` index it by the upstream spelling, and the key is also the
+name that reaches a child `llama-server`; branding it would silently empty both.
+
+The namespace is documented in `xollama serve --help` rather than in
+`docs/faq.mdx`, which is upstream's file and would conflict on every sync.
 
 `go build .` still emits a binary called `ollama`, because Go names its output
 after the module's last path element and the module path deliberately does not

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+
+	"github.com/ollama/ollama/envconfig"
 )
 
 // EnvPath points at one opencoti-llamafile artifact and skips discovery.
@@ -183,14 +185,14 @@ func gpuFlag(devices []Device) string {
 // found, with the reason logged once. An engine swap is not worth a failed
 // load.
 func Launch(stockExe string, params []string, devices []Device, libOllamaPath string) (string, []string) {
-	decision := Resolve(Host(), devices, os.Getenv(EnvSelector))
+	decision := Resolve(Host(), devices, envconfig.Var(EnvSelector))
 	if decision.Kind != KindOpencoti {
 		slog.Debug("using stock llama-server", "reason", decision.Reason)
 		return stockExe, params
 	}
 
 	home, _ := os.UserHomeDir()
-	artifact, err := Find(os.Getenv(EnvPath), DefaultDirs(libOllamaPath, home))
+	artifact, err := Find(envconfig.Var(EnvPath), DefaultDirs(libOllamaPath, home))
 	if err != nil {
 		slog.Info("falling back to stock llama-server", "reason", decision.Reason, "error", err)
 		return stockExe, params

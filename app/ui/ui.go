@@ -45,7 +45,7 @@ var CORS = envconfig.Bool("OLLAMA_CORS")
 
 // OllamaDotCom returns the URL for ollama.com, allowing override via environment variable
 var OllamaDotCom = func() string {
-	if url := os.Getenv("OLLAMA_DOT_COM_URL"); url != "" {
+	if url := envconfig.Var("OLLAMA_DOT_COM_URL"); url != "" {
 		return url
 	}
 	return "https://ollama.com"

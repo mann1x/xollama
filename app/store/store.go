@@ -17,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/ollama/ollama/app/types/not"
+	"github.com/ollama/ollama/envconfig"
 	"github.com/ollama/ollama/internal/onboarding"
 )
 
@@ -400,7 +401,7 @@ func (s *Store) Settings() (Settings, error) {
 
 	// Set default models directory if not set
 	if settings.Models == "" {
-		dir := os.Getenv("OLLAMA_MODELS")
+		dir := envconfig.Var("OLLAMA_MODELS")
 		if dir != "" {
 			settings.Models = dir
 		} else {

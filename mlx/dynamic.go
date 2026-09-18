@@ -16,6 +16,8 @@ import (
 	"strconv"
 	"strings"
 	"unsafe"
+
+	"github.com/ollama/ollama/envconfig"
 )
 
 var (
@@ -197,7 +199,7 @@ func init() {
 	// OLLAMA_LLM_LIBRARY overrides variant selection (e.g., "mlx_metal_v3").
 	// When set to an mlx_* value, only that specific subdir is tried.
 	// The GGML runner ignores mlx_* values (see discover/runner.go).
-	forcedVariant, _ := os.LookupEnv("OLLAMA_LLM_LIBRARY")
+	forcedVariant := envconfig.LLMLibrary()
 	if forcedVariant != "" && !strings.HasPrefix(forcedVariant, "mlx_") {
 		forcedVariant = "" // not an MLX variant, ignore
 	}

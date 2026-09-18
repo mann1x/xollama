@@ -247,6 +247,16 @@ func String(s string) func() string {
 }
 
 var (
+	// Engine selects the inference engine for GGML loads: "auto" (the
+	// default), "opencoti" or "llamacpp". It has no OLLAMA_ equivalent --
+	// upstream has one engine -- so it lives only in the xollama namespace.
+	// See docs/features/engine-opencoti-llamafile.md.
+	Engine = String("XOLLAMA_ENGINE")
+	// EnginePath pins an exact opencoti-llamafile artifact instead of
+	// searching the install directories. A path that does not exist is an
+	// error rather than a reason to keep looking.
+	EnginePath = String("XOLLAMA_ENGINE_PATH")
+
 	LLMLibrary = String("OLLAMA_LLM_LIBRARY")
 	Editor     = String("OLLAMA_EDITOR")
 
@@ -312,7 +322,9 @@ type EnvVar struct {
 
 func AsMap() map[string]EnvVar {
 	ret := map[string]EnvVar{
-		"OLLAMA_DEBUG":                {"OLLAMA_DEBUG", LogLevel(), "Show additional debug information (e.g. OLLAMA_DEBUG=1)"},
+		"XOLLAMA_ENGINE":              {"XOLLAMA_ENGINE", Engine(), "Inference engine for GGML loads: auto (default), opencoti, or llamacpp"},
+		"XOLLAMA_ENGINE_PATH":         {"XOLLAMA_ENGINE_PATH", EnginePath(), "Path to an opencoti-llamafile artifact, overriding the search"},
+		"OLLAMA_DEBUG":                {"OLLAMA_DEBUG", LogLevel(), "Show additional debug information (e.g. XOLLAMA_DEBUG=1)"},
 		"OLLAMA_DEBUG_LOG_REQUESTS":   {"OLLAMA_DEBUG_LOG_REQUESTS", DebugLogRequests(), "Log inference request bodies and replay curl commands to a temp directory"},
 		"OLLAMA_GO_TEMPLATE":          {"OLLAMA_GO_TEMPLATE", GoTemplate(true), "Enable Modelfile TEMPLATE based rendering when available"},
 		"OLLAMA_FLASH_ATTENTION":      {"OLLAMA_FLASH_ATTENTION", FlashAttention(false), "Enabled flash attention"},
@@ -363,6 +375,22 @@ func AsMap() map[string]EnvVar {
 		ret["OLLAMA_VULKAN"] = EnvVar{"OLLAMA_VULKAN", EnableVulkan(true), "Enable Vulkan support"}
 	}
 
+	// Show the xollama spelling of every OLLAMA_ variable. Both are read --
+	// Var prefers XOLLAMA_ and falls back to the original -- but the help
+	// output should name the fork's own variable, not send a reader to a stock
+	// ollama's. Keys belonging to other vendors are left alone; see XollamaKey.
+	//
+	// The map KEY stays the original: callers index it by that (cmd/cmd.go
+	// builds the per-command help lists, discover/runner.go warns on overridden
+	// device lists), and it is also the name that actually reaches a child
+	// llama-server process.
+	for k, v := range ret {
+		if x := XollamaKey(k); x != "" {
+			v.Name = x
+			ret[k] = v
+		}
+	}
+
 	return ret
 }
 
@@ -374,9 +402,60 @@ func Values() map[string]string {
 	return vals
 }
 
-// Var returns an environment variable stripped of leading and trailing quotes or spaces
+// Prefix is xollama's environment namespace.
+//
+// Every OLLAMA_ variable this fork reads can also be set with this prefix, and
+// that value wins. The OLLAMA_ spelling keeps working unchanged, which matters
+// because it is what a stock ollama install and ollama's own docs use.
+//
+// The namespace also makes the two installations separable. A single shell can
+// export OLLAMA_HOST for a stock ollama and XOLLAMA_HOST for this one, and each
+// reads its own.
+const Prefix = "XOLLAMA_"
+
+// XollamaKey returns the XOLLAMA_ variable that overrides key, or "" when key
+// has no xollama spelling.
+//
+// The OLLAMA_ prefix is replaced rather than stacked, so OLLAMA_HOST is
+// overridden by XOLLAMA_HOST and not XOLLAMA_OLLAMA_HOST.
+//
+// Only OLLAMA_ keys map. Everything else in AsMap belongs to somebody else and
+// is read by them under exactly that name: LLAMA_ARG_FIT and
+// LLAMA_ARG_FIT_TARGET by llama-server, HSA_OVERRIDE_GFX_VERSION by the ROCm
+// runtime, CUDA_VISIBLE_DEVICES and friends by the GPU drivers in every process
+// of the tree, HTTP_PROXY by Go's own transport. An XOLLAMA_ spelling of those
+// would be honoured on this side of the process boundary and ignored on the
+// other, which is worse than not offering it -- so they keep their one real
+// name, and the help output shows that name.
+func XollamaKey(key string) string {
+	rest, ok := strings.CutPrefix(key, "OLLAMA_")
+	if !ok {
+		return ""
+	}
+	return Prefix + rest
+}
+
+// xollama-hook: env-namespace
+//
+// Var returns an environment variable stripped of leading and trailing quotes
+// or spaces, preferring the XOLLAMA_ spelling when it is set to a non-empty
+// value.
+//
+// Empty counts as unset on both spellings, matching how every caller here
+// already treats "" -- Bool, Uint and friends fall through to their default.
+// So XOLLAMA_FLASH_ATTENTION="" does not mask OLLAMA_FLASH_ATTENTION=1; unset
+// the latter instead.
 func Var(key string) string {
-	return strings.Trim(strings.TrimSpace(os.Getenv(key)), "\"'")
+	if x := XollamaKey(key); x != "" {
+		if v := trimVar(os.Getenv(x)); v != "" {
+			return v
+		}
+	}
+	return trimVar(os.Getenv(key))
+}
+
+func trimVar(s string) string {
+	return strings.Trim(strings.TrimSpace(s), "\"'")
 }
 
 // serverConfigData holds the parsed fields from ~/.ollama/server.json.

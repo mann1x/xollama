@@ -437,3 +437,106 @@ func TestNoCloud(t *testing.T) {
 		})
 	}
 }
+
+func TestXollamaKey(t *testing.T) {
+	cases := map[string]string{
+		// Upstream's namespace is replaced, not stacked.
+		"OLLAMA_HOST":  "XOLLAMA_HOST",
+		"OLLAMA_DEBUG": "XOLLAMA_DEBUG",
+		"OLLAMA_":      "XOLLAMA_",
+
+		// Already ours: nothing overrides it.
+		"XOLLAMA_ENGINE": "",
+
+		// Somebody else's variable, read by them under this exact name. An
+		// XOLLAMA_ spelling would work on our side of the process boundary and
+		// be ignored on theirs, so there is none.
+		"LLAMA_ARG_FIT":            "",
+		"LLAMA_ARG_FIT_TARGET":     "",
+		"HSA_OVERRIDE_GFX_VERSION": "",
+		"CUDA_VISIBLE_DEVICES":     "",
+		"HTTP_PROXY":               "",
+		"http_proxy":               "",
+		"NOT_OLLAMA_HOST":          "",
+	}
+
+	for k, want := range cases {
+		t.Run(k, func(t *testing.T) {
+			if got := XollamaKey(k); got != want {
+				t.Errorf("XollamaKey(%q) = %q, want %q", k, got, want)
+			}
+		})
+	}
+}
+
+func TestVarPrefersXollamaSpelling(t *testing.T) {
+	t.Run("xollama wins", func(t *testing.T) {
+		t.Setenv("OLLAMA_HOST", "stock")
+		t.Setenv("XOLLAMA_HOST", "fork")
+		if got := Var("OLLAMA_HOST"); got != "fork" {
+			t.Errorf("got %q, want %q", got, "fork")
+		}
+	})
+
+	t.Run("falls back to ollama", func(t *testing.T) {
+		t.Setenv("OLLAMA_HOST", "stock")
+		t.Setenv("XOLLAMA_HOST", "")
+		if got := Var("OLLAMA_HOST"); got != "stock" {
+			t.Errorf("got %q, want %q", got, "stock")
+		}
+	})
+
+	t.Run("empty does not mask", func(t *testing.T) {
+		// Every caller here already treats "" as unset, so an empty XOLLAMA_
+		// value must not shadow a set OLLAMA_ one -- there would be no way to
+		// tell the two apart downstream.
+		t.Setenv("OLLAMA_FLASH_ATTENTION", "1")
+		t.Setenv("XOLLAMA_FLASH_ATTENTION", "   ")
+		if !FlashAttention(false) {
+			t.Error("blank XOLLAMA_FLASH_ATTENTION masked OLLAMA_FLASH_ATTENTION=1")
+		}
+	})
+
+	t.Run("trims the xollama spelling too", func(t *testing.T) {
+		t.Setenv("XOLLAMA_MODELS", ` "/models" `)
+		if got := Var("OLLAMA_MODELS"); got != "/models" {
+			t.Errorf("got %q, want %q", got, "/models")
+		}
+	})
+
+	t.Run("no xollama spelling for a vendor variable", func(t *testing.T) {
+		// llama-server reads LLAMA_ARG_FIT itself, from the name it inherits.
+		t.Setenv("LLAMA_ARG_FIT", "off")
+		t.Setenv("XOLLAMA_LLAMA_ARG_FIT", "on")
+		if got := Var("LLAMA_ARG_FIT"); got != "off" {
+			t.Errorf("got %q, want %q", got, "off")
+		}
+	})
+
+	t.Run("an already-xollama key is read as itself", func(t *testing.T) {
+		t.Setenv("XOLLAMA_ENGINE", "opencoti")
+		if got := Var("XOLLAMA_ENGINE"); got != "opencoti" {
+			t.Errorf("got %q, want %q", got, "opencoti")
+		}
+	})
+}
+
+func TestAsMapNamesAreBrandedButKeysAreNot(t *testing.T) {
+	for key, v := range AsMap() {
+		want := key
+		if x := XollamaKey(key); x != "" {
+			want = x
+		}
+		if v.Name != want {
+			t.Errorf("AsMap()[%q].Name = %q, want %q", key, v.Name, want)
+		}
+	}
+
+	// cmd/cmd.go and discover/runner.go index this map by the upstream
+	// spelling; branding the keys would silently empty both.
+	for _, key := range []string{"OLLAMA_HOST", "OLLAMA_DEBUG", "OLLAMA_MODELS"} {
+		if _, ok := AsMap()[key]; !ok {
+			t.Errorf("AsMap() lost key %q", key)
+		}
+	}
+}

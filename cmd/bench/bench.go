@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ollama/ollama/api"
+	"github.com/ollama/ollama/envconfig"
 )
 
 type flagOptions struct {
@@ -156,7 +157,7 @@ func fetchModelInfo(ctx context.Context, client *api.Client, model string) Model
 func fetchMemoryUsage(ctx context.Context, client *api.Client, model string) (size, vram int64) {
 	resp, err := client.ListRunning(ctx)
 	if err != nil {
-		if debug := os.Getenv("OLLAMA_DEBUG"); debug != "" {
+		if debug := envconfig.Var("OLLAMA_DEBUG"); debug != "" {
 			fmt.Fprintf(os.Stderr, "WARNING: Could not fetch memory usage: %v\n", err)
 		}
 		return 0, 0
