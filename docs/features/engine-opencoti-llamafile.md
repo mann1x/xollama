@@ -1,8 +1,7 @@
 # Feature — the opencoti-llamafile engine
 
-> Status: **Phase 1 shipped** (routing, adapter, hook) — 2026-09-18.
-> Not yet: the artifact downloader, and Phase 2's knobs. An artifact has to be
-> placed by hand for now; see "Getting the binary".
+> Status: **Phase 1 shipped** (routing, adapter, hook, build-time packaging)
+> — 2026-09-18. Not yet: Phase 2's knobs.
 
 ## Why this is cheap
 
@@ -122,12 +121,34 @@ llama.cpp.
 | Linux aarch64 + CUDA (sbsa) | **opencoti** | shipped artifact |
 | Linux / Windows CPU | **opencoti** | iqk FA kernels, always available |
 | Windows x86_64 + CUDA/Vulkan | **opencoti** | `-win-gpu` artifact |
+| **NVIDIA below compute 7.5** | `llama-server` | engine has no code for it; see below |
 | **ROCm / Radeon** | `llama-server` | no tested opencoti backend |
 | macOS (Metal / MLX) | untouched | MLX path, `x/mlxrunner` |
 | anything else | `llama-server` | default deny |
 
 The matrix lives in `policy.go` as data, with a test. Adding a backend to
 opencoti is then a one-line change plus a test, not a hunt through `if`s.
+
+**Backend is not the only axis.** opencoti-llamafile's CUDA build emits gencode
+for `compute_75/80/86/89/90` and nothing older (opencoti's
+`vendors/sources/llamafile/llamafile/cuda.sh`), so Maxwell (5.x), Pascal (6.x)
+and Volta (7.0) have no code in the artifact at all. They are still `Library:
+"CUDA"` on `linux/amd64`, a row that *is* in the matrix above — so routing on
+the backend name alone sends a Tesla V100 into an engine that cannot run it.
+
+The failure is silent, which is why this is enforced rather than documented:
+an artifact with no code for the device does not refuse to start, it falls back
+to CPU, and the symptom is a load that runs at a tenth of the speed. So
+`policy.go` carries `minCUDACompute = 75` and `engineDevices` in
+`llm/llama_server.go` passes `ComputeMajor`/`ComputeMinor` through instead of
+reducing every GPU to its `Library` string. A capability that discovery could
+not read is treated as unsupported, not assumed modern: routing wrongly to
+llama.cpp is logged, routing wrongly to opencoti is not.
+
+Those cards are served by llama.cpp's **`cuda_v12`** payload, and only by it -
+`llama_cuda_v13_*` in `llama/server/CMakePresets.json` floors at 75 exactly as
+the engine does. That is why `cuda_v12` ships as its own release asset rather
+than being dropped; see "Packaging".
 
 ### The hook
 
@@ -158,10 +179,66 @@ explicit path is how you debug the wrong binary. Otherwise it takes the newest
 Newest by mtime, not by version string: `0.10.5-c7` does not order under any
 stock comparison and a wrong guess silently picks an older engine.
 
-**Not implemented: the downloader.** The intent is unchanged — fetch on demand,
-verify against `SHA256SUMS.composite`, cache in the ollama data dir, and treat a
-mismatch as a hard error rather than a silent fallback. Until it exists, place
-the artifact in one of the directories above.
+**The runtime never downloads an engine.** The artifact is fetched once, at
+BUILD time, and ships inside the installation package beside `llama-server`.
+A model load must not be able to stall on a 650 MB fetch, and an installed
+package must work with no network at all.
+
+## Packaging
+
+`llm/engine/pin.txt` pins the artifact: `repo`/`rev`/`tag` plus one
+`bin <arch> <hf-path> <sha256>` row per published artifact. Two parsers read
+it - `cmake/opencoti-fetch.cmake` at build time and `llm/engine/pin.go` via
+`//go:embed` - and the format is deliberately trivial so they cannot drift.
+`llm/engine/pin_test.go` holds both honest, including an invariant that every
+platform in the routing matrix has an artifact row, and a guard that the file
+stays ASCII (CMake's regex `.` does not match multi-byte UTF-8, which once let
+a comment leak into the parser).
+
+`cmake/opencoti-engine.cmake` stages the artifact into
+`${OLLAMA_PAYLOAD_INSTALL_PREFIX}/${OLLAMA_LIB_DIR}`, which the catch-all
+`install(DIRECTORY ... USE_SOURCE_PERMISSIONS)` at the end of
+`cmake/local.cmake` already packages - so nothing had to be taught about the
+engine. The pinned SHA256 is enforced on every path including an explicit local
+file; a mismatch fails the build rather than shipping an unverified inference
+engine. Linux releases build through Docker, where the `opencoti-engine` stage
+does the same fetch and is copied into the `amd64` and `arm64` archive stages
+(not `rocm`, which routes to llama.cpp).
+
+Building without it, for Go iteration or offline:
+
+```sh
+cmake -B build . -DXOLLAMA_OPENCOTI_ENGINE=OFF            # no engine at all
+cmake -B build . -DXOLLAMA_OPENCOTI_ENGINE_FILE=<path>    # verified local copy
+cmake -B build . -DXOLLAMA_OPENCOTI_ENGINE_CACHE=<dir>    # reuse one download
+```
+
+### Two tiers, because CUDA would otherwise ship twice
+
+GitHub refuses a release asset over 2 GiB, and the engine barely compresses -
+1.18-1.30x measured, because its embedded CUDA fatbins are already compressed.
+Bundling it into the assets as they stood put `OllamaSetup.exe` at ~2007 MiB,
+41 MiB under the cap.
+
+The cause is duplication: ollama's base asset carried `cuda_v12` *and*
+`cuda_v13`, and the engine carries its own CUDA. Since opencoti serves every
+CUDA device it can (7.5+), llama.cpp's payloads on those platforms are the
+escape hatch, not the default. So `cuda_v12` - the larger of the two, and the
+only one Maxwell/Pascal/Volta can use - moves to its own asset:
+
+| asset | before | after |
+|---|---|---|
+| `ollama-linux-amd64.tar.zst` | 1361.4 MiB | **1093.0 MiB** |
+| `ollama-windows-amd64.zip` | 1393.2 MiB | **1063.3 MiB** |
+| `OllamaSetup.exe` | 1497.3 MiB | **~1130 MiB** |
+| `ollama-*-cuda12.*` | - | **786.5 MiB** (linux amd64) |
+
+The base assets end up smaller than upstream's while carrying the engine, and
+headroom goes from 41 MiB to ~920 MiB. A CI step in `.github/workflows/release.yaml`
+fails the release at 1900 MiB so the cap is never met at upload time.
+
+**Anyone on a pre-Turing NVIDIA card needs the `-cuda12` asset**, on Linux and
+Windows alike. Without it that hardware falls back to CPU.
 
 ## Phases
 
@@ -170,7 +247,7 @@ the artifact in one of the directories above.
   the argv is accepted whole, the ollama blob loads directly, all four log
   scrapers match, VRAM accounting is exact, and the whole API surface
   (including `/tokenize`) is live.
-- **Phase 1 — pure replacement. SHIPPED 2026-09-18** (minus the downloader).
+- **Phase 1 — pure replacement. SHIPPED 2026-09-18.**
   `llm/engine/` — `policy.go` (the matrix, as data, with a test), `resolve.go`
   (`XOLLAMA_ENGINE` + policy → decision), `opencoti.go` (discovery, argv
   translation, APE launch) — plus the single `engine-select` hook in

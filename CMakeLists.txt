@@ -68,3 +68,9 @@ else()
     set(OLLAMA_HAVE_LLAMA_SERVER FALSE)
 endif()
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/local.cmake)
+
+# xollama: stage the pinned opencoti-llamafile engine beside llama-server so it
+# ships inside the installation package. Must come after local.cmake, which
+# defines OLLAMA_PAYLOAD_INSTALL_PREFIX and the catch-all payload install rule
+# that packages whatever is staged there.
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/opencoti-engine.cmake)

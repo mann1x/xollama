@@ -1245,6 +1245,18 @@ function zip {
                 $jobs += newDependencyAuditJob "${distDir}\windows-amd64-rocm" "windows-amd64-rocm" "${distDir}\dependency-audit-windows-amd64-rocm.txt" $amd64Dir
             }
 
+            # Stage the legacy CUDA 12 payload into its own zip. It is the only
+            # payload with code for compute 5.x/6.x/7.0 (Maxwell, Pascal,
+            # Volta) -- cuda_v13 floors at 7.5 and so does opencoti-llamafile,
+            # so a Tesla V100 is served from here or runs on the CPU. Splitting
+            # it out is also what keeps the base zip and OllamaSetup.exe clear
+            # of GitHub's 2 GiB release-asset cap.
+            if (stageComponents $amd64Dir "${distDir}\windows-amd64-cuda12" "cuda_v12" "CUDA12") {
+                Write-Output "Generating ${distDir}\ollama-windows-amd64-cuda12.zip"
+                $jobs += newZipJob "${distDir}\windows-amd64-cuda12" "${distDir}\ollama-windows-amd64-cuda12.zip"
+                $jobs += newDependencyAuditJob "${distDir}\windows-amd64-cuda12" "windows-amd64-cuda12" "${distDir}\dependency-audit-windows-amd64-cuda12.txt" $amd64Dir
+            }
+
             # Stage MLX into its own directory for independent compression
             if (stageComponents $amd64Dir "${distDir}\windows-amd64-mlx" "mlx_*" "MLX") {
                 Write-Output "Generating ${distDir}\ollama-windows-amd64-mlx.zip"

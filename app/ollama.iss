@@ -92,7 +92,11 @@ DialogFontSize=12
 #if FileExists("..\dist\windows-ollama-app-amd64.exe")
 Source: "..\dist\windows-ollama-app-amd64.exe"; DestDir: "{app}"; DestName: "{#MyAppExeName}" ;Check: not IsArm64();  Flags: ignoreversion 64bit; BeforeInstall: TaskKill('{#MyAppExeName}')
 Source: "..\dist\windows-amd64\ollama.exe"; DestDir: "{app}"; Check: not IsArm64(); Flags: ignoreversion 64bit; BeforeInstall: TaskKill('ollama.exe')
-Source: "..\dist\windows-amd64\lib\ollama\*"; Excludes: "\mlx_*\*"; DestDir: "{app}\lib\ollama\"; Check: not IsArm64(); Flags: ignoreversion 64bit recursesubdirs
+; cuda_v12 is excluded and shipped as the separate legacy add-on zip. It is ~1.1 GB
+; and only serves compute 5.x/6.x/7.0 cards (Maxwell, Pascal, Volta); cuda_v13 and
+; opencoti-llamafile both floor at 7.5. Keeping it out is what holds this installer
+; under GitHub's 2 GiB release-asset cap now that the engine ships inside it.
+Source: "..\dist\windows-amd64\lib\ollama\*"; Excludes: "\mlx_*\*,\cuda_v12\*"; DestDir: "{app}\lib\ollama\"; Check: not IsArm64(); Flags: ignoreversion 64bit recursesubdirs
 #endif
 
 ; For local development, rely on binary compatibility at runtime since we can't cross compile

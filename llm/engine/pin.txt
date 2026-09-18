@@ -1,0 +1,49 @@
+# llm/engine/pin.txt
+#
+# Pinned opencoti-llamafile ARTIFACT, bundled into the xollama runtime payload
+# at BUILD time and shipped inside the installation package beside
+# llama-server. xollama NEVER downloads an engine at runtime: a model load must
+# not be able to stall on a 700 MB fetch, and a release package must not depend
+# on the network to work.
+#
+# Read by two consumers, which is why the format is boring:
+#   - cmake/opencoti-engine.cmake  fetches and verifies it into the payload
+#   - llm/engine/pin.go            embeds it, for provenance and for tests that
+#                                  keep this file honest
+#
+# Source of record is Hugging Face only (ManniX-ITA/opencoti-llamafile). The
+# artifacts exceed GitHub's release-asset cap and live on HF as LFS blobs.
+# URL shape: https://huggingface.co/<repo>/resolve/<rev>/<hf-path>
+#
+# ---------------------------------------------------------------------------
+# FORMAT
+#
+# Comments (#) and blank lines are ignored. Two kinds of line:
+#
+#   Directives (key + value):
+#     repo <hf-owner/name>    HF repo hosting the assets
+#     rev  <git-revision>     HF revision (branch/tag/commit)
+#     tag  <release-tag>      human release tag, provenance only
+#
+#   Asset rows (4 whitespace-separated fields):
+#     <kind> <arch> <hf-path> <sha256>
+#       kind   bin (the engine) -- dso rows are opencoti's side-load story and
+#              are deliberately NOT carried here: the x86_64 and aarch64
+#              artifacts embed their own GPU payloads and self-extract.
+#       arch   x86_64 | aarch64 | win-x86_64 | win-x86_64-gpu | universal
+#       sha256 verified by CMake at fetch time; a mismatch fails the build
+#              rather than shipping an unknown binary.
+#
+# To move to a new cut: bump rev/tag and replace the sha256 of every row, in
+# one commit. The digests below were verified against the published artifacts.
+# ---------------------------------------------------------------------------
+
+repo  ManniX-ITA/opencoti-llamafile
+rev   main
+tag   llamafile-v0.10.5+opencoti.c7
+
+bin  x86_64          opencoti-llamafile-0.10.5-c7-x86_64.llamafile              3c907bc7511359054dbf55c9d2d69fb49324ef75bdbb45efa092c3facad8951e
+bin  aarch64         opencoti-llamafile-0.10.5-c7-aarch64.llamafile             a83141a5afe8053937e4461b238eb4a974ec456cbaa7849c70e6f529c124ea74
+bin  win-x86_64      opencoti-llamafile-0.10.5-c7-win-x86_64.llamafile.exe      e7308ebec853f69bdce79578ea4f077ef6835244c3de9c185af5dd547bde39d2
+bin  win-x86_64-gpu  opencoti-llamafile-0.10.5-c7-win-x86_64-gpu.llamafile.exe  19ff1d87292bb9147793b43651631b4f003c5541c6a5d35096ca8883a2a4d0f6
+bin  universal       opencoti-llamafile-0.10.5-c7-universal.llamafile.exe       002d7ee826db5d446001ef3cddfbe8615b9979a1dff61fc46938da48f505090a

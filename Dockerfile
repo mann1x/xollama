@@ -275,12 +275,35 @@ COPY --from=build /go/src/github.com/ollama/ollama/build/go-license/lib/ollama/G
 # Assembly stages — combine llama-server variants + GPU runtime libs
 #
 
+# opencoti-llamafile engine. Fetched ONCE, here, at build time, and shipped
+# inside the package beside llama-server -- xollama never downloads an engine
+# during a model load. The pinned SHA256 is enforced by the fetch script, so a
+# bad or substituted artifact fails the image build rather than reaching a user.
+# See llm/engine/pin.txt and cmake/opencoti-fetch.cmake.
+#
+# Deliberately not copied into the rocm stage: ROCm has no tested opencoti
+# backend and llm/engine/policy.go routes it to llama.cpp.
+FROM base AS opencoti-engine
+ARG TARGETARCH
+COPY llm/engine/pin.txt llm/engine/pin.txt
+COPY cmake/opencoti-fetch.cmake cmake/opencoti-fetch.cmake
+RUN --mount=type=cache,target=/cache/opencoti-engine \
+    case "${TARGETARCH}" in \
+        amd64) ENGINE_ARCH=x86_64 ;; \
+        arm64) ENGINE_ARCH=aarch64 ;; \
+        *) echo "no opencoti-llamafile artifact is published for ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && cmake -DPIN_FILE=llm/engine/pin.txt -DARCH="${ENGINE_ARCH}" \
+        -DDEST_DIR=/dist/lib/ollama -DCACHE_DIR=/cache/opencoti-engine \
+        -P cmake/opencoti-fetch.cmake
+
 FROM --platform=linux/amd64 scratch AS amd64
 COPY --from=llama-server-cpu      dist/lib/ollama /lib/ollama/
 COPY --from=llama-server-cuda_v12 dist/lib/ollama /lib/ollama/
 COPY --from=llama-server-cuda_v13 dist/lib/ollama /lib/ollama/
 COPY --from=llama-server-vulkan   dist/lib/ollama /lib/ollama/
 COPY --from=mlx     /go/src/github.com/ollama/ollama/dist/lib/ollama /lib/ollama/
+COPY --from=opencoti-engine /dist/lib/ollama /lib/ollama/
 
 FROM --platform=linux/arm64 scratch AS arm64
 COPY --from=llama-server-cpu dist/lib/ollama /lib/ollama/
@@ -288,6 +311,7 @@ COPY --from=llama-server-cuda_v12 dist/lib/ollama /lib/ollama/
 COPY --from=llama-server-cuda_v13 dist/lib/ollama /lib/ollama/
 COPY --from=jetpack-5 dist/lib/ollama/ /lib/ollama/
 COPY --from=jetpack-6 dist/lib/ollama/ /lib/ollama/
+COPY --from=opencoti-engine /dist/lib/ollama /lib/ollama/
 
 FROM scratch AS rocm
 COPY --from=llama-server-cpu  dist/lib/ollama /lib/ollama
