@@ -17,8 +17,8 @@ taken it, and it leaves when upstream does.
 4. A patch with no upstream PR is an xollama feature, not a carried patch.
    It belongs in `docs/features/`.
 
-**Status as of 2026-09-18: all twelve are carried on `main`, replayed onto
-v0.34.2, and all twelve are still OPEN against `ollama/ollama`.**
+**Status as of 2026-09-18: all thirteen are carried on `main`, replayed onto
+v0.34.2, and all thirteen are still OPEN against `ollama/ollama`.**
 
 | PR | merge | PR | merge |
 |---|---|---|---|
@@ -28,6 +28,7 @@ v0.34.2, and all twelve are still OPEN against `ollama/ollama`.**
 | #17566 | `2fd06701` | #18288 | `5a80b98b` |
 | #17567 | `43be0f1d` | #18289 | `ddb0fec9` |
 | #17626 | `c7d7a3fb` | #18307 | `0c0db3d9` |
+| #16820 | `a4a6dd7b` | | |
 
 Verified after the replay: `go build ./...` and `go vet ./...` clean, and the
 full `go test ./...` passes except four failures that are **not ours** and fail
@@ -39,7 +40,7 @@ which assert permission denials and cannot fail when the suite runs as root).
 | PR | Title | Branch | Opened | Age |
 |---|---|---|---|---|
 | [#17566](https://github.com/ollama/ollama/pull/17566) | `api`: bound thinking with a token budget, per request or per model | `up-think-budget` | 2026-08-04 | 45d |
-| _(none yet)_ | `/api/tokenize` + `/api/detokenize` — see "Tokenizer endpoints" below | — | — | — |
+| [#16820](https://github.com/ollama/ollama/pull/16820) | `server`: add `/api/tokenize` and `/api/detokenize` | `pull/16820/head` — **not ours** | 2026-06-19 | 91d |
 
 **#17566 (think budget)** is the headline. Without it there is no way to cap a
 reasoning model's thinking, which on a long agentic run is the difference
@@ -72,7 +73,7 @@ the workload upstream's test suite exercises least.
 |---|---|---|---|---|
 | [#17567](https://github.com/ollama/ollama/pull/17567) | `x/mlxrunner/mlx`: link against libdl on linux | `up-mlx-libdl` | 2026-08-04 | 45d |
 
-## Tokenizer endpoints — not yet carried
+## Tokenizer endpoints
 
 ollama exposes no way to tokenize or count tokens against the model actually
 loaded. Clients guess, and a guess is wrong by enough to matter when you are
@@ -88,6 +89,15 @@ Three open upstream PRs address this. They are not equivalent:
 | [#16820](https://github.com/ollama/ollama/pull/16820) | `/api/tokenize` + `/api/detokenize` wired to the existing interface methods via `scheduleRunner` | +160 / 3 files | open 2026-06-19 | **recommended base** |
 | [#12030](https://github.com/ollama/ollama/pull/12030) | vocab-only tokenizer loader with its own cache — tokenizes *without* loading the model | +1271 / −354, 14 files | open 2025-08-22, **conflicting** | mine the idea, not the diff |
 | [#17478](https://github.com/ollama/ollama/pull/17478) | token *counting* only: `/v1/messages/count_tokens`, `…/input_tokens` | +893 / 18 files | open 2026-07-30, by a maintainer | carry separately, expect it to land |
+
+**Status: #16820 is carried** as of 2026-09-18 (`a4a6dd7b`), and is the only
+carried patch that is **not one of ours**. Rule 2 — "fixes go to the PR branch
+first" — cannot apply to it: we cannot push to `hustxiayang:tokenization`. Fixes
+therefore land here, and if this one grows past adaptation it should become our
+own PR that credits the original. Two adaptations were needed at carry time: the
+PR's base is 382 commits back and `scheduleRunner` had since changed from taking
+a model name to taking a `*Model`, and the PR ships no tests, so
+`server/routes_tokenize_test.go` was written for it.
 
 **Plan.** Take #16820 as the base — it is 160 lines, it reuses machinery that
 already exists, and it is the minimum that makes the endpoint real. Then add

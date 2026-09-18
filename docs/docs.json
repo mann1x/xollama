@@ -249,6 +249,8 @@
               "POST /api/generate",
               "POST /api/chat",
               "POST /api/embed",
+              "POST /api/tokenize",
+              "POST /api/detokenize",
               "GET /api/tags",
               "GET /api/ps",
               "POST /api/show",
