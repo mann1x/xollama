@@ -14,9 +14,17 @@ import (
 	"github.com/ollama/ollama/llm"
 )
 
-// malformedToolCall closes <parameter> with </function>, which the qwen3.5
-// parser rejects.
-const malformedToolCall = "<think>\nthinking\n</think>\n\n<tool_call>\n<function=write_file>\n<parameter=path>\nprobe.txt\n</function>\n</tool_call>"
+// A tool call whose JSON is cut off mid-value, which the qwen3-vl parser
+// rejects on the chunk that carries it.
+//
+// Upstream probes this with a qwen3.5 call that closes <parameter> with
+// </function>. That call no longer fails here: this fork repairs a dropped
+// closing tag rather than failing the request (PR #17914), and its qwen3-coder
+// parser hands an unparseable block back as content instead of erroring at all.
+// The subject of these tests is what routes.go does when a parser errors
+// mid-stream, not which inputs a parser rejects, so they use a parser that
+// still has that error to raise.
+const malformedToolCall = "<think>\nthinking\n</think>\n\n<tool_call>\n{\"name\": \"write_file\", \"arguments\": {\"path\": }\n</tool_call>"
 
 func TestChatParseErrorMidStreamDoesNotWedge(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -35,7 +43,7 @@ func TestChatParseErrorMidStreamDoesNotWedge(t *testing.T) {
 	}
 
 	s := newServerWithMockRunner(t, &mock)
-	createParserModel(t, s, "parse-wedge", "qwen3.5")
+	createParserModel(t, s, "parse-wedge", "qwen3-vl-thinking")
 
 	stream := false
 	done := make(chan struct{})
@@ -80,7 +88,7 @@ func TestGenerateParseErrorMidStreamDoesNotWedge(t *testing.T) {
 	}
 
 	s := newServerWithMockRunner(t, &mock)
-	createParserModel(t, s, "parse-wedge-gen", "qwen3.5")
+	createParserModel(t, s, "parse-wedge-gen", "qwen3-vl-thinking")
 
 	stream := false
 	done := make(chan struct{})
