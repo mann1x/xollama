@@ -60,7 +60,7 @@ Three deltas need handling, not redesign:
    `--gpu {auto,nvidia,vulkan,amd,apple,disable}` where stock llama-server
    infers from its loaded backend DSOs.
 
-## Open risk — the log scrapers
+## The log scrapers — measured, mostly fine
 
 `llamaServerRunner` does not ask the engine how much memory it used; it
 **parses the engine's stderr** with four regexes (`llm/llama_server.go:2752`
@@ -80,10 +80,18 @@ patch series adds its own buffer lines (e.g. `KVarN buffer size = …`) that
 these regexes will *not* match, so a PolyKV/rolling-KV allocation can be
 invisible to the scheduler and be under-counted.
 
-**This is the one thing to verify before writing any code.** It is cheap:
-boot the artifact on a real model, capture stderr, run the four regexes over
-it. Phase 0 below is exactly that, and its result decides whether the adapter
-needs a log-shim or the engine needs a patch to emit an ollama-shaped line.
+**Phase 0 ran this test — see
+[`docs/evaluations/phase0-engine-compat.md`](../evaluations/phase0-engine-compat.md).**
+Result: all four regexes match, and `memGPU` (the number that drives GPU fit)
+is **identical** to stock, because the buffers live in a map keyed by
+`{component, backend, kind}` and re-logged values overwrite rather than
+accumulate. Only `memTotal` drifts, by one stale `CUDA_Host KV` entry that
+rolling-KV's first pass leaves behind — host memory, not VRAM.
+
+Fix before Phase 2 ships: reset a component's entries when a new block of the
+same component starts, so a re-logged allocation replaces the block instead of
+orphaning part of it. Engine-agnostic, contained in `memoryParsingWriter`, and
+regression-testable from the logs Phase 0 captured.
 
 ## Design
 
@@ -138,11 +146,11 @@ re-downloaded.
 
 ## Phases
 
-- **Phase 0 — verify (no code).** Boot the c7 artifact on one GGUF with the
-  exact argv `startLlamaServer` builds. Capture stderr. Run the four regexes
-  over it. Hit `/props`, `/slots`, `/completion`, `/v1/chat/completions`,
-  `/tokenize`. Write down what differs. This either de-risks the whole thing
-  in an afternoon or tells us the real cost up front.
+- **Phase 0 — verify (no code). DONE 2026-09-18, PASS.** Full result in
+  [`docs/evaluations/phase0-engine-compat.md`](../evaluations/phase0-engine-compat.md):
+  the argv is accepted whole, the ollama blob loads directly, all four log
+  scrapers match, VRAM accounting is exact, and the whole API surface
+  (including `/tokenize`) is live.
 - **Phase 1 — pure replacement.** `llm/engine/` + the one hook + the
   downloader. No new knobs, no API change. Success is: same model, same
   prompt, both engines, comparable output and no scheduler misfit.
