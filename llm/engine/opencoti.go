@@ -112,9 +112,39 @@ func isArtifact(name string) bool {
 // On anything but Windows the artifact is launched through sh. It is a
 // Cosmopolitan APE, and a kernel without binfmt_misc APE registration cannot
 // exec it directly.
+// logVerbosity is the threshold opencoti-llamafile needs before it prints the
+// allocation lines ollama's memory accounting scrapes.
+//
+// llamafile filters LLAMA_LOG_INFO at default verbosity, and the
+// "<component>: <device> <kind> buffer size = N MiB" lines are INFO -- so
+// without this the engine starts fine and memoryParsingWriter sees NOTHING,
+// leaving memTotal and memGPU at zero and the scheduler blind. Upstream
+// llama-server prints them at default verbosity, so the stock path never
+// needed a flag and the gap is invisible until measured.
+//
+// Measured on solidPC with the exact argv this function builds:
+//
+//	threshold   boot lines   buffer lines   lines per request
+//	(none)            19            0             -
+//	3                 18            0             8
+//	4                247           12            39
+//	5               1902           20           536
+//	-v              1902           20           631
+//
+// 4 is tempting and wrong. It drops "load_tensors: CUDA_Host model buffer
+// size" entirely. That line reads 0.00 MiB on a full offload, which is why it
+// looks free to lose, but on a partial offload it carries real weight bytes
+// and its absence silently understates memTotal -- the same class of bug as
+// the stale-buffer one memoryParsingWriter exists to prevent.
+//
+// The ~500 lines per request are the engine's logging design, not something
+// this adapter can tune around: no threshold prints the boot allocation
+// without also enabling per-token logging. Raised with the opencoti session.
+const logVerbosity = "5"
+
 func Command(artifact string, params []string, devices []Device, goos string) (string, []string) {
 	args := make([]string, 0, len(params)+3)
-	args = append(args, "--server")
+	args = append(args, "--server", "--log-verbosity", logVerbosity)
 	args = append(args, params...)
 	if gpu := gpuFlag(devices); gpu != "" {
 		args = append(args, "--gpu", gpu)

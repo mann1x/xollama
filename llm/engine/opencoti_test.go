@@ -177,3 +177,28 @@ func TestLaunchIsByteIdenticalToUpstreamWhenOff(t *testing.T) {
 		t.Errorf("args = %v, want ollama's argv untouched %v", args, params)
 	}
 }
+
+// TestCommandRaisesVerbosityForTheMemoryScrapers guards a flag that looks like
+// noise and is not. llamafile filters LLAMA_LOG_INFO at default verbosity, and
+// the "<component>: <device> <kind> buffer size = N MiB" lines ollama's
+// memoryParsingWriter scrapes are INFO. Without the threshold the engine boots
+// perfectly and reports no memory at all, so the scheduler plans against zero.
+//
+// Measured with the argv this builds: no flag -> 0 buffer lines; threshold 5 ->
+// 20. See the logVerbosity comment for why 4 is not enough.
+func TestCommandRaisesVerbosityForTheMemoryScrapers(t *testing.T) {
+	_, args := Command("/e/oc.llamafile", []string{"--model", "m"}, []Device{ada()}, "linux")
+
+	i := slices.Index(args, "--log-verbosity")
+	if i < 0 {
+		t.Fatalf("argv has no --log-verbosity; ollama would scrape no memory at all: %v", args)
+	}
+	if i+1 >= len(args) || args[i+1] != logVerbosity {
+		t.Fatalf("--log-verbosity value = %v, want %q", args[i+1:], logVerbosity)
+	}
+	// It must precede the ollama argv, not be buried after a flag that takes
+	// a variable number of values.
+	if j := slices.Index(args, "--model"); j < i {
+		t.Errorf("--log-verbosity at %d comes after ollama's own argv at %d", i, j)
+	}
+}
