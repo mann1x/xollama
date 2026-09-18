@@ -105,7 +105,7 @@ func pullWithCloudSuggestion(ctx context.Context, client *api.Client, name strin
 	}
 
 	if !isInteractiveTerminal() {
-		return "", fmt.Errorf("%w\n\n%q is available as a cloud model. Try:\n  ollama %s %s", pullErr, cloudName, verb, cloudName)
+		return "", fmt.Errorf("%w\n\n%q is available as a cloud model. Try:\n  xollama %s %s", pullErr, cloudName, verb, cloudName)
 	}
 
 	accepted, err := confirmCloudSuggestion(fmt.Sprintf("Did you mean %q?", cloudName))

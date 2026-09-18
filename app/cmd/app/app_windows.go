@@ -39,7 +39,7 @@ var (
 	appLogPath      = filepath.Join(os.Getenv("LOCALAPPDATA"), "Ollama", "app.log")
 	startupShortcut = filepath.Join(os.Getenv("APPDATA"), "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "Ollama.lnk")
 	ollamaPath      string
-	DesktopAppName  = "ollama app.exe"
+	DesktopAppName  = "xOllama app.exe"
 )
 
 func init() {
@@ -50,17 +50,17 @@ func init() {
 	} else {
 		appPath = filepath.Dir(exe)
 	}
-	ollamaPath = filepath.Join(appPath, "ollama.exe")
+	ollamaPath = filepath.Join(appPath, "xollama.exe")
 
 	// Handle developer mode (go run ./cmd/app)
 	if _, err := os.Stat(ollamaPath); err != nil {
 		pwd, err := os.Getwd()
 		if err != nil {
-			slog.Warn("missing ollama.exe and failed to get pwd", "error", err)
+			slog.Warn("missing xollama.exe and failed to get pwd", "error", err)
 			return
 		}
 		distAppPath := filepath.Join(pwd, "dist", "windows-"+runtime.GOARCH)
-		distOllamaPath := filepath.Join(distAppPath, "ollama.exe")
+		distOllamaPath := filepath.Join(distAppPath, "xollama.exe")
 		if _, err := os.Stat(distOllamaPath); err == nil {
 			slog.Info("detected developer mode")
 			appPath = distAppPath

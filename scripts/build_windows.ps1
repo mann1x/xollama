@@ -897,7 +897,7 @@ function buildOllamaCLI {
         [string]$distDir
     )
     mkdir -Force -path "${distDir}\" | Out-Null
-    & go build -trimpath -ldflags "-s -w -X=github.com/ollama/ollama/version.Version=$script:VERSION -X=github.com/ollama/ollama/server.mode=release" -o "${distDir}\ollama.exe" .
+    & go build -trimpath -ldflags "-s -w -X=github.com/ollama/ollama/version.Version=$script:VERSION -X=github.com/ollama/ollama/server.mode=release" -o "${distDir}\xollama.exe" .
     if ($LASTEXITCODE -ne 0) { exit($LASTEXITCODE)}
 }
 
@@ -981,7 +981,7 @@ function buildApp {
     param (
         [string]$arch
     )
-	& go build -trimpath -ldflags "-s -w -H windowsgui -X=github.com/ollama/ollama/app/version.Version=$script:VERSION" -o .\dist\windows-ollama-app-${arch}.exe ./app/cmd/app/
+	& go build -trimpath -ldflags "-s -w -H windowsgui -X=github.com/ollama/ollama/app/version.Version=$script:VERSION" -o .\dist\windows-xollama-app-${arch}.exe ./app/cmd/app/
     if ($LASTEXITCODE -ne 0) { exit($LASTEXITCODE)}
 }
 
@@ -1041,9 +1041,9 @@ function installer {
     cd "${script:SRC_DIR}\app"
     $env:PKG_VERSION=$script:PKG_VERSION
     if ("${env:KEY_CONTAINER}") {
-        & "${script:INNO_SETUP_DIR}\ISCC.exe" /DARCH=$script:TARGET_ARCH /SMySignTool="${script:SignTool} sign /fd sha256 /t http://timestamp.digicert.com /f ${script:OLLAMA_CERT} /csp `$qGoogle Cloud KMS Provider`$q /kc ${env:KEY_CONTAINER} `$f" .\ollama.iss
+        & "${script:INNO_SETUP_DIR}\ISCC.exe" /DARCH=$script:TARGET_ARCH /SMySignTool="${script:SignTool} sign /fd sha256 /t http://timestamp.digicert.com /f ${script:OLLAMA_CERT} /csp `$qGoogle Cloud KMS Provider`$q /kc ${env:KEY_CONTAINER} `$f" .\xollama.iss
     } else {
-        & "${script:INNO_SETUP_DIR}\ISCC.exe" /DARCH=$script:TARGET_ARCH .\ollama.iss
+        & "${script:INNO_SETUP_DIR}\ISCC.exe" /DARCH=$script:TARGET_ARCH .\xollama.iss
     }
     if ($LASTEXITCODE -ne 0) { exit($LASTEXITCODE)}
 }
@@ -1209,7 +1209,7 @@ function stageComponents($mainDir, $stagingDir, $pattern, $readmePrefix) {
     if ($components) {
         Remove-Item -ea 0 -r $stagingDir
         mkdir -Force -path "${stagingDir}\lib\ollama" | Out-Null
-        Write-Output "Extract this ${readmePrefix} zip file to the same location where you extracted ollama-windows-amd64.zip" > "${stagingDir}\README_${readmePrefix}.txt"
+        Write-Output "Extract this ${readmePrefix} zip file to the same location where you extracted xollama-windows-amd64.zip" > "${stagingDir}\README_${readmePrefix}.txt"
         foreach ($dir in $components) {
             Write-Output "  Staging $($dir.Name)"
             Move-Item -path $dir.FullName -destination "${stagingDir}\lib\ollama\$($dir.Name)"
@@ -1234,14 +1234,14 @@ function zip {
     $amd64Dir = "${distDir}\windows-amd64"
 
     # Remove any stale zip files before starting
-    Remove-Item -ea 0 "${distDir}\ollama-windows-*.zip"
+    Remove-Item -ea 0 "${distDir}\xollama-windows-*.zip"
 
     try {
         if (Test-Path -Path $amd64Dir) {
             # Stage ROCm into its own directory for independent compression.
             if (stageComponents $amd64Dir "${distDir}\windows-amd64-rocm" "rocm_v*" "ROCm") {
-                Write-Output "Generating ${distDir}\ollama-windows-amd64-rocm.zip"
-                $jobs += newZipJob "${distDir}\windows-amd64-rocm" "${distDir}\ollama-windows-amd64-rocm.zip"
+                Write-Output "Generating ${distDir}\xollama-windows-amd64-rocm.zip"
+                $jobs += newZipJob "${distDir}\windows-amd64-rocm" "${distDir}\xollama-windows-amd64-rocm.zip"
                 $jobs += newDependencyAuditJob "${distDir}\windows-amd64-rocm" "windows-amd64-rocm" "${distDir}\dependency-audit-windows-amd64-rocm.txt" $amd64Dir
             }
 
@@ -1249,36 +1249,36 @@ function zip {
             # payload with code for compute 5.x/6.x/7.0 (Maxwell, Pascal,
             # Volta) -- cuda_v13 floors at 7.5 and so does opencoti-llamafile,
             # so a Tesla V100 is served from here or runs on the CPU. Splitting
-            # it out is also what keeps the base zip and OllamaSetup.exe clear
+            # it out is also what keeps the base zip and xOllamaSetup.exe clear
             # of GitHub's 2 GiB release-asset cap.
             if (stageComponents $amd64Dir "${distDir}\windows-amd64-cuda12" "cuda_v12" "CUDA12") {
-                Write-Output "Generating ${distDir}\ollama-windows-amd64-cuda12.zip"
-                $jobs += newZipJob "${distDir}\windows-amd64-cuda12" "${distDir}\ollama-windows-amd64-cuda12.zip"
+                Write-Output "Generating ${distDir}\xollama-windows-amd64-cuda12.zip"
+                $jobs += newZipJob "${distDir}\windows-amd64-cuda12" "${distDir}\xollama-windows-amd64-cuda12.zip"
                 $jobs += newDependencyAuditJob "${distDir}\windows-amd64-cuda12" "windows-amd64-cuda12" "${distDir}\dependency-audit-windows-amd64-cuda12.txt" $amd64Dir
             }
 
             # Stage MLX into its own directory for independent compression
             if (stageComponents $amd64Dir "${distDir}\windows-amd64-mlx" "mlx_*" "MLX") {
-                Write-Output "Generating ${distDir}\ollama-windows-amd64-mlx.zip"
-                $jobs += newZipJob "${distDir}\windows-amd64-mlx" "${distDir}\ollama-windows-amd64-mlx.zip"
+                Write-Output "Generating ${distDir}\xollama-windows-amd64-mlx.zip"
+                $jobs += newZipJob "${distDir}\windows-amd64-mlx" "${distDir}\xollama-windows-amd64-mlx.zip"
                 $jobs += newDependencyAuditJob "${distDir}\windows-amd64-mlx" "windows-amd64-mlx" "${distDir}\dependency-audit-windows-amd64-mlx.txt" $amd64Dir
             }
 
             # Compress the main amd64 zip (without rocm/mlx)
-            Write-Output "Generating ${distDir}\ollama-windows-amd64.zip"
-            $jobs += newZipJob $amd64Dir "${distDir}\ollama-windows-amd64.zip"
+            Write-Output "Generating ${distDir}\xollama-windows-amd64.zip"
+            $jobs += newZipJob $amd64Dir "${distDir}\xollama-windows-amd64.zip"
             $jobs += newDependencyAuditJob $amd64Dir "windows-amd64" "${distDir}\dependency-audit-windows-amd64.txt"
         }
 
         $arm64Dir = "${distDir}\windows-arm64"
         if (Test-Path -Path $arm64Dir) {
-            if ((Test-Path -Path "${arm64Dir}\ollama.exe") -and (Test-Path -Path "${arm64Dir}\lib\ollama\llama-server.exe")) {
+            if ((Test-Path -Path "${arm64Dir}\xollama.exe") -and (Test-Path -Path "${arm64Dir}\lib\ollama\llama-server.exe")) {
                 verifyWindowsArm64Binaries $arm64Dir
-                Write-Output "Generating ${distDir}\ollama-windows-arm64.zip"
-                $jobs += newZipJob $arm64Dir "${distDir}\ollama-windows-arm64.zip"
+                Write-Output "Generating ${distDir}\xollama-windows-arm64.zip"
+                $jobs += newZipJob $arm64Dir "${distDir}\xollama-windows-arm64.zip"
                 $jobs += newDependencyAuditJob $arm64Dir "windows-arm64" "${distDir}\dependency-audit-windows-arm64.txt"
             } else {
-                Write-Output "Skipping ${distDir}\ollama-windows-arm64.zip; missing ARM64 ollama.exe or llama-server.exe"
+                Write-Output "Skipping ${distDir}\xollama-windows-arm64.zip; missing ARM64 xollama.exe or llama-server.exe"
             }
         }
 

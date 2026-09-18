@@ -14,6 +14,10 @@ test_data
 __debug_bin*
 llama/build
 llama/vendor
+/xollama
+# `go build .` names its output after the module's last path element, and the
+# module path deliberately stays github.com/ollama/ollama -- so a plain build
+# still drops an `ollama` binary here. Build with `go build -o xollama .`.
 /ollama
 integration/testdata/models/
 

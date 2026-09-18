@@ -1,6 +1,6 @@
 #!/bin/sh
-# This script installs Ollama on Linux and macOS.
-# It detects the current operating system architecture and installs the appropriate version of Ollama.
+# This script installs xOllama on Linux and macOS.
+# It detects the current operating system architecture and installs the appropriate version of xOllama.
 
 # Wrap script in main function so that a truncated partial download doesn't end
 # up executing half a script.
@@ -39,7 +39,18 @@ case "$ARCH" in
     *) error "Unsupported architecture: $ARCH" ;;
 esac
 
-VER_PARAM="${OLLAMA_VERSION:+?version=$OLLAMA_VERSION}"
+# xollama publishes its releases on GitHub. ollama.com/download serves UPSTREAM
+# ollama, so leaving it here would quietly install stock ollama under our name.
+# GitHub encodes the version in the path rather than a query string, so the
+# version selection lives in the base URL and VER_PARAM stays empty.
+XOLLAMA_RELEASES="https://github.com/mann1x/xollama/releases"
+XOLLAMA_PICK_VERSION="${XOLLAMA_VERSION:-${OLLAMA_VERSION:-}}"
+if [ -n "$XOLLAMA_PICK_VERSION" ]; then
+    DOWNLOAD_BASE="${XOLLAMA_RELEASES}/download/v${XOLLAMA_PICK_VERSION#v}"
+else
+    DOWNLOAD_BASE="${XOLLAMA_RELEASES}/latest/download"
+fi
+VER_PARAM=""
 
 ###########################################
 # macOS
@@ -55,40 +66,40 @@ if [ "$OS" = "Darwin" ]; then
         exit 1
     fi
 
-    DOWNLOAD_URL="https://ollama.com/download/Ollama-darwin.zip${VER_PARAM}"
+    DOWNLOAD_URL="${DOWNLOAD_BASE}/xOllama-darwin.zip"
 
-    if pgrep -x Ollama >/dev/null 2>&1; then
-        status "Stopping running Ollama instance..."
-        pkill -x Ollama 2>/dev/null || true
+    if pgrep -x xOllama >/dev/null 2>&1; then
+        status "Stopping running xOllama instance..."
+        pkill -x xOllama 2>/dev/null || true
         sleep 2
     fi
 
-    if [ -d "/Applications/Ollama.app" ]; then
-        status "Removing existing Ollama installation..."
-        rm -rf "/Applications/Ollama.app"
+    if [ -d "/Applications/xOllama.app" ]; then
+        status "Removing existing xOllama installation..."
+        rm -rf "/Applications/xOllama.app"
     fi
 
-    status "Downloading Ollama for macOS..."
+    status "Downloading xOllama for macOS..."
     curl --fail --show-error --location --progress-bar \
-        -o "$TEMP_DIR/Ollama-darwin.zip" "$DOWNLOAD_URL"
+        -o "$TEMP_DIR/xOllama-darwin.zip" "$DOWNLOAD_URL"
 
-    status "Installing Ollama to /Applications..."
-    unzip -q "$TEMP_DIR/Ollama-darwin.zip" -d "$TEMP_DIR"
-    mv "$TEMP_DIR/Ollama.app" "/Applications/"
+    status "Installing xOllama to /Applications..."
+    unzip -q "$TEMP_DIR/xOllama-darwin.zip" -d "$TEMP_DIR"
+    mv "$TEMP_DIR/xOllama.app" "/Applications/"
 
-    if [ ! -L "/usr/local/bin/ollama" ] || [ "$(readlink "/usr/local/bin/ollama")" != "/Applications/Ollama.app/Contents/Resources/ollama" ]; then
-        status "Adding 'ollama' command to PATH (may require password)..."
+    if [ ! -L "/usr/local/bin/xollama" ] || [ "$(readlink "/usr/local/bin/xollama")" != "/Applications/xOllama.app/Contents/Resources/xollama" ]; then
+        status "Adding 'xollama' command to PATH (may require password)..."
         mkdir -p "/usr/local/bin" 2>/dev/null || sudo mkdir -p "/usr/local/bin"
-        ln -sf "/Applications/Ollama.app/Contents/Resources/ollama" "/usr/local/bin/ollama" 2>/dev/null || \
-            sudo ln -sf "/Applications/Ollama.app/Contents/Resources/ollama" "/usr/local/bin/ollama"
+        ln -sf "/Applications/xOllama.app/Contents/Resources/xollama" "/usr/local/bin/xollama" 2>/dev/null || \
+            sudo ln -sf "/Applications/xOllama.app/Contents/Resources/xollama" "/usr/local/bin/xollama"
     fi
 
     if [ -z "${OLLAMA_NO_START:-}" ]; then
-        status "Starting Ollama..."
-        open -a Ollama --args hidden
+        status "Starting xOllama..."
+        open -a xOllama --args hidden
     fi
 
-    status "Install complete. You can now run 'ollama'."
+    status "Install complete. You can now run 'xollama'."
     exit 0
 fi
 
@@ -165,30 +176,44 @@ if [ -d "$OLLAMA_INSTALL_DIR/lib/ollama" ] ; then
     status "Cleaning up old version at $OLLAMA_INSTALL_DIR/lib/ollama"
     $SUDO rm -rf "$OLLAMA_INSTALL_DIR/lib/ollama"
 fi
-status "Installing ollama to $OLLAMA_INSTALL_DIR"
+status "Installing xollama to $OLLAMA_INSTALL_DIR"
 $SUDO install -o0 -g0 -m755 -d $BINDIR
 $SUDO install -o0 -g0 -m755 -d "$OLLAMA_INSTALL_DIR/lib/ollama"
-download_and_extract "https://ollama.com/download" "$OLLAMA_INSTALL_DIR" "ollama-linux-${ARCH}"
+download_and_extract "$DOWNLOAD_BASE" "$OLLAMA_INSTALL_DIR" "xollama-linux-${ARCH}"
 
-if [ "$OLLAMA_INSTALL_DIR/bin/ollama" != "$BINDIR/ollama" ] ; then
-    status "Making ollama accessible in the PATH in $BINDIR"
-    $SUDO ln -sf "$OLLAMA_INSTALL_DIR/ollama" "$BINDIR/ollama"
+if [ "$OLLAMA_INSTALL_DIR/bin/xollama" != "$BINDIR/xollama" ] ; then
+    status "Making xollama accessible in the PATH in $BINDIR"
+    $SUDO ln -sf "$OLLAMA_INSTALL_DIR/xollama" "$BINDIR/xollama"
+fi
+
+# The legacy CUDA payload. cuda_v13 and opencoti-llamafile both floor at compute
+# 7.5, so Maxwell, Pascal and Volta (a GTX 1080 Ti, a Tesla V100) are served by
+# cuda_v12 or not at all -- and "not at all" means a silent fall back to CPU,
+# which reads as "it is slow" rather than "it is missing something". Detect the
+# hardware and fetch the tier rather than leaving it to be discovered.
+if available nvidia-smi ; then
+    OLDEST_CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null \
+        | tr -d ' ' | awk -F. 'NF==2 {printf "%d\n", $1*10+$2}' | sort -n | head -1)
+    if [ -n "$OLDEST_CC" ] && [ "$OLDEST_CC" -lt 75 ] ; then
+        status "Detected an NVIDIA GPU below compute 7.5; adding the legacy CUDA 12 payload"
+        download_and_extract "$DOWNLOAD_BASE" "$OLLAMA_INSTALL_DIR" "xollama-linux-${ARCH}-cuda12"
+    fi
 fi
 
 # Check for NVIDIA JetPack systems with additional downloads
 if [ -f /etc/nv_tegra_release ] ; then
     if grep R36 /etc/nv_tegra_release > /dev/null ; then
-        download_and_extract "https://ollama.com/download" "$OLLAMA_INSTALL_DIR" "ollama-linux-${ARCH}-jetpack6"
+        download_and_extract "$DOWNLOAD_BASE" "$OLLAMA_INSTALL_DIR" "xollama-linux-${ARCH}-jetpack6"
     elif grep R35 /etc/nv_tegra_release > /dev/null ; then
-        download_and_extract "https://ollama.com/download" "$OLLAMA_INSTALL_DIR" "ollama-linux-${ARCH}-jetpack5"
+        download_and_extract "$DOWNLOAD_BASE" "$OLLAMA_INSTALL_DIR" "xollama-linux-${ARCH}-jetpack5"
     else
         warning "Unsupported JetPack version detected.  GPU may not be supported"
     fi
 fi
 
 install_success() {
-    status 'The Ollama API is now available at 127.0.0.1:11434.'
-    status 'Install complete. Run "ollama" from the command line.'
+    status 'The xollama API is now available at 127.0.0.1:11434.'
+    status 'Install complete. Run "xollama" from the command line.'
 }
 trap install_success EXIT
 
@@ -211,14 +236,14 @@ configure_systemd() {
     status "Adding current user to ollama group..."
     $SUDO usermod -a -G ollama $(whoami)
 
-    status "Creating ollama systemd service..."
-    cat <<EOF | $SUDO tee /etc/systemd/system/ollama.service >/dev/null
+    status "Creating xollama systemd service..."
+    cat <<EOF | $SUDO tee /etc/systemd/system/xollama.service >/dev/null
 [Unit]
-Description=Ollama Service
+Description=xOllama Service
 After=network-online.target
 
 [Service]
-ExecStart=$BINDIR/ollama serve
+ExecStart=$BINDIR/xollama serve
 User=ollama
 Group=ollama
 Restart=always
@@ -231,11 +256,11 @@ EOF
     SYSTEMCTL_RUNNING="$(systemctl is-system-running || true)"
     case $SYSTEMCTL_RUNNING in
         running|degraded)
-            status "Enabling and starting ollama service..."
+            status "Enabling and starting xollama service..."
             $SUDO systemctl daemon-reload
-            $SUDO systemctl enable ollama
+            $SUDO systemctl enable xollama
 
-            start_service() { $SUDO systemctl restart ollama; }
+            start_service() { $SUDO systemctl restart xollama; }
             trap start_service EXIT
             ;;
         *)
@@ -298,12 +323,12 @@ fi
 
 if ! check_gpu lspci nvidia && ! check_gpu lshw nvidia && ! check_gpu lspci amdgpu && ! check_gpu lshw amdgpu; then
     install_success
-    warning "No NVIDIA/AMD GPU detected. Ollama will run in CPU-only mode."
+    warning "No NVIDIA/AMD GPU detected. xOllama will run in CPU-only mode."
     exit 0
 fi
 
 if check_gpu lspci amdgpu || check_gpu lshw amdgpu; then
-    download_and_extract "https://ollama.com/download" "$OLLAMA_INSTALL_DIR" "ollama-linux-${ARCH}-rocm"
+    download_and_extract "$DOWNLOAD_BASE" "$OLLAMA_INSTALL_DIR" "xollama-linux-${ARCH}-rocm"
 
     install_success
     status "AMD GPU ready."

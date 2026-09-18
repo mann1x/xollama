@@ -407,7 +407,7 @@ func transposeExpertWeightForGatherMM(w *mlx.Array) *mlx.Array {
 }
 
 // loadStackedProjection returns expert weights already stacked as a single 3D
-// tensor (layers.N.mlp.switch_mlp.<proj>.weight) — the layout `ollama create`
+// tensor (layers.N.mlp.switch_mlp.<proj>.weight) — the layout `xollama create`
 // writes when it packs per-expert tensors at import.
 func loadStackedProjection(tensors map[string]*mlx.Array, cfg *Config, useQuantized bool, base string) *stackedExpertWeights {
 	key := base + ".weight"

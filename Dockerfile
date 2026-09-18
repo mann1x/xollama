@@ -260,7 +260,7 @@ ARG CGO_CXXFLAGS
 ENV CGO_CFLAGS="${CGO_CFLAGS}"
 ENV CGO_CXXFLAGS="${CGO_CXXFLAGS}"
 RUN --mount=type=cache,target=/root/.cache/go-build \
-    go build -trimpath -buildmode=pie -o /bin/ollama .
+    go build -trimpath -buildmode=pie -o /bin/xollama .
 RUN --mount=type=cache,target=/root/.cache/go-build \
     cmake -S . -B build/go-license \
         -DOLLAMA_LLAMA_BACKENDS= \
@@ -268,7 +268,7 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     && cmake --build build/go-license --target ollama-go-license
 
 FROM scratch AS publish-go
-COPY --from=build /bin/ollama /bin/ollama
+COPY --from=build /bin/xollama /bin/xollama
 COPY --from=build /go/src/github.com/ollama/ollama/build/go-license/lib/ollama/GO_LICENSE /lib/ollama/GO_LICENSE
 
 #
@@ -325,11 +325,11 @@ FROM --platform=linux/arm64 scratch AS arm64-archive
 COPY --from=arm64 /lib/ollama /lib/ollama/
 
 FROM ${TARGETARCH}-archive AS archive
-COPY --from=build /bin/ollama /bin/ollama
+COPY --from=build /bin/xollama /bin/xollama
 COPY --from=build /go/src/github.com/ollama/ollama/build/go-license/lib/ollama/GO_LICENSE /lib/ollama/GO_LICENSE
 
 FROM ${FLAVOR} AS image-archive
-COPY --from=build /bin/ollama /bin/ollama
+COPY --from=build /bin/xollama /bin/xollama
 COPY --from=build /go/src/github.com/ollama/ollama/build/go-license/lib/ollama/GO_LICENSE /lib/ollama/GO_LICENSE
 
 FROM ubuntu:24.04
@@ -355,5 +355,5 @@ ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV OLLAMA_HOST=0.0.0.0:11434
 EXPOSE 11434
-ENTRYPOINT ["/bin/ollama"]
+ENTRYPOINT ["/bin/xollama"]
 CMD ["serve"]

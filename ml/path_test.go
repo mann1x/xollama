@@ -18,12 +18,12 @@ func TestFindLibOllamaPath(t *testing.T) {
 		{
 			name: "darwin release layout",
 			search: libOllamaPathSearch{
-				executable: filepath.Join(root, "darwin-app", "Ollama.app", "Contents", "Resources", "ollama"),
+				executable: filepath.Join(root, "darwin-app", "xOllama.app", "Contents", "Resources", "xollama"),
 				goos:       "darwin",
 				goarch:     "arm64",
 			},
-			dirs: []string{filepath.Join(root, "darwin-app", "Ollama.app", "Contents", "Resources")},
-			want: filepath.Join(root, "darwin-app", "Ollama.app", "Contents", "Resources"),
+			dirs: []string{filepath.Join(root, "darwin-app", "xOllama.app", "Contents", "Resources")},
+			want: filepath.Join(root, "darwin-app", "xOllama.app", "Contents", "Resources"),
 		},
 		{
 			name: "darwin standard install layout",

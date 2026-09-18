@@ -1,6 +1,6 @@
 ---
 name: xollama-build-test
-description: Runs the correct build/test/lint/secret-scan loop for a change in the xollama fork: `go build .` plus targeted `go test` for pure-Go edits, `cmake -B build . [-DOLLAMA_LLAMA_BACKENDS=... | -DOLLAMA_MLX_BACKENDS=...]` + `cmake --build build --parallel 8` for native edits under llama/, mlx/, mlxrunner/xgrammar/native/ or cmake/, `go generate ./...` + `git diff --exit-code` for generated-file drift, `golangci-lint run`, and the `.githooks/pre-commit` gitleaks scan before committing. Use when the user says 'build it', 'run the tests', 'does it compile', 'build with CUDA/Vulkan/ROCm/MLX', 'lint it', 'is it ready to commit', or after any edit to native code or CMake. Do NOT use for release packaging (scripts/build_linux.sh, build_darwin.sh, build_windows.ps1, release.yaml), for Docker image builds, for writing new tests, or for merging upstream (see docs/protocols/UPSTREAM-SYNC.md).
+description: Runs the correct build/test/lint/secret-scan loop for a change in the xollama fork: `go build -o xollama .` plus targeted `go test` for pure-Go edits, `cmake -B build . [-DOLLAMA_LLAMA_BACKENDS=... | -DOLLAMA_MLX_BACKENDS=...]` + `cmake --build build --parallel 8` for native edits under llama/, mlx/, mlxrunner/xgrammar/native/ or cmake/, `go generate ./...` + `git diff --exit-code` for generated-file drift, `golangci-lint run`, and the `.githooks/pre-commit` gitleaks scan before committing. Use when the user says 'build it', 'run the tests', 'does it compile', 'build with CUDA/Vulkan/ROCm/MLX', 'lint it', 'is it ready to commit', or after any edit to native code or CMake. Do NOT use for release packaging (scripts/build_linux.sh, build_darwin.sh, build_windows.ps1, release.yaml), for Docker image builds, for writing new tests, or for merging upstream (see docs/protocols/UPSTREAM-SYNC.md).
 paths:
   - **/*.go
   - CMakeLists.txt
@@ -32,16 +32,18 @@ output. Never claim a build or test passed without the command output.
    | `api/types.go` or any struct exported to the UI | Step 5 (generated-file gate) → 3 |
    | docs/`.wolf/`/workflows only | Step 9 only |
 
-2. **The Go binary produced at the repo root is named ollama, not xollama.**
-   `cmake/local.cmake` sets `OLLAMA_GO_OUTPUT` to the repo-root ollama path, and
-   the module path on the first line of `go.mod` is upstream's. Do not "fix" the
-   binary name, and do not rename the module path — see CLAUDE.md rule 1.
+2. **Build with `go build -o xollama .`** The CMake build already produces
+   `xollama` (`OLLAMA_GO_OUTPUT` in `cmake/local.cmake`), but a bare
+   `go build .` names its output after the module's last path element, and the
+   module path deliberately stays `github.com/ollama/ollama` — so it drops a
+   stray `ollama` binary instead. Both names are gitignored. Do not "fix" this
+   by renaming the module path — see CLAUDE.md rule 1.
 
 3. **Off means off.** After touching `llm/server.go`, `llm/llama_server.go` or any
    engine hook, verify the vanilla path is unchanged:
 
    ```sh
-   XOLLAMA_ENGINE=llamacpp ./ollama serve
+   XOLLAMA_ENGINE=llamacpp ./xollama serve
    ```
 
    must behave byte-identically to upstream with no xollama flags set. State
@@ -83,7 +85,7 @@ not rebuild native code.
 
 ```sh
 gofmt -l .            # must print nothing
-go build .            # produces the ollama binary at the repo root
+go build -o xollama . # a bare `go build .` would emit `ollama` instead
 ```
 
 Then run the packages you touched, not the whole tree:
@@ -98,7 +100,7 @@ Narrow further when iterating on one file — e.g. for `llm/repeat_guard.go`:
 go test -count=1 -run TestRepeatGuard ./llm/...
 ```
 
-Verify `go build .` exits 0 and every `go test` line reads `ok` or `no test files`
+Verify `go build -o xollama .` exits 0 and every `go test` line reads `ok` or `no test files`
 before proceeding. On a `FAIL`, re-run that single package with `-v` and fix
 before any wider run.
 
@@ -197,7 +199,7 @@ Verify the payload landed before proceeding:
 
 ```sh
 ls build/lib/ollama          # llama-server, llama-quantize, ggml-*.so
-./ollama --version
+./xollama --version
 ```
 
 ### Step 7 — MLX native build (only when `mlx/**` or `mlxrunner/**` native code changed)
@@ -277,7 +279,7 @@ git status --short
 #  M  llm/server.go
 #  M  openai/openai.go
 gofmt -l .
-go build .
+go build -o xollama .
 go test -count=1 ./llm/... ./openai/...
 go test -count=1 -bench=. -benchtime=1x ./...
 go test -race -count=1 ./...
@@ -288,7 +290,7 @@ No native paths changed → Steps 6/7 skipped. `llm/server.go` is an engine hook
 also confirm the off-path:
 
 ```sh
-XOLLAMA_ENGINE=llamacpp ./ollama serve
+XOLLAMA_ENGINE=llamacpp ./xollama serve
 ```
 
 with no xollama flags set.
@@ -307,7 +309,7 @@ native was untouched, and that the `llamacpp` off-path was verified.
 cmake -B build . -DOLLAMA_LLAMA_BACKENDS="cuda_v13;vulkan" -DCMAKE_CUDA_ARCHITECTURES=native
 cmake --build build --parallel 8
 ls build/lib/ollama
-./ollama --version
+./xollama --version
 go test -count=1 -bench=. -benchtime=1x ./...
 golangci-lint run
 ```
@@ -363,7 +365,7 @@ CGO went out of sync with the rebuilt native code (`docs/development.md`). Run
 **The server runs but no GPU is used, logs say no acceleration libraries found**
 The payload is looked up in `build/lib/ollama` and the per-platform dist lib
 directory for dev builds. Confirm `ls build/lib/ollama` is non-empty and that you
-ran `cmake --build build`, not just `go build .` — `go build .` never produces the
+ran `cmake --build build`, not just `go build -o xollama .` — a Go build never produces the
 native payload.
 
 **`pre-commit: gitleaks found a secret in the STAGED changes — commit refused.`**

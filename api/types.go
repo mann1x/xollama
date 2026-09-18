@@ -37,7 +37,7 @@ func (e StatusError) Error() string {
 		return e.ErrorMessage
 	default:
 		// this should not happen
-		return "something went wrong, please see the ollama server logs for details"
+		return "something went wrong, please see the xollama server logs for details"
 	}
 }
 
@@ -51,7 +51,7 @@ func (e AuthorizationError) Error() string {
 	if e.Status != "" {
 		return e.Status
 	}
-	return "something went wrong, please see the ollama server logs for details"
+	return "something went wrong, please see the xollama server logs for details"
 }
 
 // ImageData represents the raw binary data of an image file.

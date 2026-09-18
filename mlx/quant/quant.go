@@ -1,5 +1,5 @@
 // Package quant holds the quantization format facts shared by the model
-// importer, the runtime loader, and `ollama show`. It deliberately has no
+// importer, the runtime loader, and `xollama show`. It deliberately has no
 // dependency on the MLX C library, so any package can use it without pulling
 // in cgo — which is what keeps these facts from drifting between separate
 // hand-maintained copies.

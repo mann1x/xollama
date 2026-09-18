@@ -651,7 +651,7 @@ func tensorByBase(tensors map[string]*mlx.Array, base string) (*mlx.Array, strin
 }
 
 // loadStackedExpertProjection loads a pre-stacked [experts, out, in] expert
-// tensor (as produced by ollama create's TransformStackExperts). It returns
+// tensor (as produced by xollama create's TransformStackExperts). It returns
 // nil if no stacked tensor is found, so the caller can fall back to
 // per-expert collection.
 func loadStackedExpertProjection(tensors map[string]*mlx.Array, cfg *Config, useQuantized bool, layerPrefix, proj string) *stackedExpertWeights {

@@ -216,7 +216,7 @@ func generateInteractive(cmd *cobra.Command, opts runOptions) error {
 
 			client, err := api.ClientFromEnvironment()
 			if err != nil {
-				fmt.Println("error: couldn't connect to ollama server")
+				fmt.Println("error: couldn't connect to xollama server")
 				return err
 			}
 
@@ -260,7 +260,7 @@ func generateInteractive(cmd *cobra.Command, opts runOptions) error {
 
 			client, err := api.ClientFromEnvironment()
 			if err != nil {
-				fmt.Println("error: couldn't connect to ollama server")
+				fmt.Println("error: couldn't connect to xollama server")
 				return err
 			}
 
@@ -413,7 +413,7 @@ func generateInteractive(cmd *cobra.Command, opts runOptions) error {
 			if len(args) > 1 {
 				client, err := api.ClientFromEnvironment()
 				if err != nil {
-					fmt.Println("error: couldn't connect to ollama server")
+					fmt.Println("error: couldn't connect to xollama server")
 					return err
 				}
 				req := &api.ShowRequest{

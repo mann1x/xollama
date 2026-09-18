@@ -12,10 +12,10 @@ import (
 
 func TestDoUpgrade(t *testing.T) {
 	tmpDir := t.TempDir()
-	BundlePath = filepath.Join(tmpDir, "Ollama.app")
+	BundlePath = filepath.Join(tmpDir, "xOllama.app")
 	appContents := filepath.Join(BundlePath, "Contents")
 	appBackupDir = filepath.Join(tmpDir, "backup")
-	appContentsOld := filepath.Join(appBackupDir, "Ollama.app", "Contents")
+	appContentsOld := filepath.Join(appBackupDir, "xOllama.app", "Contents")
 	UpdateStageDir = filepath.Join(tmpDir, "updates")
 	UpgradeMarkerFile = filepath.Join(tmpDir, "upgraded")
 	bundle := filepath.Join(UpdateStageDir, "foo", "ollama-darwin.zip")
@@ -149,7 +149,7 @@ func TestDoUpgrade(t *testing.T) {
 
 func TestDoUpgradeRejectsInvalidBundlePath(t *testing.T) {
 	tmpDir := t.TempDir()
-	BundlePath = filepath.Join(tmpDir, "Ollama.app")
+	BundlePath = filepath.Join(tmpDir, "xOllama.app")
 	appBackupDir = filepath.Join(tmpDir, "backup")
 	UpdateStageDir = filepath.Join(tmpDir, "updates")
 	UpgradeMarkerFile = filepath.Join(tmpDir, "upgraded")
@@ -189,7 +189,7 @@ func TestDoUpgradeRejectsInvalidBundlePath(t *testing.T) {
 
 func TestDoUpgradeAtStartup(t *testing.T) {
 	tmpDir := t.TempDir()
-	BundlePath = filepath.Join(tmpDir, "Ollama.app")
+	BundlePath = filepath.Join(tmpDir, "xOllama.app")
 	appBackupDir = filepath.Join(tmpDir, "backup")
 	UpdateStageDir = filepath.Join(tmpDir, "updates")
 	UpgradeMarkerFile = filepath.Join(tmpDir, "upgraded")
@@ -233,7 +233,7 @@ func TestDoUpgradeAtStartup(t *testing.T) {
 
 func TestVerifyDownloadFailures(t *testing.T) {
 	tmpDir := t.TempDir()
-	BundlePath = filepath.Join(tmpDir, "Ollama.app")
+	BundlePath = filepath.Join(tmpDir, "xOllama.app")
 	UpdateStageDir = filepath.Join(tmpDir, "staging")
 	bundle := filepath.Join(UpdateStageDir, "foo", "ollama-darwin.zip")
 	if err := os.MkdirAll(filepath.Dir(bundle), 0o755); err != nil {
@@ -357,7 +357,7 @@ func TestAlreadyMoved(t *testing.T) {
 		t.Fatal("failed to find executable path")
 	}
 	tmpDir := t.TempDir()
-	testApp := filepath.Join(tmpDir, "Ollama.app")
+	testApp := filepath.Join(tmpDir, "xOllama.app")
 	err = os.MkdirAll(filepath.Join(testApp, "Contents", "MacOS"), 0o755)
 	if err != nil {
 		t.Fatal("failed to create Contents dir")

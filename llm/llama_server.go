@@ -1747,9 +1747,9 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 		}
 		slog.Error("llama-server completion error", "error", err)
 		if msg := s.lastErrMsg(); msg != "" {
-			return fmt.Errorf("model runner has unexpectedly stopped, this may be due to resource limitations or an internal error, check ollama server logs for details: %s", msg)
+			return fmt.Errorf("model runner has unexpectedly stopped, this may be due to resource limitations or an internal error, check xollama server logs for details: %s", msg)
 		}
-		return errors.New("model runner has unexpectedly stopped, this may be due to resource limitations or an internal error, check ollama server logs for details")
+		return errors.New("model runner has unexpectedly stopped, this may be due to resource limitations or an internal error, check xollama server logs for details")
 	}
 	defer res.Body.Close()
 
@@ -2056,9 +2056,9 @@ func (s *llamaServerRunner) Chat(ctx context.Context, req ChatRequest, fn func(C
 		}
 		slog.Error("llama-server chat error", "error", err)
 		if msg := s.lastErrMsg(); msg != "" {
-			return fmt.Errorf("model runner has unexpectedly stopped, this may be due to resource limitations or an internal error, check ollama server logs for details: %s", msg)
+			return fmt.Errorf("model runner has unexpectedly stopped, this may be due to resource limitations or an internal error, check xollama server logs for details: %s", msg)
 		}
-		return errors.New("model runner has unexpectedly stopped, this may be due to resource limitations or an internal error, check ollama server logs for details")
+		return errors.New("model runner has unexpectedly stopped, this may be due to resource limitations or an internal error, check xollama server logs for details")
 	}
 	defer res.Body.Close()
 

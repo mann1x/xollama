@@ -506,7 +506,7 @@ func (c *Client) WebFetchExperimental(ctx context.Context, req *WebFetchRequest)
 	return &resp, nil
 }
 
-// Signout will signout a client for a local ollama server.
+// Signout will signout a client for a local xollama server.
 func (c *Client) Signout(ctx context.Context) error {
 	return c.do(ctx, http.MethodPost, "/api/signout", nil, nil)
 }

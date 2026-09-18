@@ -142,7 +142,7 @@ func (s *Server) ollamaProxy() http.Handler {
 				var err error
 				for i := range 2 {
 					if i > 0 {
-						s.log().Warn("ollama server not ready, retrying", "attempt", i+1)
+						s.log().Warn("xollama server not ready, retrying", "attempt", i+1)
 						time.Sleep(1 * time.Second)
 					}
 
@@ -154,7 +154,7 @@ func (s *Server) ollamaProxy() http.Handler {
 
 				if err != nil {
 					proxyMu.Unlock()
-					s.log().Error("ollama server not ready after retries", "error", err)
+					s.log().Error("xollama server not ready after retries", "error", err)
 					http.Error(w, "Ollama server is not ready", http.StatusServiceUnavailable)
 					return
 				}
@@ -372,7 +372,7 @@ func (s *Server) getIntegrationStatuses(w http.ResponseWriter, _ *http.Request) 
 			Description: info.Description,
 			Installed:   &installed,
 			Action:      "copy",
-			Command:     "ollama launch " + info.Name,
+			Command:     "xollama launch " + info.Name,
 		})
 	}
 
@@ -381,7 +381,7 @@ func (s *Server) getIntegrationStatuses(w http.ResponseWriter, _ *http.Request) 
 		Name:        "Terminal",
 		Description: "Run local models from your terminal",
 		Action:      "copy",
-		Command:     "ollama",
+		Command:     "xollama",
 	})
 
 	return json.NewEncoder(w).Encode(statuses)
@@ -494,7 +494,7 @@ func WaitForServer(ctx context.Context, timeout time.Duration) error {
 			return err
 		}
 		if _, err := c.Version(ctx); err == nil {
-			slog.Debug("ollama server is ready")
+			slog.Debug("xollama server is ready")
 			return nil
 		}
 		time.Sleep(10 * time.Millisecond)

@@ -982,7 +982,7 @@ func TestShowOrPullWithPolicy_ModelNotFound_FailDoesNotPromptOrPull(t *testing.T
 	if err == nil {
 		t.Fatal("expected fail policy to return an error for missing model")
 	}
-	if !strings.Contains(err.Error(), "ollama pull missing-model") {
+	if !strings.Contains(err.Error(), "xollama pull missing-model") {
 		t.Fatalf("expected actionable pull guidance, got: %v", err)
 	}
 	if pullCalled {

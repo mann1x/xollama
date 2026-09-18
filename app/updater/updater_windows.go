@@ -59,7 +59,7 @@ type OSVERSIONINFOEXW struct {
 
 func init() {
 	VerifyDownload = verifyDownload
-	Installer = "Ollama-darwin.zip"
+	Installer = "xOllama-darwin.zip"
 	localAppData := os.Getenv("LOCALAPPDATA")
 	appDataDir := filepath.Join(localAppData, "Ollama")
 
@@ -68,7 +68,7 @@ func init() {
 	UpdateStageDir = filepath.Join(appDataDir, "updates_v2")
 
 	UpgradeLogFile = filepath.Join(appDataDir, "upgrade.log")
-	Installer = "OllamaSetup.exe"
+	Installer = "xOllamaSetup.exe"
 	runningInstaller = filepath.Join(appDataDir, Installer)
 	UpgradeMarkerFile = filepath.Join(appDataDir, "upgraded")
 

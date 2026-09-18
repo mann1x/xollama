@@ -448,7 +448,7 @@ func CreateHandler(cmd *cobra.Command, args []string) error {
 
 	if err := client.Create(cmd.Context(), req, fn); err != nil {
 		if strings.Contains(err.Error(), "path or Modelfile are required") {
-			return fmt.Errorf("the ollama server must be updated to use `ollama create` with this client")
+			return fmt.Errorf("the xollama server must be updated to use `xollama create` with this client")
 		}
 		return err
 	}
@@ -741,7 +741,7 @@ func handleCloudAuthorizationError(err error) bool {
 	return false
 }
 
-// TEMP(drifkin): To match legacy `ollama run some-model:cloud` behavior, we
+// TEMP(drifkin): To match legacy `xollama run some-model:cloud` behavior, we
 // best-effort pull cloud stub files for any explicit cloud source models.
 // Remove this once `/api/tags` is cloud-aware.
 func ensureCloudStub(ctx context.Context, client *api.Client, modelName string) {
@@ -971,7 +971,7 @@ func RunHandler(cmd *cobra.Command, args []string) error {
 	// If it's an embedding model, handle embedding generation
 	if isEmbeddingModel {
 		if opts.Prompt == "" {
-			return errors.New("embedding models require input text. Usage: ollama run " + name + " \"your text here\"")
+			return errors.New("embedding models require input text. Usage: xollama run " + name + " \"your text here\"")
 		}
 
 		// Get embedding-specific flags
@@ -2196,11 +2196,11 @@ func versionHandler(cmd *cobra.Command, _ []string) {
 
 	serverVersion, err := client.Version(cmd.Context())
 	if err != nil {
-		fmt.Println("Warning: could not connect to a running Ollama instance")
+		fmt.Println("Warning: could not connect to a running xOllama instance")
 	}
 
 	if serverVersion != "" {
-		fmt.Printf("ollama version is %s\n", serverVersion)
+		fmt.Printf("xollama version is %s\n", serverVersion)
 	}
 
 	if serverVersion != version.Version {
@@ -2401,7 +2401,7 @@ func NewCLI() *cobra.Command {
 	}
 
 	rootCmd := &cobra.Command{
-		Use:           "ollama",
+		Use:           "xollama",
 		Short:         "Large language model runner",
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -2487,7 +2487,7 @@ func NewCLI() *cobra.Command {
 	serveCmd := &cobra.Command{
 		Use:     "serve",
 		Aliases: []string{"start"},
-		Short:   "Start Ollama",
+		Short:   "Start xOllama",
 		Args:    cobra.ExactArgs(0),
 		RunE:    RunServer,
 	}
@@ -2596,7 +2596,7 @@ func NewCLI() *cobra.Command {
 			return discover.RunNativeProbeCommand(cmd.Context(), gpuDiscoverLibDirs, os.Stdout)
 		},
 	}
-	gpuDiscoverCmd.Flags().StringArrayVar(&gpuDiscoverLibDirs, "lib-dir", nil, "Ollama runtime library directory")
+	gpuDiscoverCmd.Flags().StringArrayVar(&gpuDiscoverLibDirs, "lib-dir", nil, "xollama runtime library directory")
 
 	envVars := envconfig.AsMap()
 

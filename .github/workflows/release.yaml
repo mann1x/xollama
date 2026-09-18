@@ -474,7 +474,7 @@ jobs:
           path: |
             dist/*.zip
             dist/*.ps1
-            dist/OllamaSetup.exe
+            dist/xOllamaSetup.exe
 
   linux-depends:
     strategy:
@@ -668,7 +668,7 @@ jobs:
           set -euo pipefail
           base="dist/${{ matrix.os }}-${{ matrix.arch }}"
           for payload in \
-            "$base/bin/ollama" \
+            "$base/bin/xollama" \
             "$base/lib/ollama/llama-server"
           do
             [ -f "$payload" ] || { echo "missing $payload"; exit 1; }
@@ -676,33 +676,33 @@ jobs:
       - run: |
           for COMPONENT in bin/* lib/ollama/*; do
             case "$COMPONENT" in
-              bin/ollama*)               echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
-              lib/ollama/*.so*)          echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
-              lib/ollama/llama-server*|lib/ollama/llama-quantize*)  echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
+              bin/xollama*)               echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
+              lib/ollama/*.so*)          echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
+              lib/ollama/llama-server*|lib/ollama/llama-quantize*)  echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
               # cuda_v12 is the LEGACY tier and ships as its own asset. It is
               # the only payload carrying code for compute 5.x/6.x/7.0
               # (Maxwell, Pascal, Volta) -- cuda_v13 floors at 7.5 and so does
               # opencoti-llamafile, so those cards are served from here or not
               # at all. Splitting it out keeps the base asset roughly half its
               # former size, which is what makes room for the engine.
-              lib/ollama/cuda_v12)       echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}-cuda12.tar.in ;;
-              lib/ollama/cuda_v*)        echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
+              lib/ollama/cuda_v12)       echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}-cuda12.tar.in ;;
+              lib/ollama/cuda_v*)        echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
               # The engine ships in the base asset: it is the default runner on
               # every platform in llm/engine/policy.go's tested matrix, and the
               # runtime never downloads one.
-              lib/ollama/opencoti-llamafile-*) echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
-              lib/ollama/vulkan*)        echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
-              lib/ollama/mlx*)           echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}-mlx.tar.in ;;
-              lib/ollama/include*)       echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}-mlx.tar.in ;;
-              lib/ollama/*_LICENSE|lib/ollama/*_NOTICE) echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
-              lib/ollama/cuda_jetpack5)  echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}-jetpack5.tar.in ;;
-              lib/ollama/cuda_jetpack6)  echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}-jetpack6.tar.in ;;
-              lib/ollama/rocm_v*)        echo $COMPONENT >>ollama-${{ matrix.os }}-${{ matrix.arch }}-rocm.tar.in ;;
+              lib/ollama/opencoti-llamafile-*) echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
+              lib/ollama/vulkan*)        echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
+              lib/ollama/mlx*)           echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}-mlx.tar.in ;;
+              lib/ollama/include*)       echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}-mlx.tar.in ;;
+              lib/ollama/*_LICENSE|lib/ollama/*_NOTICE) echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
+              lib/ollama/cuda_jetpack5)  echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}-jetpack5.tar.in ;;
+              lib/ollama/cuda_jetpack6)  echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}-jetpack6.tar.in ;;
+              lib/ollama/rocm_v*)        echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}-rocm.tar.in ;;
             esac
           done
         working-directory: dist/${{ matrix.os }}-${{ matrix.arch }}
       - if: matrix.suffix == '-rocm'
-        run: rm -f dist/${{ matrix.os }}-${{ matrix.arch }}/ollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in
+        run: rm -f dist/${{ matrix.os }}-${{ matrix.arch }}/xollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in
       - run: |
           echo "Manifests"
           for ARCHIVE in dist/${{ matrix.os }}-${{ matrix.arch }}/*.tar.in ; do
@@ -780,14 +780,14 @@ jobs:
       - name: Verify release artifacts
         run: |
           required=(
-            dist/OllamaSetup.exe
+            dist/xOllamaSetup.exe
             dist/install.ps1
             dist/install.sh
-            dist/ollama-windows-amd64.zip
-            dist/ollama-windows-arm64.zip
-            dist/ollama-windows-amd64-cuda12.zip
-            dist/ollama-linux-amd64-cuda12.tar.zst
-            dist/ollama-linux-arm64-cuda12.tar.zst
+            dist/xollama-windows-amd64.zip
+            dist/xollama-windows-arm64.zip
+            dist/xollama-windows-amd64-cuda12.zip
+            dist/xollama-linux-amd64-cuda12.tar.zst
+            dist/xollama-linux-arm64-cuda12.tar.zst
           )
           for payload in "${required[@]}"; do
             if [ ! -f "$payload" ]; then

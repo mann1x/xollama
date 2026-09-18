@@ -40,12 +40,12 @@ func TestLlamaCppBinaryCandidates(t *testing.T) {
 		{
 			name: "darwin production layout",
 			search: llamaCppBinarySearch{
-				executable: filepath.Join(root, "Ollama.app", "Contents", "Resources", "ollama"),
+				executable: filepath.Join(root, "xOllama.app", "Contents", "Resources", "xollama"),
 				goos:       "darwin",
 				goarch:     "arm64",
 			},
-			want:      []string{filepath.Join(root, "Ollama.app", "Contents", "Resources", "llama-server")},
-			wantFirst: filepath.Join(root, "Ollama.app", "Contents", "Resources", "llama-server"),
+			want:      []string{filepath.Join(root, "xOllama.app", "Contents", "Resources", "llama-server")},
+			wantFirst: filepath.Join(root, "xOllama.app", "Contents", "Resources", "llama-server"),
 		},
 		{
 			name: "darwin standard install layout",

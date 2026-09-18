@@ -122,7 +122,7 @@ func TestClaudeDesktopIntegration(t *testing.T) {
 	t.Run("has success messages", func(t *testing.T) {
 		var _ ConfigurationSuccessIntegration = c
 		var _ RestoreSuccessIntegration = c
-		if got := c.ConfigurationSuccessMessage(); got != "Claude Desktop profile changed to Ollama.\nTo restore the usual Claude profile, run: ollama launch claude-desktop --restore" {
+		if got := c.ConfigurationSuccessMessage(); got != "Claude Desktop profile changed to Ollama.\nTo restore the usual Claude profile, run: xollama launch claude-desktop --restore" {
 			t.Fatalf("configuration success message = %q", got)
 		}
 		if got := c.RestoreSuccessMessage(); got != "Claude Desktop restored to the usual Claude profile." {

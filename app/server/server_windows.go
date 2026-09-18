@@ -123,13 +123,13 @@ func ollamaServeProcess(pid int) bool {
 	return false
 }
 
-// reapServers kills external ollama serve processes except our own.
+// reapServers kills external xollama serve processes except our own.
 func reapServers() error {
 	// Get current process ID to avoid killing ourselves
 	currentPID := os.Getpid()
 
 	// Use wmic to find ollama processes
-	cmd := exec.Command("wmic", "process", "where", "name='ollama.exe'", "get", "ProcessId")
+	cmd := exec.Command("wmic", "process", "where", "name='xollama.exe'", "get", "ProcessId")
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	output, err := cmd.Output()
 	if err != nil {

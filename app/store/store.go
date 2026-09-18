@@ -1,7 +1,7 @@
 //go:build windows || darwin
 
 // Package store provides a simple JSON file store for the desktop application
-// to save and load data such as ollama server configuration, messages,
+// to save and load data such as xollama server configuration, messages,
 // login information and more.
 package store
 
@@ -122,11 +122,11 @@ func NewChat(id string) *Chat {
 }
 
 type Settings struct {
-	// Expose is a boolean that indicates if the ollama server should
+	// Expose is a boolean that indicates if the xollama server should
 	// be exposed to the network
 	Expose bool
 
-	// Browser is a boolean that indicates if the ollama server should
+	// Browser is a boolean that indicates if the xollama server should
 	// be exposed to browser windows (e.g. CORS set to allow all origins)
 	Browser bool
 
@@ -147,7 +147,7 @@ type Settings struct {
 	// WorkingDir specifies the working directory for all agent operations
 	WorkingDir string
 
-	// ContextLength specifies the context length for the ollama server (using OLLAMA_CONTEXT_LENGTH)
+	// ContextLength specifies the context length for the xollama server (using OLLAMA_CONTEXT_LENGTH)
 	ContextLength int
 
 	// TurboEnabled indicates if Ollama Turbo features are enabled

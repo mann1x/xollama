@@ -180,7 +180,7 @@ func main() {
 	}
 
 	// on macOS, offer the user to create a symlink
-	// from /usr/local/bin/ollama to the app bundle
+	// from /usr/local/bin/xollama to the app bundle
 	installSymlink()
 
 	var ln net.Listener
@@ -240,7 +240,7 @@ func main() {
 	// ctx is the app-level context that will be used to stop the app
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// octx is the ollama server context that will be used to stop the ollama server
+	// octx is the xollama server context that will be used to stop the xollama server
 	octx, ocancel := context.WithCancel(ctx)
 
 	// TODO (jmorganca): instead we should instantiate the
@@ -250,7 +250,7 @@ func main() {
 	done := make(chan error, 1)
 	osrv := server.New(st, devMode)
 	go func() {
-		slog.Info("starting ollama server")
+		slog.Info("starting xollama server")
 		done <- osrv.Run(octx)
 	}()
 
@@ -336,9 +336,9 @@ func main() {
 	}
 
 	go func() {
-		slog.Debug("waiting for ollama server to be ready")
+		slog.Debug("waiting for xollama server to be ready")
 		if err := ui.WaitForServer(ctx, 10*time.Second); err != nil {
-			slog.Warn("ollama server not ready, continuing anyway", "error", err)
+			slog.Warn("xollama server not ready, continuing anyway", "error", err)
 		}
 
 		if _, err := uiServer.UserData(ctx); err != nil {
@@ -359,7 +359,7 @@ func main() {
 		slog.Warn("error shutting down desktop server", "error", err)
 	}
 
-	slog.Info("shutting down ollama server")
+	slog.Info("shutting down xollama server")
 	cancel()
 	<-done
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/ollama/ollama/api"
 )
 
-var errNotRunning = errors.New("could not connect to ollama server, run 'ollama serve' to start it")
+var errNotRunning = errors.New("could not connect to xollama server, run 'xollama serve' to start it")
 
 func startApp(ctx context.Context, client *api.Client) error {
 	exe, err := os.Executable()

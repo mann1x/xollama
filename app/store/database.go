@@ -515,7 +515,7 @@ func (db *database) migrateV12ToV13() error {
 }
 
 // migrateV13ToV14 changes the default context_length from 4096 to 0.
-// When context_length is 0, the ollama server uses VRAM-based tiered defaults.
+// When context_length is 0, the xollama server uses VRAM-based tiered defaults.
 func (db *database) migrateV13ToV14() error {
 	_, err := db.conn.Exec(`UPDATE settings SET context_length = 0 WHERE context_length = 4096`)
 	if err != nil {

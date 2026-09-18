@@ -48,7 +48,7 @@ func TestStopStopsRendering(t *testing.T) {
 
 // TestStopReapsGoroutines verifies Stop reaps the render and spinner
 // goroutines rather than leaving them parked on a ticker. Spinners previously
-// ran until the process exited, so a long-lived `ollama run` leaked one per
+// ran until the process exited, so a long-lived `xollama run` leaked one per
 // progress bar it displayed.
 func TestStopReapsGoroutines(t *testing.T) {
 	base := runtime.NumGoroutine()

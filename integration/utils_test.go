@@ -87,7 +87,7 @@ func testModels(defaults []string) []string {
 // given capability. If the model is missing locally, it first goes through
 // the normal pull-if-missing path so tests still behave correctly on cold
 // hosts. For local-only models where Show may not return capabilities
-// (e.g. models created via ollama create), this is a best-effort check.
+// (e.g. models created via xollama create), this is a best-effort check.
 func requireCapability(ctx context.Context, t *testing.T, client *api.Client, modelName string, cap model.Capability) {
 	t.Helper()
 

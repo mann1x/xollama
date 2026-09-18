@@ -43,7 +43,7 @@ const (
 	codexAppSingletonCookieName    = "SingletonCookie"
 	codexAppDesktopTableName       = "desktop"
 	codexAppReasoningEffortsKey    = "enabled-reasoning-efforts"
-	codexAppRestoreHint            = "To remove Ollama models from ChatGPT, run: ollama launch chatgpt --restore"
+	codexAppRestoreHint            = "To remove Ollama models from ChatGPT, run: xollama launch chatgpt --restore"
 	codexAppConfigurationSuccess   = "Ollama models added to ChatGPT."
 	codexAppRestoreSuccess         = "Ollama models removed from ChatGPT."
 )
@@ -2077,7 +2077,7 @@ func defaultCodexAppOpenApp(args []string) error {
 		if appID := codexAppStartID(); appID != "" {
 			return codexAppOpenStart(appID)
 		}
-		return fmt.Errorf("ChatGPT was not found; install it from https://chatgpt.com/download, then re-run 'ollama launch chatgpt'")
+		return fmt.Errorf("ChatGPT was not found; install it from https://chatgpt.com/download, then re-run 'xollama launch chatgpt'")
 	case "darwin":
 		cmd := exec.Command("open", codexAppDarwinOpenArgs(codexAppAppPath())...)
 		cmd.Stdout = os.Stdout

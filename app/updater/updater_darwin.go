@@ -22,7 +22,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const updateArchiveRoot = "Ollama.app"
+const updateArchiveRoot = "xOllama.app"
 
 type bundleEntryScope int
 
@@ -33,7 +33,7 @@ const (
 
 var (
 	appBackupDir   string
-	SystemWidePath = "/Applications/Ollama.app"
+	SystemWidePath = "/Applications/xOllama.app"
 )
 
 var BundlePath = func() string {
@@ -63,7 +63,7 @@ var BundlePath = func() string {
 
 func init() {
 	VerifyDownload = verifyDownload
-	Installer = "Ollama-darwin.zip"
+	Installer = "xOllama-darwin.zip"
 	home, err := os.UserHomeDir()
 	if err != nil {
 		panic(err)

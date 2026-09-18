@@ -56,7 +56,7 @@ func ollamaServeProcess(pid int) bool {
 	return ollamaServeArgs(strings.Fields(strings.TrimSpace(string(output))))
 }
 
-// reapServers kills external ollama serve processes except our own.
+// reapServers kills external xollama serve processes except our own.
 func reapServers() error {
 	// Get our own PID to avoid killing ourselves
 	currentPID := os.Getpid()
@@ -64,7 +64,7 @@ func reapServers() error {
 	// Use pkill to kill ollama processes
 	// -x matches the whole command name exactly
 	// We'll get the list first, then kill selectively
-	cmd := exec.Command("pgrep", "-x", "ollama")
+	cmd := exec.Command("pgrep", "-x", "xollama")
 	output, err := cmd.Output()
 	if err != nil {
 		// No ollama processes found

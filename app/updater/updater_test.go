@@ -30,14 +30,14 @@ func TestUpdateStagePathRejectsUnsafeFilename(t *testing.T) {
 		{"empty", ""},
 		{"dot", "."},
 		{"dotdot", ".."},
-		{"posix_parent", "../OllamaSetup.exe"},
-		{"windows_parent", `..\OllamaSetup.exe`},
-		{"posix_absolute_tmp", "/tmp/OllamaSetup.exe"},
-		{"darwin_absolute_app", "/Applications/Ollama.app"},
-		{"darwin_bundle_path", "Ollama.app/Contents/MacOS/Ollama"},
-		{"darwin_user_download", "~/Downloads/Ollama-darwin.zip"},
-		{"windows_absolute", `C:\Users\Public\OllamaSetup.exe`},
-		{"colon", "Ollama:Setup.exe"},
+		{"posix_parent", "../xOllamaSetup.exe"},
+		{"windows_parent", `..\xOllamaSetup.exe`},
+		{"posix_absolute_tmp", "/tmp/xOllamaSetup.exe"},
+		{"darwin_absolute_app", "/Applications/xOllama.app"},
+		{"darwin_bundle_path", "xOllama.app/Contents/MacOS/xOllama"},
+		{"darwin_user_download", "~/Downloads/xOllama-darwin.zip"},
+		{"windows_absolute", `C:\Users\Public\xOllamaSetup.exe`},
+		{"colon", "xOllama:Setup.exe"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if _, err := updateStagePath(stageDir, "etag", tt.filename); err == nil {
@@ -49,7 +49,7 @@ func TestUpdateStagePathRejectsUnsafeFilename(t *testing.T) {
 
 func TestUpdateStagePathHashesETag(t *testing.T) {
 	stageDir := t.TempDir()
-	stageFilename, err := updateStagePath(stageDir, `../escaped`, "OllamaSetup.exe")
+	stageFilename, err := updateStagePath(stageDir, `../escaped`, "xOllamaSetup.exe")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestDownloadNewReleaseRejectsUnsafeHeaderFilename(t *testing.T) {
 		VerifyDownload = oldVerifyDownload
 		UpdateDownloaded = oldUpdateDownloaded
 	}()
-	Installer = "OllamaSetup.exe"
+	Installer = "xOllamaSetup.exe"
 	UpdateDownloaded = false
 	VerifyDownload = func() error {
 		t.Fatal("verification should not run for rejected downloads")
@@ -116,7 +116,7 @@ func TestDownloadNewReleaseRejectsUnsafeHeaderFilename(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodHead {
 			w.Header().Set("ETag", `"safe"`)
-			w.Header().Set("Content-Disposition", `attachment; filename="../OllamaSetup.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="../xOllamaSetup.exe"`)
 			w.WriteHeader(http.StatusOK)
 			return
 		}
@@ -133,7 +133,7 @@ func TestDownloadNewReleaseRejectsUnsafeHeaderFilename(t *testing.T) {
 	if getAttempted.Load() {
 		t.Fatal("download should not continue after unsafe filename")
 	}
-	if _, err := os.Stat(filepath.Join(filepath.Dir(UpdateStageDir), "OllamaSetup.exe")); err == nil {
+	if _, err := os.Stat(filepath.Join(filepath.Dir(UpdateStageDir), "xOllamaSetup.exe")); err == nil {
 		t.Fatal("download escaped update stage dir")
 	}
 }
@@ -148,7 +148,7 @@ func TestDownloadNewReleaseDoesNotUseRawETagAsPathComponent(t *testing.T) {
 		VerifyDownload = oldVerifyDownload
 		UpdateDownloaded = oldUpdateDownloaded
 	}()
-	Installer = "OllamaSetup.exe"
+	Installer = "xOllamaSetup.exe"
 	UpdateDownloaded = false
 	VerifyDownload = func() error {
 		return nil
@@ -237,7 +237,7 @@ func TestBackgroundCheckerSkipsAlreadyStagedETagDownload(t *testing.T) {
 		UpdateCheckInterval = oldUpdateCheckInterval
 		UpdateCheckURLBase = oldUpdateCheckURLBase
 	}()
-	Installer = "OllamaSetup.exe"
+	Installer = "xOllamaSetup.exe"
 	UpdateDownloaded = false
 	UpdateCheckInitialDelay = time.Millisecond
 	UpdateCheckInterval = 5 * time.Millisecond
@@ -261,7 +261,7 @@ func TestBackgroundCheckerSkipsAlreadyStagedETagDownload(t *testing.T) {
 				fmt.Sprintf(`{"version": "9.9.9", "url": "%s"}`,
 					server.URL+"/9.9.9/"+Installer)))
 		case "/9.9.9/" + Installer:
-			w.Header().Set("Content-Disposition", `attachment; filename="OllamaSetup.exe"`)
+			w.Header().Set("Content-Disposition", `attachment; filename="xOllamaSetup.exe"`)
 			switch r.Method {
 			case http.MethodHead:
 				etag := headETag

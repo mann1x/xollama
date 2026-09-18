@@ -33,7 +33,7 @@ Remotes: `origin` = mann1x/xollama · `upstream` = ollama/ollama ·
 Go-only iteration against an existing native payload:
 
 ```sh
-go build .
+go build -o xollama .
 go run . serve
 go test ./server/... ./model/... ./thinking/... ./llm/...
 golangci-lint run

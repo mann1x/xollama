@@ -18,7 +18,7 @@ func TestVerifyDownloadRejectsUnsignedWindowsInstaller(t *testing.T) {
 
 	t.Setenv("LOCALAPPDATA", t.TempDir())
 	UpdateStageDir = t.TempDir()
-	bundle := filepath.Join(UpdateStageDir, "etag", "OllamaSetup.exe")
+	bundle := filepath.Join(UpdateStageDir, "etag", "xOllamaSetup.exe")
 	if err := os.MkdirAll(filepath.Dir(bundle), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -49,12 +49,12 @@ func TestDoUpgradeAtStartupRejectsUnsignedWindowsInstaller(t *testing.T) {
 	t.Setenv("LOCALAPPDATA", t.TempDir())
 	UpdateStageDir = t.TempDir()
 	runDir := t.TempDir()
-	runningInstaller = filepath.Join(runDir, "OllamaSetup.exe")
+	runningInstaller = filepath.Join(runDir, "xOllamaSetup.exe")
 	UpgradeLogFile = filepath.Join(runDir, "upgrade.log")
 	UpgradeMarkerFile = filepath.Join(runDir, "upgraded")
 	VerifyDownload = verifyDownload
 
-	bundle := filepath.Join(UpdateStageDir, "etag", "OllamaSetup.exe")
+	bundle := filepath.Join(UpdateStageDir, "etag", "xOllamaSetup.exe")
 	if err := os.MkdirAll(filepath.Dir(bundle), 0o755); err != nil {
 		t.Fatal(err)
 	}

@@ -3705,7 +3705,7 @@ func TestLaunchIntegration_ClaudeModelOverrideDeprecatedDeclineOpensPicker(t *te
 	}); err != nil {
 		t.Fatalf("LaunchIntegration returned error: %v", err)
 	}
-	for _, want := range []string{"llama3.2 does not work well with Claude Code", "best-cloud:cloud", "best-local", "ollama launch claude --model best-cloud:cloud"} {
+	for _, want := range []string{"llama3.2 does not work well with Claude Code", "best-cloud:cloud", "best-local", "xollama launch claude --model best-cloud:cloud"} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("prompt %q does not contain %q", prompt, want)
 		}
@@ -3906,10 +3906,10 @@ func TestLaunchIntegration_ModelOverrideDeprecatedSuggestsLocalWhenCloudDisabled
 	if err == nil {
 		t.Fatal("expected deprecated model override to fail")
 	}
-	if !strings.Contains(prompt, "ollama launch droid --model best-local") {
+	if !strings.Contains(prompt, "xollama launch droid --model best-local") {
 		t.Fatalf("expected local replacement command when cloud is disabled, got %q", prompt)
 	}
-	if strings.Contains(prompt, "ollama launch droid --model best-cloud:cloud") {
+	if strings.Contains(prompt, "xollama launch droid --model best-cloud:cloud") {
 		t.Fatalf("did not expect cloud replacement command when cloud is disabled, got %q", prompt)
 	}
 }
@@ -4008,7 +4008,7 @@ func TestLaunchIntegration_ModelOverrideHeadlessMissingFailsWithoutPrompt(t *tes
 	if err == nil {
 		t.Fatal("expected missing model to fail in headless mode")
 	}
-	if !strings.Contains(err.Error(), "ollama pull missing-model") {
+	if !strings.Contains(err.Error(), "xollama pull missing-model") {
 		t.Fatalf("expected actionable missing model error, got %v", err)
 	}
 	if confirmCalled {
@@ -4188,7 +4188,7 @@ func TestLaunchIntegration_HeadlessSelectorFlowFailsWithoutPrompt(t *testing.T) 
 	if err == nil {
 		t.Fatal("expected headless selector flow to fail on missing model")
 	}
-	if !strings.Contains(err.Error(), "ollama pull missing-model") {
+	if !strings.Contains(err.Error(), "xollama pull missing-model") {
 		t.Fatalf("expected actionable missing model error, got %v", err)
 	}
 	if confirmCalled {

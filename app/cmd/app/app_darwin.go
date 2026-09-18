@@ -45,7 +45,7 @@ import (
 
 var ollamaPath = func() string {
 	if updater.BundlePath != "" {
-		return filepath.Join(updater.BundlePath, "Contents", "Resources", "ollama")
+		return filepath.Join(updater.BundlePath, "Contents", "Resources", "xollama")
 	}
 
 	pwd, err := os.Getwd()
@@ -53,7 +53,7 @@ var ollamaPath = func() string {
 		slog.Warn("failed to get pwd", "error", err)
 		return ""
 	}
-	return filepath.Join(pwd, "ollama")
+	return filepath.Join(pwd, "xollama")
 }()
 
 type claudeProxyFailure uint8
@@ -79,7 +79,7 @@ type claudeDesktopController interface {
 var (
 	isApp              = updater.BundlePath != ""
 	appLogPath         = filepath.Join(os.Getenv("HOME"), ".ollama", "logs", "app.log")
-	launchAgentPath    = filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", "com.ollama.ollama.plist")
+	launchAgentPath    = filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", "com.mann1x.xollama.plist")
 	claudeAppProxy     *proxy.ClaudeDesktop
 	claudeProxyStartMu sync.Mutex
 	// Serialize default resets with connect, disconnect, and shutdown decisions.
@@ -484,7 +484,7 @@ func installSymlink() {
 	defer C.free(unsafe.Pointer(cliPath))
 
 	// Check the users path first
-	cmd, _ := exec.LookPath("ollama")
+	cmd, _ := exec.LookPath("xollama")
 	if cmd != "" {
 		resolved, err := os.Readlink(cmd)
 		if err == nil {

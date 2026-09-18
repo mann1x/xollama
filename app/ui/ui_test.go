@@ -180,7 +180,7 @@ func TestGetIntegrationStatuses(t *testing.T) {
 			t.Errorf("%s installed = %v, want %v", name, item.Installed, want)
 		}
 	}
-	if item, ok := byID["claude"]; !ok || item.Command != "ollama launch claude" {
+	if item, ok := byID["claude"]; !ok || item.Command != "xollama launch claude" {
 		t.Fatal("Claude Code should follow Claude Desktop with its launch command")
 	}
 	if _, ok := byID["chatgpt"]; ok {

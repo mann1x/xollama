@@ -5,15 +5,15 @@
     <key>CFBundleDisplayName</key>
     <string>Ollama</string>
     <key>CFBundleExecutable</key>
-    <string>Ollama</string>
+    <string>xOllama</string>
     <key>CFBundleIconFile</key>
     <string>icon.icns</string>
     <key>CFBundleIdentifier</key>
-    <string>com.electron.ollama</string>
+    <string>com.mann1x.xollama</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Ollama</string>
+    <string>xOllama</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

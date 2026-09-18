@@ -121,13 +121,13 @@ func ensureMLXLibraryPath(t *testing.T) {
 	}
 }
 
-// runOllamaCreate runs "ollama create" as a subprocess.
+// runOllamaCreate runs "xollama create" as a subprocess.
 func runOllamaCreate(ctx context.Context, t *testing.T, args ...string) {
 	t.Helper()
 	runOllamaCreateWithEnv(ctx, t, nil, args...)
 }
 
-// runOllamaCreateWithEnv runs "ollama create" as a subprocess with extra
+// runOllamaCreateWithEnv runs "xollama create" as a subprocess with extra
 // environment variables layered over the test process environment.
 func runOllamaCreateWithEnv(ctx context.Context, t *testing.T, env []string, args ...string) {
 	t.Helper()
@@ -136,7 +136,7 @@ func runOllamaCreateWithEnv(ctx context.Context, t *testing.T, env []string, arg
 	createCmd.Stdout = os.Stdout
 	createCmd.Stderr = os.Stderr
 	if err := createCmd.Run(); err != nil {
-		t.Fatalf("ollama create failed: %v", err)
+		t.Fatalf("xollama create failed: %v", err)
 	}
 }
 
@@ -320,7 +320,7 @@ func runCreateGGUF(t *testing.T) {
 	assertCoherentOutput(t, text)
 }
 
-// runCreateGGUFBlobTransfer checks how "ollama create" gets a local GGUF into
+// runCreateGGUFBlobTransfer checks how "xollama create" gets a local GGUF into
 // the server's blob store: written directly when the CLI and server share a
 // models directory, uploaded over HTTP when they do not or when
 // OLLAMA_CREATE_REMOTE is set. The harness-started server's request log is

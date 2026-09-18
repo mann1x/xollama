@@ -26,7 +26,7 @@ const (
 	claudeDesktopProbeTimeout    = 2 * time.Second
 	claudeDesktopModelLabel      = "Default Ollama model"
 	claudeDesktopSuccessMessage  = "Claude Desktop profile changed to Ollama."
-	claudeDesktopRestoreMessage  = "To restore the usual Claude profile, run: ollama launch claude-desktop --restore"
+	claudeDesktopRestoreMessage  = "To restore the usual Claude profile, run: xollama launch claude-desktop --restore"
 	claudeDesktopRestoredMessage = "Claude Desktop restored to the usual Claude profile."
 )
 
@@ -1101,7 +1101,7 @@ func defaultClaudeDesktopOpenApp() error {
 		if path := claudeDesktopRunningAppPath(); path != "" {
 			return claudeDesktopOpenAppPath(path)
 		}
-		return errors.New("Claude Desktop executable was not found; open Claude Desktop manually once and re-run 'ollama launch claude-desktop --restore'")
+		return errors.New("Claude Desktop executable was not found; open Claude Desktop manually once and re-run 'xollama launch claude-desktop --restore'")
 	case "darwin":
 		path := claudeDesktopAppPath()
 		if path == "" {

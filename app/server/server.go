@@ -24,7 +24,7 @@ import (
 
 const restartDelay = time.Second
 
-// Server is a managed ollama server process
+// Server is a managed xollama server process
 type Server struct {
 	store *store.Store
 	bin   string // resolved path to `ollama`
@@ -47,7 +47,7 @@ type InferenceInfo struct {
 }
 
 func New(s *store.Store, devMode bool) *Server {
-	p := resolvePath("ollama")
+	p := resolvePath("xollama")
 	return &Server{store: s, bin: p, dev: devMode}
 }
 
@@ -89,7 +89,7 @@ func ollamaServeArgs(args []string) bool {
 	}
 
 	switch strings.Trim(filepath.Base(args[0]), `"`) {
-	case "ollama", "ollama.exe":
+	case "xollama", "xollama.exe":
 	default:
 		return false
 	}
@@ -215,7 +215,7 @@ func (s *Server) Run(ctx context.Context) error {
 				reaped = true
 				// This could be a port conflict, try to kill any existing ollama processes
 				if err := reapServers(); err != nil {
-					slog.Warn("failed to stop existing ollama server", "err", err)
+					slog.Warn("failed to stop existing xollama server", "err", err)
 				} else {
 					slog.Debug("conflicting server stopped, waiting for port to be released")
 					continue

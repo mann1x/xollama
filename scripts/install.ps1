@@ -1,41 +1,41 @@
 <#
 .SYNOPSIS
-    Install, upgrade, or uninstall Ollama on Windows.
+    Install, upgrade, or uninstall xOllama on Windows.
 
 .DESCRIPTION
-    Downloads and installs Ollama.
+    Downloads and installs xOllama.
 
     Quick install:
 
-        irm https://ollama.com/install.ps1 | iex
+        irm https://raw.githubusercontent.com/mann1x/xollama/main/scripts/install.ps1 | iex
 
     Specific version:
 
-        $env:OLLAMA_VERSION="0.5.7"; irm https://ollama.com/install.ps1 | iex
+        $env:XOLLAMA_VERSION="0.34.2"; irm https://raw.githubusercontent.com/mann1x/xollama/main/scripts/install.ps1 | iex
 
     Custom install directory:
 
-        $env:OLLAMA_INSTALL_DIR="D:\Ollama"; irm https://ollama.com/install.ps1 | iex
+        $env:XOLLAMA_INSTALL_DIR="D:\xOllama"; irm https://raw.githubusercontent.com/mann1x/xollama/main/scripts/install.ps1 | iex
 
     Uninstall:
 
-        $env:OLLAMA_UNINSTALL=1; irm https://ollama.com/install.ps1 | iex
+        $env:XOLLAMA_UNINSTALL=1; irm https://raw.githubusercontent.com/mann1x/xollama/main/scripts/install.ps1 | iex
 
     Environment variables:
 
         OLLAMA_VERSION       Target version (default: latest stable)
         OLLAMA_INSTALL_DIR   Custom install directory
-        OLLAMA_UNINSTALL     Set to 1 to uninstall Ollama
+        XOLLAMA_UNINSTALL    Set to 1 to uninstall xOllama
         OLLAMA_DEBUG         Enable verbose output
 
 .EXAMPLE
-    irm https://ollama.com/install.ps1 | iex
+    irm https://raw.githubusercontent.com/mann1x/xollama/main/scripts/install.ps1 | iex
 
 .EXAMPLE
-    $env:OLLAMA_VERSION = "0.5.7"; irm https://ollama.com/install.ps1 | iex
+    $env:XOLLAMA_VERSION = "0.34.2"; irm https://raw.githubusercontent.com/mann1x/xollama/main/scripts/install.ps1 | iex
 
 .LINK
-    https://ollama.com
+    https://github.com/mann1x/xollama
 #>
 
 $ErrorActionPreference = "Stop"
@@ -45,18 +45,34 @@ $ProgressPreference = "SilentlyContinue"
 # Configuration from environment variables
 # --------------------------------------------------------------------------
 
-$Version      = if ($env:OLLAMA_VERSION) { $env:OLLAMA_VERSION } else { "" }
-$InstallDir   = if ($env:OLLAMA_INSTALL_DIR) { $env:OLLAMA_INSTALL_DIR } else { "" }
-$Uninstall    = $env:OLLAMA_UNINSTALL -eq "1"
-$DebugInstall = [bool]$env:OLLAMA_DEBUG
+$Version      = if ($env:XOLLAMA_VERSION) { $env:XOLLAMA_VERSION } elseif ($env:OLLAMA_VERSION) { $env:OLLAMA_VERSION } else { "" }
+$InstallDir   = if ($env:XOLLAMA_INSTALL_DIR) { $env:XOLLAMA_INSTALL_DIR } elseif ($env:OLLAMA_INSTALL_DIR) { $env:OLLAMA_INSTALL_DIR } else { "" }
+$Uninstall    = ($env:XOLLAMA_UNINSTALL -eq "1") -or ($env:OLLAMA_UNINSTALL -eq "1")
+$DebugInstall = [bool]($env:XOLLAMA_DEBUG) -or [bool]($env:OLLAMA_DEBUG)
 
 # --------------------------------------------------------------------------
 # Constants
 # --------------------------------------------------------------------------
 
-# OLLAMA_DOWNLOAD_URL for developer testing only
-$DownloadBaseURL = if ($env:OLLAMA_DOWNLOAD_URL) { $env:OLLAMA_DOWNLOAD_URL.TrimEnd('/') } else { "https://ollama.com/download" }
-$InnoSetupUninstallGuid = "{44E83376-CE68-45EB-8FC1-393500EB558C}_is1"
+# XOLLAMA_DOWNLOAD_URL for developer testing only. The default is this fork's
+# GitHub releases: ollama.com/download serves UPSTREAM ollama, so pointing here
+# is what stops the script installing stock ollama under our name.
+$ReleasesURL = "https://github.com/mann1x/xollama/releases"
+$DownloadBaseURL = if ($env:XOLLAMA_DOWNLOAD_URL) { $env:XOLLAMA_DOWNLOAD_URL.TrimEnd('/') }
+                   elseif ($env:OLLAMA_DOWNLOAD_URL) { $env:OLLAMA_DOWNLOAD_URL.TrimEnd('/') }
+                   elseif ($Version) { "$ReleasesURL/download/v$($Version.TrimStart('v'))" }
+                   else { "$ReleasesURL/latest/download" }
+
+# MUST be xollama's own AppId, not upstream's. This GUID is what the script
+# looks up to find an existing install and to uninstall it -- pointed at
+# upstream's key, `XOLLAMA_UNINSTALL=1` would uninstall the user's real Ollama.
+# It is also what stops `winget upgrade` replacing xollama with stock ollama.
+$InnoSetupUninstallGuid = "{F6F806B4-09B2-43BA-8413-B1D52561CA60}_is1"
+
+# Authenticode signer to require, e.g. "O=Example Ltd.". Empty means this fork
+# publishes unsigned builds, and integrity is established by the SHA256 in the
+# release's sha256sum.txt instead -- see Test-Installer.
+$ExpectedSigner = if ($env:XOLLAMA_EXPECTED_SIGNER) { $env:XOLLAMA_EXPECTED_SIGNER } else { "" }
 
 # --------------------------------------------------------------------------
 # Helpers
@@ -72,24 +88,59 @@ function Write-Step {
     if ($DebugInstall) { Write-Host ">>> $Message" -ForegroundColor Cyan }
 }
 
-function Test-Signature {
-    param([string]$FilePath)
+function Test-Installer {
+    param([string]$FilePath, [string]$FileName)
 
-    $sig = Get-AuthenticodeSignature -FilePath $FilePath
-    if ($sig.Status -ne "Valid") {
-        Write-Status "  Signature status: $($sig.Status)"
+    # Upstream required an Authenticode signature by "O=Ollama Inc." and threw
+    # otherwise. This fork is not signed by Ollama Inc. and must not pretend to
+    # be, so that check cannot simply be retargeted -- and dropping it outright
+    # would install whatever the network handed us.
+    #
+    # If a signer is pinned (XOLLAMA_EXPECTED_SIGNER), require it. Otherwise
+    # verify the download against the SHA256 published with the release, which
+    # is the integrity story an unsigned GitHub release actually has. Either
+    # way a failure is fatal at the call site.
+    if ($ExpectedSigner) {
+        $sig = Get-AuthenticodeSignature -FilePath $FilePath
+        if ($sig.Status -ne "Valid") {
+            Write-Status "  Signature status: $($sig.Status)"
+            return $false
+        }
+        $subject = $sig.SignerCertificate.Subject
+        if ($subject -notmatch [regex]::Escape($ExpectedSigner)) {
+            Write-Status "  Unexpected signer: $subject (wanted $ExpectedSigner)"
+            return $false
+        }
+        Write-Status "  Signature valid: $subject"
+        return $true
+    }
+
+    $sumsUrl = "$DownloadBaseURL/sha256sum.txt"
+    try {
+        $sums = (Invoke-WebRequest -UseBasicParsing -Uri $sumsUrl).Content
+    } catch {
+        Write-Status "  Could not fetch $sumsUrl : $_"
         return $false
     }
 
-    # Verify it's signed by Ollama Inc. (check exact organization name)
-    # Anchor with comma/boundary to prevent "O=Not Ollama Inc." from matching
-    $subject = $sig.SignerCertificate.Subject
-    if ($subject -notmatch "(^|, )O=Ollama Inc\.(,|$)") {
-        Write-Status "  Unexpected signer: $subject"
+    $actual = (Get-FileHash -Path $FilePath -Algorithm SHA256).Hash.ToLower()
+    $expected = $null
+    foreach ($line in ($sums -split "`n")) {
+        $parts = $line.Trim() -split '\s+', 2
+        if ($parts.Count -eq 2 -and (Split-Path -Leaf $parts[1].Trim()) -eq $FileName) {
+            $expected = $parts[0].Trim().ToLower()
+            break
+        }
+    }
+    if (-not $expected) {
+        Write-Status "  $FileName is not listed in sha256sum.txt"
         return $false
     }
-
-    Write-Status "  Signature valid: $subject"
+    if ($actual -ne $expected) {
+        Write-Status "  SHA256 mismatch: got $actual, expected $expected"
+        return $false
+    }
+    Write-Status "  SHA256 verified: $actual"
     return $true
 }
 
@@ -115,7 +166,7 @@ function Update-SessionPath {
     if ($InstallDir) {
         $ollamaDir = $InstallDir
     } else {
-        $ollamaDir = Join-Path $env:LOCALAPPDATA "Programs\Ollama"
+        $ollamaDir = Join-Path $env:LOCALAPPDATA "Programs\xOllama"
     }
 
     # Add to PATH if not already present
@@ -204,11 +255,11 @@ function Invoke-Download {
 # --------------------------------------------------------------------------
 
 function Invoke-Uninstall {
-    Write-Step "Uninstalling Ollama"
+    Write-Step "Uninstalling xOllama"
 
     $regKey = Find-InnoSetupInstall
     if (-not $regKey) {
-        Write-Host ">>> Ollama is not installed."
+        Write-Host ">>> xOllama is not installed."
         return
     }
 
@@ -235,7 +286,7 @@ function Invoke-Uninstall {
     if (Find-InnoSetupInstall) {
         Write-Warning "Uninstall may not have completed"
     } else {
-        Write-Host ">>> Ollama has been uninstalled."
+        Write-Host ">>> xOllama has been uninstalled."
     }
 }
 
@@ -244,27 +295,24 @@ function Invoke-Uninstall {
 # --------------------------------------------------------------------------
 
 function Invoke-Install {
-    # Determine installer URL
-    if ($Version) {
-        $installerUrl = "$DownloadBaseURL/OllamaSetup.exe?version=$Version"
-    } else {
-        $installerUrl = "$DownloadBaseURL/OllamaSetup.exe"
-    }
+    # The version, when pinned, is already encoded in $DownloadBaseURL as a
+    # GitHub release path, so there is nothing left to branch on here.
+    $installerUrl = "$DownloadBaseURL/xOllamaSetup.exe"
 
     # Download installer
-    Write-Step "Downloading Ollama"
+    Write-Step "Downloading xOllama"
     if (-not $DebugInstall) {
-        Write-Host ">>> Downloading Ollama for Windows..."
+        Write-Host ">>> Downloading xOllama for Windows..."
     }
 
-    $tempInstaller = Join-Path $env:TEMP "OllamaSetup.exe"
+    $tempInstaller = Join-Path $env:TEMP "xOllamaSetup.exe"
     Invoke-Download -Url $installerUrl -OutFile $tempInstaller
 
     # Verify signature
     Write-Step "Verifying signature"
-    if (-not (Test-Signature -FilePath $tempInstaller)) {
+    if (-not (Test-Installer -FilePath $tempInstaller -FileName "xOllamaSetup.exe")) {
         Remove-Item $tempInstaller -Force -ErrorAction SilentlyContinue
-        throw "Installer signature verification failed"
+        throw "Installer verification failed"
     }
 
     # Build installer arguments
@@ -275,7 +323,7 @@ function Invoke-Install {
     Write-Status "  Installer args: $installerArgs"
 
     # Run installer
-    Write-Step "Installing Ollama"
+    Write-Step "Installing xOllama"
     if (-not $DebugInstall) {
         Write-Host ">>> Installing Ollama..."
     }

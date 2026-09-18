@@ -1,26 +1,26 @@
-; Inno Setup Installer for Ollama
+; Inno Setup Installer for xOllama
 ;
 ; To build the installer use the build script invoked from the top of the source tree
 ; 
 ; powershell -ExecutionPolicy Bypass -File .\scripts\build_windows.ps
 
 
-#define MyAppName "Ollama"
+#define MyAppName "xOllama"
 #if GetEnv("PKG_VERSION") != ""
   #define MyAppVersion GetEnv("PKG_VERSION")
 #else
   #define MyAppVersion "0.0.0"
 #endif
-#define MyAppPublisher "Ollama"
-#define MyAppURL "https://ollama.com/"
-#define MyAppExeName "ollama app.exe"
+#define MyAppPublisher "ManniX"
+#define MyAppURL "https://github.com/mann1x/xollama"
+#define MyAppExeName "xOllama app.exe"
 #define LlamaServerExeName "llama-server.exe"
 #define MyIcon ".\assets\app.ico"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
 ; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
-AppId={{44E83376-CE68-45EB-8FC1-393500EB558C}
+AppId={{F6F806B4-09B2-43BA-8413-B1D52561CA60}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 VersionInfoVersion={#MyAppVersion}
@@ -35,7 +35,7 @@ DefaultDirName={localappdata}\Programs\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
-OutputBaseFilename="OllamaSetup"
+OutputBaseFilename="xOllamaSetup"
 SetupIconFile={#MyIcon}
 UninstallDisplayIcon={uninstallexe}
 Compression=lzma2/ultra64
@@ -56,7 +56,7 @@ RestartIfNeededByRun=no
 ; https://jrsoftware.org/ishelp/index.php?topic=setup_wizardimagefile
 WizardSmallImageFile=.\assets\setup.bmp
 
-; Ollama requires Windows 10 22H2 or newer for proper unicode rendering
+; xOllama requires Windows 10 22H2 or newer for proper unicode rendering
 ; TODO: consider setting this to 10.0.19045
 MinVersion=10.0.10240
 
@@ -80,7 +80,7 @@ SignTool=MySignTool
 SignedUninstaller=yes
 #endif
 
-SetupMutex=OllamaSetupMutex
+SetupMutex=xOllamaSetupMutex
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -89,9 +89,9 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 DialogFontSize=12
 
 [Files]
-#if FileExists("..\dist\windows-ollama-app-amd64.exe")
-Source: "..\dist\windows-ollama-app-amd64.exe"; DestDir: "{app}"; DestName: "{#MyAppExeName}" ;Check: not IsArm64();  Flags: ignoreversion 64bit; BeforeInstall: TaskKill('{#MyAppExeName}')
-Source: "..\dist\windows-amd64\ollama.exe"; DestDir: "{app}"; Check: not IsArm64(); Flags: ignoreversion 64bit; BeforeInstall: TaskKill('ollama.exe')
+#if FileExists("..\dist\windows-xollama-app-amd64.exe")
+Source: "..\dist\windows-xollama-app-amd64.exe"; DestDir: "{app}"; DestName: "{#MyAppExeName}" ;Check: not IsArm64();  Flags: ignoreversion 64bit; BeforeInstall: TaskKill('{#MyAppExeName}')
+Source: "..\dist\windows-amd64\xollama.exe"; DestDir: "{app}"; Check: not IsArm64(); Flags: ignoreversion 64bit; BeforeInstall: TaskKill('xollama.exe')
 ; cuda_v12 is excluded and shipped as the separate legacy add-on zip. It is ~1.1 GB
 ; and only serves compute 5.x/6.x/7.0 cards (Maxwell, Pascal, Volta); cuda_v13 and
 ; opencoti-llamafile both floor at 7.5. Keeping it out is what holds this installer
@@ -100,14 +100,14 @@ Source: "..\dist\windows-amd64\lib\ollama\*"; Excludes: "\mlx_*\*,\cuda_v12\*"; 
 #endif
 
 ; For local development, rely on binary compatibility at runtime since we can't cross compile
-#if FileExists("..\dist\windows-ollama-app-arm64.exe")
-Source: "..\dist\windows-ollama-app-arm64.exe"; DestDir: "{app}"; DestName: "{#MyAppExeName}" ;Check: IsArm64();  Flags: ignoreversion 64bit; BeforeInstall: TaskKill('{#MyAppExeName}')
+#if FileExists("..\dist\windows-xollama-app-arm64.exe")
+Source: "..\dist\windows-xollama-app-arm64.exe"; DestDir: "{app}"; DestName: "{#MyAppExeName}" ;Check: IsArm64();  Flags: ignoreversion 64bit; BeforeInstall: TaskKill('{#MyAppExeName}')
 #else 
-Source: "..\dist\windows-ollama-app-amd64.exe"; DestDir: "{app}"; DestName: "{#MyAppExeName}" ;Check: IsArm64();  Flags: ignoreversion 64bit; BeforeInstall: TaskKill('{#MyAppExeName}')
+Source: "..\dist\windows-xollama-app-amd64.exe"; DestDir: "{app}"; DestName: "{#MyAppExeName}" ;Check: IsArm64();  Flags: ignoreversion 64bit; BeforeInstall: TaskKill('{#MyAppExeName}')
 #endif
 
-#if FileExists("..\dist\windows-arm64\ollama.exe")
-Source: "..\dist\windows-arm64\ollama.exe"; DestDir: "{app}"; Check: IsArm64(); Flags: ignoreversion 64bit; BeforeInstall: TaskKill('ollama.exe')
+#if FileExists("..\dist\windows-arm64\xollama.exe")
+Source: "..\dist\windows-arm64\xollama.exe"; DestDir: "{app}"; Check: IsArm64(); Flags: ignoreversion 64bit; BeforeInstall: TaskKill('xollama.exe')
 #endif
 #if DirExists("..\dist\windows-arm64\lib\ollama")
 Source: "..\dist\windows-arm64\lib\ollama\*"; DestDir: "{app}\lib\ollama\"; Check: IsArm64(); Flags: ignoreversion 64bit recursesubdirs
@@ -121,35 +121,36 @@ Name: "{app}\lib\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename:
 Name: "{userprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\app.ico"
 
 [InstallDelete]
-Type: files; Name: "{%LOCALAPPDATA}\Ollama\updates"
+Type: files; Name: "{%LOCALAPPDATA}\xOllama\updates"
 
 [Run]
 Filename: "{cmd}"; Parameters: "/C set PATH={app};%PATH% & ""{app}\{#MyAppExeName}"""; Flags: postinstall nowait runhidden
 
 [UninstallRun]
 ; Filename: "{cmd}"; Parameters: "/C ""taskkill /im ''{#MyAppExeName}'' /f /t"; Flags: runhidden
-; Filename: "{cmd}"; Parameters: "/C ""taskkill /im ollama.exe /f /t"; Flags: runhidden
+; Filename: "{cmd}"; Parameters: "/C ""taskkill /im xollama.exe /f /t"; Flags: runhidden
 Filename: "taskkill"; Parameters: "/im ""{#MyAppExeName}"" /f /t"; Flags: runhidden
-Filename: "taskkill"; Parameters: "/im ""ollama.exe"" /f /t"; Flags: runhidden
+Filename: "taskkill"; Parameters: "/im ""xollama.exe"" /f /t"; Flags: runhidden
 Filename: "taskkill"; Parameters: "/im ""{#LlamaServerExeName}"" /f /t"; Flags: runhidden
 ; HACK!  need to give the server and app enough time to exit
 ; TODO - convert this to a Pascal code script so it waits until they're no longer running, then completes
 Filename: "{cmd}"; Parameters: "/c timeout 5"; Flags: runhidden
 
 [UninstallDelete]
-Type: filesandordirs; Name: "{%TEMP}\ollama*"
-Type: filesandordirs; Name: "{%LOCALAPPDATA}\Ollama"
-Type: filesandordirs; Name: "{%LOCALAPPDATA}\Programs\Ollama"
-Type: filesandordirs; Name: "{%USERPROFILE}\.ollama\history"
+Type: filesandordirs; Name: "{%TEMP}\xollama*"
+Type: filesandordirs; Name: "{%LOCALAPPDATA}\xOllama"
+Type: filesandordirs; Name: "{%LOCALAPPDATA}\Programs\xOllama"
+; NOTE: ~/.ollama is shared with a stock ollama install, which xollama is
+; designed to sit beside, so uninstalling xollama must not delete it.
 Type: filesandordirs; Name: "{userstartup}\{#MyAppName}.lnk"
 ; NOTE: if the user has a custom OLLAMA_MODELS it will be preserved
 
 [InstallDelete]
-Type: filesandordirs; Name: "{%TEMP}\ollama*"
+Type: filesandordirs; Name: "{%TEMP}\xollama*"
 Type: filesandordirs; Name: "{app}\lib\ollama"
 
 [Messages]
-WizardReady=Ollama
+WizardReady=xOllama
 ReadyLabel1=%nLet's get you up and running with your own large language models.
 SetupAppRunningError=Another Ollama installer is running.%n%nPlease cancel or finish the other installer, then click OK to continue with this install, or Cancel to exit.
 
