@@ -1,6 +1,8 @@
 # Feature — the opencoti-llamafile engine
 
-> Status: **planned**. Nothing in this document is implemented yet.
+> Status: **Phase 1 shipped** (routing, adapter, hook) — 2026-09-18.
+> Not yet: the artifact downloader, and Phase 2's knobs. An artifact has to be
+> placed by hand for now; see "Getting the binary".
 
 ## Why this is cheap
 
@@ -139,10 +141,27 @@ byte-identical to upstream, which is what makes the A/B honest.
 
 The opencoti repo is private; the engine is published on Hugging Face at
 `ManniX-ITA/opencoti-llamafile`, and the artifacts are 0.7–2 GB — too big to
-vendor in git and not ours to relicense. So: **download on demand, verify
-against `SHA256SUMS.composite`, cache in the ollama data dir.** Mismatch is a
-hard error, never a silent fallback. A pre-placed binary is honoured and not
-re-downloaded.
+vendor in git and not ours to relicense.
+
+**Implemented today: discovery of a pre-placed artifact.** `engine.Find` looks
+at `XOLLAMA_ENGINE_PATH` first — set, it is used as given, and a missing file is
+an error rather than a reason to keep looking, because silently ignoring an
+explicit path is how you debug the wrong binary. Otherwise it takes the newest
+`opencoti-llamafile-*.llamafile`/`.exe` across, in order:
+
+```
+~/.ollama/engines/
+<ml.LibOllamaPath>/engines/
+<ml.LibOllamaPath>/
+```
+
+Newest by mtime, not by version string: `0.10.5-c7` does not order under any
+stock comparison and a wrong guess silently picks an older engine.
+
+**Not implemented: the downloader.** The intent is unchanged — fetch on demand,
+verify against `SHA256SUMS.composite`, cache in the ollama data dir, and treat a
+mismatch as a hard error rather than a silent fallback. Until it exists, place
+the artifact in one of the directories above.
 
 ## Phases
 
@@ -151,9 +170,26 @@ re-downloaded.
   the argv is accepted whole, the ollama blob loads directly, all four log
   scrapers match, VRAM accounting is exact, and the whole API surface
   (including `/tokenize`) is live.
-- **Phase 1 — pure replacement.** `llm/engine/` + the one hook + the
-  downloader. No new knobs, no API change. Success is: same model, same
-  prompt, both engines, comparable output and no scheduler misfit.
+- **Phase 1 — pure replacement. SHIPPED 2026-09-18** (minus the downloader).
+  `llm/engine/` — `policy.go` (the matrix, as data, with a test), `resolve.go`
+  (`XOLLAMA_ENGINE` + policy → decision), `opencoti.go` (discovery, argv
+  translation, APE launch) — plus the single `engine-select` hook in
+  `startLlamaServer`.
+
+  Verified on solidPC against a real load of `qwen3:4b`:
+
+  | run | result |
+  |---|---|
+  | `XOLLAMA_ENGINE=llamacpp` | `using stock llama-server`, stock binary spawned, generate ok |
+  | `XOLLAMA_ENGINE=opencoti` | `using opencoti-llamafile`, launched `sh <artifact> --server …`, generate ok |
+  | unset (auto) | `opencoti-llamafile is tested on linux/amd64 with CUDA` → opencoti |
+  | no artifact installed | falls back to stock, load still succeeds |
+
+  The memory-parser fix this phase depended on is in: a component that starts a
+  new block of buffer-size lines drops what it said last time, so opencoti's
+  converging rolling-KV sizing no longer leaves a phantom 2.4 GB host
+  allocation in `memTotal`. Both engines now account identically
+  (`TestMemoryParsingRevisedAllocationSupersedesWholeBlock`).
 - **Phase 2 — expose the engine.** Only now the unique features: PolyKV
   pools, rolling-KV window, DCA long context, MTP speculative decode, RYS
   layer duplication. Each one gets its own `docs/features/` note, a

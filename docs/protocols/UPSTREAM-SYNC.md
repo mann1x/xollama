@@ -121,4 +121,4 @@ Add the row in the same commit as the hook.
 
 | Hook ID | File | Feature | Plan |
 |---|---|---|---|
-| _(none yet — scaffolding only)_ | | | |
+| `engine-select` | `llm/llama_server.go` — in `startLlamaServer`, immediately before `exec.Command`: `engine.Launch(exe, params, engineBackends(launch.gpus), ml.LibOllamaPath)`, plus the `llm/engine` import and the `engineBackends` helper just above `startLlamaServer`. Returns `(exe, params)` unchanged for llama.cpp, so the off path is byte-identical. | Engine — opencoti-llamafile | [features/engine-opencoti-llamafile.md](../features/engine-opencoti-llamafile.md) |

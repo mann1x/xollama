@@ -4154,3 +4154,89 @@ func TestLlamaServerChatMessageCarriesThinking(t *testing.T) {
 		t.Fatalf("reasoning_content present on a message with no thinking: %#v", plain)
 	}
 }
+
+// TestMemoryParsingRevisedAllocationSupersedesWholeBlock pins the behaviour a
+// per-key overwrite alone does not give: when an engine revises an allocation
+// plan and re-logs FEWER devices than before, the devices it dropped must not
+// keep contributing to the total.
+//
+// The lines are taken verbatim from a real boot of each engine on the same
+// model (qwen3:4b Q4_K_M, RTX 3090) with the identical argv ollama builds —
+// see docs/evaluations/phase0-engine-compat.md. opencoti-llamafile's rolling-KV
+// sizing converges over two passes: the first splits the KV cache across CUDA0
+// and CUDA_Host, and every later pass keeps it entirely on CUDA0 and therefore
+// logs only CUDA0. The abandoned CUDA_Host line is never superseded.
+//
+// Both engines end in the same place, so both must account the same.
+func TestMemoryParsingRevisedAllocationSupersedesWholeBlock(t *testing.T) {
+	stock := []string{
+		"load_tensors:   CPU_Mapped model buffer size =   304.28 MiB\n",
+		"load_tensors:        CUDA0 model buffer size =  2375.91 MiB\n",
+		"llama_context:  CUDA_Host  output buffer size =     0.58 MiB\n",
+		"llama_kv_cache:      CUDA0 KV buffer size =  2448.00 MiB\n",
+		"sched_reserve:      CUDA0 compute buffer size =   244.10 MiB\n",
+		"sched_reserve:  CUDA_Host compute buffer size =    84.10 MiB\n",
+	}
+
+	// Same load, but the resident window is sized three times before it settles.
+	opencoti := []string{
+		"load_tensors:   CPU_Mapped model buffer size =   304.28 MiB\n",
+		"load_tensors:        CUDA0 model buffer size =  2375.91 MiB\n",
+		"llama_context:  CUDA_Host  output buffer size =     0.58 MiB\n",
+		"llama_kv_cache:      CUDA0 KV buffer size =    19.20 MiB\n",
+		"llama_kv_cache:  CUDA_Host KV buffer size =  2428.95 MiB\n",
+		"sched_reserve:      CUDA0 compute buffer size =   379.56 MiB\n",
+		"sched_reserve:  CUDA_Host compute buffer size =    84.10 MiB\n",
+		"llama_kv_cache:      CUDA0 KV buffer size =  2448.00 MiB\n",
+		"sched_reserve:      CUDA0 compute buffer size =   244.10 MiB\n",
+		"sched_reserve:  CUDA_Host compute buffer size =    84.10 MiB\n",
+		"llama_kv_cache:      CUDA0 KV buffer size =  2448.00 MiB\n",
+		"sched_reserve:      CUDA0 compute buffer size =   244.10 MiB\n",
+		"sched_reserve:  CUDA_Host compute buffer size =    84.10 MiB\n",
+	}
+
+	// 304.28 + 2375.91 + 0.58 + 2448.00 + 244.10 + 84.10
+	wantTotalMiB := 5456.97
+	// 2375.91 + 2448.00 + 244.10 — CUDA_Host is not VRAM (isGPUBuffer)
+	wantGPUMiB := 5068.01
+
+	parse := func(lines []string) (total, gpu uint64) {
+		runner := &llamaServerRunner{vramByDevice: make(map[string]uint64)}
+		w := &memoryParsingWriter{inner: io.Discard, runner: runner}
+		for _, line := range lines {
+			w.Write([]byte(line))
+		}
+		return runner.memTotal, runner.memGPU
+	}
+
+	withinKiB := func(got, want uint64) bool {
+		if got > want {
+			return got-want <= 1024
+		}
+		return want-got <= 1024
+	}
+
+	wantTotal := uint64(wantTotalMiB * 1024 * 1024)
+	wantGPU := uint64(wantGPUMiB * 1024 * 1024)
+
+	stockTotal, stockGPU := parse(stock)
+	if !withinKiB(stockTotal, wantTotal) {
+		t.Errorf("stock memTotal = %d, want %d", stockTotal, wantTotal)
+	}
+	if !withinKiB(stockGPU, wantGPU) {
+		t.Errorf("stock memGPU = %d, want %d", stockGPU, wantGPU)
+	}
+
+	ocTotal, ocGPU := parse(opencoti)
+	if !withinKiB(ocTotal, wantTotal) {
+		t.Errorf("opencoti memTotal = %d, want %d (a superseded buffer is still counted)", ocTotal, wantTotal)
+	}
+	if !withinKiB(ocGPU, wantGPU) {
+		t.Errorf("opencoti memGPU = %d, want %d", ocGPU, wantGPU)
+	}
+
+	if !withinKiB(ocTotal, stockTotal) || !withinKiB(ocGPU, stockGPU) {
+		t.Errorf("engines disagree: opencoti total/gpu = %d/%d, stock = %d/%d",
+			ocTotal, ocGPU, stockTotal, stockGPU)
+	}
+}

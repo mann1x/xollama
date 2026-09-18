@@ -46,6 +46,7 @@ import (
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/envconfig"
 	"github.com/ollama/ollama/fs/gguf"
+	"github.com/ollama/ollama/llm/engine"
 	"github.com/ollama/ollama/ml"
 )
 
@@ -345,6 +346,20 @@ func FindLlamaServer() (string, error) {
 	return path, nil
 }
 
+// engineBackends is the distinct backend of every device this load will use,
+// in the order ollama selected them, for the engine routing policy. An empty
+// result means a CPU-only load.
+func engineBackends(gpus []ml.DeviceInfo) []engine.Backend {
+	backends := make([]engine.Backend, 0, len(gpus))
+	for _, g := range gpus {
+		b := engine.Backend(g.Library)
+		if !slices.Contains(backends, b) {
+			backends = append(backends, b)
+		}
+	}
+	return backends
+}
+
 // startLlamaServer spawns the upstream llama-server process with appropriate CLI flags.
 func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.Cmd, port int, err error) {
 	exe, err := FindLlamaServer()
@@ -420,8 +435,14 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 
 	params = appendContextShiftArgs(params, launch.opts, launch.config.ContextShift)
 
+	// xollama-hook: engine-select — see docs/features/engine-opencoti-llamafile.md
+	// Resolves which engine serves this load. Returns (exe, params) unchanged
+	// whenever the answer is llama.cpp, which is what keeps the off path
+	// byte-identical to upstream.
+	name, args := engine.Launch(exe, params, engineBackends(launch.gpus), ml.LibOllamaPath)
+
 	// Set up library paths for GPU backend discovery
-	cmd = exec.Command(exe, params...)
+	cmd = exec.Command(name, args...)
 
 	if out != nil {
 		// os/exec serializes Write calls when stdout and stderr share a writer.
@@ -2832,6 +2853,12 @@ type memoryParsingWriter struct {
 	inner   io.Writer
 	runner  *llamaServerRunner
 	buffers map[memoryBufferKey]memoryBuffer
+
+	// lastComponent is the component of the most recent buffer-size line.
+	// A component that starts logging again after another one has reported is
+	// re-stating its whole allocation, so its previous entries are dropped
+	// first — see the comment in Write.
+	lastComponent string
 }
 
 type memoryBufferKey struct {
@@ -2917,13 +2944,37 @@ func (w *memoryParsingWriter) Write(b []byte) (int, error) {
 				}
 			}
 			for _, match := range bufferSizeRegex.FindAllSubmatch(b, -1) {
+				component := string(match[1])
 				backendName := string(match[2])
 				if mib, err := strconv.ParseFloat(string(match[4]), 64); err == nil {
 					if w.buffers == nil {
 						w.buffers = make(map[memoryBufferKey]memoryBuffer)
 					}
+					// Per-key overwrite alone is not enough when a component
+					// re-logs a *smaller* set of buffers than it did before.
+					// An engine that revises an allocation plan — opencoti's
+					// rolling-KV sizing converges over two passes, and the
+					// first pass splits the KV cache across CUDA0 and
+					// CUDA_Host while later passes keep it all on CUDA0 —
+					// only restates the devices it still uses. The dropped
+					// device's line is never superseded, so its bytes linger
+					// and memTotal is overstated by the size of an allocation
+					// that no longer exists.
+					//
+					// A component beginning a new run of lines is restating
+					// its whole allocation, not adding to it, so drop what it
+					// said last time first. Lines from one block are
+					// contiguous, so this never discards a half-read block.
+					if component != w.lastComponent {
+						for key := range w.buffers {
+							if key.component == component {
+								delete(w.buffers, key)
+							}
+						}
+						w.lastComponent = component
+					}
 					w.buffers[memoryBufferKey{
-						component: string(match[1]),
+						component: component,
 						backend:   backendName,
 						kind:      string(match[3]),
 					}] = memoryBuffer{bytes: uint64(mib * 1024 * 1024)}

@@ -68,5 +68,14 @@
         ]
       }
     ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(npm run *)",
+      "Bash(npx *)",
+      "Bash(go *)",
+      "Bash(docker *)"
+    ]
   }
 }
