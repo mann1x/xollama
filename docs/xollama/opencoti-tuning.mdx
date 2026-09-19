@@ -160,10 +160,10 @@ LLAMA_ARG_POLYKV_MAX_POOLS=4    # enables the /polykv/* control plane
   launch the engine with pooling enabled, so nothing hands out an id to attach
   to.
 
-  `--kv-unified` also changes what `-c` and `--parallel` mean, and it is
-  mutually exclusive with the rolling-KV window. Switching it on under xollama,
-  which sizes `-c` as context × parallel for the split layout, is not a
-  configuration anyone has measured here.
+  `--kv-unified` is now set by xollama itself when dynamic slots are on — see
+  [Concurrent requests](/xollama/slots) — so the boot half of pooling no longer
+  needs an environment variable. What is still missing is `--polykv-max-pools`
+  and something to create a pool.
 </Warning>
 
 If shared-prefix pooling is what you came for, drive the engine directly for now.
@@ -173,7 +173,7 @@ If shared-prefix pooling is what you came for, drive the engine directly for now
 | Setting | Variable | Notes |
 |---|---|---|
 | Sparse attention | `LLAMA_ARG_SPARSE_ATTN=on` | Quest-style block selector; `…_TOPK`, `…_RECENT`, `…_SINK` tune it |
-| Elastic slots | `LLAMA_ARG_N_PARALLEL_MAX` | Needs `--kv-unified`; see the warning above |
+| Elastic slots | — | Now a first-class setting: [Concurrent requests](/xollama/slots) |
 | Admission gate | `LLAMA_ARG_ADMISSION_POOLLESS` | `enforced` by default — refuses with 429 before prefill rather than thrashing |
 | GPU sharing | `LLAMA_ARG_GPU_SHARE_WEIGHT` | Compute share against co-resident opencoti servers on one GPU |
 | RYS layer duplication | `LLAMA_ARG_REPEAT_LAYERS` | Quality experiment; absent means byte-identical to stock |
@@ -213,7 +213,8 @@ any document disagree, `--help` wins.
 | Session affinity (`session_id`) | **Yes** — on by default, see [Sessions](/xollama/sessions) |
 | PolyKV pool creation | Boot flags only, and xollama does not set them yet |
 | PolyKV per-request attach | Plumbed and tested; nothing hands out a pool id yet |
-| Sparse attention, elastic slots, admission, RYS | **Yes** (boot env) |
+| Elastic slots and the shared cell pool | **Yes** — on by default, per server or per model |
+| Sparse attention, admission, RYS | **Yes** (boot env) |
 | Cache types per model | **Yes** — and two models that disagree get their own engine |
 | The rest of it per model instead of per server | **No** — server-global only, for now |
 | Engine introspection (`/props`, `/slots`, `/polykv/*`) | **Not proxied** — query the engine directly |

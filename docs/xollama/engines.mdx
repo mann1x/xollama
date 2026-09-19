@@ -95,6 +95,7 @@ XOLLAMA {"version": 1, "engine": "opencoti"}
 | `engine` | `opencoti` or `llamacpp`. Omit it — the normal case — and `XOLLAMA_ENGINE` decides. `auto` is **not** valid: a model saying "auto" is a model saying nothing |
 | `draft.spec_type` | Overrides the speculative driver inferred from the drafter |
 | `kv.k`, `kv.v`, `kv.k_swa`, `kv.v_swa` | This model's KV cache types. See [KV cache types](/xollama/kv-cache) |
+| `slots.dynamic`, `slots.max`, `slots.tps_floor`, `slots.vram_reserve_mib` | How many requests this model serves at once. See [Concurrent requests](/xollama/slots) |
 | `session.affinity` | Whether conversations of this model are pinned to the slot holding their cache. See [Sessions](/xollama/sessions) |
 | `session.pool` | Whether conversations of this model share one copy of their common opening |
 

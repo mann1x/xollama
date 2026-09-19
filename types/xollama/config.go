@@ -58,6 +58,11 @@ type Config struct {
 	// a different type for keys than for values, has nowhere to say it.
 	KV *KV `json:"kv,omitempty"`
 
+	// Slots carries this model's serving-capacity settings: how many requests
+	// it may serve at once, and whether that number is fixed or grows with
+	// demand.
+	Slots *Slots `json:"slots,omitempty"`
+
 	// Session carries per-request engine session settings: which requests the
 	// engine should treat as belonging to the same conversation, and whether
 	// they may share a KV prefix pool with each other.
@@ -67,6 +72,36 @@ type Config struct {
 	// wants affinity; a model answering unrelated one-shot prompts does not,
 	// and pinning those to one slot would make it worse.
 	Session *Session `json:"session,omitempty"`
+}
+
+// Slots holds this model's serving-capacity settings.
+//
+// Upstream reserves OLLAMA_NUM_PARALLEL slots' worth of KV when the model
+// loads, whether or not anyone uses them, and everything past that number
+// queues. You therefore have to guess: too low wastes the card, too high wastes
+// the memory the model itself needed.
+//
+// Dynamic slots remove the guess. The cache becomes one shared pool instead of
+// a fixed split, slots are allocated but parked, and the engine admits another
+// only while there is headroom for it. Nothing is reserved for a slot nobody is
+// using.
+type Slots struct {
+	// Dynamic turns the behaviour on or off for this model. Nil means the
+	// model has no opinion and XOLLAMA_DYNAMIC_SLOTS decides.
+	Dynamic *bool `json:"dynamic,omitempty"`
+
+	// Max is the ceiling on concurrent requests. Zero means unstated.
+	Max int `json:"max,omitempty"`
+
+	// TPSFloor is the per-slot decode rate to protect: another slot is not
+	// admitted if the projected rate would fall below it. Zero means unstated,
+	// which leaves the engine to admit on memory headroom alone.
+	TPSFloor float64 `json:"tps_floor,omitempty"`
+
+	// VRAMReserveMiB is the free VRAM that must remain before another slot is
+	// admitted, so a co-resident process is not squeezed out. Zero means
+	// unstated.
+	VRAMReserveMiB int `json:"vram_reserve_mib,omitempty"`
 }
 
 // Session holds this model's session settings.
@@ -176,6 +211,24 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("xollama config: kv.k_swa and kv.v_swa must be set together (got k_swa=%q, v_swa=%q)", c.KV.KSWA, c.KV.VSWA)
 		}
 	}
+	if c.Slots != nil {
+		if c.Slots.Max < 0 {
+			return fmt.Errorf("xollama config: slots.max %d must not be negative", c.Slots.Max)
+		}
+		if c.Slots.TPSFloor < 0 {
+			return fmt.Errorf("xollama config: slots.tps_floor %v must not be negative", c.Slots.TPSFloor)
+		}
+		if c.Slots.VRAMReserveMiB < 0 {
+			return fmt.Errorf("xollama config: slots.vram_reserve_mib %d must not be negative", c.Slots.VRAMReserveMiB)
+		}
+		// A ceiling, a rate floor or a memory reserve only mean anything while
+		// slots are being admitted dynamically. Saying one while switching the
+		// mechanism off is a configuration that reads as if it does something.
+		if c.Slots.Dynamic != nil && !*c.Slots.Dynamic &&
+			(c.Slots.Max > 0 || c.Slots.TPSFloor > 0 || c.Slots.VRAMReserveMiB > 0) {
+			return fmt.Errorf("xollama config: slots.max, slots.tps_floor and slots.vram_reserve_mib need slots.dynamic; they describe how slots are admitted")
+		}
+	}
 	if c.Session != nil && c.Session.Pool != nil && *c.Session.Pool &&
 		c.Session.Affinity != nil && !*c.Session.Affinity {
 		return fmt.Errorf("xollama config: session.pool requires session.affinity; a shared prefix pool has nothing to attach to without session identity")
@@ -221,5 +274,6 @@ func (c *Config) IsZero() bool {
 	return c.Engine == "" &&
 		(c.Draft == nil || c.Draft.SpecType == "") &&
 		(c.KV == nil || (c.KV.K == "" && c.KV.V == "" && c.KV.KSWA == "" && c.KV.VSWA == "")) &&
+		(c.Slots == nil || (c.Slots.Dynamic == nil && c.Slots.Max == 0 && c.Slots.TPSFloor == 0 && c.Slots.VRAMReserveMiB == 0)) &&
 		(c.Session == nil || (c.Session.Affinity == nil && c.Session.Pool == nil))
 }

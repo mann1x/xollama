@@ -87,6 +87,13 @@ type LlamaServerConfig struct {
 	// xollama-hook: model-config — the model's own xollama.json, nil for the
 	// overwhelming majority of models. See docs/features/model-config.md.
 	Xollama *xollama.Config
+
+	// xollama-hook: launch-config — this model must be served one sequence at
+	// a time, because it is an embedding model or its architecture gives wrong
+	// answers with several in flight (ollama/ollama#4165). Dynamic slots must
+	// never grow past one here: that deny-list is a correctness decision, not
+	// a capacity preference. See docs/xollama/slots.mdx.
+	SingleSequenceOnly bool
 }
 
 // enginePin returns the engine this model says it needs, or "".

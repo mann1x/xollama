@@ -143,14 +143,31 @@ Read-only, and only when the load routed to opencoti.
 
 ## G7 — `--kv-unified` is untested under xollama's sizing
 
+> **Answered, 2026-09-19.** xollama now sets `--kv-unified` itself whenever
+> dynamic slots are on, which is the default, together with `--max-parallel` and
+> its two brakes (`llm/engine_launch.go`, `slotPlan`). The cell count is
+> deliberately unchanged — ollama's `-c` is still context × parallel and its
+> memory estimate still holds — so what moved is only whether one conversation
+> may use all of them. ollama's own concurrency semaphore is resized to the
+> ceiling after the engine is known, or the feature would be invisible. The
+> engine's 429 + `Retry-After` is waited out in `llm/engine_admission.go` so a
+> caller still sees queueing rather than an error.
+>
+> **What this gates, and it is not free:** the rolling-KV window requires the
+> per-slot split and cannot run under a shared pool, so dynamic slots and
+> rolling-KV are mutually exclusive. Documented; reported to opencoti. On iSWA
+> models each slot also reserves its own sliding window regardless of the shared
+> pool, so a high ceiling costs real memory on Gemma-4.
+
 PolyKV pools and elastic slots both require `--kv-unified`, which changes what
 `-c` and `--parallel` mean, and which is mutually exclusive with the rolling-KV
 window. xollama sizes `-c` as `NumCtx × numParallel` for the split layout. The
 env twin exists, so a user can switch it on — into a configuration nobody here
 has measured.
 
-**Fix:** measure it, then either support it deliberately or refuse it with a
-message.
+**Remaining:** measure the pair on a real load — the sizing is reasoned, not
+measured. And `--polykv-max-pools` is still not passed, so the pool half of G5
+is still waiting on a pool lifecycle rather than on this.
 
 ## Not our bug — a report for opencoti
 

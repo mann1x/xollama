@@ -43,6 +43,8 @@ xollama and Ollama side by side with different settings. An **empty**
 | `XOLLAMA_SESSION_POOL` | Share one copy of a common prefix between conversations, on opencoti. Default `false` |
 | `XOLLAMA_K_CACHE_TYPE`, `XOLLAMA_V_CACHE_TYPE` | KV cache type per half, overriding `OLLAMA_KV_CACHE_TYPE` |
 | `XOLLAMA_K_CACHE_TYPE_SWA`, `XOLLAMA_V_CACHE_TYPE_SWA` | Cache types for a sliding-window model's short-window cache |
+| `XOLLAMA_DYNAMIC_SLOTS` | Grow concurrency with demand instead of reserving it. Default `true` |
+| `XOLLAMA_MAX_PARALLEL`, `XOLLAMA_SLOTS_TPS_FLOOR`, `XOLLAMA_SLOTS_VRAM_RESERVE` | The ceiling and the two brakes on admitting another request |
 | `XOLLAMA_HOST`, `XOLLAMA_MODELS`, `XOLLAMA_DEBUG`, `XOLLAMA_FLASH_ATTENTION`, `XOLLAMA_LLAMA_ARG_FIT` | Aliases for the `OLLAMA_*` variables of the same name |
 
 Run `xollama serve --help` or `ollama show --help` for the full list as your
@@ -69,5 +71,8 @@ build sees it.
 </Card>
 <Card title="KV cache types" icon="database" href="/xollama/kv-cache">
   Different types for keys and values, and per model rather than per server.
+</Card>
+<Card title="Concurrent requests" icon="layer-group" href="/xollama/slots">
+  Concurrency that grows with demand instead of being reserved up front.
 </Card>
 </CardGroup>

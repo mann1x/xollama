@@ -3,6 +3,7 @@ package llm
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/ollama/ollama/envconfig"
@@ -131,4 +132,136 @@ func appendKVCacheRingArgs(args []string, kv kvCacheTypes, usedOpencoti bool) []
 		return args
 	}
 	return append(args, "--cache-type-k-swa", kv.KSWA, "--cache-type-v-swa", kv.VSWA)
+}
+
+// slotPlan is how many requests this load may serve at once, and how the engine
+// is allowed to get there.
+//
+// Upstream reserves OLLAMA_NUM_PARALLEL slots' worth of KV cells when the model
+// loads, used or not, and queues everything past that number. So the number has
+// to be guessed in advance: too low leaves the card idle, too high spends on
+// slots nobody opens the memory the model itself needed.
+//
+// Dynamic slots remove the guess. The cache becomes one shared pool rather than
+// a fixed per-slot split (--kv-unified), Max slots are allocated but parked, and
+// the engine admits another only while the decode rate and the free VRAM still
+// allow it (--max-parallel and friends). Nothing is reserved for a slot nobody
+// is using.
+//
+// The total cell count is deliberately NOT changed: ollama sized -c as
+// num_ctx x num_parallel and planned its memory estimate against that, so the
+// same cells are allocated either way. What changes is whether one long
+// conversation may use all of them.
+type slotPlan struct {
+	// Dynamic is false when this is upstream's fixed split, in which case
+	// nothing below applies and no argument is added.
+	Dynamic bool
+	// Live is where the engine starts, which stays ollama's own num_parallel.
+	Live int
+	// Max is the ceiling the engine may grow to.
+	Max int
+	// TPSFloor and VRAMReserveMiB are the two brakes on admitting another
+	// slot. Zero leaves each to the engine's own default.
+	TPSFloor       float64
+	VRAMReserveMiB int
+}
+
+// defaultMaxParallel is the ceiling when nobody named one.
+//
+// Four, because the point of a shared pool is that an unused slot costs
+// nothing, so the ceiling should be high enough to be useful on a busy server
+// and low enough that the engine's own admission brakes are what actually
+// decide -- not a number picked here.
+const defaultMaxParallel = 4
+
+// resolveSlotPlan applies the precedence the documentation promises: the
+// model's xollama.json, then the environment, then the default.
+//
+// numParallel is what ollama decided, including the cases where it forced 1 --
+// an embedding model, or an architecture that is unsafe above one sequence. A
+// forced 1 is a correctness decision and the ceiling must not climb back over
+// it, so it is taken as both the floor and, when forced, the ceiling.
+func resolveSlotPlan(cfg LlamaServerConfig, numParallel int, forcedSingle bool) slotPlan {
+	plan := slotPlan{
+		Dynamic:        envconfig.DynamicSlots(),
+		Live:           max(numParallel, 1),
+		Max:            int(envconfig.MaxParallel()),
+		VRAMReserveMiB: int(envconfig.SlotsVRAMReserve()),
+	}
+	if v := strings.TrimSpace(envconfig.SlotsTPSFloor()); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 {
+			plan.TPSFloor = f
+		}
+	}
+
+	if cfg.Xollama != nil && cfg.Xollama.Slots != nil {
+		s := cfg.Xollama.Slots
+		if s.Dynamic != nil {
+			plan.Dynamic = *s.Dynamic
+		}
+		if s.Max > 0 {
+			plan.Max = s.Max
+		}
+		if s.TPSFloor > 0 {
+			plan.TPSFloor = s.TPSFloor
+		}
+		if s.VRAMReserveMiB > 0 {
+			plan.VRAMReserveMiB = s.VRAMReserveMiB
+		}
+	}
+
+	// An architecture ollama refuses to run above one sequence must not be
+	// grown past one by this. That deny-list exists because those models give
+	// wrong answers with several sequences in flight, which is not a trade
+	// anyone gets to make here.
+	if forcedSingle {
+		plan.Dynamic = false
+	}
+	if !plan.Dynamic {
+		return slotPlan{Live: plan.Live}
+	}
+
+	if plan.Max <= 0 {
+		plan.Max = defaultMaxParallel
+	}
+	// A ceiling below where the engine starts is not a ceiling.
+	plan.Max = max(plan.Max, plan.Live)
+	return plan
+}
+
+// appendSlotArgs adds the dynamic-slot arguments, once the engine is known.
+//
+// Both flags are gated on opencoti, for different reasons. --max-parallel is
+// its own; --kv-unified exists upstream too, but it changes what -c means, and
+// switching that on for a stock load would move the off path away from
+// upstream's for no gain, since nothing there can park or admit a slot.
+func appendSlotArgs(args []string, plan slotPlan, usedOpencoti bool) []string {
+	if !plan.Dynamic || !usedOpencoti || plan.Max <= plan.Live {
+		return args
+	}
+	// --max-parallel requires the shared pool: parked slots have nothing to be
+	// admitted into when every slot owns a fixed share of the cells.
+	args = append(args, "--kv-unified", "--max-parallel", strconv.Itoa(plan.Max))
+	if plan.TPSFloor > 0 {
+		args = append(args, "--max-parallel-tps-floor", strconv.FormatFloat(plan.TPSFloor, 'g', -1, 64))
+	}
+	if plan.VRAMReserveMiB > 0 {
+		args = append(args, "--max-parallel-vram-reserve", strconv.Itoa(plan.VRAMReserveMiB))
+	}
+	return args
+}
+
+// concurrency is how many requests may be in flight at once.
+//
+// This is the half that makes dynamic slots visible. ollama gates concurrency
+// on its own semaphore, sized to num_parallel, so an engine that had grown to
+// four live slots would still be fed one request at a time and the feature
+// would do nothing at all. When the plan is dynamic the semaphore is sized to
+// the ceiling instead, and the engine's admission control -- not a number
+// guessed at load time -- decides what actually runs.
+func (p slotPlan) concurrency() int {
+	if p.Dynamic && p.Max > p.Live {
+		return p.Max
+	}
+	return max(p.Live, 1)
 }

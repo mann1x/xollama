@@ -2625,7 +2625,32 @@ func llamaServerConfigForModel(m *Model) llm.LlamaServerConfig {
 		DraftModelShardPaths: slices.Clone(m.DraftShardPaths),
 		// xollama-hook: model-config
 		Xollama: m.Xollama,
+		// xollama-hook: launch-config
+		SingleSequenceOnly: singleSequenceOnly(m),
 	}
+}
+
+// parallelUnsafeArchitectures give wrong answers with more than one sequence in
+// flight. ref: https://github.com/ollama/ollama/issues/4165
+var parallelUnsafeArchitectures = []string{
+	"mllama", "qwen3vl", "qwen3vlmoe", "qwen35", "qwen35moe", "qwen3next",
+	"lfm2", "lfm2moe", "nemotron_h", "nemotron_h_moe", "nemotron_h_omni",
+}
+
+// singleSequenceOnly reports whether this model must be served one sequence at
+// a time, whatever anyone asked for.
+//
+// Extracted so the scheduler's decision and the launch configuration cannot
+// drift apart: dynamic slots must never grow past one here, and a second copy
+// of the deny-list is how that would quietly stop being true.
+func singleSequenceOnly(m *Model) bool {
+	if m == nil {
+		return false
+	}
+	if m.CheckCapabilities(model.CapabilityCompletion) != nil {
+		return true // an embedding model
+	}
+	return slices.Contains(parallelUnsafeArchitectures, m.Config.ModelFamily)
 }
 
 func usesOllamaRenderedChat(m *Model) bool {

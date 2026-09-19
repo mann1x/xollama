@@ -292,6 +292,25 @@ var (
 	// refused rather than started without it.
 	KCacheTypeSWA = String("XOLLAMA_K_CACHE_TYPE_SWA")
 	VCacheTypeSWA = String("XOLLAMA_V_CACHE_TYPE_SWA")
+	// DynamicSlots lets the number of concurrent requests grow with demand
+	// instead of being reserved up front. On by default: reserving
+	// OLLAMA_NUM_PARALLEL slots' worth of KV whether or not anyone uses them
+	// is the thing this exists to stop, and a default that has to be switched
+	// on is a default nobody finds.
+	//
+	// Needs an engine that can park and admit slots; on stock llama.cpp it is
+	// inert and nothing is passed.
+	DynamicSlots = func() bool { return BoolWithDefault("XOLLAMA_DYNAMIC_SLOTS")(true) }
+	// MaxParallel caps how far the number of live slots may grow. Zero picks a
+	// default from OLLAMA_NUM_PARALLEL.
+	MaxParallel = Uint("XOLLAMA_MAX_PARALLEL", 0)
+	// SlotsTPSFloor is the per-slot decode rate to protect: another slot is not
+	// admitted if the projected rate would fall below it. Zero leaves the
+	// engine admitting on memory headroom alone.
+	SlotsTPSFloor = String("XOLLAMA_SLOTS_TPS_FLOOR")
+	// SlotsVRAMReserve is the free VRAM in MiB that must remain before another
+	// slot is admitted, so a co-resident process is not squeezed out.
+	SlotsVRAMReserve = Uint("XOLLAMA_SLOTS_VRAM_RESERVE", 0)
 
 	LLMLibrary = String("OLLAMA_LLM_LIBRARY")
 	Editor     = String("OLLAMA_EDITOR")
@@ -367,6 +386,10 @@ func AsMap() map[string]EnvVar {
 		"XOLLAMA_V_CACHE_TYPE":        {"XOLLAMA_V_CACHE_TYPE", VCacheType(), "KV cache type for values, overriding OLLAMA_KV_CACHE_TYPE for that half"},
 		"XOLLAMA_K_CACHE_TYPE_SWA":    {"XOLLAMA_K_CACHE_TYPE_SWA", KCacheTypeSWA(), "KV cache type for keys in a sliding-window model's short-window cache (needs an engine with a separate ring)"},
 		"XOLLAMA_V_CACHE_TYPE_SWA":    {"XOLLAMA_V_CACHE_TYPE_SWA", VCacheTypeSWA(), "KV cache type for values in a sliding-window model's short-window cache"},
+		"XOLLAMA_DYNAMIC_SLOTS":       {"XOLLAMA_DYNAMIC_SLOTS", DynamicSlots(), "Grow the number of concurrent requests with demand instead of reserving them (default true)"},
+		"XOLLAMA_MAX_PARALLEL":        {"XOLLAMA_MAX_PARALLEL", MaxParallel(), "Ceiling on concurrent requests when slots are dynamic (default: derived)"},
+		"XOLLAMA_SLOTS_TPS_FLOOR":     {"XOLLAMA_SLOTS_TPS_FLOOR", SlotsTPSFloor(), "Per-slot decode rate to protect before admitting another slot"},
+		"XOLLAMA_SLOTS_VRAM_RESERVE":  {"XOLLAMA_SLOTS_VRAM_RESERVE", SlotsVRAMReserve(), "Free VRAM in MiB to keep before admitting another slot"},
 		"OLLAMA_DEBUG":                {"OLLAMA_DEBUG", LogLevel(), "Show additional debug information (e.g. XOLLAMA_DEBUG=1)"},
 		"OLLAMA_DEBUG_LOG_REQUESTS":   {"OLLAMA_DEBUG_LOG_REQUESTS", DebugLogRequests(), "Log inference request bodies and replay curl commands to a temp directory"},
 		"OLLAMA_GO_TEMPLATE":          {"OLLAMA_GO_TEMPLATE", GoTemplate(true), "Enable Modelfile TEMPLATE based rendering when available"},

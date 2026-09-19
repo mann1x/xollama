@@ -254,3 +254,58 @@ func TestKVRoundTripAndIsZero(t *testing.T) {
 		t.Error("an empty kv block carries nothing worth storing")
 	}
 }
+
+// A ceiling, a rate floor or a memory reserve describe how slots are admitted.
+// Saying one while switching the mechanism off is a configuration that reads as
+// if it does something, so it is refused where the line is visible.
+func TestValidateSlots(t *testing.T) {
+	off, on := false, true
+	for _, tt := range []struct {
+		name    string
+		s       *Slots
+		wantErr bool
+	}{
+		{"a ceiling with the mechanism on", &Slots{Dynamic: &on, Max: 8}, false},
+		{"a ceiling with the mechanism unstated", &Slots{Max: 8}, false},
+		{"switching it off on its own", &Slots{Dynamic: &off}, false},
+		{"a ceiling with the mechanism off", &Slots{Dynamic: &off, Max: 8}, true},
+		{"a rate floor with the mechanism off", &Slots{Dynamic: &off, TPSFloor: 10}, true},
+		{"a reserve with the mechanism off", &Slots{Dynamic: &off, VRAMReserveMiB: 512}, true},
+		{"a negative ceiling", &Slots{Max: -1}, true},
+		{"a negative rate floor", &Slots{TPSFloor: -1}, true},
+		{"a negative reserve", &Slots{VRAMReserveMiB: -1}, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := (&Config{Version: 1, Slots: tt.s}).Validate()
+			if tt.wantErr && err == nil {
+				t.Error("expected this to be refused")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestSlotsRoundTripAndIsZero(t *testing.T) {
+	on := true
+	c := &Config{Version: 1, Slots: &Slots{Dynamic: &on, Max: 6, TPSFloor: 12.5, VRAMReserveMiB: 1024}}
+	if c.IsZero() {
+		t.Fatal("a config carrying slot settings must be stored")
+	}
+	data, err := c.Marshal()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got, err := Parse(data)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got.Slots == nil || got.Slots.Max != 6 || got.Slots.TPSFloor != 12.5 || got.Slots.VRAMReserveMiB != 1024 ||
+		got.Slots.Dynamic == nil || !*got.Slots.Dynamic {
+		t.Errorf("slots did not survive the round trip: %s", data)
+	}
+	if !(&Config{Version: 1, Slots: &Slots{}}).IsZero() {
+		t.Error("an empty slots block carries nothing worth storing")
+	}
+}

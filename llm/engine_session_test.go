@@ -15,7 +15,7 @@ import (
 	"github.com/ollama/ollama/types/xollama"
 )
 
-func ptrBool(b bool) *bool { return &b }
+func boolPtr(b bool) *bool { return &b }
 
 func cfgWithSession(s *xollama.Session) LlamaServerConfig {
 	return LlamaServerConfig{Xollama: &xollama.Config{Version: 1, Session: s}}
@@ -107,7 +107,7 @@ func TestSessionFieldsPrecedence(t *testing.T) {
 			// The off path has to stay byte-identical to upstream, so this is
 			// the one rule that outranks every other setting here.
 			opencoti: false, envAff: "1", envPool: "1",
-			cfg: cfgWithSession(&xollama.Session{Affinity: ptrBool(true), Pool: ptrBool(true)}),
+			cfg: cfgWithSession(&xollama.Session{Affinity: boolPtr(true), Pool: boolPtr(true)}),
 			id:  "xo-abc", pool: 3,
 			wantID: "", wantPool: 0,
 			wantWhy: "engine gate",
@@ -129,7 +129,7 @@ func TestSessionFieldsPrecedence(t *testing.T) {
 		{
 			name:     "the model overrides the environment, both ways",
 			opencoti: true, envAff: "0",
-			cfg:     cfgWithSession(&xollama.Session{Affinity: ptrBool(true)}),
+			cfg:     cfgWithSession(&xollama.Session{Affinity: boolPtr(true)}),
 			id:      "xo-abc",
 			wantID:  "xo-abc",
 			wantWhy: "model config wins",
@@ -139,7 +139,7 @@ func TestSessionFieldsPrecedence(t *testing.T) {
 			// Off is an operator or a publisher saying this model must not pin
 			// conversations; a client field does not overrule that.
 			opencoti: true, envAff: "1",
-			cfg:     cfgWithSession(&xollama.Session{Affinity: ptrBool(false)}),
+			cfg:     cfgWithSession(&xollama.Session{Affinity: boolPtr(false)}),
 			id:      "caller-supplied",
 			wantID:  "",
 			wantWhy: "off means off",
@@ -154,7 +154,7 @@ func TestSessionFieldsPrecedence(t *testing.T) {
 		{
 			name:     "pooling on carries the pool through",
 			opencoti: true,
-			cfg:      cfgWithSession(&xollama.Session{Pool: ptrBool(true)}),
+			cfg:      cfgWithSession(&xollama.Session{Pool: boolPtr(true)}),
 			id:       "xo-abc", pool: 7,
 			wantID: "xo-abc", wantPool: 7,
 			wantWhy: "model asked for a pool",
@@ -211,7 +211,7 @@ func TestLlamaServerCompletionSessionFields(t *testing.T) {
 		{
 			name:     "opencoti carries a pool when the model asked for one",
 			opencoti: true,
-			cfg:      cfgWithSession(&xollama.Session{Pool: ptrBool(true)}),
+			cfg:      cfgWithSession(&xollama.Session{Pool: boolPtr(true)}),
 			req:      CompletionRequest{Prompt: "hi", SessionID: "xo-1234", PoolID: 2},
 			wantID:   "xo-1234",
 			wantPool: float64(2),

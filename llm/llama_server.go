@@ -488,6 +488,9 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	}
 	args = appendKVCacheRingArgs(args, kvTypes, usedOpencoti)
 
+	// xollama-hook: launch-config — dynamic slots. See docs/xollama/slots.mdx.
+	args = appendSlotArgs(args, resolveSlotPlan(launch.config, launch.numParallel, launch.config.SingleSequenceOnly), usedOpencoti)
+
 	// xollama-hook: draft-assistant — see docs/features/gemma4-drafter.md
 	if launch.draftType != "" {
 		args = retargetSpecType(args, launch.draftType, usedOpencoti)
@@ -1135,6 +1138,19 @@ func (s *llamaServerRunner) startProcess() error {
 	cmd, port, usedOpencoti, err := startLlamaServer(s.launch, s.output)
 	if err != nil {
 		return err
+	}
+
+	// xollama-hook: launch-config — the half that makes dynamic slots visible.
+	// ollama gates concurrency on this semaphore, sized to num_parallel, so an
+	// engine that had grown to four live slots would still be fed one request
+	// at a time. Resized here rather than at construction because it depends on
+	// which engine answered, which is only known now.
+	if plan := resolveSlotPlan(s.launch.config, s.launch.numParallel, s.launch.config.SingleSequenceOnly); usedOpencoti {
+		if n := plan.concurrency(); n > s.launch.numParallel {
+			slog.Info("dynamic slots: concurrency raised, engine admits slots as headroom allows",
+				"live", plan.Live, "max", n)
+			s.sem = semaphore.NewWeighted(int64(n))
+		}
 	}
 
 	s.cmd = cmd
@@ -1880,15 +1896,13 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 	}
 
 	endpoint := fmt.Sprintf("http://127.0.0.1:%d/completion", s.port)
-	serverReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, buffer)
+	// xollama-hook: launch-config — an engine with dynamic slots refuses a
+	// request it cannot seat, with 429 and a Retry-After, rather than queueing
+	// it. ollama's contract is that a busy server queues, so the wait happens
+	// here. See docs/xollama/slots.mdx.
+	res, err := s.postWaitingForAdmission(ctx, endpoint, buffer.Bytes())
 	if err != nil {
-		return fmt.Errorf("error creating completion request: %v", err)
-	}
-	serverReq.Header.Set("Content-Type", "application/json")
-
-	res, err := s.httpClient().Do(serverReq)
-	if err != nil {
-		if errors.Is(err, context.Canceled) {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return err
 		}
 		slog.Error("llama-server completion error", "error", err)

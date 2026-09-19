@@ -1,0 +1,120 @@
+---
+title: Concurrent requests
+---
+
+Ollama serves a fixed number of requests at once per model, set by
+`OLLAMA_NUM_PARALLEL`, and it reserves that many slots' worth of KV cache when
+the model loads — whether or not anyone uses them. Everything past that number
+queues.
+
+So you have to guess the number in advance. Too low and the card sits idle while
+requests wait. Too high and you have spent on slots nobody opened the memory the
+model itself needed, and the model may not even fit.
+
+xollama removes the guess.
+
+## What changes
+
+With **dynamic slots**, the cache becomes one shared pool instead of a fixed
+split, slots are allocated but parked, and the engine admits another only while
+there is still room and speed for it. Nothing is reserved for a slot nobody is
+using.
+
+It is **on by default** and you do not have to do anything. One conversation can
+use the whole context; several short ones run side by side; a fourth arriving
+when there is no room waits rather than failing.
+
+<Note>
+  The total number of cache cells does not change. Ollama sizes the cache as
+  context × parallel and plans its memory estimate against that, and xollama
+  leaves that alone. What changes is whether one conversation may use all of
+  them, or only its own fixed share.
+</Note>
+
+## Setting it
+
+<Tabs>
+<Tab title="Server">
+```ini
+# /etc/systemd/system/ollama.service.d/xollama.conf
+[Service]
+Environment="XOLLAMA_MAX_PARALLEL=8"
+Environment="XOLLAMA_SLOTS_TPS_FLOOR=15"
+```
+</Tab>
+<Tab title="One model">
+```dockerfile
+FROM gemma4:e4b
+
+XOLLAMA {"version": 1, "slots": {"max": 8, "tps_floor": 15}}
+```
+</Tab>
+</Tabs>
+
+| Setting | Environment | Modelfile | Default |
+|---|---|---|---|
+| On or off | `XOLLAMA_DYNAMIC_SLOTS` | `slots.dynamic` | on |
+| Ceiling | `XOLLAMA_MAX_PARALLEL` | `slots.max` | 4 |
+| Speed floor | `XOLLAMA_SLOTS_TPS_FLOOR` | `slots.tps_floor` | unset |
+| Memory reserve | `XOLLAMA_SLOTS_VRAM_RESERVE` | `slots.vram_reserve_mib` | engine default |
+
+The model's setting wins over the server's, as everywhere else.
+
+**The speed floor** is the more useful of the two brakes. It is the decode rate,
+in tokens per second, that each request should keep: another slot is not
+admitted if the projected rate would fall below it. Set it to the slowest you
+would accept and the server stops adding concurrency at that point instead of
+making everyone slower.
+
+**The memory reserve** is free VRAM, in MiB, that must remain after admitting a
+slot. Set it when something else shares the card.
+
+## Turning it off
+
+```shell
+XOLLAMA_DYNAMIC_SLOTS=0
+```
+
+or `{"slots": {"dynamic": false}}` for one model. That restores Ollama's fixed
+split exactly: `OLLAMA_NUM_PARALLEL` slots, each with its own share of the
+cache.
+
+Worth doing for a model where predictable per-request speed matters more than
+throughput — a fixed split cannot be slowed down by a neighbour, because there
+is no neighbour.
+
+## Things that are decided for you
+
+**A model that must be served one at a time is never grown.** Some
+architectures give wrong answers with more than one sequence in flight, and
+Ollama already refuses to run them in parallel. Dynamic slots respect that: a
+model on that list stays at one slot no matter what you set, because that is a
+correctness decision and not a capacity preference. Embedding models are the
+same.
+
+**A busy engine waits rather than failing.** When there is no room, the engine
+refuses the request immediately rather than queueing it — which is right for the
+engine and wrong to hand a caller, because a busy Ollama server is supposed to
+queue. xollama waits it out for you, honouring the delay the engine asks for and
+giving up if your own request times out first. A client that has never heard of
+any of this does not start seeing errors because a server default changed.
+
+If a server stays full for two minutes, the wait ends with an error saying so —
+that usually means the context length or the slot ceiling is too large for the
+memory available, not that the server is busy.
+
+**Stock `llama.cpp` is unaffected.** Parking and admitting slots is something
+the opencoti engine does; on stock the setting is inert and the launch is
+Ollama's own, unchanged.
+
+<Warning>
+  Dynamic slots use one shared cache pool, and the opencoti engine's
+  **rolling-KV window** — the feature that spills cache to host RAM instead of
+  failing — requires the per-slot split and cannot run alongside it. If you
+  depend on rolling-KV, switch dynamic slots off for that model.
+
+  On sliding-window models (Gemma-4 and relatives) each slot also reserves its
+  own sliding window up front, so a high ceiling costs real memory there even
+  though the main pool is shared. Raise the ceiling gradually on those and watch
+  what the load actually allocates.
+</Warning>
