@@ -173,6 +173,11 @@ type llamaServerRunner struct {
 	// engineFallbackRetried keeps the stock retry to one attempt.
 	usedOpencoti          bool
 	engineFallbackRetried bool
+	// pools remembers which shared prefix pool holds which prefix, for the life
+	// of this process. See engine_pool.go.
+	//
+	// xollama-hook: engine-session
+	pools *poolRegistry
 }
 
 type llamaServerLaunchConfig struct {
@@ -495,7 +500,9 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	args = appendKVCacheRingArgs(args, kvTypes, usedOpencoti)
 
 	// xollama-hook: launch-config — dynamic slots. See docs/xollama/slots.mdx.
-	args = appendSlotArgs(args, resolveSlotPlan(launch.config, launch.numParallel, launch.config.SingleSequenceOnly), usedOpencoti)
+	args = appendSlotArgs(args,
+		resolveSlotPlan(launch.config, launch.numParallel, launch.config.SingleSequenceOnly),
+		resolvePoolCount(launch.config), usedOpencoti)
 
 	// xollama-hook: launch-config — dual chunk attention. See docs/xollama/dca.mdx.
 	//
@@ -1186,6 +1193,14 @@ func (s *llamaServerRunner) startProcess() error {
 	s.cmd = cmd
 	s.port = port
 	s.usedOpencoti = usedOpencoti
+	// xollama-hook: engine-session — the pool registry is sized to the same
+	// number the engine was given seats for, and is rebuilt per process: pool
+	// ids belong to the engine that issued them.
+	if pools := resolvePoolCount(s.launch.config); usedOpencoti && pools > 0 {
+		s.pools = newPoolRegistry(pools)
+	} else {
+		s.pools = nil
+	}
 	s.done = make(chan struct{})
 	s.doneErr = nil
 	s.loadStart = time.Now()
@@ -1804,8 +1819,20 @@ type llamaServerTokenProb struct {
 	TopProbs    []llamaServerTokenProb `json:"top_probs"`
 }
 
-func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionRequest, fn func(CompletionResponse)) error {
+func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionRequest, fn func(CompletionResponse)) (err error) {
 	slog.Debug("llama-server completion request", "media", len(req.Media), "prompt_len", len(req.Prompt))
+
+	// xollama-hook: engine-session — a request that succeeded is the chance to
+	// snapshot its prefix into a pool, so the next conversation with the same
+	// system prompt attaches instead of storing its own copy. It happens after
+	// the response, in the background, and can only fail quietly. See
+	// engine_pool.go.
+	var pooledSession string
+	defer func() {
+		if err == nil {
+			s.capturePool(req.PoolKey, pooledSession)
+		}
+	}()
 
 	if req.Options == nil {
 		opts := api.DefaultOptions()
@@ -1882,7 +1909,14 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 	}
 
 	// xollama-hook: engine-session — see docs/xollama/sessions.mdx.
-	applySession(&lsReq, s.usedOpencoti, s.launch.config, req.SessionID, req.PoolID)
+	poolID := req.PoolID
+	if poolID == 0 {
+		poolID = s.poolFor(req.PoolKey)
+	}
+	applySession(&lsReq, s.usedOpencoti, s.launch.config, req.SessionID, poolID)
+	if poolID == 0 {
+		pooledSession = lsReq.SessionID
+	}
 
 	// Handle format: pass JSON schema directly to llama-server, or use grammar
 	if len(req.Format) > 0 {
@@ -2197,8 +2231,23 @@ func (s *llamaServerRunner) ApplyChatTemplate(ctx context.Context, req ChatReque
 	return lsResp.Prompt, nil
 }
 
-func (s *llamaServerRunner) Chat(ctx context.Context, req ChatRequest, fn func(ChatResponse)) error {
+func (s *llamaServerRunner) Chat(ctx context.Context, req ChatRequest, fn func(ChatResponse)) (err error) {
 	slog.Debug("llama-server chat request", "messages", len(req.Messages), "tools", len(req.Tools))
+
+	// xollama-hook: engine-session — see the note on Completion. The chat body
+	// is built by a helper, so the session that would be snapshotted is
+	// resolved here, through the same function the helper uses. Only a request
+	// that did NOT attach to a pool is worth snapshotting: one that attached
+	// already has its prefix shared.
+	var pooledSession string
+	if req.PoolID == 0 && s.poolFor(req.PoolKey) == 0 {
+		pooledSession, _ = sessionFieldsFor(s.usedOpencoti, s.launch.config, req.SessionID, 0)
+	}
+	defer func() {
+		if err == nil {
+			s.capturePool(req.PoolKey, pooledSession)
+		}
+	}()
 
 	if req.Options == nil {
 		opts := api.DefaultOptions()
@@ -2487,7 +2536,11 @@ func (s *llamaServerRunner) llamaServerChatRequest(req ChatRequest, stream bool)
 	// xollama-hook: engine-session — see docs/xollama/sessions.mdx. The chat
 	// path owns its own body, so the fields have to be added here too; on any
 	// engine without session affinity neither key appears.
-	if id, pool := sessionFieldsFor(s.usedOpencoti, s.launch.config, req.SessionID, req.PoolID); id != "" || pool > 0 {
+	chatPool := req.PoolID
+	if chatPool == 0 {
+		chatPool = s.poolFor(req.PoolKey)
+	}
+	if id, pool := sessionFieldsFor(s.usedOpencoti, s.launch.config, req.SessionID, chatPool); id != "" || pool > 0 {
 		if id != "" {
 			body["session_id"] = id
 		}
@@ -2921,6 +2974,11 @@ func (s *llamaServerRunner) Detokenize(ctx context.Context, tokens []int) (strin
 }
 
 func (s *llamaServerRunner) Close() error {
+	// xollama-hook: engine-session — pools are pinned so the engine's idle
+	// sweep cannot drop one while xollama still holds its id, which makes
+	// releasing them ours to do. Before stopProcess, while the engine is still
+	// listening.
+	s.releasePools()
 	return errors.Join(s.stopProcess(), s.removeSplitDirs())
 }
 

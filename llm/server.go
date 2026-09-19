@@ -295,6 +295,12 @@ type CompletionRequest struct {
 	// sent and the request body is upstream's, byte for byte.
 	SessionID string
 	PoolID    int
+	// PoolKey identifies the prefix this request would share with others --
+	// the system prompt and tool names, not the conversation. When pooling is
+	// on and a pool already holds this prefix, the request attaches to it; when
+	// none does, the first such request creates one for the rest. An explicit
+	// PoolID from the caller always wins.
+	PoolKey string
 }
 
 type ChatRequest struct {
@@ -317,6 +323,12 @@ type ChatRequest struct {
 	// sent and the request body is upstream's, byte for byte.
 	SessionID string
 	PoolID    int
+	// PoolKey identifies the prefix this request would share with others --
+	// the system prompt and tool names, not the conversation. When pooling is
+	// on and a pool already holds this prefix, the request attaches to it; when
+	// none does, the first such request creates one for the rest. An explicit
+	// PoolID from the caller always wins.
+	PoolKey string
 }
 
 type ChatResponse struct {

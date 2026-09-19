@@ -103,7 +103,7 @@ func TestResolveSlotPlan(t *testing.T) {
 func TestSlotArgs(t *testing.T) {
 	plan := slotPlan{Dynamic: true, Live: 1, Max: 4, TPSFloor: 12.5, VRAMReserveMiB: 1024}
 
-	got := appendSlotArgs(nil, plan, true)
+	got := appendSlotArgs(nil, plan, 0, true)
 	want := []string{
 		"--kv-unified", "--max-parallel", "4",
 		"--max-parallel-tps-floor", "12.5",
@@ -115,15 +115,102 @@ func TestSlotArgs(t *testing.T) {
 
 	// --max-parallel is opencoti's own, and --kv-unified changes what -c means,
 	// so a stock load must look exactly as it did before.
-	if got := appendSlotArgs(nil, plan, false); len(got) != 0 {
+	if got := appendSlotArgs(nil, plan, 0, false); len(got) != 0 {
 		t.Errorf("stock llama.cpp must get no slot flags, got %v", got)
 	}
-	if got := appendSlotArgs(nil, slotPlan{Live: 2}, true); len(got) != 0 {
+	if got := appendSlotArgs(nil, slotPlan{Live: 2}, 0, true); len(got) != 0 {
 		t.Errorf("a plan that is not dynamic must add nothing, got %v", got)
 	}
 	// Room to grow is what makes the flags worth passing.
-	if got := appendSlotArgs(nil, slotPlan{Dynamic: true, Live: 4, Max: 4}, true); len(got) != 0 {
+	if got := appendSlotArgs(nil, slotPlan{Dynamic: true, Live: 4, Max: 4}, 0, true); len(got) != 0 {
 		t.Errorf("a ceiling equal to the starting point must add nothing, got %v", got)
+	}
+}
+
+// TestSlotArgsWithPools covers the second reason to pass --kv-unified. A pool's
+// reserved sequence id is a share of the same cells a parked slot draws on, so
+// the flag has to appear for pooling alone -- and exactly once when both
+// features want it.
+func TestSlotArgsWithPools(t *testing.T) {
+	t.Run("pooling alone still needs the shared cache", func(t *testing.T) {
+		got := appendSlotArgs(nil, slotPlan{Live: 1}, 2, true)
+		want := []string{"--kv-unified", "--polykv-max-pools", "2"}
+		if !slices.Equal(got, want) {
+			t.Errorf("args = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("both features, one --kv-unified", func(t *testing.T) {
+		got := appendSlotArgs(nil, slotPlan{Dynamic: true, Live: 1, Max: 4}, 2, true)
+		want := []string{"--kv-unified", "--max-parallel", "4", "--polykv-max-pools", "2"}
+		if !slices.Equal(got, want) {
+			t.Errorf("args = %v, want %v", got, want)
+		}
+		if n := slices.Index(got, "--kv-unified"); n != 0 || slices.Contains(got[1:], "--kv-unified") {
+			t.Errorf("--kv-unified must appear exactly once, got %v", got)
+		}
+	})
+
+	t.Run("stock llama.cpp gets no pool flags", func(t *testing.T) {
+		if got := appendSlotArgs(nil, slotPlan{Live: 1}, 2, false); len(got) != 0 {
+			t.Errorf("stock llama.cpp must get nothing, got %v", got)
+		}
+	})
+}
+
+func TestResolvePoolCount(t *testing.T) {
+	on, off := true, false
+
+	for _, tc := range []struct {
+		name string
+		env  map[string]string
+		cfg  LlamaServerConfig
+		want int
+	}{
+		{
+			name: "pooling off by default",
+		},
+		{
+			// The count sizes the feature; it does not switch it on. A server
+			// that names a number for every model must not start pooling
+			// models that never asked.
+			name: "a count alone does not start pooling",
+			env:  map[string]string{"XOLLAMA_POLYKV_MAX_POOLS": "4"},
+		},
+		{
+			name: "the environment turns pooling on and gets the default count",
+			env:  map[string]string{"XOLLAMA_SESSION_POOL": "1"},
+			want: defaultMaxPools,
+		},
+		{
+			name: "the environment sets both",
+			env:  map[string]string{"XOLLAMA_SESSION_POOL": "1", "XOLLAMA_POLYKV_MAX_POOLS": "5"},
+			want: 5,
+		},
+		{
+			name: "the model turns pooling on",
+			cfg:  LlamaServerConfig{Xollama: &xollama.Config{Version: 1, Session: &xollama.Session{Pool: &on}}},
+			want: defaultMaxPools,
+		},
+		{
+			name: "the model sizes it",
+			cfg:  LlamaServerConfig{Xollama: &xollama.Config{Version: 1, Session: &xollama.Session{Pool: &on, MaxPools: 3}}},
+			want: 3,
+		},
+		{
+			name: "the model turns pooling off where the environment turned it on",
+			env:  map[string]string{"XOLLAMA_SESSION_POOL": "1", "XOLLAMA_POLYKV_MAX_POOLS": "5"},
+			cfg:  LlamaServerConfig{Xollama: &xollama.Config{Version: 1, Session: &xollama.Session{Pool: &off}}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+			if got := resolvePoolCount(tc.cfg); got != tc.want {
+				t.Errorf("resolvePoolCount() = %d, want %d", got, tc.want)
+			}
+		})
 	}
 }
 

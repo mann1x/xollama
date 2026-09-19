@@ -153,6 +153,17 @@ type Session struct {
 	// handed out by the engine at runtime and cannot be known when a model is
 	// published.
 	Pool *bool `json:"pool,omitempty"`
+
+	// MaxPools is how many distinct shared prefixes this model may hold at
+	// once. Zero means unstated, and a model that asks for pooling without
+	// naming a number gets a small default.
+	//
+	// It is not free: each pool reserves a sequence id for the whole life of
+	// the runner, and on a sliding-window model a reserved sequence costs its
+	// own window exactly as a slot does. One prefix per distinct system prompt
+	// is the shape to size it by, not one per conversation -- conversations
+	// sharing a prompt share the pool, which is the point.
+	MaxPools int `json:"max_pools,omitempty"`
 }
 
 // KV holds this model's KV cache types.
@@ -269,9 +280,19 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("xollama config: dca.chunk_size needs dca.enabled; it describes how the chunked route splits positions")
 		}
 	}
-	if c.Session != nil && c.Session.Pool != nil && *c.Session.Pool &&
-		c.Session.Affinity != nil && !*c.Session.Affinity {
-		return fmt.Errorf("xollama config: session.pool requires session.affinity; a shared prefix pool has nothing to attach to without session identity")
+	if c.Session != nil {
+		if c.Session.Pool != nil && *c.Session.Pool &&
+			c.Session.Affinity != nil && !*c.Session.Affinity {
+			return fmt.Errorf("xollama config: session.pool requires session.affinity; a shared prefix pool has nothing to attach to without session identity")
+		}
+		if c.Session.MaxPools < 0 {
+			return fmt.Errorf("xollama config: session.max_pools %d must not be negative", c.Session.MaxPools)
+		}
+		// A count of prefixes to hold means nothing when nothing is being
+		// pooled, and reads as if it switches pooling on. It does not.
+		if c.Session.MaxPools > 0 && c.Session.Pool != nil && !*c.Session.Pool {
+			return fmt.Errorf("xollama config: session.max_pools needs session.pool; it sizes the pooling that session.pool switches on")
+		}
 	}
 	return nil
 }
@@ -316,5 +337,5 @@ func (c *Config) IsZero() bool {
 		(c.KV == nil || (c.KV.K == "" && c.KV.V == "" && c.KV.KSWA == "" && c.KV.VSWA == "")) &&
 		(c.Slots == nil || (c.Slots.Dynamic == nil && c.Slots.Max == 0 && c.Slots.TPSFloor == 0 && c.Slots.VRAMReserveMiB == 0)) &&
 		(c.DCA == nil || (c.DCA.Enabled == nil && c.DCA.ChunkSize == 0)) &&
-		(c.Session == nil || (c.Session.Affinity == nil && c.Session.Pool == nil))
+		(c.Session == nil || (c.Session.Affinity == nil && c.Session.Pool == nil && c.Session.MaxPools == 0))
 }

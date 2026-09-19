@@ -111,18 +111,58 @@ identity there is nothing to attach. Asking for `"pool": true` together with
 `"affinity": false` in a Modelfile is refused when the model is created, rather
 than accepted and then quietly doing nothing.
 
-<Warning>
-  **Not yet doing anything.** The request field that attaches a conversation to
-  a pool is plumbed and tested, and the setting above is accepted and carried
-  with the model. But xollama does not yet create pools or start the engine with
-  pooling enabled, so nothing hands out a pool to attach to. Setting it today
-  records your intent and changes no behaviour. The next piece of work is the
-  pool lifecycle and the launch flags it needs.
-</Warning>
+You do not have to compute anything. The engine works out how much of your
+prompt matches the pool itself, token by token, so there is no shared-prefix
+length to declare and get wrong.
 
-When it does land, you will not have to compute anything: the engine works out
-how much of your prompt matches the pool itself, token by token, and a pool that
-has gone away is a silent full reprocess rather than an error.
+### How a pool comes to exist
+
+The first conversation with a given system prompt is served normally. Once it
+finishes, its context is snapshotted into a pool — on the engine side that is a
+copy-free operation — and every later conversation that opens the same way
+attaches to it instead of storing its own copy.
+
+Nothing about this is on the critical path. The snapshot happens after the
+response has been sent, and a snapshot that fails is logged and forgotten: the
+model then behaves exactly as it did before pooling existed.
+
+### How many pools
+
+```ini
+Environment="XOLLAMA_POLYKV_MAX_POOLS=4"
+```
+
+or `session.max_pools` in the Modelfile. The default is two.
+
+Size it by **distinct system prompts**, not by conversations — conversations
+sharing a prompt share a pool, which is the whole point. Two is enough for one
+prompt plus a variant.
+
+It is not free. Each pool reserves a sequence for the life of the runner, and on
+a sliding-window model a reserved sequence costs its own window exactly as a
+slot does. That cost is included in the memory xollama plans for, so a pooled
+model is placed and evicted against the number it will actually hold — see
+[Concurrent requests](/xollama/slots).
+
+When more distinct prefixes turn up than there are pools, the least recently
+used pool is released to make room.
+
+### Seeing it
+
+```sh
+curl -s 'localhost:11434/api/engine?model=gemma4:e4b&endpoint=polykv/pools' | jq
+```
+
+Each pool reports its prefix length, how many conversations attached, and when
+it was last used. See [Seeing what the engine did](/xollama/introspection).
+
+<Note>
+  Pools are held open deliberately rather than left to the engine's idle sweep.
+  A swept pool is not an error — a conversation attaching to a pool that has
+  gone away simply reprocesses its prompt in full — but it is also silent, and a
+  feature that stops working without saying so is worse than one that is off.
+  They are released when the model unloads.
+</Note>
 
 ## Settings summary
 
@@ -131,6 +171,8 @@ has gone away is a silent full reprocess rather than an error.
 | Session affinity | `XOLLAMA_SESSION_AFFINITY` | `session.affinity` | — | on |
 | Session name | — | — | `session_id` | derived |
 | Shared prefix pool | `XOLLAMA_SESSION_POOL` | `session.pool` | — | off |
+| Pools per model | `XOLLAMA_POLYKV_MAX_POOLS` | `session.max_pools` | — | 2 |
+| Pool to attach to | — | — | `pool_id` | chosen for you |
 
 Most specific wins: the request names the session, the model decides whether
 sessions are used at all, and the server decides for models that say nothing.

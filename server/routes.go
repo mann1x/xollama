@@ -567,6 +567,7 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 					Logprobs:    req.Logprobs,
 					TopLogprobs: req.TopLogprobs,
 					SessionID:   sessionIDForRequest(req.SessionID, m, values.Messages, nil),
+					PoolKey:     poolKeyForRequest(m, values.Messages, nil),
 				}, genTruncate)
 				if err != nil {
 					slog.Error("chat template prompt error", "error", err)
@@ -3072,6 +3073,7 @@ func (s *Server) ChatHandler(c *gin.Context) {
 				LeadingBOS:                 leadingBOSForModel(m),
 				IncludeIntermediateMetrics: includeIntermediateMetrics,
 				SessionID:                  sessionIDForRequest(req.SessionID, m, msgs, req.Tools),
+				PoolKey:                    poolKeyForRequest(m, msgs, req.Tools),
 				ThinkBudget:                thinkBudget,
 				ThinkBudgetMessage:         opts.ThinkBudgetMessage,
 				ThinkingStartTag:           thinkStartTag,
@@ -3272,6 +3274,20 @@ func sessionIDForRequest(explicit string, m *Model, msgs []api.Message, tools ap
 	return llm.DeriveSessionID(m.Digest, msgs, tools)
 }
 
+// poolKeyForRequest names the prefix this request would share with others of
+// the same model -- its system prompt and tool names, not its conversation.
+//
+// Like the session id, whether it is USED is decided further down: the runner
+// ignores it unless this model asked for pooling and the load actually ran on
+// an engine that has pools. Computing it unconditionally keeps that decision in
+// one place.
+func poolKeyForRequest(m *Model, msgs []api.Message, tools api.Tools) string {
+	if m == nil {
+		return ""
+	}
+	return llm.DerivePoolKey(m.Digest, msgs, tools)
+}
+
 func prepareNativeChatRequest(ctx context.Context, m *Model, r llm.LlamaServer, opts *api.Options, nativeReq llm.ChatRequest, truncate bool) (llm.ChatRequest, error) {
 	var err error
 	nativeReq.Messages, err = truncateNativeChatMessages(ctx, m, r, optionsForPrompt(opts, r), nativeReq, truncate)
@@ -3290,6 +3306,7 @@ func (s *Server) handleNativeChat(c *gin.Context, req api.ChatRequest, m *Model,
 		Logprobs:    req.Logprobs,
 		TopLogprobs: req.TopLogprobs,
 		SessionID:   sessionIDForRequest(req.SessionID, m, msgs, req.Tools),
+		PoolKey:     poolKeyForRequest(m, msgs, req.Tools),
 	}, truncate)
 	if err != nil {
 		slog.Error("chat template prompt error", "error", err)

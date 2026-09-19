@@ -123,7 +123,27 @@ written directly rather than exposed as a general escape hatch.
 
 ## G5 — no per-request passthrough, so PolyKV's request half is unreachable
 
-> **Partly closed, 2026-09-19.** `session_id` now ships: derived in
+> **Closed, 2026-09-19.** Both halves now ship. The pool half: the launch
+> passes `--polykv-max-pools` (four planes — `XOLLAMA_SESSION_POOL` turns it on,
+> `XOLLAMA_POLYKV_MAX_POOLS` or `session.max_pools` sizes it, default 2), and
+> `llm/engine_pool.go` runs the lifecycle. A prefix is identified by
+> `DerivePoolKey` — model digest, system messages and tool names, deliberately
+> *not* the first user message, which is what separates a pool key from a
+> session id and is the difference between one pool and one pool per
+> conversation. The first request for a prefix is served normally and then
+> snapshotted with `POST /polykv/pools {from_session, pin}`; later requests
+> carry that `pool_id`. Pools are pinned and released on unload rather than left
+> to the 60 s idle sweep, because a swept pool whose id we still hold is a
+> silent full reprocess. Bounded by the same number the engine was given seats
+> for, with LRU eviction. `--kv-unified` is emitted once for both features.
+> The estimate was corrected too: `n_seq_max` is `parallel + polykv_max_pools`,
+> so a reserved pool costs a sliding window exactly as a slot does.
+>
+> Not validated end to end against a live engine — the unit surface is covered
+> and the HTTP shapes are taken from opencoti's `docs/features/polykv_api.md`,
+> but no pooled load has actually been served yet.
+>
+> The `session_id` half, from earlier the same day: derived in
 > `server/routes.go` from the stable head of a conversation, resolved in
 > `llm/engine_session.go` against `xollama.json` then `XOLLAMA_SESSION_AFFINITY`,
 > and emitted only when the load ran on opencoti. `pool_id` is plumbed and
@@ -249,9 +269,8 @@ deprecated tier and miss the ring.
 Updated 2026-09-19. G3, G4 and G7 are closed; G5 is half closed.
 
 1. ~~**G6**~~ — done, `GET /api/engine`.
-2. **G5, the pool half** — `--polykv-max-pools` at launch and a pool lifecycle
-   over `POST /polykv/pools {from_session}`. `session_id` is done and is what
-   a pool attaches to.
+2. ~~**G5, the pool half**~~ — done. Needs an end-to-end run against a live
+   engine before it can be called validated.
 3. **G1** — the per-model options carrier, now that `xollama.json` carries kv,
    slots, session and dca. What is left is moving the remaining launch settings
    into it rather than adding new ones beside it.

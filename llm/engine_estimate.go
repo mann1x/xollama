@@ -105,7 +105,12 @@ func PredictServerSlotVRAM(f *gguf.Model, cfg LlamaServerConfig, gpus []ml.Devic
 	}
 
 	plan := resolveSlotPlan(cfg, numParallel, cfg.SingleSequenceOnly)
-	seqs := plan.concurrency()
+
+	// n_seq_max is the slot ceiling PLUS the reserved pool ids
+	// (common_n_parallel_max(params) + polykv_max_pools), so a pool costs a
+	// sequence's worth of sliding window exactly as a slot does. Leaving the
+	// pools out here would under-count a pooled load by that much.
+	seqs := plan.concurrency() + resolvePoolCount(cfg)
 	if seqs <= plan.Live || !wouldUseOpencoti(cfg, gpus) {
 		return 0
 	}

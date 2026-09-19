@@ -325,6 +325,14 @@ var (
 	// DCAChunkSize is the chunk length in tokens. Zero means auto, which is the
 	// model's own pretrain window and is almost always the right answer.
 	DCAChunkSize = Uint("XOLLAMA_DCA_CHUNK_SIZE", 0)
+	// PolyKVMaxPools is how many shared prefix pools a model may hold at once.
+	// Zero leaves it to the model, which gets a small default when it asks for
+	// pooling and names no number.
+	//
+	// Each pool reserves a sequence id for the life of the runner, and on a
+	// sliding-window model that costs a window exactly as a slot does, so this
+	// is sized by distinct system prompts rather than by conversations.
+	PolyKVMaxPools = Uint("XOLLAMA_POLYKV_MAX_POOLS", 0)
 
 	LLMLibrary = String("OLLAMA_LLM_LIBRARY")
 	Editor     = String("OLLAMA_EDITOR")
@@ -406,6 +414,7 @@ func AsMap() map[string]EnvVar {
 		"XOLLAMA_SLOTS_VRAM_RESERVE":  {"XOLLAMA_SLOTS_VRAM_RESERVE", SlotsVRAMReserve(), "Free VRAM in MiB to keep before admitting another slot"},
 		"XOLLAMA_DCA":                 {"XOLLAMA_DCA", DCA(), "Serve a model past its trained context with dual chunk attention (needs a supported engine and architecture)"},
 		"XOLLAMA_DCA_CHUNK_SIZE":      {"XOLLAMA_DCA_CHUNK_SIZE", DCAChunkSize(), "DCA chunk length in tokens (0 = the model's own pretrain window)"},
+		"XOLLAMA_POLYKV_MAX_POOLS":    {"XOLLAMA_POLYKV_MAX_POOLS", PolyKVMaxPools(), "Shared prefix pools a model may hold at once (0 = the model decides)"},
 		"OLLAMA_DEBUG":                {"OLLAMA_DEBUG", LogLevel(), "Show additional debug information (e.g. XOLLAMA_DEBUG=1)"},
 		"OLLAMA_DEBUG_LOG_REQUESTS":   {"OLLAMA_DEBUG_LOG_REQUESTS", DebugLogRequests(), "Log inference request bodies and replay curl commands to a temp directory"},
 		"OLLAMA_GO_TEMPLATE":          {"OLLAMA_GO_TEMPLATE", GoTemplate(true), "Enable Modelfile TEMPLATE based rendering when available"},

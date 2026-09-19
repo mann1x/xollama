@@ -1,8 +1,12 @@
 package llm
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
-	"path/filepath"
+	"io"
+	"log/slog"
+	"os"
 	"strings"
 )
 
@@ -28,15 +32,21 @@ import (
 
 // knownEngineDefect is one defect in a published artifact.
 //
-// Both halves must match before anything is said. Version alone would blame the
-// build for every unrelated failure a user has while running it; signature
+// Both halves must match before anything is said. The build alone would blame
+// it for every unrelated failure a user has while running it; the signature
 // alone would blame a defect that a newer artifact has already fixed. Together
 // they are specific enough that the message can be stated as fact.
 type knownEngineDefect struct {
-	// Versions are substrings matched against the artifact's file name. The
-	// name carries the cut, and the pin binds the name to a sha, so this is
-	// exact without hashing 600 MB on a failure path.
-	Versions []string
+	// SHA256 identifies the defective bytes, and it is bytes rather than a file
+	// name for a reason learned the hard way: a cut can be RE-PUBLISHED under
+	// the same name and tag once it is fixed. Matching the name would then go
+	// on blaming a build that no longer has the defect, and the accusation
+	// would be invisible to everyone except the person whose working load was
+	// being explained away.
+	//
+	// The cost is hashing the artifact, which is why it happens only after a
+	// load has already failed and only once per runner.
+	SHA256 []string
 	// Signatures are substrings matched against the engine's own dying words.
 	Signatures []string
 	// Summary says what is wrong, and Workaround what to do instead. Both are
@@ -57,7 +67,7 @@ var knownEngineDefects = []knownEngineDefect{
 		// nothing to re-pin to. Reported to us 2026-09-19; the same abort was
 		// independently measured in docs/evaluations/phase2-engine-ab.md before
 		// it had a name.
-		Versions: []string{"0.10.5-c7"},
+		SHA256: []string{"3c907bc7511359054dbf55c9d2d69fb49324ef75bdbb45efa092c3facad8951e"},
 		Signatures: []string{
 			"GGML_ASSERT(dst->op == GGML_OP_FLASH_ATTN_EXT)",
 			"fattn-common.cuh",
@@ -77,17 +87,51 @@ var knownEngineDefects = []knownEngineDefect{
 // artifact is the engine binary's path; output is whatever the engine said on
 // its way down. Matching is case-insensitive on the signature because the same
 // assertion reaches us through several log paths.
+//
+// The signature is checked first and the artifact is hashed only if one matches,
+// so the common failure -- a bad model, a missing file, out of memory -- costs
+// nothing.
 func describeEngineDefect(artifact, output string) string {
-	name := strings.ToLower(filepath.Base(artifact))
 	lower := strings.ToLower(output)
 
+	var digest string
+	var hashed bool
+
 	for _, d := range knownEngineDefects {
-		if !containsAny(name, d.Versions) || !containsAny(lower, d.Signatures) {
+		if !containsAny(lower, d.Signatures) {
 			continue
 		}
-		return fmt.Sprintf("this is a known defect in the pinned engine build, not a problem with your model: %s. Until a fixed build is published, %s", d.Summary, d.Workaround)
+		if !hashed {
+			digest, hashed = fileDigest(artifact), true
+		}
+		if digest == "" || !containsAny(digest, d.SHA256) {
+			continue
+		}
+		return fmt.Sprintf("this is a known defect in the engine build in use, not a problem with your model: %s. Until a fixed build is published, %s", d.Summary, d.Workaround)
 	}
 	return ""
+}
+
+// fileDigest is the sha256 of a file, lower case, or "" if it cannot be read.
+//
+// An unreadable artifact means no accusation is made, which is the right way
+// round: the cost of staying quiet is an unexplained error the user would have
+// had anyway, and the cost of guessing is telling someone their working build
+// is broken.
+func fileDigest(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		slog.Debug("could not hash the engine artifact to check it against known defects", "path", path, "error", err)
+		return ""
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		slog.Debug("could not hash the engine artifact to check it against known defects", "path", path, "error", err)
+		return ""
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // containsAny reports whether s contains any of the needles, which are compared

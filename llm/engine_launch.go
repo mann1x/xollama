@@ -237,24 +237,77 @@ func resolveSlotPlan(cfg LlamaServerConfig, numParallel int, forcedSingle bool) 
 	return plan
 }
 
-// appendSlotArgs adds the dynamic-slot arguments, once the engine is known.
+// defaultMaxPools is how many shared prefixes a model gets when it asks for
+// pooling and names no number.
 //
-// Both flags are gated on opencoti, for different reasons. --max-parallel is
-// its own; --kv-unified exists upstream too, but it changes what -c means, and
-// switching that on for a stock load would move the off path away from
-// upstream's for no gain, since nothing there can park or admit a slot.
-func appendSlotArgs(args []string, plan slotPlan, usedOpencoti bool) []string {
-	if !plan.Dynamic || !usedOpencoti || plan.Max <= plan.Live {
+// Two, not more: a pool reserves a sequence id for the life of the runner, and
+// on a sliding-window model a reserved sequence costs its own window exactly as
+// a slot does. Two covers the common shapes -- one system prompt, or one plus a
+// variant -- and anything beyond that is a number someone should choose on
+// purpose.
+const defaultMaxPools = 2
+
+// resolvePoolCount is how many shared prefix pools this load may hold.
+//
+// Precedence is the same as everywhere else: the model's xollama.json, then the
+// environment, then the default. Zero means pooling is off, and a model that
+// has not asked for pooling gets zero however the environment is set -- the
+// count sizes the feature, it does not switch it on.
+func resolvePoolCount(cfg LlamaServerConfig) int {
+	want, stated := cfg.sessionPool()
+	if !stated {
+		want = envconfig.SessionPool()
+	}
+	if !want {
+		return 0
+	}
+
+	pools := int(envconfig.PolyKVMaxPools())
+	if cfg.Xollama != nil && cfg.Xollama.Session != nil && cfg.Xollama.Session.MaxPools > 0 {
+		pools = cfg.Xollama.Session.MaxPools
+	}
+	if pools <= 0 {
+		pools = defaultMaxPools
+	}
+	return pools
+}
+
+// appendSlotArgs adds the dynamic-slot and shared-pool arguments, once the
+// engine is known.
+//
+// Everything here is gated on opencoti, for two different reasons.
+// --max-parallel and --polykv-max-pools are its own flags. --kv-unified exists
+// upstream too, but it changes what -c means, and switching it on for a stock
+// load would move the off path away from upstream's for no gain, since nothing
+// there can park a slot or hold a pool.
+//
+// --kv-unified is emitted here and only here, because two separate features
+// need it and neither may emit it twice: parked slots have nothing to be
+// admitted into when every slot owns a fixed share of the cells, and a pool's
+// reserved sequence id is a share of the same pool of cells.
+func appendSlotArgs(args []string, plan slotPlan, pools int, usedOpencoti bool) []string {
+	if !usedOpencoti {
 		return args
 	}
-	// --max-parallel requires the shared pool: parked slots have nothing to be
-	// admitted into when every slot owns a fixed share of the cells.
-	args = append(args, "--kv-unified", "--max-parallel", strconv.Itoa(plan.Max))
-	if plan.TPSFloor > 0 {
-		args = append(args, "--max-parallel-tps-floor", strconv.FormatFloat(plan.TPSFloor, 'g', -1, 64))
+
+	elastic := plan.Dynamic && plan.Max > plan.Live
+	if !elastic && pools <= 0 {
+		return args
 	}
-	if plan.VRAMReserveMiB > 0 {
-		args = append(args, "--max-parallel-vram-reserve", strconv.Itoa(plan.VRAMReserveMiB))
+
+	args = append(args, "--kv-unified")
+
+	if elastic {
+		args = append(args, "--max-parallel", strconv.Itoa(plan.Max))
+		if plan.TPSFloor > 0 {
+			args = append(args, "--max-parallel-tps-floor", strconv.FormatFloat(plan.TPSFloor, 'g', -1, 64))
+		}
+		if plan.VRAMReserveMiB > 0 {
+			args = append(args, "--max-parallel-vram-reserve", strconv.Itoa(plan.VRAMReserveMiB))
+		}
+	}
+	if pools > 0 {
+		args = append(args, "--polykv-max-pools", strconv.Itoa(pools))
 	}
 	return args
 }

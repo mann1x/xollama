@@ -216,3 +216,48 @@ func TestSlotCeilingGrowsWithTheCeiling(t *testing.T) {
 		previous = got
 	}
 }
+
+// TestSlotCeilingCountsReservedPools is the correction opencoti supplied:
+// n_seq_max is common_n_parallel_max(params) + polykv_max_pools, so a reserved
+// pool id costs a sequence's worth of sliding window exactly as a slot does.
+// Leaving pools out under-counts a pooled load by that much.
+func TestSlotCeilingCountsReservedPools(t *testing.T) {
+	t.Setenv("XOLLAMA_ENGINE", "opencoti")
+
+	f := loadTestGGUF(t, slidingModelKV(256))
+	dynamic, pooled := true, true
+
+	plain := LlamaServerConfig{Xollama: &xollama.Config{
+		Version: 1,
+		Slots:   &xollama.Slots{Dynamic: &dynamic, Max: 4},
+	}}
+	withPools := LlamaServerConfig{Xollama: &xollama.Config{
+		Version: 1,
+		Slots:   &xollama.Slots{Dynamic: &dynamic, Max: 4},
+		Session: &xollama.Session{Pool: &pooled, MaxPools: 2},
+	}}
+
+	without := PredictServerSlotVRAM(f, plain, nil, 8192, 512, 1)
+	with := PredictServerSlotVRAM(f, withPools, nil, 8192, 512, 1)
+	if with <= without {
+		t.Errorf("pooled prediction %d is not above the unpooled %d; reserved pools cost sequences too", with, without)
+	}
+}
+
+// TestSlotCeilingChargesPoolsWithoutDynamicSlots covers the load that has no
+// elastic slots at all: pooling alone still raises n_seq_max, so it still costs.
+func TestSlotCeilingChargesPoolsWithoutDynamicSlots(t *testing.T) {
+	t.Setenv("XOLLAMA_ENGINE", "opencoti")
+	t.Setenv("XOLLAMA_DYNAMIC_SLOTS", "false")
+
+	f := loadTestGGUF(t, slidingModelKV(256))
+	pooled := true
+	cfg := LlamaServerConfig{Xollama: &xollama.Config{
+		Version: 1,
+		Session: &xollama.Session{Pool: &pooled, MaxPools: 2},
+	}}
+
+	if got := PredictServerSlotVRAM(f, cfg, nil, 8192, 512, 1); got == 0 {
+		t.Error("surcharge = 0, want a charge: two reserved pools are two more sequences")
+	}
+}
