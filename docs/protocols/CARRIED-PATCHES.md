@@ -25,7 +25,7 @@ v0.34.2, and all thirteen are still OPEN against `ollama/ollama`.**
 | #17563 | `1e384e33` | #17914 | `27e10549` |
 | #17564 | `a765e728` | #18212 | `a6dc8df3` |
 | #17565 | `5dc1d79a` | #18281 | `bb54003d` |
-| #17566 | `2fd06701` | #18288 | `5a80b98b` |
+| #17566 | `2fd06701`, `aa991d47` | #18288 | `5a80b98b` |
 | #17567 | `43be0f1d` | #18289 | `ddb0fec9` |
 | #17626 | `c7d7a3fb` | #18307 | `0c0db3d9` |
 | #16820 | `a4a6dd7b` | | |
@@ -34,6 +34,22 @@ Verified after the replay: `go build ./...` and `go vet ./...` clean, and the
 full `go test ./...` passes except four failures that are **not ours** and fail
 identically on clean v0.34.2 — `cmd/launch` (1) and `cmd/internal/fileutil` (3,
 which assert permission denials and cannot fail when the suite runs as root).
+
+**2026-09-19 — #17566 carries a second merge.** `aa991d47` brings `f3f8c342`
+from `up-think-budget`: thinking switched off no longer inherits the model's
+`think_budget`. A patch updated at the source gets another `--no-ff` merge
+rather than a rewritten one, so rule 1 still holds — retiring #17566 is the
+revert of an identifiable set of merges, now two. Verified on the merge:
+`gofmt`, `go build .`, `go vet ./...`, `go test ./...` (58 ok, 0 fail, exit 0),
+`go test -race` on `server api openai anthropic llm`, and `golangci-lint run`
+(0 issues). The four "not ours" failures noted above did not reproduce in this
+run.
+
+**Open on this patch:** the same commit guards `thinkBudgetForShow`, which
+exists only on `up-think-budget` (and so only here, not on the `think-budget`
+branch), and that guard ships **untested** — `TestShowThinkBudget` has no
+`think: false` case. The test belongs on the PR branch first, per rule 2;
+adding it here first would collide with the same block on the next merge.
 
 ## Tier 1 — the reason this fork exists
 
