@@ -340,6 +340,37 @@ Updated 2026-09-19. G3, G4 and G7 are closed; G5 is half closed.
    must not exist at all. Worth doing for engine flags nobody has modelled yet,
    not as a dependency of anything planned.
 
-Everything else in this report is closed. What is left is not a gap but a
-measurement: none of PolyKV, DCA beyond native, or elastic slots has been run
-against a live engine end to end.
+## The measurement, taken 2026-09-19
+
+It has now been run. Host: eleven2go, Windows 11, RTX 3090 (CUDA compute 8.6),
+artifact `opencoti-llamafile-0.10.5-c7-win-x86_64-gpu.llamafile.exe`, sha
+`19ff1d87…`, matching the pin.
+
+| What | Result |
+|---|---|
+| Engine discovery and policy | chose the artifact unprompted, "tested on windows/amd64 with CUDA compute 8.6" |
+| Elastic slots (G7) | engine grew to 4 slots, each reporting the full `n_ctx=32768` — the shared pool, not a split |
+| `--kv-unified` | emitted once, for both features |
+| DCA beyond native (G4) | `num_ctx=65536` on a 40960-trained qwen3; engine confirms `validate_override … = 65536`; chunk **40960**, derived from the ORIGINAL trained context |
+| `GET /api/engine` (G6) | all four endpoints live; `metrics` returned as text; `completion` refused 400 |
+| Recurrent gate | fired on qwen35; engine corroborates with `qwen35.attention.recurrent_layers` and `llama_memory_recurrent` |
+| PolyKV attach (G5) | pool created, `pool_id` sent, engine matched the prefix token-exactly at P=29 |
+| Off-path `XOLLAMA_ENGINE=llamacpp` | stock `llama-server.exe`, **zero** xollama flags, `--load-mode` left untranslated |
+
+Three things the measurement found that no amount of reading would have:
+
+1. **`--load-mode` made every opencoti load fail.** Fixed; see the correction
+   appended to `phase0-engine-compat.md`.
+2. **`--cache-type-k-swa` / `--cache-type-v-swa` do not exist in c7.** Open,
+   bug-034, mail #107. The split-KV feature cannot work on the pinned engine.
+3. **Pool seats were reserved for models that can never use them.** Fixed by
+   `effectivePoolCount`.
+
+And one the engine told us in its own words: a pinned `from_session` pool
+measured `prefix_len=50` against a share of `P=29` — 21 cells pinned for the
+pool's life that nothing can ever match. That is the `expect_len` cost above, in
+numbers, and together with opencoti's SWA-residency reading (their bug-3494) it
+is why the pool path is moving to the `/apply-template` + `{tokens}` create
+rather than gaining an `expect_len` argument.
+
+Everything else in this report is closed.
