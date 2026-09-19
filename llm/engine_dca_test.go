@@ -73,19 +73,21 @@ func TestResolveDCAPlan(t *testing.T) {
 
 func TestAppendDCAArgs(t *testing.T) {
 	for _, tc := range []struct {
-		name         string
-		plan         dcaPlan
-		arch         string
-		numCtx       int
-		trainCtx     int
-		usedOpencoti bool
-		want         []string
+		name             string
+		plan             dcaPlan
+		arch             string
+		numCtx, trainCtx int
+		numBatch         int
+		usedOpencoti     bool
+		want             []string
+		wantErr          string
 	}{
 		{
 			name:         "off adds nothing",
 			arch:         "qwen3",
 			numCtx:       1 << 20,
 			trainCtx:     32768,
+			numBatch:     512,
 			usedOpencoti: true,
 		},
 		{
@@ -96,60 +98,155 @@ func TestAppendDCAArgs(t *testing.T) {
 			arch:         "qwen3",
 			numCtx:       65536,
 			trainCtx:     32768,
+			numBatch:     512,
 			usedOpencoti: false,
 		},
 		{
-			// Within the trained window the chunked route is all that was
-			// asked for. Stretching positions that already fit would change
-			// the answers for no reason.
+			// Within the trained window auto-chunk resolves to the model's own
+			// pretrain context, which nothing has rewritten, so it is correct
+			// and is left alone.
 			name:         "within the trained context, only the route",
 			plan:         dcaPlan{Enabled: true},
 			arch:         "qwen3",
 			numCtx:       16384,
 			trainCtx:     32768,
+			numBatch:     512,
 			usedOpencoti: true,
 			want:         []string{"--dca", "on"},
 		},
 		{
-			name:         "past the trained context, the whole recipe",
+			// The chunk is NOT left on auto here. Auto resolves to n_ctx_train,
+			// which the override rewrites to num_ctx -- one chunk, and DCA
+			// silently does nothing. The derived chunk is the native context,
+			// read before the override changes it.
+			name:         "past the trained context pins the chunk to the native window",
 			plan:         dcaPlan{Enabled: true},
 			arch:         "qwen3",
 			numCtx:       131072,
 			trainCtx:     32768,
+			numBatch:     512,
 			usedOpencoti: true,
 			want: []string{
 				"--dca", "on",
-				"--rope-scaling", "yarn",
+				"--dca-chunk-size", "32768",
 				"--override-kv", "qwen3.context_length=int:131072",
 			},
 		},
 		{
-			name:         "a chunk size is passed through",
+			name:         "an explicit chunk size wins over the derived one",
+			plan:         dcaPlan{Enabled: true, ChunkSize: 8192},
+			arch:         "qwen3",
+			numCtx:       131072,
+			trainCtx:     32768,
+			numBatch:     512,
+			usedOpencoti: true,
+			want: []string{
+				"--dca", "on",
+				"--dca-chunk-size", "8192",
+				"--override-kv", "qwen3.context_length=int:131072",
+			},
+		},
+		{
+			name:         "a chunk size is passed through within the trained context",
 			plan:         dcaPlan{Enabled: true, ChunkSize: 4096},
 			arch:         "gemma4",
 			numCtx:       16384,
 			trainCtx:     32768,
+			numBatch:     512,
 			usedOpencoti: true,
 			want:         []string{"--dca", "on", "--dca-chunk-size", "4096"},
 		},
 		{
 			// A file that does not declare its trained context gives nothing to
-			// compare against, so the override is not invented.
+			// compare against and nothing to derive a chunk from, so neither
+			// the override nor a chunk is invented.
 			name:         "no declared training context, no override",
 			plan:         dcaPlan{Enabled: true},
 			arch:         "qwen3",
 			numCtx:       131072,
 			trainCtx:     0,
+			numBatch:     512,
 			usedOpencoti: true,
 			want:         []string{"--dca", "on"},
 		},
+		{
+			// A derived chunk errs safe: shorter keeps more distances inside
+			// the trained window, and the engine throws on a chunk that is not
+			// a multiple of the batch.
+			name:         "a derived chunk is rounded down to the batch size",
+			plan:         dcaPlan{Enabled: true},
+			arch:         "qwen3",
+			numCtx:       131072,
+			trainCtx:     40000,
+			numBatch:     512,
+			usedOpencoti: true,
+			want: []string{
+				"--dca", "on",
+				"--dca-chunk-size", "39936",
+				"--override-kv", "qwen3.context_length=int:131072",
+			},
+		},
+		{
+			// A number someone typed is honoured or refused, never quietly
+			// changed into a different number.
+			name:         "an explicit chunk the engine would reject is refused",
+			plan:         dcaPlan{Enabled: true, ChunkSize: 5000},
+			arch:         "qwen3",
+			numCtx:       131072,
+			trainCtx:     32768,
+			numBatch:     512,
+			usedOpencoti: true,
+			wantErr:      "multiple of the batch size",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := appendDCAArgs(nil, tc.plan, tc.arch, tc.numCtx, tc.trainCtx, tc.usedOpencoti)
-			if !slices.Equal(got, tc.want) {
+			got, err := appendDCAArgs(nil, tc.plan, tc.arch, tc.numCtx, tc.trainCtx, tc.numBatch, tc.usedOpencoti)
+			switch {
+			case tc.wantErr != "":
+				if err == nil {
+					t.Fatalf("appendDCAArgs() = %v, want an error mentioning %q", got, tc.wantErr)
+				}
+				if !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("appendDCAArgs() error = %v, want it to mention %q", err, tc.wantErr)
+				}
+			case err != nil:
+				t.Fatalf("appendDCAArgs() error = %v", err)
+			case !slices.Equal(got, tc.want):
 				t.Errorf("appendDCAArgs() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// TestDCANeverLeavesTheChunkOnAutoPastNative is the regression guard for the
+// trap that made this whole path inert: auto-chunk resolves to n_ctx_train, the
+// override rewrites n_ctx_train to the requested context, and the result is one
+// chunk covering everything -- DCA doing nothing while the log says it is on.
+func TestDCANeverLeavesTheChunkOnAutoPastNative(t *testing.T) {
+	args, err := appendDCAArgs(nil, dcaPlan{Enabled: true}, "qwen3", 131072, 32768, 512, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	i := slices.Index(args, "--dca-chunk-size")
+	if i < 0 {
+		t.Fatal("no --dca-chunk-size on a past-native launch: auto resolves to the overridden context and DCA becomes a no-op")
+	}
+	if args[i+1] == "0" || args[i+1] == "131072" {
+		t.Errorf("--dca-chunk-size %s covers the whole context, which is one chunk and no chunked attention", args[i+1])
+	}
+}
+
+// TestDCADoesNotStretchPositions pins the decision not to emit --rope-scaling
+// yarn. With no --yarn-orig-ctx it has nothing to scale against, and none of the
+// engine's validated long-context runs use it.
+func TestDCADoesNotStretchPositions(t *testing.T) {
+	args, err := appendDCAArgs(nil, dcaPlan{Enabled: true}, "qwen3", 131072, 32768, 512, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(args, "--rope-scaling") {
+		t.Errorf("emitted --rope-scaling with nothing to scale against: %v", args)
 	}
 }
 

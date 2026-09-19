@@ -139,9 +139,10 @@ memory available, not that the server is busy.
 the opencoti engine does; on stock the setting is inert and the launch is
 Ollama's own, unchanged.
 
-<Warning>
-  Dynamic slots use one shared cache pool, and the opencoti engine's
-  **rolling-KV window** — the feature that spills cache to host RAM instead of
-  failing — requires the per-slot split and cannot run alongside it. If you
-  depend on rolling-KV, switch dynamic slots off for that model.
-</Warning>
+<Note>
+  Dynamic slots compose with the opencoti engine's other cache features. The
+  **rolling-KV window** — the one that spills cache to host RAM instead of
+  failing — runs under the shared pool as well as the per-slot split, and
+  **PolyKV** prefix pools require the shared pool, so they arrive with dynamic
+  slots rather than despite them. You do not have to choose.
+</Note>

@@ -91,15 +91,29 @@ so a load that asks for it there is refused rather than started without it — s
 
 ## Chunk size
 
-Leave it alone unless you have measured something.
-
 ```ini
 Environment="XOLLAMA_DCA_CHUNK_SIZE=4096"
 ```
 
-Zero, the default, means the model's own pretrain window, which is the right
-answer almost always. A smaller chunk keeps more distances inside the window at
-the cost of more chunk boundaries; a larger one does the reverse.
+Leave it at zero unless you have measured something. Zero means "the context the
+model was trained in", which is the right answer almost always: a smaller chunk
+keeps more distances inside the window at the cost of more chunk boundaries, a
+larger one does the reverse.
+
+xollama picks the number for you on a past-native load rather than leaving it on
+the engine's own auto, and the reason is a trap worth knowing about. The engine
+resolves auto to the model's original context — which it reads from the same
+metadata field xollama has just overridden to the *longer* figure. Left on auto,
+the chunk would become the whole requested context: one chunk, no distances
+between chunks, and DCA doing nothing at all while every log line still says
+`--dca on`. xollama therefore pins the chunk to the model's real trained window,
+read before the override.
+
+If you set the value yourself it must be a multiple of `num_batch`, or the engine
+refuses the context at startup. xollama checks this first and tells you which two
+numbers conflict, rather than letting the load fail with a message from the
+engine's constructor. A chunk xollama derived for you is rounded down to fit
+instead — a shorter chunk only keeps more distances inside the trained window.
 
 ## What it costs
 
@@ -115,10 +129,22 @@ already has a very long native context and no positional scaling, DCA can only
 approximate what the model already does properly, so it is a step down. Measure
 before you leave it on.
 
+<Warning>
+  **Going past the native context is experimental.** The chunked route itself is
+  well measured — the engine's own long-context results (RULER-VT 0.984 at 256k)
+  are DCA within a native window. Using the metadata override to go *beyond*
+  native has no validated result behind it yet. Treat a long context won this way
+  as something to check on your own task before you rely on it.
+</Warning>
+
 <Note>
-  Two flags are added alongside `--dca on` when, and only when, the requested
-  context is past the model's own: `--rope-scaling yarn` and an override telling
-  the engine the model's context length is the longer figure. Below the trained
-  window neither is added — stretching positions that already fit would change
-  answers for nothing.
+  One flag is added alongside `--dca on` when, and only when, the requested
+  context is past the model's own: an override telling the engine the model's
+  context length is the longer figure, which is what stops it enforcing the
+  trained window the way Ollama does.
+
+  `--rope-scaling yarn` is deliberately *not* added. Without an original-context
+  value to scale against it has nothing to do, and none of the engine's
+  validated long-context runs use it. Composing YaRN with chunked attention is
+  something the engine can do, but there is no measured recipe to copy yet.
 </Note>

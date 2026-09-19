@@ -515,7 +515,10 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 			slog.Warn(warn, "architecture", launch.modelArch, "supported", dcaArchitectures)
 		}
 	}
-	args = appendDCAArgs(args, dca, launch.modelArch, launch.opts.NumCtx, launch.trainContext, usedOpencoti)
+	args, err = appendDCAArgs(args, dca, launch.modelArch, launch.opts.NumCtx, launch.trainContext, launch.opts.NumBatch, usedOpencoti)
+	if err != nil {
+		return nil, 0, false, err
+	}
 
 	// xollama-hook: draft-assistant — see docs/features/gemma4-drafter.md
 	if launch.draftType != "" {

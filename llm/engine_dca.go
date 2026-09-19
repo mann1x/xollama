@@ -129,27 +129,85 @@ func checkDCAArchitecture(arch string, numCtx, trainCtx int) (warn string, refus
 		"dual chunk attention has no route on the %q architecture and will do nothing for this model", arch), nil
 }
 
+// resolveDCAChunk returns the chunk length to pass, and refuses a length the
+// engine would throw on.
+//
+// Passing one explicitly is not optional on a past-native load, and the reason
+// is a trap worth spelling out. --dca-chunk-size 0 means "auto", and auto
+// resolves to the model's original context -- which the engine reads from
+// n_ctx_train, which is precisely the value the metadata override rewrites.
+// Leave it on auto and the chunk becomes the whole requested context: one
+// chunk, no inter-chunk distances, DCA doing nothing at all, while every log
+// line still says --dca on. Naive extension wearing the flag's name.
+//
+// So a past-native load derives the chunk from the context the model was
+// actually trained in, read before the override changes the engine's mind
+// about what that is.
+//
+// The engine requires chunk % n_ubatch == 0 and throws at context creation
+// otherwise. A derived chunk is rounded down to satisfy that -- a shorter chunk
+// keeps more distances inside the trained window, so it errs safe. A chunk the
+// user asked for is refused instead, because silently serving a different
+// number than the one in someone's config is how a setting stops meaning
+// anything.
+func resolveDCAChunk(plan dcaPlan, numCtx, trainCtx, numBatch int) (int, error) {
+	pastNative := trainCtx > 0 && numCtx > trainCtx
+
+	chunk, derived := plan.ChunkSize, false
+	if chunk <= 0 {
+		if !pastNative {
+			// Within the trained window auto is correct: it resolves to the
+			// model's own pretrain context, which nothing has rewritten.
+			return 0, nil
+		}
+		chunk, derived = trainCtx, true
+	}
+
+	if numBatch > 0 && chunk%numBatch != 0 {
+		if !derived {
+			return 0, fmt.Errorf(
+				"dca.chunk_size / XOLLAMA_DCA_CHUNK_SIZE = %d must be a multiple of the batch size %d, or the engine refuses the context at startup; use %d, or set num_batch to a divisor of %d",
+				chunk, numBatch, chunk/numBatch*numBatch, chunk)
+		}
+		chunk = chunk / numBatch * numBatch
+		if chunk <= 0 {
+			return 0, fmt.Errorf(
+				"dual chunk attention needs a chunk of at least the batch size %d, but this model was trained in only %d tokens; lower num_batch, or turn DCA off",
+				numBatch, trainCtx)
+		}
+	}
+	return chunk, nil
+}
+
 // appendDCAArgs writes the DCA arguments once the engine is known.
 //
-// The stretch and the metadata override are written only when the requested
-// context is actually past the model's own, because below that the model needs
-// neither: chunked attention alone is the whole of what was asked for, and
-// stretching positions that already fit would change the answers for nothing.
-func appendDCAArgs(args []string, plan dcaPlan, arch string, numCtx, trainCtx int, usedOpencoti bool) []string {
+// The metadata override is written only when the requested context is actually
+// past the model's own. Below that the engine already believes the right thing
+// and rewriting it would change nothing except what auto-chunk resolves to.
+//
+// --rope-scaling yarn is deliberately NOT written. Without --yarn-orig-ctx or
+// --rope-scale it has nothing to scale against, and the engine's own validated
+// long-context runs do not use it: RULER-VT 0.984 at 256k is --dca on with an
+// explicit chunk and no YaRN. Composing the two is a real thing the engine can
+// do, through --dca-yarn-factor, but there is no measured recipe to copy yet.
+func appendDCAArgs(args []string, plan dcaPlan, arch string, numCtx, trainCtx, numBatch int, usedOpencoti bool) ([]string, error) {
 	if !plan.Enabled || !usedOpencoti {
-		return args
+		return args, nil
+	}
+
+	chunk, err := resolveDCAChunk(plan, numCtx, trainCtx, numBatch)
+	if err != nil {
+		return nil, err
 	}
 
 	args = append(args, "--dca", "on")
-	if plan.ChunkSize > 0 {
-		args = append(args, "--dca-chunk-size", strconv.Itoa(plan.ChunkSize))
+	if chunk > 0 {
+		args = append(args, "--dca-chunk-size", strconv.Itoa(chunk))
 	}
 	if trainCtx > 0 && numCtx > trainCtx && arch != "" {
-		args = append(args,
-			"--rope-scaling", "yarn",
-			"--override-kv", fmt.Sprintf("%s.context_length=int:%d", arch, numCtx))
+		args = append(args, "--override-kv", fmt.Sprintf("%s.context_length=int:%d", arch, numCtx))
 	}
-	return args
+	return args, nil
 }
 
 // DCAUnlocksContext reports whether this load may be given more context than the

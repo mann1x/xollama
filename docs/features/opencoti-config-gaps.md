@@ -181,17 +181,28 @@ Read-only, and only when the load routed to opencoti.
 > engine's 429 + `Retry-After` is waited out in `llm/engine_admission.go` so a
 > caller still sees queueing rather than an error.
 >
-> **What this gates, and it is not free:** the rolling-KV window requires the
-> per-slot split and cannot run under a shared pool, so dynamic slots and
-> rolling-KV are mutually exclusive. Documented; reported to opencoti. On iSWA
-> models each slot also reserves its own sliding window regardless of the shared
-> pool, so a high ceiling costs real memory on Gemma-4.
+> **What this gates:** less than first thought. The rolling-KV restriction was
+> retracted — see the correction below. What remains is real but narrower: on
+> iSWA models each slot reserves its own sliding window regardless of the shared
+> pool, so a high ceiling costs real memory on Gemma-4. That is now priced into
+> the memory prediction rather than only documented.
+
+> **Correction, 2026-09-19.** This section claimed dynamic slots and the
+> rolling-KV window were mutually exclusive. That is wrong, and the source it
+> came from is wrong too: opencoti's `docs/llamafile-usage.md` §3.3 still says
+> the window is "inherently incompatible with `--kv-unified`", and their own
+> reply to our question repeated it. The restriction was lifted long ago and
+> that paragraph was never updated; rolling-KV works with PolyKV pools on both
+> the split cache and the shared pool. opencoti is fixing their doc.
+>
+> Lesson kept rather than buried: a claim read out of one project's prose is not
+> evidence about its code, even when the project's own maintainer session
+> repeats it. Ask for the flag, the test or the matrix row.
 
 PolyKV pools and elastic slots both require `--kv-unified`, which changes what
-`-c` and `--parallel` mean, and which is mutually exclusive with the rolling-KV
-window. xollama sizes `-c` as `NumCtx × numParallel` for the split layout. The
-env twin exists, so a user can switch it on — into a configuration nobody here
-has measured.
+`-c` and `--parallel` mean. xollama sizes `-c` as `NumCtx × numParallel`, which
+is the same total either way — see `llm/engine_estimate.go` for why the shared
+pool costs what the split cost.
 
 **Remaining:** measure the pair on a real load — the sizing is reasoned, not
 measured. And `--polykv-max-pools` is still not passed, so the pool half of G5
