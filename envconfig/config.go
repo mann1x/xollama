@@ -274,6 +274,24 @@ var (
 	// model, instead of one copy each. Off by default: it changes how KV is
 	// allocated, and a server-wide default is the wrong place to decide that.
 	SessionPool = Bool("XOLLAMA_SESSION_POOL")
+	// KCacheType and VCacheType set the KV cache types separately, which
+	// OLLAMA_KV_CACHE_TYPE cannot: it is one string written into both halves.
+	// Either one that is set overrides it for that half only, so
+	// OLLAMA_KV_CACHE_TYPE stays the server default and these are the
+	// exception.
+	//
+	// Keys and values are not equally sensitive to quantisation -- keys cost
+	// more quality -- so a wider K than V is the usual recipe and upstream has
+	// no way to write it down.
+	KCacheType = String("XOLLAMA_K_CACHE_TYPE")
+	VCacheType = String("XOLLAMA_V_CACHE_TYPE")
+	// KCacheTypeSWA and VCacheTypeSWA set the types for the short-window half
+	// of a sliding-window model, which is a separate cache from the global one
+	// and is most of the cost on those models. They need an engine that has
+	// that flag; stock llama.cpp does not, and a load asking for one there is
+	// refused rather than started without it.
+	KCacheTypeSWA = String("XOLLAMA_K_CACHE_TYPE_SWA")
+	VCacheTypeSWA = String("XOLLAMA_V_CACHE_TYPE_SWA")
 
 	LLMLibrary = String("OLLAMA_LLM_LIBRARY")
 	Editor     = String("OLLAMA_EDITOR")
@@ -345,6 +363,10 @@ func AsMap() map[string]EnvVar {
 		"XOLLAMA_ENGINE_FALLBACK":     {"XOLLAMA_ENGINE_FALLBACK", EngineFallback(), "Retry a failed opencoti load on stock llama.cpp (default false: fail instead of downgrading silently)"},
 		"XOLLAMA_SESSION_AFFINITY":    {"XOLLAMA_SESSION_AFFINITY", SessionAffinity(), "Return a conversation to the slot holding its KV, on the opencoti engine (default true)"},
 		"XOLLAMA_SESSION_POOL":        {"XOLLAMA_SESSION_POOL", SessionPool(), "Share one copy of a common prefix between conversations, on the opencoti engine (default false)"},
+		"XOLLAMA_K_CACHE_TYPE":        {"XOLLAMA_K_CACHE_TYPE", KCacheType(), "KV cache type for keys, overriding OLLAMA_KV_CACHE_TYPE for that half"},
+		"XOLLAMA_V_CACHE_TYPE":        {"XOLLAMA_V_CACHE_TYPE", VCacheType(), "KV cache type for values, overriding OLLAMA_KV_CACHE_TYPE for that half"},
+		"XOLLAMA_K_CACHE_TYPE_SWA":    {"XOLLAMA_K_CACHE_TYPE_SWA", KCacheTypeSWA(), "KV cache type for keys in a sliding-window model's short-window cache (needs an engine with a separate ring)"},
+		"XOLLAMA_V_CACHE_TYPE_SWA":    {"XOLLAMA_V_CACHE_TYPE_SWA", VCacheTypeSWA(), "KV cache type for values in a sliding-window model's short-window cache"},
 		"OLLAMA_DEBUG":                {"OLLAMA_DEBUG", LogLevel(), "Show additional debug information (e.g. XOLLAMA_DEBUG=1)"},
 		"OLLAMA_DEBUG_LOG_REQUESTS":   {"OLLAMA_DEBUG_LOG_REQUESTS", DebugLogRequests(), "Log inference request bodies and replay curl commands to a temp directory"},
 		"OLLAMA_GO_TEMPLATE":          {"OLLAMA_GO_TEMPLATE", GoTemplate(true), "Enable Modelfile TEMPLATE based rendering when available"},

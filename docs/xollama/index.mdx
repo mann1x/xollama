@@ -41,6 +41,8 @@ xollama and Ollama side by side with different settings. An **empty**
 | `XOLLAMA_ENGINE_FALLBACK` | Retry a failed opencoti load on stock `llama.cpp`. Default `false` |
 | `XOLLAMA_SESSION_AFFINITY` | Return a conversation to the slot holding its cache, on opencoti. Default `true` |
 | `XOLLAMA_SESSION_POOL` | Share one copy of a common prefix between conversations, on opencoti. Default `false` |
+| `XOLLAMA_K_CACHE_TYPE`, `XOLLAMA_V_CACHE_TYPE` | KV cache type per half, overriding `OLLAMA_KV_CACHE_TYPE` |
+| `XOLLAMA_K_CACHE_TYPE_SWA`, `XOLLAMA_V_CACHE_TYPE_SWA` | Cache types for a sliding-window model's short-window cache |
 | `XOLLAMA_HOST`, `XOLLAMA_MODELS`, `XOLLAMA_DEBUG`, `XOLLAMA_FLASH_ATTENTION`, `XOLLAMA_LLAMA_ARG_FIT` | Aliases for the `OLLAMA_*` variables of the same name |
 
 Run `xollama serve --help` or `ollama show --help` for the full list as your
@@ -64,5 +66,8 @@ build sees it.
 </Card>
 <Card title="Sessions" icon="link" href="/xollama/sessions">
   Keeping a conversation on the slot that already holds its cache.
+</Card>
+<Card title="KV cache types" icon="database" href="/xollama/kv-cache">
+  Different types for keys and values, and per model rather than per server.
 </Card>
 </CardGroup>

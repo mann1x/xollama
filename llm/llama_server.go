@@ -421,9 +421,13 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	params = appendLoadModeArgs(params, launch.opts, launch.gpus)
 
 	// KV cache type
-	if launch.kvCacheType != "" {
-		params = append(params, "--cache-type-k", launch.kvCacheType, "--cache-type-v", launch.kvCacheType)
-	}
+	//
+	// xollama-hook: launch-config — upstream writes one type into both halves.
+	// The resolver keeps OLLAMA_KV_CACHE_TYPE as the default and lets the
+	// XOLLAMA_* variables and the model's own config override either half.
+	// See docs/xollama/kv-cache.mdx.
+	kvTypes := resolveKVCacheTypes(launch.config, launch.kvCacheType)
+	params = appendKVCacheArgs(params, kvTypes)
 
 	params = appendFlashAttentionArgs(params, launch.gpus)
 
@@ -472,6 +476,17 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 		return nil, 0, false, fmt.Errorf("model requires the opencoti engine (xollama.json pins engine=%q) but it was not selected; check %s and that an artifact is installed",
 			enginePin, engine.EnvSelector)
 	}
+
+	// xollama-hook: launch-config — a cache type stock llama.cpp does not know,
+	// or a sliding-window ring it has no flag for, must be refused here rather
+	// than handed to an engine that will reject the argument itself. The
+	// message names the setting, because "unknown argument" from a subprocess
+	// does not tell anyone which of four places set it.
+	if why := kvTypes.requiresEngineExtension(); why != "" && !usedOpencoti {
+		return nil, 0, false, fmt.Errorf("this KV cache configuration needs the opencoti engine: %s; set %s=opencoti, or choose a type stock llama.cpp accepts (%s)",
+			why, engine.EnvSelector, strings.Join(stockCacheTypes, ", "))
+	}
+	args = appendKVCacheRingArgs(args, kvTypes, usedOpencoti)
 
 	// xollama-hook: draft-assistant — see docs/features/gemma4-drafter.md
 	if launch.draftType != "" {

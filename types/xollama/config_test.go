@@ -196,3 +196,61 @@ func TestSessionRoundTripAndIsZero(t *testing.T) {
 		t.Error("a session block stating nothing carries nothing worth storing")
 	}
 }
+
+// The sliding-window ring is one cache with two halves. Setting one and leaving
+// the other to a different default is not a configuration anyone means, and the
+// engine refuses the pair at boot -- better to refuse it while the model is
+// being created, where the offending line is visible.
+func TestValidateKVRingPairing(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		kv      *KV
+		wantErr bool
+	}{
+		{"both halves of the ring", &KV{KSWA: "q4_0", VSWA: "q4_0"}, false},
+		{"neither half", &KV{K: "kvarn3", V: "kvarn3"}, false},
+		{"only the key half", &KV{KSWA: "q4_0"}, true},
+		{"only the value half", &KV{VSWA: "q4_0"}, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := (&Config{Version: 1, KV: tt.kv}).Validate()
+			if tt.wantErr && err == nil {
+				t.Error("expected the half-set ring to be refused")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+// Cache types are deliberately NOT validated against a list: the set a build
+// accepts depends on which engine serves the load, and refusing an unknown name
+// here would make a model published by a newer xollama fail to create on an
+// older one. The refusal belongs at launch, where the engine is known.
+func TestValidateAcceptsAnEngineSpecificCacheType(t *testing.T) {
+	if err := (&Config{Version: 1, KV: &KV{K: "kvarn3", V: "kvarn3"}}).Validate(); err != nil {
+		t.Errorf("an engine-specific cache type must be storable: %v", err)
+	}
+}
+
+func TestKVRoundTripAndIsZero(t *testing.T) {
+	c := &Config{Version: 1, KV: &KV{K: "q8_0", V: "q4_0", KSWA: "q4_0", VSWA: "q4_0"}}
+	if c.IsZero() {
+		t.Fatal("a config carrying cache types must be stored")
+	}
+	data, err := c.Marshal()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got, err := Parse(data)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got.KV == nil || got.KV.K != "q8_0" || got.KV.V != "q4_0" || got.KV.KSWA != "q4_0" || got.KV.VSWA != "q4_0" {
+		t.Errorf("kv did not survive the round trip: %s", data)
+	}
+	if !(&Config{Version: 1, KV: &KV{}}).IsZero() {
+		t.Error("an empty kv block carries nothing worth storing")
+	}
+}

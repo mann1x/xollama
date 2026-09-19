@@ -52,6 +52,12 @@ type Config struct {
 	// Draft carries drafter settings that have no api.Options equivalent.
 	Draft *Draft `json:"draft,omitempty"`
 
+	// KV carries this model's KV cache types. Upstream has one setting,
+	// OLLAMA_KV_CACHE_TYPE, which is server-wide and writes the same type into
+	// both halves of the cache -- so a model that wants a different answer, or
+	// a different type for keys than for values, has nowhere to say it.
+	KV *KV `json:"kv,omitempty"`
+
 	// Session carries per-request engine session settings: which requests the
 	// engine should treat as belonging to the same conversation, and whether
 	// they may share a KV prefix pool with each other.
@@ -83,6 +89,34 @@ type Session struct {
 	// handed out by the engine at runtime and cannot be known when a model is
 	// published.
 	Pool *bool `json:"pool,omitempty"`
+}
+
+// KV holds this model's KV cache types.
+//
+// Keys and values are separable because they are not equally sensitive:
+// quantising keys costs more quality than quantising values, so the usual
+// recipe is a wider type for K than for V. Upstream cannot express that.
+//
+// Empty fields mean "not stated", and fall through to the environment and then
+// to OLLAMA_KV_CACHE_TYPE. Types are not validated against a list here: the set
+// a build accepts depends on which engine serves the load, and a config that
+// refused a type this build has not heard of would make a model published by a
+// newer xollama fail to create on an older one.
+type KV struct {
+	// K and V are the cache types for keys and values.
+	K string `json:"k,omitempty"`
+	V string `json:"v,omitempty"`
+
+	// KSWA and VSWA are the types for the short-window half of a
+	// sliding-window model -- the "ring" that Gemma-4 and its relatives keep
+	// alongside the global cache. Compressing only the global half leaves most
+	// of the cost in place on those models.
+	//
+	// They need an engine that has a separate ring cache; stock llama.cpp has
+	// no such flag and a load that asks for one there is refused with a
+	// message saying so, rather than started without it.
+	KSWA string `json:"k_swa,omitempty"`
+	VSWA string `json:"v_swa,omitempty"`
 }
 
 // Draft holds speculative-decoding settings for this model.
@@ -133,6 +167,15 @@ func (c *Config) Validate() error {
 	// different conversations, so it has nothing to key on without affinity.
 	// Refuse the combination at create time rather than serving a model whose
 	// stated configuration cannot do what it says.
+	if c.KV != nil {
+		// The ring is one cache with two halves. Setting one type and leaving
+		// the other to a different default is not a configuration anyone
+		// means, and the engine refuses the pair at boot -- better to refuse
+		// it while the model is being created, where the line is visible.
+		if (c.KV.KSWA == "") != (c.KV.VSWA == "") {
+			return fmt.Errorf("xollama config: kv.k_swa and kv.v_swa must be set together (got k_swa=%q, v_swa=%q)", c.KV.KSWA, c.KV.VSWA)
+		}
+	}
 	if c.Session != nil && c.Session.Pool != nil && *c.Session.Pool &&
 		c.Session.Affinity != nil && !*c.Session.Affinity {
 		return fmt.Errorf("xollama config: session.pool requires session.affinity; a shared prefix pool has nothing to attach to without session identity")
@@ -177,5 +220,6 @@ func (c *Config) IsZero() bool {
 	}
 	return c.Engine == "" &&
 		(c.Draft == nil || c.Draft.SpecType == "") &&
+		(c.KV == nil || (c.KV.K == "" && c.KV.V == "" && c.KV.KSWA == "" && c.KV.VSWA == "")) &&
 		(c.Session == nil || (c.Session.Affinity == nil && c.Session.Pool == nil))
 }

@@ -94,6 +94,7 @@ XOLLAMA {"version": 1, "engine": "opencoti"}
 | `version` | Required. A version newer than your build is an error, not a warning |
 | `engine` | `opencoti` or `llamacpp`. Omit it — the normal case — and `XOLLAMA_ENGINE` decides. `auto` is **not** valid: a model saying "auto" is a model saying nothing |
 | `draft.spec_type` | Overrides the speculative driver inferred from the drafter |
+| `kv.k`, `kv.v`, `kv.k_swa`, `kv.v_swa` | This model's KV cache types. See [KV cache types](/xollama/kv-cache) |
 | `session.affinity` | Whether conversations of this model are pinned to the slot holding their cache. See [Sessions](/xollama/sessions) |
 | `session.pool` | Whether conversations of this model share one copy of their common opening |
 
@@ -108,6 +109,11 @@ mention of the engine.
 
 A model creating `FROM` a parent that already carries a config **replaces** it
 rather than inheriting, so a child can shed a stale engine pin.
+
+Settings here also decide whether two models can share one engine process. A
+cache type is fixed when the engine starts, so a model whose configuration
+differs from the running one gets its own engine rather than being served by
+settings its publisher did not ask for.
 
 <Note>
   The config travels in a layer stock Ollama ignores, so a model published from

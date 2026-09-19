@@ -52,6 +52,15 @@ break estimation.
 
 ## G3 — K and V cache types cannot differ
 
+> **Closed, 2026-09-19.** `llm/engine_launch.go` resolves the pair from the
+> model's `xollama.json`, then `XOLLAMA_K_CACHE_TYPE` / `XOLLAMA_V_CACHE_TYPE`,
+> then `OLLAMA_KV_CACHE_TYPE`, then unset. The sliding-window ring
+> (`--cache-type-k/v-swa`) comes with it, added after the engine hook because
+> stock llama.cpp has no such flag, and a load asking for a type or a ring that
+> engine cannot serve is refused by name before the process starts. The resolved
+> configuration is part of `LlamaServerConfig`, so `needsReload` already treats
+> two models that disagree as two runners.
+
 `llm/llama_server.go:425` writes one value into both:
 
 ```go
@@ -157,7 +166,8 @@ deprecated tier and miss the ring.
 
 1. **G5** (`session_id`, then pool attach) — `session_id` done; pool attach
    needs the launch flags first, so it now depends on G7.
-2. **G2 + G3** — cheap, and between them make the whole KV stack expressible.
+2. **G2** — G3 is done; G2 (an argv escape hatch for flags with no home) is
+   what is left of that pair, and G4 depends on it.
 3. **G6** — without it nothing above is verifiable from the outside.
 4. **G1** — the right home for all of it once the argv side works.
 5. **G4**, then **G7** — both need a decision before a patch.

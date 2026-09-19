@@ -1,0 +1,109 @@
+---
+title: KV cache types
+---
+
+The KV cache is where a model keeps what it has already read. It is usually the
+first thing to run out of memory, and storing it in a smaller number format is
+the cheapest way to buy context back.
+
+Ollama has one setting for this, `OLLAMA_KV_CACHE_TYPE`. It applies to the whole
+server, and it writes the same type into both halves of the cache. xollama keeps
+that as the default and lets you override it — per half, and per model.
+
+## Keys and values are not equally sensitive
+
+The cache has two halves, keys and values, and quantising keys costs noticeably
+more quality than quantising values. So the useful recipe is a wider type for K
+than for V, which one shared setting cannot express:
+
+```shell
+OLLAMA_KV_CACHE_TYPE=q8_0      # the server default, both halves
+XOLLAMA_V_CACHE_TYPE=q4_0      # …except values, which are cheaper to compress
+```
+
+Set either half on its own. Whichever you leave unset keeps the server default,
+and if you set neither, nothing changes at all — no flag is passed and the
+engine uses its own default of `f16`.
+
+## Per model, which is usually what you actually want
+
+A server-wide setting is the wrong shape for this. You rarely want every model
+quantised the same way: a small model with room to spare should stay at `f16`,
+and the 70B you are squeezing onto one card should not.
+
+Put it in the Modelfile and it travels with the model:
+
+```dockerfile
+FROM ./my-model.gguf
+
+XOLLAMA {"version": 1, "kv": {"k": "q8_0", "v": "q4_0"}}
+```
+
+The model's setting wins over the environment, and the environment wins over
+`OLLAMA_KV_CACHE_TYPE`. Most specific wins, in other words.
+
+<Note>
+  Two models that ask for different cache types cannot share one engine process,
+  because the type is fixed when the engine starts. xollama knows this: a model
+  whose cache configuration differs from the running one gets its own engine
+  instead of being quietly served by the wrong settings. That is also true of
+  two tags built over the same model file.
+</Note>
+
+## Which types you can use
+
+**Every engine** accepts the types upstream `llama.cpp` defines:
+
+`f32` · `f16` · `bf16` · `q8_0` · `q5_1` · `q5_0` · `q4_1` · `q4_0` · `iq4_nl`
+
+**The opencoti engine** adds its own compressed widths, `kvarn2` through
+`kvarn8`, which are what its current work is built around. See
+[Tuning opencoti](/xollama/opencoti-tuning).
+
+Ask for one of those on stock `llama.cpp` and the load is refused with a message
+naming the setting that caused it, rather than started and left to fail as an
+unrecognised argument somewhere inside the engine:
+
+```
+this KV cache configuration needs the opencoti engine:
+kv.v / XOLLAMA_V_CACHE_TYPE = "kvarn3" is not a cache type stock llama.cpp accepts
+```
+
+## Sliding-window models have a second cache
+
+Gemma-4 and other sliding-window models keep a short-window cache — a "ring" —
+alongside the global one, and on those models the ring is most of the cost.
+Compressing only the global half leaves the bulk of it in place.
+
+The ring has its own types:
+
+```dockerfile
+XOLLAMA {"version": 1, "kv": {
+  "k": "kvarn3", "v": "kvarn3",
+  "k_swa": "q4_0", "v_swa": "q4_0"
+}}
+```
+
+or `XOLLAMA_K_CACHE_TYPE_SWA` / `XOLLAMA_V_CACHE_TYPE_SWA` for a whole server.
+
+Both halves of the ring must be set together — one alone is not a configuration
+anyone means, and it is refused when the model is created rather than at load.
+The ring needs an engine that has a separate short-window cache; stock
+`llama.cpp` has no such flag, so asking for one there is refused the same way as
+an unknown type.
+
+## Settings summary
+
+| | Environment | Modelfile | Applies to | Default |
+|---|---|---|---|---|
+| Both halves | `OLLAMA_KV_CACHE_TYPE` | — | every model on the server | engine default (`f16`) |
+| Keys | `XOLLAMA_K_CACHE_TYPE` | `kv.k` | one model, when in the Modelfile | the setting above |
+| Values | `XOLLAMA_V_CACHE_TYPE` | `kv.v` | as above | the setting above |
+| Ring keys | `XOLLAMA_K_CACHE_TYPE_SWA` | `kv.k_swa` | as above | unset |
+| Ring values | `XOLLAMA_V_CACHE_TYPE_SWA` | `kv.v_swa` | as above | unset |
+
+<Warning>
+  Flash attention is required for quantised KV on most builds
+  (`OLLAMA_FLASH_ATTENTION=1`). Without it a quantised cache is silently
+  ignored or the load fails, depending on the model.
+</Warning>

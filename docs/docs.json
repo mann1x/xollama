@@ -171,8 +171,9 @@
             ]
           },
           {
-            "group": "opencoti engine",
+            "group": "Engine tuning",
             "pages": [
+              "/xollama/kv-cache",
               "/xollama/sessions",
               "/xollama/opencoti-tuning"
             ]

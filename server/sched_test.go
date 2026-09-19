@@ -19,6 +19,7 @@ import (
 	"github.com/ollama/ollama/llm"
 	"github.com/ollama/ollama/ml"
 	"github.com/ollama/ollama/types/model"
+	"github.com/ollama/ollama/types/xollama"
 )
 
 func TestMain(m *testing.M) {
@@ -2297,4 +2298,53 @@ func TestSchedNeedsReloadWhenTagsShareABlobButNotTheirFlags(t *testing.T) {
 		"the same tag must not force a reload")
 	require.True(t, runner.needsReload(ctx, &LlmRequest{model: bare, opts: api.DefaultOptions()}),
 		"a tag needing different llama-server flags must force a reload")
+}
+
+// xollama-hook: launch-config
+//
+// A runner is keyed on the model path, and two tags built over the same blob
+// share it. Their fork configs can still disagree about how the engine must be
+// launched -- a different KV cache type is a different llama-server, not a
+// different request -- so handing the second tag the first one's runner would
+// serve it with settings its publisher did not ask for, silently, until the
+// runner happened to expire.
+func TestSchedNeedsReloadOnXollamaConfig(t *testing.T) {
+	ctx, done := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer done()
+
+	do := api.DefaultOptions()
+	newRunner := func(cfg *xollama.Config) *runnerRef {
+		return &runnerRef{
+			model:       &Model{Xollama: cfg},
+			Options:     &do,
+			llama:       &mockLlm{vramByGPU: map[ml.DeviceID]uint64{}},
+			numParallel: 1,
+		}
+	}
+	newReq := func(cfg *xollama.Config) *LlmRequest {
+		return &LlmRequest{model: &Model{Xollama: cfg}, opts: api.DefaultOptions()}
+	}
+
+	kvA := &xollama.Config{Version: 1, KV: &xollama.KV{K: "q8_0", V: "q4_0"}}
+	kvB := &xollama.Config{Version: 1, KV: &xollama.KV{K: "q8_0", V: "q8_0"}}
+
+	t.Run("a different cache type is a different runner", func(t *testing.T) {
+		require.True(t, newRunner(kvA).needsReload(ctx, newReq(kvB)))
+	})
+
+	t.Run("the same cache type reuses the runner", func(t *testing.T) {
+		// A fresh pointer with equal contents must compare equal, or every
+		// request would reload: the comparison has to be by value.
+		same := &xollama.Config{Version: 1, KV: &xollama.KV{K: "q8_0", V: "q4_0"}}
+		require.False(t, newRunner(kvA).needsReload(ctx, newReq(same)))
+	})
+
+	t.Run("a model that states nothing does not share with one that does", func(t *testing.T) {
+		require.True(t, newRunner(nil).needsReload(ctx, newReq(kvA)))
+		require.True(t, newRunner(kvA).needsReload(ctx, newReq(nil)))
+	})
+
+	t.Run("two models that both state nothing share", func(t *testing.T) {
+		require.False(t, newRunner(nil).needsReload(ctx, newReq(nil)))
+	})
 }

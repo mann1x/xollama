@@ -57,9 +57,14 @@ through without an allowlist:
 OLLAMA_KV_CACHE_TYPE=kvarn3 xollama serve
 ```
 
-That sets K and V to the same type. To set them **separately** you would need
-`-ctk`/`-ctv` independently, which xollama does not expose — it writes one value
-into both.
+That sets K and V to the same type. To set them **separately**, or to set them
+per model rather than per server, use the fork's own settings — see
+[KV cache types](/xollama/kv-cache):
+
+```shell
+XOLLAMA_K_CACHE_TYPE=kvarn3
+XOLLAMA_V_CACHE_TYPE=q4_0
+```
 
 ### iSWA models need the ring set too
 
@@ -70,10 +75,13 @@ half leaves most of the cost in place. The ring has its own cache types, and
 xollama does not set them, so their twins are live:
 
 ```shell
-OLLAMA_KV_CACHE_TYPE=kvarn3
-LLAMA_ARG_CACHE_TYPE_K_SWA=q4_0
-LLAMA_ARG_CACHE_TYPE_V_SWA=q4_0
+XOLLAMA_K_CACHE_TYPE=kvarn3
+XOLLAMA_V_CACHE_TYPE=kvarn3
+XOLLAMA_K_CACHE_TYPE_SWA=q4_0
+XOLLAMA_V_CACHE_TYPE_SWA=q4_0
 ```
+
+or, per model, a `kv` block in the Modelfile.
 
 K and V on the ring must both be KVarN widths or both plain; mixing is rejected
 at boot. In opencoti's KLD tables a KVarN global with a plain `q4_0` or `q8_0`
@@ -195,9 +203,9 @@ any document disagree, `--help` wins.
 
 | Feature | From xollama today |
 |---|---|
-| KVarN cache widths | **Yes**, symmetric K/V via `OLLAMA_KV_CACHE_TYPE` |
-| iSWA ring cache types | **Yes**, via `LLAMA_ARG_CACHE_TYPE_K_SWA` / `…_V_SWA` |
-| Asymmetric K vs V types | No — one value is written into both |
+| KVarN cache widths | **Yes**, per half and per model |
+| iSWA ring cache types | **Yes**, per half and per model |
+| Asymmetric K vs V types | **Yes** |
 | Rolling-KV window and VRAM target | **Yes** |
 | Mixed-KV spilled-tail types (`-ctkt`/`-ctvt`) | **Yes**, no twin conflict |
 | DCA on/off and chunk size | **Yes** |
@@ -206,5 +214,6 @@ any document disagree, `--help` wins.
 | PolyKV pool creation | Boot flags only, and xollama does not set them yet |
 | PolyKV per-request attach | Plumbed and tested; nothing hands out a pool id yet |
 | Sparse attention, elastic slots, admission, RYS | **Yes** (boot env) |
-| Any of it per-model instead of per-server | **No** — server-global only |
+| Cache types per model | **Yes** — and two models that disagree get their own engine |
+| The rest of it per model instead of per server | **No** — server-global only, for now |
 | Engine introspection (`/props`, `/slots`, `/polykv/*`) | **Not proxied** — query the engine directly |
