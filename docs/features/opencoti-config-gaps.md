@@ -158,6 +158,32 @@ plainly.
 
 ## G6 — engine introspection is not exposed
 
+> **Closed, 2026-09-19.** `GET /api/engine` reads the engine back.
+>
+> With no arguments it lists every loaded model and which engine actually served
+> it — not which one was asked for, which is the distinction that matters when
+> routing declined a device. With `?model=` it proxies one endpoint from that
+> model's engine: `props` (the default, and the only authority on the effective
+> cache tier), `slots`, `metrics`, or `polykv/pools`.
+>
+> The engine's body comes back verbatim. Nothing renames or reinterprets its
+> fields, because a translation layer over an evolving external schema goes
+> stale silently — the exact failure this gap was about. The engine's own status
+> is passed through too: a 404 from stock llama.cpp on `polykv/pools` is the
+> honest report that the feature is absent, not a failure of ours.
+>
+> The endpoint name is chosen from a whitelist rather than composed by the
+> caller, and is validated before a connection is opened. llama-server trusts
+> whoever can reach it — its surface includes `POST /completion`,
+> `/apply-template` and, on some builds, slot save and restore to arbitrary
+> paths — so an arbitrary-path proxy would expose all of that to anyone who can
+> reach the ollama port. Guarded by `TestValidIntrospectEndpointRefusesAnythingElse`
+> and `TestEngineReadRefusesToDriveTheEngine`.
+>
+> It is not gated on opencoti, deliberately: three of the four endpoints are
+> upstream's own, so the window works on stock too. It adds no work to the
+> inference path.
+
 `/props` (with its `opencoti` block and the **effective** KV state), `/slots`,
 `/metrics` and `/polykv/*` live on the engine's private port. Nothing proxies
 them, so "did my setting apply?" has no answer through xollama's API — the user
@@ -222,10 +248,7 @@ deprecated tier and miss the ring.
 
 Updated 2026-09-19. G3, G4 and G7 are closed; G5 is half closed.
 
-1. **G6** — an introspection proxy for `/props`, `/slots` and `/polykv/*`.
-   Now the first item rather than the third: three features have shipped whose
-   effect is invisible from outside the server, so the next thing worth
-   building is the ability to see them.
+1. ~~**G6**~~ — done, `GET /api/engine`.
 2. **G5, the pool half** — `--polykv-max-pools` at launch and a pool lifecycle
    over `POST /polykv/pools {from_session}`. `session_id` is done and is what
    a pool attaches to.

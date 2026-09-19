@@ -142,7 +142,20 @@ Ollama's own, unchanged.
 <Note>
   Dynamic slots compose with the opencoti engine's other cache features. The
   **rolling-KV window** — the one that spills cache to host RAM instead of
-  failing — runs under the shared pool as well as the per-slot split, and
-  **PolyKV** prefix pools require the shared pool, so they arrive with dynamic
-  slots rather than despite them. You do not have to choose.
+  failing — runs under the shared pool as well as the per-slot split, measured
+  byte-identical across both. **PolyKV** prefix pools work on either layout too,
+  sharing the prefix without copying it under the shared pool and with a
+  physical copy under the split. You do not have to choose.
 </Note>
+
+<Warning>
+  **The engine build xollama currently ships crashes if the rolling-KV window
+  engages.** `opencoti-llamafile-0.10.5-c7` aborts with a failed assertion in
+  the attention kernel as soon as cache spills to host RAM — on either cache
+  layout, so dynamic slots neither cause nor avoid it. The fix landed two days
+  after that build was published and there is no newer release yet.
+
+  Until there is: keep the cache resident. Lower `num_ctx`, or compress it with
+  a quantised [KV cache type](/xollama/kv-cache), rather than relying on spill.
+  This is unrelated to slots — it is the same on a single-slot load.
+</Warning>

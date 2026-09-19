@@ -177,6 +177,7 @@
               "/xollama/slots",
               "/xollama/dca",
               "/xollama/sessions",
+              "/xollama/introspection",
               "/xollama/opencoti-tuning"
             ]
           }

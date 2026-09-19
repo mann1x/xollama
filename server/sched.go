@@ -1826,6 +1826,12 @@ type loadedModel struct {
 	sizeVRAM      int64
 	contextLength int
 	expiresAt     time.Time
+	// llama is the runner serving this model, carried so a caller can ask the
+	// engine itself what it is doing. It is nil while the model is still
+	// loading.
+	//
+	// xollama-hook: engine-introspect
+	llama llm.LlamaServer
 }
 
 // loadedModels returns a snapshot of the currently loaded models for status
@@ -1855,6 +1861,7 @@ func (s *Scheduler) loadedModels() []loadedModel {
 			expiresAt: r.expiresAt,
 		}
 		if r.llama != nil {
+			lm.llama = r.llama
 			lm.contextLength = r.llama.ContextLength()
 			total, vram := r.llama.MemorySize()
 			lm.size = int64(total)

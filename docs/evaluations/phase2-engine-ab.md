@@ -161,6 +161,20 @@ partial offload is forced.
 the path Phase 0 named as unmeasured — where `fitOverflowingLayersRegex` and
 rolling-KV spill actually do something — and it does not survive contact.
 
+> **Identified, 2026-09-19.** opencoti named this: the published c7 cut aborts
+> as soon as a rolling window engages, on either cache layout — their bug-3369,
+> a 0.10.5-port regression in the streaming-attention fallbacks, fixed by patch
+> 0253 two days *after* c7 was published and never announced. Their own repro
+> gives `fattn-common.cuh:87: GGML_ASSERT(dst->op == GGML_OP_FLASH_ATTN_EXT)`;
+> ours surfaced earlier, in CPU KV placement, but it is the same unshipped fix.
+>
+> `llm/engine/pin.txt` pins exactly that artifact —
+> `3c907bc7511359054dbf55c9d2d69fb49324ef75bdbb45efa092c3facad8951e`, verified
+> against the payload at `/usr/local/lib/ollama/` — so **spill is a crash for
+> our users today**, and the dev-build row below is the measurement of a fix
+> nobody can install. Until a new cut ships, the guidance is to keep the cache
+> resident rather than rely on spill. Recorded in `docs/xollama/slots.mdx`.
+
 ## Re-run on a dev build — NOT PINNABLE
 
 > 2026-09-18, after opencoti's patches 0305–0310. Raw:

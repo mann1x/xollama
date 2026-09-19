@@ -1,0 +1,93 @@
+---
+title: Seeing what the engine did
+---
+
+Every setting on the other pages in this section is written into the engine's
+command line when a model loads, and then it disappears. The engine has its own
+HTTP surface that would answer for it — but Ollama starts that engine on a
+private port it picks at random and never tells anyone, so "did my setting
+actually apply?" has had no answer short of digging the port out of a log.
+
+`GET /api/engine` is that answer.
+
+## What is running, and on which engine
+
+```sh
+curl -s localhost:11434/api/engine | jq
+```
+
+```json
+{
+  "models": [
+    { "model": "qwen3:8b",  "engine": "opencoti", "readable": true },
+    { "model": "gemma3:4b", "engine": "llamacpp", "readable": true }
+  ],
+  "endpoints": ["props", "slots", "metrics", "polykv/pools"]
+}
+```
+
+`engine` is the engine that **actually served** the load, not the one you asked
+for. Those differ whenever routing declined a device — an old CUDA card, an
+untested backend — and that is precisely the moment you want to know. See
+[Engines](/xollama/engines) for why it declines.
+
+`readable` is false while a model is still loading, and for models served by the
+MLX runner, which has no HTTP surface to read.
+
+## Asking one model what it is doing
+
+```sh
+curl -s 'localhost:11434/api/engine?model=qwen3:8b' | jq
+```
+
+```json
+{
+  "model": "qwen3:8b",
+  "engine": "opencoti",
+  "endpoint": "props",
+  "status": 200,
+  "body": { "default_generation_settings": { "n_ctx": 8192 }, "…": "…" }
+}
+```
+
+`body` is the engine's own reply, **verbatim**. Nothing here renames or
+reinterprets its fields, because a translation layer over somebody else's
+evolving schema goes stale without telling you.
+
+Pick a different endpoint with `&endpoint=`:
+
+| Endpoint | What it tells you |
+|---|---|
+| `props` *(default)* | The effective settings — context, cache, sampling. On opencoti, `.opencoti.kv.effective` is the **only** authority on which cache tier was really used. |
+| `slots` | The live slots and what each is holding. This is where [dynamic slots](/xollama/slots) become visible. |
+| `metrics` | Prometheus counters — tokens, timings, cache hits. Returned as text, under `text` rather than `body`. |
+| `polykv/pools` | The shared prefix pools. opencoti only; stock answers 404. |
+
+## Reading the answers
+
+**`status` is the engine's status, not ours.** A `404` there means the engine
+has no such endpoint, which on stock `llama.cpp` is exactly how it reports that
+an opencoti feature is absent. That is information, so it is passed through
+rather than turned into an error. Our own HTTP status is about whether we could
+*reach* the engine at all.
+
+A model that exists but is not running gets a `404` saying it is not loaded —
+only a running model has an engine to ask.
+
+## What it will not do
+
+The endpoint is read-only, and the endpoint name is chosen from the list above
+rather than composed by the caller. That is deliberate and not paranoia:
+`llama-server` trusts whoever can reach it completely. Its surface includes
+`POST /completion`, `/apply-template`, and on some builds slot save and restore
+to file paths of the caller's choosing. Forwarding an arbitrary path would hand
+all of that to anyone who can reach the Ollama port — a much larger group than
+whoever can reach the engine's private one.
+
+Anything outside the list is refused with a `400` before a connection is opened.
+
+<Note>
+  This works on stock `llama.cpp` too. Three of the four endpoints are
+  upstream's own, so the window is useful whichever engine answered — and it
+  adds nothing to the inference path, which stays byte-identical to upstream.
+</Note>
