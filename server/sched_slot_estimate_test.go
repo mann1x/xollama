@@ -70,7 +70,7 @@ func TestSlotCeilingVRAMRaisesThePrediction(t *testing.T) {
 		t.Fatal("slot ceiling surcharge = 0, want a charge: dynamic slots are on by default")
 	}
 
-	base := llm.PredictServerVRAM(req.model.ModelPath, f, effectiveLlamaServerContext(req.opts.NumCtx, f, 1))
+	base := llm.PredictServerVRAM(req.model.ModelPath, f, effectiveLlamaServerContext(req.opts.NumCtx, f, 1, false))
 	if base+slotCeilingVRAM(req, f, nil, 1) <= base {
 		t.Error("prediction did not grow with the ceiling")
 	}

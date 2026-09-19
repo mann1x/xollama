@@ -63,6 +63,14 @@ type Config struct {
 	// demand.
 	Slots *Slots `json:"slots,omitempty"`
 
+	// DCA carries this model's dual chunk attention setting: whether it may be
+	// served past the context it was trained on, and how long a chunk is.
+	//
+	// It belongs to the model rather than the server because it is a property
+	// of the model, not a preference. Most models have no chunked attention
+	// route at all, and the ones that do have their own pretrain window.
+	DCA *DCA `json:"dca,omitempty"`
+
 	// Session carries per-request engine session settings: which requests the
 	// engine should treat as belonging to the same conversation, and whether
 	// they may share a KV prefix pool with each other.
@@ -102,6 +110,27 @@ type Slots struct {
 	// admitted, so a co-resident process is not squeezed out. Zero means
 	// unstated.
 	VRAMReserveMiB int `json:"vram_reserve_mib,omitempty"`
+}
+
+// DCA holds this model's dual chunk attention setting.
+//
+// Enabling it lets the model be served past the context length its GGUF
+// declares: the full-attention layers are routed through chunked positions so
+// no query-key distance exceeds the window the model was trained in. Without
+// it, a request for more context than the model was trained on is clamped back
+// down, which is the right default.
+//
+// It needs an engine with the chunked route, and an architecture that has one.
+// A load that asks for more context than the model was trained on, on an
+// architecture with no route, is refused rather than served unprotected.
+type DCA struct {
+	// Enabled turns it on or off for this model. Nil means the model has no
+	// opinion and XOLLAMA_DCA decides.
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// ChunkSize is the chunk length in tokens. Zero means auto, which is the
+	// model's own pretrain window and is almost always the right answer.
+	ChunkSize int `json:"chunk_size,omitempty"`
 }
 
 // Session holds this model's session settings.
@@ -229,6 +258,17 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("xollama config: slots.max, slots.tps_floor and slots.vram_reserve_mib need slots.dynamic; they describe how slots are admitted")
 		}
 	}
+	if c.DCA != nil {
+		if c.DCA.ChunkSize < 0 {
+			return fmt.Errorf("xollama config: dca.chunk_size %d must not be negative", c.DCA.ChunkSize)
+		}
+		// A chunk length describes how the chunked route splits positions, so
+		// naming one while switching the route off reads as if it does
+		// something. It does not.
+		if c.DCA.Enabled != nil && !*c.DCA.Enabled && c.DCA.ChunkSize > 0 {
+			return fmt.Errorf("xollama config: dca.chunk_size needs dca.enabled; it describes how the chunked route splits positions")
+		}
+	}
 	if c.Session != nil && c.Session.Pool != nil && *c.Session.Pool &&
 		c.Session.Affinity != nil && !*c.Session.Affinity {
 		return fmt.Errorf("xollama config: session.pool requires session.affinity; a shared prefix pool has nothing to attach to without session identity")
@@ -275,5 +315,6 @@ func (c *Config) IsZero() bool {
 		(c.Draft == nil || c.Draft.SpecType == "") &&
 		(c.KV == nil || (c.KV.K == "" && c.KV.V == "" && c.KV.KSWA == "" && c.KV.VSWA == "")) &&
 		(c.Slots == nil || (c.Slots.Dynamic == nil && c.Slots.Max == 0 && c.Slots.TPSFloor == 0 && c.Slots.VRAMReserveMiB == 0)) &&
+		(c.DCA == nil || (c.DCA.Enabled == nil && c.DCA.ChunkSize == 0)) &&
 		(c.Session == nil || (c.Session.Affinity == nil && c.Session.Pool == nil))
 }

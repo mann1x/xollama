@@ -1,0 +1,124 @@
+---
+title: Beyond the trained context
+---
+
+Every model has a window it was trained in — 32k, 128k, whatever its GGUF says —
+and Ollama enforces it. Ask for more and your request is quietly cut back:
+
+```
+requested context size too large for model  num_ctx=131072 n_ctx_train=32768
+```
+
+That is the right default. Attention over distances a model never saw during
+training does not fail loudly; it produces fluent, confident, wrong answers, and
+nothing downstream can tell the difference.
+
+**Dual chunk attention** is the training-free way past it, and xollama can turn
+it on.
+
+## What it does
+
+DCA splits the sequence into chunks. Positions *inside* a chunk are native, and
+distances *between* chunks are folded back into the window the model was trained
+in. No query ever looks at a key from further away than the model has seen — the
+sequence gets longer, the distances do not.
+
+Nothing is retrained and no weights change. It is a different way of counting
+positions at inference time.
+
+## Turning it on
+
+<Tabs>
+<Tab title="Server">
+```ini
+# /etc/systemd/system/ollama.service.d/xollama.conf
+[Service]
+Environment="XOLLAMA_DCA=1"
+```
+
+On Windows, set `XOLLAMA_DCA` in the system environment and restart the service.
+</Tab>
+<Tab title="One model">
+```dockerfile
+FROM qwen3:8b
+XOLLAMA {"version": 1, "dca": {"enabled": true}}
+```
+
+The model's own setting wins over the server's, in both directions: a model can
+turn DCA on where the server left it off, and off where the server turned it on.
+</Tab>
+</Tabs>
+
+Then ask for the context you actually want:
+
+```sh
+xollama run qwen3:8b --  # or set num_ctx in the API request
+curl localhost:11434/api/generate -d '{
+  "model": "qwen3:8b",
+  "prompt": "…",
+  "options": {"num_ctx": 131072}
+}'
+```
+
+There is no request field and no command-line switch for DCA itself, on purpose.
+It changes how the runner is launched, so it cannot differ between two requests
+sharing one — asking for it per request would silently mean "start me a second
+copy of this model". The context length is already the per-request knob, and it
+is the one that matters.
+
+## Which models can do this
+
+Only architectures whose attention actually has the chunked route:
+
+| Architecture | Examples |
+|---|---|
+| `qwen2`, `qwen3`, `qwen3moe` | Qwen2.5, Qwen3 dense and MoE |
+| `qwen35`, `qwen35moe` | Qwen3.5 dense and MoE |
+| `gemma4`, `gemma4-assistant` | Gemma-4 and its assistant drafters |
+
+On anything else the flag parses and then does nothing — the graph never calls
+the chunked path. xollama does not let that pass silently:
+
+- Asking for **more context than the model was trained on**, on an architecture
+  with no route, **refuses the load** and tells you the number that would have to
+  change. Starting anyway would serve nonsense past the native window.
+- Asking for DCA **within** the trained window, where nothing is at risk, logs a
+  warning saying it will do nothing for this model.
+
+It also needs the **opencoti** engine. Stock `llama.cpp` has no DCA flag at all,
+so a load that asks for it there is refused rather than started without it — see
+[Engines](/xollama/engines).
+
+## Chunk size
+
+Leave it alone unless you have measured something.
+
+```ini
+Environment="XOLLAMA_DCA_CHUNK_SIZE=4096"
+```
+
+Zero, the default, means the model's own pretrain window, which is the right
+answer almost always. A smaller chunk keeps more distances inside the window at
+the cost of more chunk boundaries; a larger one does the reverse.
+
+## What it costs
+
+**Memory.** A longer context is a bigger cache, in exact proportion. Going from
+32k to 128k is four times the KV cache, and xollama's memory planning accounts
+for the unlocked figure rather than the one the file declares — so it will evict
+or refuse rather than discover the problem halfway through loading. Pair it with
+a quantised cache if you need the room; see [KV cache](/xollama/kv-cache).
+
+**Quality, sometimes.** DCA extends models that are *below* their architecture's
+reach — a model trained to 32k genuinely reads further with it. On a model that
+already has a very long native context and no positional scaling, DCA can only
+approximate what the model already does properly, so it is a step down. Measure
+before you leave it on.
+
+<Note>
+  Two flags are added alongside `--dca on` when, and only when, the requested
+  context is past the model's own: `--rope-scaling yarn` and an override telling
+  the engine the model's context length is the longer figure. Below the trained
+  window neither is added — stretching positions that already fit would change
+  answers for nothing.
+</Note>

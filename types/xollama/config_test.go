@@ -309,3 +309,65 @@ func TestSlotsRoundTripAndIsZero(t *testing.T) {
 		t.Error("an empty slots block carries nothing worth storing")
 	}
 }
+
+func TestValidateDCA(t *testing.T) {
+	on, off := true, false
+
+	for _, tc := range []struct {
+		name    string
+		dca     *DCA
+		wantErr string
+	}{
+		{name: "nothing said", dca: nil},
+		{name: "on", dca: &DCA{Enabled: &on}},
+		{name: "on with a chunk size", dca: &DCA{Enabled: &on, ChunkSize: 4096}},
+		{name: "off", dca: &DCA{Enabled: &off}},
+		{
+			name:    "a negative chunk size",
+			dca:     &DCA{Enabled: &on, ChunkSize: -1},
+			wantErr: "must not be negative",
+		},
+		{
+			// A chunk length describes how the chunked route splits positions.
+			// Naming one while switching the route off reads as configuration
+			// and is not.
+			name:    "a chunk size with the route off",
+			dca:     &DCA{Enabled: &off, ChunkSize: 4096},
+			wantErr: "needs dca.enabled",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := (&Config{Version: 1, DCA: tc.dca}).Validate()
+			switch {
+			case tc.wantErr == "" && err != nil:
+				t.Errorf("Validate() = %v, want nil", err)
+			case tc.wantErr != "" && err == nil:
+				t.Errorf("Validate() = nil, want an error mentioning %q", tc.wantErr)
+			case tc.wantErr != "" && !strings.Contains(err.Error(), tc.wantErr):
+				t.Errorf("Validate() = %v, want an error mentioning %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestDCARoundTripsThroughTheLayer(t *testing.T) {
+	on := true
+	data, err := (&Config{DCA: &DCA{Enabled: &on, ChunkSize: 8192}}).Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.DCA == nil || got.DCA.Enabled == nil || !*got.DCA.Enabled || got.DCA.ChunkSize != 8192 {
+		t.Errorf("round trip lost the DCA block: %+v", got.DCA)
+	}
+
+	// A config carrying only DCA still has something worth storing, or the
+	// create path would drop the layer and the setting with it.
+	if (&Config{DCA: &DCA{Enabled: &on}}).IsZero() {
+		t.Error("a config that turns DCA on is not empty")
+	}
+}

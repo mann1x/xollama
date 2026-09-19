@@ -154,10 +154,19 @@ func NewLlamaServer(systemInfo ml.SystemInfo, gpus []ml.DeviceInfo, modelPath st
 	slog.Info("using llama-server for model", "model", modelPath)
 
 	// Verify the requested context size is <= the model training size
+	//
+	// xollama-hook: launch-config — unless dual chunk attention is on, which is
+	// the one thing that makes a longer context safe. The clamp is otherwise
+	// upstream's, warning and all. See docs/xollama/dca.mdx.
 	trainCtx := f.KV().ContextLength()
 	if opts.NumCtx > int(trainCtx) && trainCtx > 0 {
-		slog.Warn("requested context size too large for model", "num_ctx", opts.NumCtx, "n_ctx_train", trainCtx)
-		opts.NumCtx = int(trainCtx)
+		if DCAUnlocksContext(config, gpus, f) {
+			slog.Info("serving past the model's trained context with dual chunk attention",
+				"num_ctx", opts.NumCtx, "n_ctx_train", trainCtx)
+		} else {
+			slog.Warn("requested context size too large for model", "num_ctx", opts.NumCtx, "n_ctx_train", trainCtx)
+			opts.NumCtx = int(trainCtx)
+		}
 	}
 
 	kvct := strings.ToLower(envconfig.KvCacheType())

@@ -151,7 +151,17 @@ func supportsContextShift(m *Model) bool {
 	return true
 }
 
-func effectiveModelContext(numCtx int, f *gguf.Model) int {
+// effectiveModelContext is the context this load will actually be served with.
+//
+// xollama-hook: launch-config — unlocked is true when dual chunk attention is
+// carrying this load past the context the model was trained in. The clamp then
+// does not apply, and every caller has to agree about that: the memory
+// prediction below sizes the cache from this number, so a clamp here and no
+// clamp at launch would under-count the cache by whatever the unlock bought.
+func effectiveModelContext(numCtx int, f *gguf.Model, unlocked bool) int {
+	if unlocked {
+		return numCtx
+	}
 	return effectiveContext(numCtx, modelTrainContext(f))
 }
 
@@ -541,7 +551,7 @@ func (s *Scheduler) load(req *LlmRequest, systemInfo ml.SystemInfo, gpus []ml.De
 				return false
 			}
 
-			predictedCtx := effectiveLlamaServerContext(req.opts.NumCtx, f, numParallel)
+			predictedCtx := effectiveLlamaServerContext(req.opts.NumCtx, f, numParallel, req.contextUnlocked(f, gpus))
 			predicted := llm.PredictServerVRAM(req.model.ModelPath, f, predictedCtx) + slotCeilingVRAM(req, f, gpus, numParallel)
 			loadGpus, launchOpts = selectLlamaServerPlacement(systemInfo, gpus, predicted, req.opts)
 			availableForBatch, _, _ := availableMemoryForPlacement(systemInfo, loadGpus, launchOpts)
@@ -783,7 +793,7 @@ func (req *LlmRequest) reduceAutoNumCtxForLoadOOM(f *gguf.Model, numParallel int
 	}
 
 	req.opts.NumCtx = newNumCtx
-	predictedCtx := effectiveLlamaServerContext(req.opts.NumCtx, f, numParallel)
+	predictedCtx := effectiveLlamaServerContext(req.opts.NumCtx, f, numParallel, req.contextUnlocked(f, gpus))
 	predictedVRAM := llm.PredictServerVRAM(req.model.ModelPath, f, predictedCtx) + slotCeilingVRAM(req, f, gpus, numParallel)
 	available, _, _ := availableMemoryForPlacement(systemInfo, gpus, launchOpts)
 	req.applyAutomaticGenerationBatch(completion, predictedCtx, predictedVRAM, available, llm.LlamaServerFlashAttention(gpus), gpus)
@@ -799,8 +809,18 @@ func explicitPartialGPUOffload(opts api.Options, f *gguf.Model) bool {
 	return uint64(opts.NumGPU) < f.KV().BlockCount()+1
 }
 
-func effectiveLlamaServerContext(numCtx int, f *gguf.Model, numParallel int) int {
-	return effectiveModelContext(numCtx, f) * max(numParallel, 1)
+func effectiveLlamaServerContext(numCtx int, f *gguf.Model, numParallel int, unlocked bool) int {
+	return effectiveModelContext(numCtx, f, unlocked) * max(numParallel, 1)
+}
+
+// contextUnlocked reports whether this request may be served past the context
+// its model was trained in.
+//
+// xollama-hook: launch-config — see llm/engine_dca.go. The answer has to be the
+// same here and at launch, so both ask the same function rather than each
+// re-deriving it from the environment.
+func (req *LlmRequest) contextUnlocked(f *gguf.Model, gpus []ml.DeviceInfo) bool {
+	return llm.DCAUnlocksContext(llamaServerConfigForModel(req.model), gpus, f)
 }
 
 // slotCeilingVRAM is the memory this load will need beyond its live slot count,
@@ -821,7 +841,7 @@ func slotCeilingVRAM(req *LlmRequest, f *gguf.Model, gpus []ml.DeviceInfo, numPa
 		numBatch = llamaServerGenerationBatchDefault
 	}
 	return llm.PredictServerSlotVRAM(f, llamaServerConfigForModel(req.model), gpus,
-		effectiveModelContext(req.opts.NumCtx, f), numBatch, numParallel)
+		effectiveModelContext(req.opts.NumCtx, f, req.contextUnlocked(f, gpus)), numBatch, numParallel)
 }
 
 const (
@@ -1166,7 +1186,7 @@ func logSelectedGPUGroup(all, selected []ml.DeviceInfo) {
 }
 
 func (s *Scheduler) applyLlamaServerMmapDefaults(req *LlmRequest, launchOpts api.Options, systemInfo ml.SystemInfo, gpus []ml.DeviceInfo, f *gguf.Model, numParallel int) api.Options {
-	predictedCtx := effectiveLlamaServerContext(req.opts.NumCtx, f, numParallel)
+	predictedCtx := effectiveLlamaServerContext(req.opts.NumCtx, f, numParallel, req.contextUnlocked(f, gpus))
 	predictedVRAM := llm.PredictServerVRAM(req.model.ModelPath, f, predictedCtx) + slotCeilingVRAM(req, f, gpus, numParallel)
 	availableVRAM, _, _ := availableMemoryForPlacement(systemInfo, gpus, launchOpts)
 
@@ -1230,7 +1250,7 @@ func allDevicesLibrary(gpus []ml.DeviceInfo, library string) bool {
 func (s *Scheduler) maybeDisableMmapForHostPressure(req *LlmRequest, launchOpts api.Options, systemInfo ml.SystemInfo, gpus []ml.DeviceInfo, f *gguf.Model, numParallel int) {
 	modelSize := modelFileSize(req.model.modelPaths()...)
 	loadedMmapSize := s.loadedMmapModelSizeLocked()
-	predictedCtx := effectiveLlamaServerContext(req.opts.NumCtx, f, numParallel)
+	predictedCtx := effectiveLlamaServerContext(req.opts.NumCtx, f, numParallel, req.contextUnlocked(f, gpus))
 	predictedVRAM := llm.PredictServerVRAM(req.model.ModelPath, f, predictedCtx) + slotCeilingVRAM(req, f, gpus, numParallel)
 	availableVRAM, _, _ := availableMemoryForPlacement(systemInfo, gpus, launchOpts)
 	placementGpus := gpusForPlacement(gpus, launchOpts)
@@ -1412,6 +1432,17 @@ func (runner *runnerRef) unload() {
 	runner.contextShift = false
 }
 
+// runnerServesPastTrainedContext reports whether this runner was started with
+// more context than its model was trained in, which only a DCA load can be.
+//
+// xollama-hook: launch-config — keyed on the runner's own observable state
+// rather than on the environment, so a setting changed since the runner started
+// cannot make the reuse check disagree with the process that is actually there.
+func runnerServesPastTrainedContext(runner *runnerRef) bool {
+	return runner != nil && runner.Options != nil &&
+		runner.trainContext > 0 && runner.Options.NumCtx > runner.trainContext
+}
+
 func (runner *runnerRef) needsReload(ctx context.Context, req *LlmRequest) bool {
 	slog.Debug("evaluating already loaded", "model", schedulerModelKey(req.model))
 	runner.refMu.Lock()
@@ -1429,7 +1460,13 @@ func (runner *runnerRef) needsReload(ctx context.Context, req *LlmRequest) bool 
 	// Don't reload runner if num_gpu=-1 was provided
 	optsExisting := runner.Options.Runner
 	optsNew := req.opts.Runner
-	optsNew.NumCtx = effectiveContext(optsNew.NumCtx, runner.trainContext)
+	// xollama-hook: launch-config — a runner already serving past the context
+	// its model was trained in is a dual-chunk-attention load, and clamping the
+	// incoming request back to the trained figure would make a request for more
+	// context compare equal to it and reuse a runner that cannot serve it.
+	if !runnerServesPastTrainedContext(runner) {
+		optsNew.NumCtx = effectiveContext(optsNew.NumCtx, runner.trainContext)
+	}
 	if runner.numCtxAuto && req.numCtxAuto {
 		optsNew.NumCtx = optsExisting.NumCtx
 	}

@@ -77,6 +77,31 @@ env twins cannot help: the explicit flag wins.
 
 ## G4 — DCA past the native context is blocked twice
 
+> **Closed, 2026-09-19.** Both blocks are gone and the recipe is reachable.
+>
+> The clamp in `llm/server.go` now asks `DCAUnlocksContext` first, so it applies
+> exactly as upstream wrote it unless dual chunk attention is carrying the load.
+> The scheduler's `effectiveModelContext` takes the same answer, so the memory
+> prediction sizes the cache for the context actually served rather than the one
+> the file declares, and `needsReload` no longer clamps an incoming request back
+> to a DCA runner's declared figure.
+>
+> G2 turned out not to be needed for this. Rather than a general argv escape
+> hatch, `appendDCAArgs` writes the specific override the recipe calls for —
+> `--dca on`, plus `--rope-scaling yarn` and
+> `--override-kv <arch>.context_length=int:N` when and only when the request is
+> past native. Four planes as promised: `XOLLAMA_DCA` /
+> `XOLLAMA_DCA_CHUNK_SIZE`, a `dca` block in `xollama.json` that overrides them,
+> and no request field or CLI switch because DCA is a property of the runner and
+> the context length is already the per-request knob.
+>
+> Two refusals came with it, because the engine accepts `--dca on` on any
+> architecture and silently does nothing on most of them: a load asking for DCA
+> on stock llama.cpp is refused, and a load asking for more context than the
+> model was trained on, on an architecture with no chunked route, is refused
+> with the number that would have to change. Within the trained window the same
+> case is only a warning. See [`../xollama/dca.mdx`](../xollama/dca.mdx).
+
 1. `llm/server.go:127` clamps `opts.NumCtx` to the GGUF's own `context_length`
    with a `requested context size too large for model` warning, before the
    engine is launched. ollama reads that from its own parse of the GGUF, so an
@@ -89,9 +114,12 @@ serve 4× the training context and the request can never ask for it. opencoti's
 measured recipe — Gemma-4-A4B at 256k native, RULER-VT 0.964 at 256k and 0.916 at
 1M — is not reproducible through xollama.
 
-**Fix:** G2 gives the override; the clamp then needs to become
-"clamp unless the model declares an extension mechanism", which is a real design
-question and not a one-liner. Worth an explicit decision rather than a patch.
+**Fix as delivered:** the clamp became "clamp unless dual chunk attention is
+carrying this load", which is the narrow form of "unless the model declares an
+extension mechanism" — narrow because the unlock is gated on the engine, on the
+setting, *and* on the architecture actually having the route, so it cannot be
+switched on by accident. G2 was not needed: the override the recipe wants is
+written directly rather than exposed as a general escape hatch.
 
 ## G5 — no per-request passthrough, so PolyKV's request half is unreachable
 
@@ -181,10 +209,19 @@ deprecated tier and miss the ring.
 
 ## Order I would fix these in
 
-1. **G5** (`session_id`, then pool attach) — `session_id` done; pool attach
-   needs the launch flags first, so it now depends on G7.
-2. **G2** — G3 is done; G2 (an argv escape hatch for flags with no home) is
-   what is left of that pair, and G4 depends on it.
-3. **G6** — without it nothing above is verifiable from the outside.
-4. **G1** — the right home for all of it once the argv side works.
-5. **G4**, then **G7** — both need a decision before a patch.
+Updated 2026-09-19. G3, G4 and G7 are closed; G5 is half closed.
+
+1. **G6** — an introspection proxy for `/props`, `/slots` and `/polykv/*`.
+   Now the first item rather than the third: three features have shipped whose
+   effect is invisible from outside the server, so the next thing worth
+   building is the ability to see them.
+2. **G5, the pool half** — `--polykv-max-pools` at launch and a pool lifecycle
+   over `POST /polykv/pools {from_session}`. `session_id` is done and is what
+   a pool attaches to.
+3. **G1** — the per-model options carrier, now that `xollama.json` carries kv,
+   slots, session and dca. What is left is moving the remaining launch settings
+   into it rather than adding new ones beside it.
+4. **G2** — an argv escape hatch for flags with no home. Demoted: G4 was the
+   case that needed it and was closed without it, by writing the specific
+   override rather than a general hatch. It is worth doing for flags nobody has
+   modelled yet, not as a dependency of anything currently planned.

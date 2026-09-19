@@ -176,8 +176,14 @@ type llamaServerRunner struct {
 }
 
 type llamaServerLaunchConfig struct {
-	modelPath            string
-	modelArch            string
+	modelPath string
+	modelArch string
+	// trainContext is the context the model was trained in, as its GGUF
+	// declares it. It is carried because DCA has to know whether this load is
+	// being asked for more than that. Zero means the file did not say.
+	//
+	// xollama-hook: launch-config
+	trainContext         int
 	draftType            string
 	projectors           []string
 	mmprojMemory         uint64
@@ -490,6 +496,26 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 
 	// xollama-hook: launch-config — dynamic slots. See docs/xollama/slots.mdx.
 	args = appendSlotArgs(args, resolveSlotPlan(launch.config, launch.numParallel, launch.config.SingleSequenceOnly), usedOpencoti)
+
+	// xollama-hook: launch-config — dual chunk attention. See docs/xollama/dca.mdx.
+	//
+	// Both checks refuse rather than start: a load configured to run past its
+	// trained context, started without the thing that makes that safe, would
+	// answer confidently and wrongly, and nothing downstream could tell.
+	dca := resolveDCAPlan(launch.config)
+	if why := dca.requiresEngineExtension(); why != "" && !usedOpencoti {
+		return nil, 0, false, fmt.Errorf("%s; set %s=opencoti, or turn DCA off", why, engine.EnvSelector)
+	}
+	if dca.Enabled {
+		warn, refuse := checkDCAArchitecture(launch.modelArch, launch.opts.NumCtx, launch.trainContext)
+		if refuse != nil {
+			return nil, 0, false, refuse
+		}
+		if warn != "" {
+			slog.Warn(warn, "architecture", launch.modelArch, "supported", dcaArchitectures)
+		}
+	}
+	args = appendDCAArgs(args, dca, launch.modelArch, launch.opts.NumCtx, launch.trainContext, usedOpencoti)
 
 	// xollama-hook: draft-assistant — see docs/features/gemma4-drafter.md
 	if launch.draftType != "" {
@@ -1060,6 +1086,7 @@ func NewLlamaServerRunner(
 	launch := llamaServerLaunchConfig{
 		modelPath:    splitModel.modelPath,
 		modelArch:    arch,
+		trainContext: int(f.KV().ContextLength()),
 		draftType:    draftType,
 		projectors:   slices.Clone(splitModel.projectors),
 		mmprojMemory: mmprojMemory,

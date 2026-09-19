@@ -311,6 +311,20 @@ var (
 	// SlotsVRAMReserve is the free VRAM in MiB that must remain before another
 	// slot is admitted, so a co-resident process is not squeezed out.
 	SlotsVRAMReserve = Uint("XOLLAMA_SLOTS_VRAM_RESERVE", 0)
+	// DCA lets a model be served past the context length it was trained on, by
+	// routing the full-attention layers through chunked positions so no
+	// query-key distance exceeds the trained window.
+	//
+	// Off by default, and it has to be. Most architectures have no chunked
+	// route at all, and even on the ones that do it is a quality trade that
+	// nobody should be opted into by upgrading.
+	//
+	// Needs an engine with the route; on stock llama.cpp a load that asks for
+	// it is refused rather than started without it.
+	DCA = Bool("XOLLAMA_DCA")
+	// DCAChunkSize is the chunk length in tokens. Zero means auto, which is the
+	// model's own pretrain window and is almost always the right answer.
+	DCAChunkSize = Uint("XOLLAMA_DCA_CHUNK_SIZE", 0)
 
 	LLMLibrary = String("OLLAMA_LLM_LIBRARY")
 	Editor     = String("OLLAMA_EDITOR")
@@ -390,6 +404,8 @@ func AsMap() map[string]EnvVar {
 		"XOLLAMA_MAX_PARALLEL":        {"XOLLAMA_MAX_PARALLEL", MaxParallel(), "Ceiling on concurrent requests when slots are dynamic (default: derived)"},
 		"XOLLAMA_SLOTS_TPS_FLOOR":     {"XOLLAMA_SLOTS_TPS_FLOOR", SlotsTPSFloor(), "Per-slot decode rate to protect before admitting another slot"},
 		"XOLLAMA_SLOTS_VRAM_RESERVE":  {"XOLLAMA_SLOTS_VRAM_RESERVE", SlotsVRAMReserve(), "Free VRAM in MiB to keep before admitting another slot"},
+		"XOLLAMA_DCA":                 {"XOLLAMA_DCA", DCA(), "Serve a model past its trained context with dual chunk attention (needs a supported engine and architecture)"},
+		"XOLLAMA_DCA_CHUNK_SIZE":      {"XOLLAMA_DCA_CHUNK_SIZE", DCAChunkSize(), "DCA chunk length in tokens (0 = the model's own pretrain window)"},
 		"OLLAMA_DEBUG":                {"OLLAMA_DEBUG", LogLevel(), "Show additional debug information (e.g. XOLLAMA_DEBUG=1)"},
 		"OLLAMA_DEBUG_LOG_REQUESTS":   {"OLLAMA_DEBUG_LOG_REQUESTS", DebugLogRequests(), "Log inference request bodies and replay curl commands to a temp directory"},
 		"OLLAMA_GO_TEMPLATE":          {"OLLAMA_GO_TEMPLATE", GoTemplate(true), "Enable Modelfile TEMPLATE based rendering when available"},

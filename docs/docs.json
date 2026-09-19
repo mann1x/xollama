@@ -175,6 +175,7 @@
             "pages": [
               "/xollama/kv-cache",
               "/xollama/slots",
+              "/xollama/dca",
               "/xollama/sessions",
               "/xollama/opencoti-tuning"
             ]
