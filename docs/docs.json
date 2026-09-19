@@ -153,6 +153,32 @@
         ]
       },
       {
+        "tab": "xollama",
+        "groups": [
+          {
+            "group": "The fork",
+            "pages": [
+              "/xollama/index",
+              "/xollama/engines"
+            ]
+          },
+          {
+            "group": "Features",
+            "pages": [
+              "/xollama/think-budget",
+              "/xollama/tokenize",
+              "/xollama/gemma4-drafter"
+            ]
+          },
+          {
+            "group": "opencoti engine",
+            "pages": [
+              "/xollama/opencoti-tuning"
+            ]
+          }
+        ]
+      },
+      {
         "tab": "Integrations",
         "groups": [
           {

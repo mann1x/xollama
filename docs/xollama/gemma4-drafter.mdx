@@ -1,0 +1,90 @@
+---
+title: Gemma-4 drafters
+---
+
+Speculative decoding runs a small, fast model ahead of the real one and lets the
+real one verify several tokens at once. Output is unchanged — it is a **speed**
+feature, and the thing it buys is measured as an *acceptance rate*.
+
+Gemma-4 ships drafters of an unusual kind, and they need a little care.
+
+## A Gemma-4 drafter is a head, not a model
+
+It is not a small standalone Gemma. The GGUF holds `nextn.*` and `masked_embd_*`
+tensors — roughly 79 MB at Q8_0 for the E4B one — and declares:
+
+```
+gemma4-assistant.requires_target_arch = gemma4
+gemma4-assistant.nextn_predict_layers = 4
+```
+
+It carries **no context of its own** and has to be built against the target's.
+Loading one on its own fails outright rather than degrading, by design. So
+"I tested the drafter alone and it did not work" proves nothing.
+
+## Attaching one
+
+```dockerfile
+FROM ./gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf
+DRAFT ./gemma-4-E4B-it-assistant-Q8_0.gguf
+
+PARAMETER draft_num_predict 3
+XOLLAMA {"version": 1, "engine": "opencoti"}
+```
+
+`draft_num_predict` is the draft depth — how many tokens are guessed per step.
+Separate draft models default to 4; 2–3 is the recommended range for these
+assistant heads. Set it to `0` to disable drafting without removing the drafter.
+
+The drafter must match its target. xollama reads `requires_target_arch` off the
+drafter and fails early when the target is a different architecture, rather than
+letting it surface as a confusing runtime error.
+
+## Which engine you need
+
+Both engines run the drafter against the target's context. They disagree only on
+what the driver is called, and xollama rewrites the value for you once the
+engine is chosen — so you never set it by hand.
+
+What you do need to know is which drafters load at all:
+
+| Drafter | Stock `llama.cpp` | opencoti |
+|---|---|---|
+| `gemma-4-12B-it-assistant` | works | works |
+| `gemma-4-26B-A4B-it-assistant` | works | works |
+| `gemma-4-31B-it-assistant` | works | works |
+| `gemma-4-E2B-it-assistant` | needs a patched build | works |
+| `gemma-4-E4B-it-assistant` | needs a patched build | works |
+
+The two E-series drafters carry `masked_embd_*` tensors that upstream's loader
+declares with an empty expected shape. Upstream reads an empty shape as "every
+dimension must be 1", so the real tensor fails the check — and the error path
+then formats the same empty shape and throws before printing the real message.
+What you see is:
+
+```
+llama_model_load: error loading model: vector::_M_range_check: __n (which is 0) >= this->size() (which is 0)
+```
+
+xollama carries a patch that makes an empty declared shape mean *unchecked*, so
+these two load on `llamacpp` here. It is staged for upstream; until it lands,
+a stock Ollama build cannot load them, which is why pinning
+`"engine": "opencoti"` on such a model is the portable choice.
+
+<Note>
+  Pin the engine in the model rather than in an environment variable. A model
+  that needs opencoti and says so fails with a message naming the engine; the
+  same model without the pin fails as a load crash that mentions nothing.
+</Note>
+
+## Reading the result
+
+A speculative load reports per-completion `timings` including the number of
+tokens drafted and the number accepted. Acceptance depends heavily on the
+prompt: code and structured text draft well, open-ended prose less so. Expect
+acceptance to be lower with an external assistant head than with a model's own
+embedded MTP tensors, and judge it by tokens per second rather than by the
+acceptance number alone.
+
+An assistant drafter never receives the draft-side backend-sampling flag — that
+belongs to a drafter that samples on its own, which this is not.

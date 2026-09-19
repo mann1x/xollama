@@ -1,0 +1,133 @@
+---
+title: Choosing an engine
+---
+
+xollama can serve a GGUF model on either of two engines:
+
+- **`llamacpp`** — the stock `llama-server` Ollama ships. Identical to upstream.
+- **`opencoti`** — opencoti-llamafile, a llamafile fork carrying extra KV-capacity
+  and long-context work. See [Tuning opencoti](/xollama/opencoti-tuning).
+
+macOS MLX models are a separate path and are never routed here.
+
+## Selecting one
+
+```shell
+XOLLAMA_ENGINE=auto       # default
+XOLLAMA_ENGINE=opencoti   # force, policy not consulted
+XOLLAMA_ENGINE=llamacpp   # stock, byte-identical to upstream
+```
+
+Under **`auto`**, every device the load will use must be a tested combination —
+not just one of them, because a load spanning a supported and an unsupported
+device is exactly where "probably fine" is wrong. Anything untested routes to
+`llamacpp`.
+
+| Platform | Backends opencoti is validated on |
+|---|---|
+| linux/amd64 | CUDA, Vulkan, CPU |
+| linux/arm64 | CUDA, CPU |
+| windows/amd64 | CUDA, Vulkan, CPU |
+
+ROCm has no tested opencoti backend. On NVIDIA, the artifact carries code for
+**compute capability 7.5 and newer** only — Maxwell, Pascal and Volta (including
+the Tesla V100) have no code in it at all, so they route to `llamacpp`. That
+check exists because the failure would otherwise be silent: an artifact with no
+code for the device does not refuse to start, it falls back to CPU and the load
+looks like it worked.
+
+The engine chosen for a load, and the reason, are logged once.
+
+## Installing an artifact
+
+An artifact is a single file named
+`opencoti-llamafile-<version>-<tag>-<arch>.llamafile` (`.exe` on Windows).
+Searched in order:
+
+1. `$HOME/.ollama/engines/`
+2. `<ollama lib dir>/engines/`
+3. `<ollama lib dir>/`
+
+The **newest by modification time** wins — not by version string, because
+`0.10.5-c7` does not order under any stock comparison and a wrong guess would
+silently pick an older engine. Override the search entirely with
+`XOLLAMA_ENGINE_PATH=/path/to/artifact`; a missing file there is an error rather
+than a reason to keep looking.
+
+If no artifact is installed, `auto` serves on `llamacpp`.
+
+## When an opencoti load fails
+
+By default it **fails**, and the error names the engine.
+
+```shell
+XOLLAMA_ENGINE_FALLBACK=1   # retry once on stock llama.cpp
+```
+
+<Warning>
+  Fallback is off on purpose. An automatic downgrade reads like a kindness and
+  is not one: every model the engine cannot serve would load anyway, with none
+  of the engine's behaviour, and nothing in the response would say which engine
+  answered. Switch it on only when availability matters more to you than knowing
+  which engine served the request.
+</Warning>
+
+The retry stops the process, pins the stock engine, resets load accounting and
+starts again. It happens at most once per load and logs a `WARN` naming the
+model and the variable that enabled it.
+
+## Pinning an engine to a model
+
+Some models only work on one engine. Carry that with the model rather than
+asking every caller to set an environment variable, using the `XOLLAMA`
+Modelfile directive:
+
+```dockerfile
+FROM ./gemma-4-e4b.gguf
+DRAFT ./gemma-4-E4B-it-assistant-Q8_0.gguf
+
+XOLLAMA {"version": 1, "engine": "opencoti"}
+```
+
+| Field | Meaning |
+|---|---|
+| `version` | Required. A version newer than your build is an error, not a warning |
+| `engine` | `opencoti` or `llamacpp`. Omit it — the normal case — and `XOLLAMA_ENGINE` decides. `auto` is **not** valid: a model saying "auto" is a model saying nothing |
+| `draft.spec_type` | Overrides the speculative driver inferred from the drafter |
+
+The directive takes inline JSON or a path to a `.json` file beside the
+Modelfile, and is validated while the Modelfile is parsed, so a typo is reported
+against the line that caused it. `ollama show --modelfile` round-trips it.
+
+`engine: "opencoti"` **fails** the load if opencoti was not selected, rather than
+running on llama.cpp anyway — the pin exists precisely because the model does not
+work there, and the failure would otherwise surface as a load crash with no
+mention of the engine.
+
+A model creating `FROM` a parent that already carries a config **replaces** it
+rather than inheriting, so a child can shed a stale engine pin.
+
+<Note>
+  The config travels in a layer stock Ollama ignores, so a model published from
+  xollama still pulls and runs on stock Ollama — just without the fork's
+  behaviour. That is the point of a soft fork.
+</Note>
+
+## Current state, honestly
+
+The engine is **shipped and measured**, not finished. From the fork's own A/B:
+
+- An early measurement found `auto` could route a load into a failure —
+  opencoti loaded 3 of 8 tested models where llama.cpp loaded 8 of 8, because
+  xollama's baseline is not vanilla `llama.cpp`: it links Ollama's compat layer
+  that reads Ollama's monolithic registry blobs, and the engine had no
+  equivalent. Both that and an aborting VRAM-overflow path were fixed on the
+  engine side; a later build loads 8 of 8 and turns the overflow case into a
+  large win.
+- Multi-slot serving (`num_parallel > 1`) measured slower than stock on the
+  build tested.
+- Pure-CPU decode measured slower than stock, most of which is inherited from
+  upstream llamafile rather than added by opencoti.
+
+If you are not chasing a specific opencoti feature, `llamacpp` is the
+conservative choice and costs you nothing.

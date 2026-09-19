@@ -1,0 +1,209 @@
+---
+title: Tuning opencoti
+---
+
+The opencoti engine carries work that stock `llama-server` does not: compressed
+KV caches, a KV window that spills to host RAM instead of failing, training-free
+long-context extension, and a shared-prefix pool for multi-agent serving. This
+page is what you can reach from xollama **today**, and — just as important —
+what you cannot.
+
+<Warning>
+  Read [Choosing an engine](/xollama/engines) first. None of this does anything
+  unless the load actually routed to opencoti.
+</Warning>
+
+## How settings reach the engine
+
+xollama launches the engine as a subprocess and **passes its whole environment
+through**. Every opencoti flag also has an environment twin, so that is the
+configuration channel:
+
+```shell
+LLAMA_ARG_DCA=on xollama serve
+```
+
+Two consequences you need to hold on to:
+
+1. **It is server-global, not per-model.** Every model loaded by that server
+   gets the same setting. There is no per-model carrier for these yet — the
+   `XOLLAMA` Modelfile directive currently carries only `engine` and
+   `draft.spec_type`.
+2. **An explicit flag beats its environment twin**, and xollama already passes
+   a number of flags of its own. Setting the twin for one of those is silently
+   inert — it will not warn, it will simply not apply.
+
+These are the ones xollama sets, so their `LLAMA_ARG_*` twins do nothing:
+
+`--cache-type-k` · `--cache-type-v` · `--flash-attn` · `--context-shift` ·
+`--spec-type` · `--spec-draft-model` · `--spec-draft-n-max` ·
+`--spec-draft-backend-sampling` · `--log-verbosity` · `-c` · `-np` · `-ngl` ·
+`-b` · `-ub` · `-t` · `--main-gpu` · `--split-mode` · `--load-mode` · `--keep` ·
+`--mmproj` · `--chat-template` · `--host` · `--port`
+
+Anything else is yours.
+
+## KVarN — KV cache compression
+
+The KV cache is usually what runs out first. KVarN is opencoti's current
+compressed KV representation, selected as a cache **type** rather than a
+separate flag, at widths `kvarn2` through `kvarn8` (roughly, bits per value —
+smaller is smaller and lossier).
+
+It is reachable through Ollama's own variable, because xollama passes that value
+through without an allowlist:
+
+```shell
+OLLAMA_KV_CACHE_TYPE=kvarn3 xollama serve
+```
+
+That sets K and V to the same type. To set them **separately** you would need
+`-ctk`/`-ctv` independently, which xollama does not expose — it writes one value
+into both.
+
+### iSWA models need the ring set too
+
+Gemma-4 and other sliding-window models keep a second, short-window cache — the
+"ring" — alongside the global one. opencoti's own measurements put the ring at
+roughly **90 % of the sliding-window excess**, so compressing only the global
+half leaves most of the cost in place. The ring has its own cache types, and
+xollama does not set them, so their twins are live:
+
+```shell
+OLLAMA_KV_CACHE_TYPE=kvarn3
+LLAMA_ARG_CACHE_TYPE_K_SWA=q4_0
+LLAMA_ARG_CACHE_TYPE_V_SWA=q4_0
+```
+
+K and V on the ring must both be KVarN widths or both plain; mixing is rejected
+at boot. In opencoti's KLD tables a KVarN global with a plain `q4_0` or `q8_0`
+ring beat KVarN on both halves at the same size, so this pairing is the one to
+start from rather than an afterthought.
+
+<Note>
+  The older `turbo*` / `*_tcq` tiers are deprecated and frozen upstream of us.
+  Use `kvarnN`.
+</Note>
+
+## Rolling-KV — the window that spills
+
+"KV doesn't have to fit." Each layer keeps a device-resident window of recent
+positions; the tail lives in pinned host RAM and is streamed back through the
+attention kernel per tile and merged exactly. When everything fits, every layer
+stays resident and the path is unchanged — **the feature only engages under
+memory pressure**.
+
+```shell
+LLAMA_ARG_VRAM_TARGET=20000          # MiB budget; 0 = all free VRAM
+LLAMA_ARG_KV_RESIDENCY_MODE=auto     # auto | head | window — leave it at auto
+```
+
+Spilled decode sits at the PCIe floor and scales linearly with the tail — no
+cliff, but on consumer PCIe it is a last resort. Prefer compressing the cache
+(above) and treat spill as the thing that keeps a load alive rather than a
+performance feature.
+
+While a window is spilled, context shift and prompt-cache reuse are guarded off
+and requests are bounded at the context length.
+
+## DCA — long context beyond the model's training length
+
+Dual Chunk Attention splits attention into intra-chunk, successive and
+inter-chunk position regimes and merges them exactly, so a model trained at one
+context length serves multiples of it without retraining. It is a **launch-time**
+toggle — the cache stores keys un-rotated, so it cannot be switched per request.
+
+```shell
+LLAMA_ARG_DCA=on
+LLAMA_ARG_DCA_CHUNK_SIZE=8192    # the validated recipe
+```
+
+<Warning>
+  **The part that makes DCA worth having is not reachable from xollama today.**
+  Serving past the model's declared context needs the engine's
+  `--override-kv <arch>.context_length=int:…`, which has no environment twin, so
+  there is no way to pass it. And xollama clamps `num_ctx` to the model's own
+  training context before the engine is ever launched, with a
+  `requested context size too large for model` warning. So you can turn DCA on,
+  but you cannot ask for the long context it exists to serve.
+</Warning>
+
+Turning it on within the native context is measurable but is not the use case.
+Until this is plumbed, a genuine 4× context run has to be done against the
+engine directly rather than through xollama.
+
+## PolyKV — shared prefix pools for multi-agent serving
+
+PolyKV is opencoti's umbrella name for the whole KV-capacity stack, and at its
+centre is **SharedKVPool**: N agents attending *one physical copy* of a common
+prefix — a shared system prompt and tool definitions — instead of N copies.
+
+The boot half is reachable:
+
+```shell
+LLAMA_ARG_KV_UNIFIED=1          # one shared cell pool across slots
+LLAMA_ARG_POLYKV_MAX_POOLS=4    # enables the /polykv/* control plane
+```
+
+<Warning>
+  **The request half is not.** Attaching a request to a pool is a per-request
+  JSON field (`pool_id`, or `shared_pool_slot` + `shared_prefix_n_tokens`), and
+  xollama builds the completion body itself — there is no passthrough for
+  engine-specific fields from `/api/chat` or `/api/generate`. The pools can be
+  created and will sit there unused.
+
+  `--kv-unified` also changes what `-c` and `--parallel` mean, and it is
+  mutually exclusive with the rolling-KV window. Switching it on under xollama,
+  which sizes `-c` as context × parallel for the split layout, is not a
+  configuration anyone has measured here.
+</Warning>
+
+If shared-prefix pooling is what you came for, drive the engine directly for now.
+
+## Other knobs worth knowing
+
+| Setting | Variable | Notes |
+|---|---|---|
+| Sparse attention | `LLAMA_ARG_SPARSE_ATTN=on` | Quest-style block selector; `…_TOPK`, `…_RECENT`, `…_SINK` tune it |
+| Elastic slots | `LLAMA_ARG_N_PARALLEL_MAX` | Needs `--kv-unified`; see the warning above |
+| Admission gate | `LLAMA_ARG_ADMISSION_POOLLESS` | `enforced` by default — refuses with 429 before prefill rather than thrashing |
+| GPU sharing | `LLAMA_ARG_GPU_SHARE_WEIGHT` | Compute share against co-resident opencoti servers on one GPU |
+| RYS layer duplication | `LLAMA_ARG_REPEAT_LAYERS` | Quality experiment; absent means byte-identical to stock |
+| Sampler placement | `LLAMA_ARG_SAMPLING_PLACEMENT` | `auto` routes from a measured crossover. Measured null on this fork's cell — leave it |
+
+## Checking what actually took effect
+
+Do not assume a variable applied. The engine echoes its boot configuration and
+its **effective** KV state:
+
+```shell
+curl http://127.0.0.1:<engine-port>/props | jq .opencoti
+```
+
+That is the authority on which cache tiers, residency mode and DCA settings the
+engine really ended up with — including anything auto-tier decided for you. The
+engine's own `--help` is the authority on flag names and defaults; where it and
+any document disagree, `--help` wins.
+
+<Note>
+  xollama gives the engine a private port and does not proxy `/props`,
+  `/slots`, `/metrics` or `/polykv/*`. Read the port from the server log, or
+  query the engine directly when you launch it yourself.
+</Note>
+
+## Summary — reachable or not
+
+| Feature | From xollama today |
+|---|---|
+| KVarN cache widths | **Yes**, symmetric K/V via `OLLAMA_KV_CACHE_TYPE` |
+| iSWA ring cache types | **Yes**, via `LLAMA_ARG_CACHE_TYPE_K_SWA` / `…_V_SWA` |
+| Asymmetric K vs V types | No — one value is written into both |
+| Rolling-KV window and VRAM target | **Yes** |
+| Mixed-KV spilled-tail types (`-ctkt`/`-ctvt`) | **Yes**, no twin conflict |
+| DCA on/off and chunk size | **Yes** |
+| DCA past the model's native context | **No** — no `--override-kv` twin, and `num_ctx` is clamped first |
+| PolyKV pool creation | **Yes** (boot flags) |
+| PolyKV per-request attach | **No** — no per-request passthrough |
+| Sparse attention, elastic slots, admission, RYS | **Yes** (boot env) |
+| Any of it per-model instead of per-server | **No** — server-global only |
+| Engine introspection (`/props`, `/slots`, `/polykv/*`) | **Not proxied** — query the engine directly |

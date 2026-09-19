@@ -1,0 +1,75 @@
+---
+title: Tokenizer endpoints
+---
+
+`/api/tokenize` and `/api/detokenize` convert between text and the token IDs of
+**the model's own tokenizer**, without generating anything.
+
+Use them when you need to measure a prompt against a context window rather than
+estimate it. Estimates — characters ÷ 4, or a tokenizer from a different model —
+are wrong by enough to matter exactly when it matters: when you are packing a
+window and deciding what to drop.
+
+## Tokenize
+
+```shell
+curl http://localhost:11434/api/tokenize -d '{
+  "model": "llama3.2",
+  "input": "Why is the sky blue?"
+}'
+```
+
+```json
+{
+  "model": "llama3.2",
+  "tokens": [10445, 374, 279, 13180, 6437, 30]
+}
+```
+
+| Field | Required | Meaning |
+|---|---|---|
+| `model` | yes | Model whose tokenizer to use |
+| `input` | yes | Text to tokenize. An empty string loads the model and returns no tokens |
+| `options` | no | Model options, as elsewhere |
+| `keep_alive` | no | How long to keep the model loaded |
+
+## Detokenize
+
+```shell
+curl http://localhost:11434/api/detokenize -d '{
+  "model": "llama3.2",
+  "tokens": [10445, 374, 279, 13180, 6437, 30]
+}'
+```
+
+```json
+{
+  "model": "llama3.2",
+  "text": "Why is the sky blue?"
+}
+```
+
+An empty `tokens` array loads the model and returns an empty string.
+
+## Things worth knowing
+
+**The model is loaded to answer.** These endpoints load the model exactly as
+`/api/embed` does, so the first call after an idle period pays the load. Send
+`"input": ""` to load the model deliberately without tokenizing anything, and
+use `keep_alive` if you are about to make many calls.
+
+**The answer is tokenizer-exact, not an approximation.** It comes from the
+tokenizer the model will actually use, so a count from here and the `prompt_eval_count`
+of a completion agree.
+
+**Round-tripping is not always byte-identical.** Detokenizing the tokens of a
+string returns what the tokenizer reconstructs, which can differ in whitespace
+or normalisation for some models. Compare tokens, not strings, when you need an
+equality check.
+
+<Note>
+  These endpoints are staged as a pull request against upstream Ollama. If it is
+  accepted they will exist there too, with the same shape. Full request and
+  response schemas are in the
+  [API reference](/api/introduction).
+</Note>

@@ -1,0 +1,63 @@
+---
+title: What xollama adds
+---
+
+xollama is a soft fork of Ollama. It runs everything Ollama runs, the same way,
+and adds four things on top: a way to **bound how long a model thinks**, a
+**tokenizer endpoint**, **speculative decoding with a Gemma-4 assistant
+drafter**, and the option to serve GGUF models on a **different inference
+engine**, opencoti-llamafile, instead of stock `llama-server`.
+
+<Note>
+  **Off means off.** With `XOLLAMA_ENGINE=llamacpp` and no fork settings,
+  xollama behaves identically to the Ollama release it is built from. Every
+  feature on this page is something you switch on.
+</Note>
+
+## The four additions
+
+| | What it is | Where |
+|---|---|---|
+| **Think budget** | Cap the tokens a reasoning model may spend inside its thinking block, per request or per model, so it answers instead of looping until the context is gone | [Bounding thinking](/xollama/think-budget) |
+| **`/api/tokenize`** | Count or inspect tokens with the model's own tokenizer, without generating | [Tokenizer endpoints](/xollama/tokenize) |
+| **Gemma-4 drafters** | Speculative decoding using a Gemma-4 assistant head as the drafter | [Gemma-4 drafters](/xollama/gemma4-drafter) |
+| **opencoti engine** | Serve GGUF on opencoti-llamafile instead of `llama-server`, for its KV-capacity and long-context work | [Choosing an engine](/xollama/engines) · [Tuning opencoti](/xollama/opencoti-tuning) |
+
+The first two are staged as pull requests against upstream Ollama and are
+written to behave exactly as they would if upstream took them. The third and
+fourth are fork features.
+
+## Environment variables
+
+Every `OLLAMA_*` variable keeps working. xollama also reads an `XOLLAMA_*`
+alias for each one, and the alias wins when both are set — so you can run
+xollama and Ollama side by side with different settings. An **empty**
+`XOLLAMA_*` value does not mask the `OLLAMA_*` one; unset it to fall back.
+
+| Variable | Meaning |
+|---|---|
+| `XOLLAMA_ENGINE` | `auto` (default), `opencoti` or `llamacpp` |
+| `XOLLAMA_ENGINE_PATH` | Path to an opencoti-llamafile artifact, overriding the search |
+| `XOLLAMA_ENGINE_FALLBACK` | Retry a failed opencoti load on stock `llama.cpp`. Default `false` |
+| `XOLLAMA_HOST`, `XOLLAMA_MODELS`, `XOLLAMA_DEBUG`, `XOLLAMA_FLASH_ATTENTION`, `XOLLAMA_LLAMA_ARG_FIT` | Aliases for the `OLLAMA_*` variables of the same name |
+
+Run `xollama serve --help` or `ollama show --help` for the full list as your
+build sees it.
+
+## Which pages to read
+
+<CardGroup cols={2}>
+<Card title="Bounding thinking" icon="brain" href="/xollama/think-budget">
+  The one to read first if you use a reasoning model in a coding agent.
+</Card>
+<Card title="Choosing an engine" icon="shuffle" href="/xollama/engines">
+  What `auto` does, when a load fails, and how to pin an engine to a model.
+</Card>
+<Card title="Tuning opencoti" icon="sliders" href="/xollama/opencoti-tuning">
+  PolyKV, KVarN, rolling-KV and DCA — what each does, what you can set from
+  xollama today, and what you cannot.
+</Card>
+<Card title="Gemma-4 drafters" icon="gauge-high" href="/xollama/gemma4-drafter">
+  Faster decoding on Gemma-4, and which drafters need which engine.
+</Card>
+</CardGroup>

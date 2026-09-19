@@ -1,0 +1,129 @@
+---
+title: Bounding thinking
+---
+
+A reasoning model can loop inside its thinking block — *"Wait, let me re-read
+that…"* — and spend the whole context without ever answering. The failure is not
+a worse answer, it is **no answer at all**: an empty `response`, a burnt context
+window, and the full wait.
+
+`think` in stock Ollama can only turn reasoning on or off. xollama lets you say
+*think, but not forever*.
+
+## Cap thinking on one request
+
+Send `think` as a token count:
+
+```shell
+curl http://localhost:11434/api/chat -d '{
+  "model": "gemma4:e4b",
+  "messages": [{ "role": "user", "content": "…" }],
+  "think": 8192
+}'
+```
+
+Or as an effort level, which is a **share of the room the response has**:
+
+| `think` | Share | At `num_predict` 8192 | At `num_predict` 32768 |
+|---|---|---|---|
+| `"minimal"` | a sixteenth | 512 | 2048 |
+| `"low"` | an eighth | 1024 | 4096 |
+| `"medium"` | a quarter | 2048 | 8192 |
+| `"high"` | a half | 4096 | 16384 |
+| `"max"` | four fifths | 6553 | 26214 |
+
+`"xhigh"` is accepted as another name for `"max"`, for clients whose effort
+scale ends there. `think: true` is unchanged — unbounded.
+
+The share comes from `num_predict` when the request sets one, and from the
+context length otherwise. That matters: a client that sends `num_ctx` 128000 and
+`num_predict` 32000 would, against the context, get a "medium" budget of exactly
+its own response cap — so the model can spend every token it may emit on
+thinking and stop with nothing. Against the response it resolves to 8000 and the
+block closes.
+
+<Note>
+  A budget is a **ceiling, not a target**. A model whose reasoning finishes
+  inside the budget is unaffected, and a budget that never binds produces
+  byte-identical output to `think: true`.
+</Note>
+
+## Cap thinking for a model
+
+Put it in the Modelfile and every client gets it, including clients that never
+send a `think` field at all — which is most coding agents:
+
+```dockerfile
+FROM gemma4:e4b
+
+PARAMETER think_budget medium
+PARAMETER think_budget_message "OK, I have enough to answer now."
+```
+
+`think_budget` takes a token count or a level. A request that carries its own
+budget overrides it.
+
+## The wrap-up message
+
+When the closing tag is forced mid-thought, the model does not register that it
+was interrupted and can carry on reasoning **in its visible answer**. This is
+not specific to xollama — it reproduces on plain `llama.cpp` and is the reason
+vLLM built a soft-budget path.
+
+`think_budget_message` is written into the thinking block just before the tag is
+forced, so the model reads that it has to answer now rather than being cut off
+with no explanation. Set it per model as above, or per request:
+
+```json
+{ "options": { "think_budget_message": "OK, I have enough to answer now." } }
+```
+
+Measured over AIME 2024, 30 problems per arm, on a Gemma-4 build at a 4096-token
+budget: answers longer than 20k characters fell from **8 of 30 to 1 of 30**, runs
+that hit the context wall from **5 to 0**, and mean wall time roughly halved.
+
+<Warning>
+  The right wording is model-specific, which is why there is no default. On one
+  model a short model-agnostic line scored 25/30 against an unbudgeted 26/30
+  while Qwen's own published wording scored 22/30; on a different family the
+  ranking reversed. On a third model no wording helped at all. Measure before
+  shipping one, and leave it unset if you have not.
+</Warning>
+
+## What the response tells you
+
+A bounded completion reports both the budget and what it resolved to:
+
+- `think_budget` — the budget in the form it was written, a level such as
+  `"medium"` or a token count. This is the request's `think` value when that
+  carried one, and the model's own `think_budget` parameter otherwise, which the
+  caller may never have sent.
+- `think_budget_tokens` — what it resolved to, in tokens.
+
+Both are omitted when thinking was unbounded.
+
+`/api/show` answers the same question **before** you send anything, against the
+options you intend to send, so a client can write the bound into its own prompt
+without re-deriving a fraction table.
+
+## Compatibility notes
+
+- OpenAI-compatible `reasoning_effort` and Anthropic `output_config.effort` now
+  resolve to a real budget instead of only switching thinking on. Anthropic's
+  `thinking.budget_tokens` was previously parsed and discarded; it now maps
+  through.
+- `reasoning_effort: "minimal"` is accepted rather than rejected with a 400.
+- Switching thinking off switches the budget off with it: `think: false`,
+  `reasoning_effort: "none"` and `think: 0` all resolve to no budget, and none of
+  them inherits the model's `think_budget` parameter.
+- Models with no thinking block are unaffected — there is nothing to bound.
+
+## Known limitation
+
+A **tight** cut relocates reasoning into the answer, as described above. The
+mitigation is the wrap-up message, and the honest summary of the measurements is
+that it reliably bounds what happens after the cut and has no clear effect on
+accuracy except where the budget is tight enough to be hurting the model anyway.
+Qwen recommend budgets above 1024 tokens for meaningful results; at `num_ctx`
+4096 the `minimal` and `low` levels resolve below that floor, which is what the
+integer form is for.
