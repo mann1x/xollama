@@ -1,99 +1,94 @@
-# Feature — carrying xollama config with a model
+# Model config carrier — `xollama.json`
 
-> Status: **design verified, not yet implemented.** The registry round-trip
-> below was run for real on 2026-09-18.
+## The problem
 
-xollama exposes engine features ollama has no vocabulary for — split KV, KVarN
-tiers, DCA, MTP, rolling-KV. Some of that is per-model, not per-process, and it
-has to survive `ollama push` / `ollama pull` so a published model carries its
-own settings.
+xollama needs some settings to travel *with a model*: which engine it requires,
+which speculative driver to use. Upstream has no field for them, and the obvious
+place is the wrong one.
 
-## Why not `PARAMETER`
+`api.FormatParams` resolves every Modelfile `PARAMETER` name against the json
+tags of `api.Options` and returns `unknown parameter '%s'` for anything else. So
+a fork setting added there would make a model published from xollama **fail to
+create on stock ollama**. That is the opposite of what a soft fork should do —
+the model should still work, just without the fork's behaviour.
 
-Closed, and earlier than expected. `api/types.go:1333`:
+Hijacking the `LICENSE` layer was the fallback idea. It is not used: a license
+layer that is not a license is the kind of thing a fork gets criticised for, and
+it only carries one unstructured string.
 
-```go
-return nil, fmt.Errorf("unknown parameter '%s'", key)
-```
+## The carrier
 
-That fires in `FormatParams` at **`ollama create`** time — a Modelfile naming a
-parameter ollama does not know never becomes a model at all, let alone a push.
-So the knobs cannot ride on `PARAMETER`, and inventing one would also break the
-model for anyone running stock ollama.
+A layer of media type `application/vnd.ollama.image.json`, named `xollama.json`.
 
-## The carriers
+Four properties make this work, and all four are upstream's own behaviour:
 
-Layered, most-specific wins:
-
-```
-request  >  XOLLAMA_* env  >  local sidecar  >  LICENSE block  >  GGUF KV  >  defaults
-```
-
-**1. GGUF metadata KV (`xollama.*`) — preferred where we build the model.**
-Invisible to stock ollama (unknown KVs are ignored), travels inside the blob,
-no registry surface, nothing shows up in `ollama show`. This is the right
-carrier for quants we publish ourselves.
-
-**2. A dedicated LICENSE layer — for models whose GGUF we do not own.**
-Its own layer, never appended to the real licence, first line a version marker.
-Verified below.
-
-**3. Local sidecar (`$OLLAMA_MODELS/xollama/<manifest-digest>.json`)** — third
-party models and user overrides, without recreating the model.
-
-## The LICENSE carrier, verified
-
-`LICENSE` accepts multiple directives, and each becomes its **own** layer
-(`create/manifest.go:203` via `LicenseStrings`, which takes `[]string`). On
-read they are appended in order to `m.License` (`server/images.go:790`), so
-xollama can pick out its own block by marker and hide it.
-
-Modelfile:
-
-```
-FROM <base>
-
-LICENSE """Apache License 2.0
-...the real licence, untouched...
-"""
-
-LICENSE """xollama-config/1
-{
-  "engine": {"prefer": "opencoti"},
-  "kv": {"split": true, "kvarn": {"tier": "q6_0"}}
-}
-"""
-```
-
-**Round trip run 2026-09-18** as `mannix/xollama-config-probe:v1`
-(create → push → delete locally → pull), and checked against the registry's own
-copy, not just the local one:
-
-| step | result |
+| | Why it holds |
 |---|---|
-| `ollama create` | two `application/vnd.ollama.image.license` layers, distinct digests |
-| `ollama push` | accepted; the config layer uploaded as its own blob |
-| registry manifest (`GET /v2/mannix/xollama-config-probe/manifests/v1`) | **both license layers present, same digests** |
-| registry blob fetch | **byte-identical** to what was pushed |
-| `ollama rm` + `ollama pull` | both layers return, digests unchanged |
+| **Stock ollama ignores it** | The layer switch in `server/images.go` has no case for this media type at all, so it is read past in silence. |
+| **It cannot collide** | Upstream's own json layers are named `config.json` and `<prefix>/config.json`. The NAME is what separates them, which is why the remove-on-override matches on name as well as media type — dropping by media type alone would delete a safetensors model's real config. |
+| **Push and pull carry it** | Neither filters by media type; both iterate `mf.Layers` whole. |
+| **The reader already exists** | `manifest.ConfigLayer` / `ReadConfig` / `ReadConfigJSON` are generic over the layer name. |
 
-So the registry neither strips nor rewrites extra license layers, and the
-version marker survives intact. The scheme rests on that, and it now rests on a
-measurement rather than an assumption.
+## Schema
 
-**The cost, in full:** stock `ollama show --license` prints both blocks
-concatenated, so a stock user sees the JSON after the real licence. Cosmetic,
-and the reason the marker leads with `xollama-config/1` — it reads as
-obviously-not-a-licence, and an unknown future version can be skipped rather
-than mis-parsed. xollama filters it out of `show --license`.
+`types/xollama` is an additive package — the schema, and nothing about how the
+fork uses it.
 
-## Rejected
+```json
+{
+  "version": 1,
+  "engine": "opencoti",
+  "draft": { "spec_type": "draft-assistant" }
+}
+```
 
-- **A custom media-type layer.** `create` will not emit one without changing
-  ollama, and an unknown media type is the most likely thing for the registry
-  to reject. Strictly worse than a license layer that demonstrably survives.
-- **A Go-template comment in `TEMPLATE`.** Survives and is invisible in
-  rendered output, but many models have no TEMPLATE layer (GGUF-embedded
-  template, or a RENDERER), and adding one *overrides* the model's own
-  template — changing inference to carry a setting.
-- **`SYSTEM` / `MESSAGE`.** Both contaminate the prompt.
+| Field | Meaning |
+|---|---|
+| `version` | Required. A version **newer than the build** is an error, not a warning — these fields change how the model is served, so reading a v2 config as a v1 would serve it differently from how its publisher meant, silently. |
+| `engine` | `opencoti` or `llamacpp`. Empty means the model does not care and `XOLLAMA_ENGINE` decides, which is the normal case. Note `auto` is **not** valid: a model saying "auto" is a model saying nothing. |
+| `draft.spec_type` | Overrides the `--spec-type` otherwise inferred from the drafter's metadata. |
+
+Unknown **keys** are accepted, so a model mentioning a setting a newer build
+added is still servable. `draft_num_predict` is deliberately absent: it is
+already an `api.Options` field and already travels in the params layer. Only
+settings upstream has no home for belong here.
+
+## Writing one
+
+```dockerfile
+FROM ./gemma-4-e4b.gguf
+DRAFT ./gemma-4-E4B-it-assistant-Q8_0.gguf
+
+XOLLAMA {"version": 1, "engine": "opencoti"}
+```
+
+The directive takes inline JSON or a path to a `.json` file beside the
+Modelfile. It is validated while the Modelfile is parsed, not at create time, so
+a typo is reported against the line that caused it. `ollama show --modelfile`
+round-trips it.
+
+A model creating `FROM` a parent that already carries a config **replaces** it
+rather than inheriting — otherwise a child could never shed a stale engine pin.
+
+## What the fields do
+
+**`engine: "llamacpp"`** skips the engine hook entirely, which is the same path
+`XOLLAMA_ENGINE=llamacpp` takes, so the argv stays upstream's.
+
+**`engine: "opencoti"`** fails the load if opencoti was not selected, rather than
+running on llama.cpp anyway. The pin exists precisely because the model does not
+work there, and the failure would otherwise surface as a load crash with no
+mention of the engine. The worked example is a gemma-4 E2B/E4B assistant
+drafter: it carries `masked_embd_*` tensors that upstream's loader rejects with a
+`vector::_M_range_check` — see [gemma4-drafter.md](gemma4-drafter.md).
+
+**`draft.spec_type`** beats inference, and still goes through
+`retargetSpecType`, so pinning `draft-assistant` on llama.cpp resolves to
+`draft-mtp` — that engine's spelling for the same driver — rather than a value it
+would reject.
+
+## Off means off
+
+A model with no `xollama.json` produces no layer, leaves `Model.Xollama` nil, and
+takes every upstream path unchanged. The accessors on `LlamaServerConfig` are
+nil-tolerant because almost every model will have no config at all.

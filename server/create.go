@@ -850,6 +850,8 @@ func createModel(ctx context.Context, r api.CreateRequest, name model.Name, base
 		License:    r.License,
 		Parameters: r.Parameters,
 		Messages:   r.Messages,
+		// xollama-hook: model-config — see docs/features/model-config.md
+		Xollama: r.Xollama,
 	})
 	if err != nil {
 		return err

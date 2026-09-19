@@ -18,6 +18,7 @@ import (
 	"github.com/ollama/ollama/envconfig"
 	"github.com/ollama/ollama/internal/orderedmap"
 	"github.com/ollama/ollama/types/model"
+	"github.com/ollama/ollama/types/xollama"
 )
 
 // StatusError is an error with an HTTP status code and message.
@@ -782,6 +783,14 @@ type CreateRequest struct {
 
 	// Info is a map of additional information for the model
 	Info map[string]any `json:"info,omitempty"`
+
+	// xollama-hook: model-config — see docs/features/model-config.md
+	//
+	// Xollama carries the fork's own model configuration. It cannot be a
+	// PARAMETER: FormatParams rejects any name that is not an api.Options json
+	// tag, so fork settings there would make the model fail to create on stock
+	// ollama. It is written as its own json layer instead.
+	Xollama *xollama.Config `json:"xollama,omitempty"`
 
 	// Deprecated: set the model name with Model instead
 	Name string `json:"name"`

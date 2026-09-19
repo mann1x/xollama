@@ -1,0 +1,139 @@
+// Package xollama defines the fork's own model configuration: the settings a
+// model needs that upstream ollama has no field for.
+//
+// WHY THIS IS NOT A PARAMETER. api.FormatParams resolves every Modelfile
+// PARAMETER name against the json tags of api.Options and returns
+// "unknown parameter '%s'" for anything it does not recognise. Adding fork
+// fields there would make a model published from xollama fail to create on
+// stock ollama — the opposite of what a soft fork should do.
+//
+// So the config travels as its own layer: media type
+// application/vnd.ollama.image.json, named xollama.json. Upstream already
+// reads that media type generically (manifest.ConfigLayer / ReadConfigJSON),
+// its own json layers are named config.json and <prefix>/config.json, and the
+// layer switch in server/images.go has no case for the media type at all.
+// Stock ollama therefore pulls the blob, stores it and ignores it, while
+// push and pull carry it unchanged because neither filters by media type.
+package xollama
+
+import (
+	"encoding/json"
+	"fmt"
+	"slices"
+)
+
+// ConfigPath is the layer name the config is stored under. Upstream's own json
+// layers are "config.json" and "<prefix>/config.json", so this cannot collide.
+const ConfigPath = "xollama.json"
+
+// MediaTypeImageJSON is the media type the config layer is stored as. It is
+// upstream's, deliberately: a media type upstream already understands travels
+// through every path that handles layers generically.
+const MediaTypeImageJSON = "application/vnd.ollama.image.json"
+
+// SchemaVersion is the schema this build writes and the newest it can read.
+const SchemaVersion = 1
+
+// Config is the contents of the xollama.json layer.
+type Config struct {
+	// Version is the schema version. Required.
+	Version int `json:"version"`
+
+	// Engine pins the inference engine this model needs, when it needs one:
+	// "opencoti" or "llamacpp". Empty means the model does not care and the
+	// XOLLAMA_ENGINE selector decides, which is the normal case.
+	//
+	// It exists because some models genuinely only run on one engine. A
+	// gemma-4 E2B/E4B assistant drafter carries masked_embd_* tensors that
+	// upstream llama.cpp's loader rejects, so a model shipping one has to say
+	// so rather than fail at load with a vector range check.
+	Engine string `json:"engine,omitempty"`
+
+	// Draft carries drafter settings that have no api.Options equivalent.
+	Draft *Draft `json:"draft,omitempty"`
+}
+
+// Draft holds speculative-decoding settings for this model.
+//
+// draft_num_predict is deliberately NOT here: it is already an api.Options
+// field and therefore already travels in the params layer. Only settings
+// upstream has no home for belong in this struct.
+type Draft struct {
+	// SpecType overrides the --spec-type that would otherwise be inferred
+	// from the draft model's own metadata. Empty means infer, which is what
+	// almost every model should do.
+	SpecType string `json:"spec_type,omitempty"`
+}
+
+// Engine values. These mirror the XOLLAMA_ENGINE selector, minus "auto":
+// a model saying "auto" is the same as a model saying nothing.
+const (
+	EngineOpencoti = "opencoti"
+	EngineLlamaCpp = "llamacpp"
+)
+
+var validEngines = []string{EngineOpencoti, EngineLlamaCpp}
+
+// Spec types a model may pin. Kept in step with llm/llama_server.go; the
+// duplication is deliberate, because types must not import llm.
+var validSpecTypes = []string{"draft-mtp", "draft-dflash", "draft-assistant", "draft-simple", "draft-eagle3", "draft-dspark"}
+
+// Validate reports whether the config is one this build can act on.
+//
+// A version newer than this build's is an error rather than a warning. The
+// fields here change how a model is served, so reading a v2 config as if it
+// were v1 would run the model differently from how its publisher meant, and
+// silently — which is the failure mode this whole layer exists to avoid.
+func (c *Config) Validate() error {
+	if c.Version <= 0 {
+		return fmt.Errorf("xollama config: missing or invalid version %d", c.Version)
+	}
+	if c.Version > SchemaVersion {
+		return fmt.Errorf("xollama config: schema version %d is newer than this build understands (%d); upgrade xollama", c.Version, SchemaVersion)
+	}
+	if c.Engine != "" && !slices.Contains(validEngines, c.Engine) {
+		return fmt.Errorf("xollama config: unknown engine %q (want one of %v)", c.Engine, validEngines)
+	}
+	if c.Draft != nil && c.Draft.SpecType != "" && !slices.Contains(validSpecTypes, c.Draft.SpecType) {
+		return fmt.Errorf("xollama config: unknown draft.spec_type %q (want one of %v)", c.Draft.SpecType, validSpecTypes)
+	}
+	return nil
+}
+
+// Parse decodes and validates a xollama.json payload.
+//
+// Unknown fields are accepted: a future build may add one, and a model that
+// merely mentions a setting this build does not have is still servable. An
+// unknown VERSION is not accepted — see Validate.
+func Parse(data []byte) (*Config, error) {
+	var c Config
+	if err := json.Unmarshal(data, &c); err != nil {
+		return nil, fmt.Errorf("xollama config: %w", err)
+	}
+	if err := c.Validate(); err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// Marshal renders the config for storage, stamping the schema version so a
+// caller cannot write an unversioned blob by forgetting to set it.
+func (c *Config) Marshal() ([]byte, error) {
+	out := *c
+	if out.Version == 0 {
+		out.Version = SchemaVersion
+	}
+	if err := out.Validate(); err != nil {
+		return nil, err
+	}
+	return json.Marshal(&out)
+}
+
+// IsZero reports whether the config carries nothing worth storing, so the
+// create path can skip writing an empty layer.
+func (c *Config) IsZero() bool {
+	if c == nil {
+		return true
+	}
+	return c.Engine == "" && (c.Draft == nil || c.Draft.SpecType == "")
+}

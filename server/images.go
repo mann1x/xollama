@@ -30,6 +30,7 @@ import (
 	"github.com/ollama/ollama/template"
 	"github.com/ollama/ollama/thinking"
 	"github.com/ollama/ollama/types/model"
+	"github.com/ollama/ollama/types/xollama"
 	"github.com/ollama/ollama/version"
 	"github.com/ollama/ollama/x/transfer"
 )
@@ -82,6 +83,9 @@ type Model struct {
 	ProjectorPaths     []string
 	System             string
 	License            []string
+	// xollama-hook: model-config — the fork's own model config, read from the
+	// xollama.json layer. Nil when the model carries none, which is the norm.
+	Xollama            *xollama.Config
 	Digest             string
 	Options            map[string]any
 	GenerationDefaults model.GenerationDefaults
@@ -799,6 +803,26 @@ func GetModel(name string) (*Model, error) {
 				return nil, err
 			}
 			m.License = append(m.License, string(bts))
+		// xollama-hook: model-config — see docs/features/model-config.md
+		//
+		// Upstream shares this media type for its safetensors config, so the
+		// NAME is what selects ours; anything else named differently is not
+		// ours to read. A malformed or too-new config is fatal rather than
+		// ignored: it says how the model must be served, and serving it the
+		// default way instead would be silently wrong.
+		case xollama.MediaTypeImageJSON:
+			if layer.Name != xollama.ConfigPath {
+				break
+			}
+			bts, err := os.ReadFile(filename)
+			if err != nil {
+				return nil, err
+			}
+			cfg, err := xollama.Parse(bts)
+			if err != nil {
+				return nil, fmt.Errorf("model %s: %w", name, err)
+			}
+			m.Xollama = cfg
 		}
 	}
 

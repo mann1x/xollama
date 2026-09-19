@@ -48,6 +48,7 @@ import (
 	"github.com/ollama/ollama/fs/gguf"
 	"github.com/ollama/ollama/llm/engine"
 	"github.com/ollama/ollama/ml"
+	"github.com/ollama/ollama/types/xollama"
 )
 
 var grammarJSON = `
@@ -453,9 +454,28 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	// whenever the answer is llama.cpp, which is what keeps the off path
 	// byte-identical to upstream. forceStockEngine is set only by the opt-in
 	// retry after an opencoti load has already failed.
+	// xollama-hook: model-config — a model may pin the engine it needs.
+	// llamacpp pins skip the hook entirely, which is the same path
+	// XOLLAMA_ENGINE=llamacpp takes, so the argv stays upstream's.
+	enginePin := launch.config.enginePin()
+
 	name, args, usedOpencoti := exe, params, false
-	if !launch.forceStockEngine {
+	if !launch.forceStockEngine && enginePin != xollama.EngineLlamaCpp {
 		name, args, usedOpencoti = engine.Launch(exe, params, engineDevices(launch.gpus), ml.LibOllamaPath)
+	}
+
+	// A model pinned to opencoti that did not get it must not quietly run on
+	// llama.cpp: the pin exists precisely because the model does not work
+	// there, and a silent downgrade would surface as a load crash with no
+	// mention of the engine.
+	if enginePin == xollama.EngineOpencoti && !usedOpencoti {
+		return nil, 0, false, fmt.Errorf("model requires the opencoti engine (xollama.json pins engine=%q) but it was not selected; check %s and that an artifact is installed",
+			enginePin, engine.EnvSelector)
+	}
+
+	// xollama-hook: draft-assistant — see docs/features/gemma4-drafter.md
+	if launch.draftType != "" {
+		args = retargetSpecType(args, launch.draftType, usedOpencoti)
 	}
 
 	// Set up library paths for GPU backend discovery
@@ -837,7 +857,39 @@ func appendContextShiftArgs(params []string, opts api.Options, enabled bool) []s
 const (
 	draftTypeMTP    = "draft-mtp"
 	draftTypeDFlash = "draft-dflash"
+	// draftTypeAssistant marks a draft head that has no context of its own and
+	// runs against the target's. The two engines name the same driver
+	// differently: upstream llama.cpp reaches it through draft-mtp, which
+	// detects the shared context, while opencoti exposes it as its own
+	// --spec-type value. specTypeArg maps between them.
+	draftTypeAssistant = "draft-assistant"
 )
+
+// xollama-hook: draft-assistant — see docs/features/gemma4-drafter.md
+//
+// specTypeArg maps a draft type onto the --spec-type value a given engine
+// understands. Only the assistant drafter differs between the two.
+func specTypeArg(draftType string, opencoti bool) string {
+	if draftType == draftTypeAssistant && !opencoti {
+		return draftTypeMTP
+	}
+	return draftType
+}
+
+// retargetSpecType rewrites the --spec-type value once the engine is known.
+// Params are built before the engine hook runs, so they carry the upstream
+// spelling and only an opencoti launch needs adjusting.
+func retargetSpecType(args []string, draftType string, opencoti bool) []string {
+	want := specTypeArg(draftType, opencoti)
+	for i := 0; i+1 < len(args); i++ {
+		if args[i] == "--spec-type" && args[i+1] != want {
+			out := slices.Clone(args)
+			out[i+1] = want
+			return out
+		}
+	}
+	return args
+}
 
 func appendDraftArgs(params []string, draftType, draftModelPath string, opts api.Options) []string {
 	if draftType == "" {
@@ -847,7 +899,7 @@ func appendDraftArgs(params []string, draftType, draftModelPath string, opts api
 		return params
 	}
 
-	params = append(params, "--spec-type", draftType)
+	params = append(params, "--spec-type", specTypeArg(draftType, false))
 	params = append(params, "--spec-draft-n-max", strconv.Itoa(opts.DraftNumPredict))
 	if draftType == draftTypeMTP {
 		params = append(params, "--spec-draft-backend-sampling")
@@ -858,13 +910,26 @@ func appendDraftArgs(params []string, draftType, draftModelPath string, opts api
 	return params
 }
 
-func externalDraftType(path string) (string, error) {
+// externalDraftType picks the --spec-type for an attached draft model.
+//
+// A drafter that declares <arch>.requires_target_arch is a head rather than a
+// standalone model: it carries no context and has to be built against the
+// target's. Launching one as draft-mtp does not degrade, it fails the load, so
+// the metadata has to decide this and not the caller.
+func externalDraftType(path, targetArch string) (string, error) {
 	f, err := LoadModel(path, 1)
 	if err != nil {
 		return "", fmt.Errorf("load draft model metadata: %w", err)
 	}
 	if f.KV().Architecture() == "dflash" {
 		return draftTypeDFlash, nil
+	}
+	// xollama-hook: draft-assistant — see docs/features/gemma4-drafter.md
+	if want := f.KV().String("requires_target_arch"); want != "" {
+		if targetArch != "" && want != targetArch {
+			return "", fmt.Errorf("draft model %s requires a %q target, but this model is %q", path, want, targetArch)
+		}
+		return draftTypeAssistant, nil
 	}
 	return draftTypeMTP, nil
 }
@@ -942,9 +1007,16 @@ func NewLlamaServerRunner(
 		draftType = draftTypeMTP
 	}
 	if config.DraftModelPath != "" {
-		draftType, err = externalDraftType(config.DraftModelPath)
+		draftType, err = externalDraftType(config.DraftModelPath, arch)
 		if err != nil {
 			return nil, err
+		}
+		// xollama-hook: model-config — an explicit pin beats inference. It
+		// still goes through retargetSpecType, so pinning draft-assistant on
+		// llama.cpp resolves to that engine's spelling rather than a value it
+		// would reject.
+		if override := config.draftSpecTypeOverride(); override != "" {
+			draftType = override
 		}
 	}
 	splitModel, err := materializeSplitModels(f.Files(), projectors, config)

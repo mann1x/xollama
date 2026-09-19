@@ -14,6 +14,7 @@ import (
 	"github.com/ollama/ollama/format"
 	"github.com/ollama/ollama/fs/gguf"
 	"github.com/ollama/ollama/ml"
+	"github.com/ollama/ollama/types/xollama"
 )
 
 var ErrLoadRequiredFull = errors.New("unable to load full model on GPU")
@@ -83,6 +84,29 @@ type LlamaServerConfig struct {
 	ManifestDigest       string
 	DraftModelPath       string
 	DraftModelShardPaths []string
+	// xollama-hook: model-config — the model's own xollama.json, nil for the
+	// overwhelming majority of models. See docs/features/model-config.md.
+	Xollama *xollama.Config
+}
+
+// enginePin returns the engine this model says it needs, or "".
+//
+// xollama-hook: model-config
+func (c LlamaServerConfig) enginePin() string {
+	if c.Xollama == nil {
+		return ""
+	}
+	return c.Xollama.Engine
+}
+
+// draftSpecTypeOverride returns the --spec-type the model pins, or "".
+//
+// xollama-hook: model-config
+func (c LlamaServerConfig) draftSpecTypeOverride() string {
+	if c.Xollama == nil || c.Xollama.Draft == nil {
+		return ""
+	}
+	return c.Xollama.Draft.SpecType
 }
 
 // LoadModel loads GGUF model metadata from disk.

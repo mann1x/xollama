@@ -18,6 +18,7 @@ import (
 	"github.com/ollama/ollama/manifest"
 	"github.com/ollama/ollama/template"
 	"github.com/ollama/ollama/types/model"
+	"github.com/ollama/ollama/types/xollama"
 )
 
 var (
@@ -49,6 +50,8 @@ type ModelfileLayerOptions struct {
 	License    any
 	Parameters map[string]any
 	Messages   []api.Message
+	// xollama-hook: model-config — see docs/features/model-config.md
+	Xollama *xollama.Config
 }
 
 // NewSafetensorsManifestWriter returns a ManifestWriter that builds the shared
@@ -207,6 +210,20 @@ func ApplyModelfileLayers(layers []manifest.Layer, opts ModelfileLayerOptions) (
 		}
 	}
 
+	// xollama-hook: model-config — see docs/features/model-config.md
+	//
+	// Replace rather than append: a model has one xollama config, and a child
+	// created FROM a parent must be able to override it rather than inherit a
+	// stale engine pin.
+	if !opts.Xollama.IsZero() {
+		layers = removeXollamaConfigLayer(layers)
+		var err error
+		layers, err = appendXollamaConfigLayer(layers, opts.Xollama)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create xollama config layer: %w", err)
+		}
+	}
+
 	if len(opts.Parameters) > 0 {
 		parameters := make(map[string]any)
 		for _, layer := range layers {
@@ -293,6 +310,36 @@ func LicenseStrings(license any) ([]string, error) {
 func removeLayersByMediaType(layers []manifest.Layer, mediaType string) []manifest.Layer {
 	return slices.DeleteFunc(layers, func(layer manifest.Layer) bool {
 		return layer.MediaType == mediaType
+	})
+}
+
+// appendXollamaConfigLayer writes the fork's model config as its own json
+// layer. The media type is upstream's, so every path that handles layers
+// generically — push, pull, blob GC — carries it without knowing what it is.
+//
+// xollama-hook: model-config
+func appendXollamaConfigLayer(layers []manifest.Layer, cfg *xollama.Config) ([]manifest.Layer, error) {
+	data, err := cfg.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	layer, err := manifest.NewLayer(bytes.NewReader(data), xollama.MediaTypeImageJSON)
+	if err != nil {
+		return nil, err
+	}
+	layer.Name = xollama.ConfigPath
+	return append(layers, layer), nil
+}
+
+// removeXollamaConfigLayer drops an inherited config layer. It matches on the
+// NAME as well as the media type: upstream stores its own safetensors config
+// under the same media type as "config.json", and dropping that would break
+// the model.
+//
+// xollama-hook: model-config
+func removeXollamaConfigLayer(layers []manifest.Layer) []manifest.Layer {
+	return slices.DeleteFunc(layers, func(l manifest.Layer) bool {
+		return l.MediaType == xollama.MediaTypeImageJSON && l.Name == xollama.ConfigPath
 	})
 }
 

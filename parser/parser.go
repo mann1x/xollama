@@ -24,6 +24,7 @@ import (
 	"golang.org/x/text/transform"
 
 	"github.com/ollama/ollama/api"
+	"github.com/ollama/ollama/types/xollama"
 )
 
 var ErrModelNotFound = errors.New("no Modelfile or safetensors files found")
@@ -128,6 +129,17 @@ func (f Modelfile) CreateRequest(relativeDir string) (*api.CreateRequest, error)
 			req.System = c.Args
 		case "license":
 			licenses = append(licenses, c.Args)
+		// xollama-hook: model-config — see docs/features/model-config.md
+		//
+		// Accepts inline JSON, or a path to a .json file relative to the
+		// Modelfile. Validation happens here rather than at create time so a
+		// typo is reported against the Modelfile line that caused it.
+		case "xollama":
+			cfg, err := parseXollamaConfig(c.Args, relativeDir)
+			if err != nil {
+				return nil, err
+			}
+			req.Xollama = cfg
 		case "renderer":
 			req.Renderer = c.Args
 		case "parser":
@@ -437,7 +449,8 @@ func (c Command) String() string {
 	switch c.Name {
 	case "model":
 		fmt.Fprintf(&sb, "FROM %s", c.Args)
-	case "license", "template", "system", "adapter", "renderer", "parser", "requires", "draft":
+	// xollama-hook: model-config
+	case "license", "template", "system", "adapter", "renderer", "parser", "requires", "draft", "xollama":
 		fmt.Fprintf(&sb, "%s %s", strings.ToUpper(c.Name), quote(c.Args))
 	case "message":
 		role, message, _ := strings.Cut(c.Args, ": ")
@@ -721,9 +734,39 @@ func isValidMessageRole(role string) bool {
 	return role == "system" || role == "user" || role == "assistant"
 }
 
+// parseXollamaConfig reads a XOLLAMA directive, which is either inline JSON or
+// a path to a .json file beside the Modelfile.
+//
+// xollama-hook: model-config
+func parseXollamaConfig(arg, relativeDir string) (*xollama.Config, error) {
+	data := []byte(strings.TrimSpace(arg))
+	if len(data) == 0 {
+		return nil, errors.New("XOLLAMA requires inline JSON or a path to a .json file")
+	}
+	if data[0] != '{' {
+		paths, err := expandPaths(string(data), relativeDir)
+		if err != nil {
+			return nil, fmt.Errorf("XOLLAMA %s: %w", data, err)
+		}
+		if len(paths) != 1 {
+			return nil, fmt.Errorf("XOLLAMA %s: want exactly one file, matched %d", data, len(paths))
+		}
+		data, err = os.ReadFile(paths[0])
+		if err != nil {
+			return nil, fmt.Errorf("XOLLAMA %s: %w", arg, err)
+		}
+	}
+	cfg, err := xollama.Parse(data)
+	if err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
 func isValidCommand(cmd string) bool {
 	switch strings.ToLower(cmd) {
-	case "from", "license", "template", "system", "adapter", "draft", "renderer", "parser", "parameter", "message", "requires":
+	// xollama-hook: model-config — "xollama" carries the fork's own model config
+	case "from", "license", "template", "system", "adapter", "draft", "renderer", "parser", "parameter", "message", "requires", "xollama":
 		return true
 	default:
 		return false

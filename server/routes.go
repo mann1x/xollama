@@ -2590,6 +2590,8 @@ func llamaServerConfigForModel(m *Model) llm.LlamaServerConfig {
 		ManifestDigest:       m.Digest,
 		DraftModelPath:       m.DraftPath,
 		DraftModelShardPaths: slices.Clone(m.DraftShardPaths),
+		// xollama-hook: model-config
+		Xollama: m.Xollama,
 	}
 }
 

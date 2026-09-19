@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -25,6 +26,7 @@ import (
 	"github.com/ollama/ollama/fs/gguf"
 	gguftest "github.com/ollama/ollama/internal/testutil/gguf"
 	"github.com/ollama/ollama/ml"
+	"github.com/ollama/ollama/types/xollama"
 
 	"github.com/ollama/ollama/api"
 	"golang.org/x/sync/semaphore"
@@ -2610,23 +2612,126 @@ func TestAppendDraftArgs(t *testing.T) {
 
 func TestExternalDraftType(t *testing.T) {
 	tests := []struct {
+		name         string
 		architecture string
+		kv           gguftest.KV
+		targetArch   string
 		want         string
+		wantErr      string
 	}{
-		{architecture: "dflash", want: draftTypeDFlash},
-		{architecture: "qwen35", want: draftTypeMTP},
-		{architecture: "unknown", want: draftTypeMTP},
+		{name: "dflash", architecture: "dflash", want: draftTypeDFlash},
+		{name: "qwen35", architecture: "qwen35", want: draftTypeMTP},
+		{name: "unknown", architecture: "unknown", want: draftTypeMTP},
+		{
+			// A gemma-4 assistant drafter carries no context of its own. It has
+			// to be built against the target's, which only draft-assistant does.
+			name:         "assistant drafter requires the assistant spec type",
+			architecture: "gemma4-assistant",
+			kv:           gguftest.KV{"gemma4-assistant.requires_target_arch": "gemma4"},
+			targetArch:   "gemma4",
+			want:         draftTypeAssistant,
+		},
+		{
+			name:         "assistant drafter without a known target still selects assistant",
+			architecture: "gemma4-assistant",
+			kv:           gguftest.KV{"gemma4-assistant.requires_target_arch": "gemma4"},
+			want:         draftTypeAssistant,
+		},
+		{
+			name:         "assistant drafter rejects a mismatched target",
+			architecture: "gemma4-assistant",
+			kv:           gguftest.KV{"gemma4-assistant.requires_target_arch": "gemma4"},
+			targetArch:   "qwen35",
+			wantErr:      `requires a "gemma4" target`,
+		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.architecture, func(t *testing.T) {
-			path, _ := writeTestGGUF(t, gguftest.KV{"general.architecture": tt.architecture}, nil)
-			got, err := externalDraftType(path)
+		t.Run(tt.name, func(t *testing.T) {
+			kv := gguftest.KV{"general.architecture": tt.architecture}
+			maps.Copy(kv, tt.kv)
+			path, _ := writeTestGGUF(t, kv, nil)
+			got, err := externalDraftType(path, tt.targetArch)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("externalDraftType error = %v, want it to contain %q", err, tt.wantErr)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
 			if got != tt.want {
 				t.Fatalf("externalDraftType = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// Params are built before the engine is known, so an assistant drafter has to
+// go out with the upstream spelling: llama.cpp reaches the shared-context
+// driver through draft-mtp. It must not carry --spec-draft-backend-sampling,
+// which belongs to a drafter that samples on its own.
+func TestAppendDraftArgsAssistantUsesUpstreamSpelling(t *testing.T) {
+	got := appendDraftArgs([]string{"base"}, draftTypeAssistant, "draft.gguf", api.Options{Runner: api.Runner{DraftNumPredict: 4}})
+	want := []string{"base", "--spec-type", "draft-mtp", "--spec-draft-n-max", "4", "--spec-draft-model", "draft.gguf"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("appendDraftArgs = %v, want %v", got, want)
+	}
+}
+
+// Only an opencoti launch renames the driver, and only for an assistant
+// drafter. Every other combination has to leave argv untouched, because a
+// rewrite on the stock path would break "off means off".
+func TestRetargetSpecType(t *testing.T) {
+	base := []string{"--model", "m.gguf", "--spec-type", "draft-mtp", "--spec-draft-n-max", "4"}
+
+	tests := []struct {
+		name      string
+		args      []string
+		draftType string
+		opencoti  bool
+		want      []string
+	}{
+		{
+			name:      "assistant on opencoti becomes draft-assistant",
+			args:      base,
+			draftType: draftTypeAssistant,
+			opencoti:  true,
+			want:      []string{"--model", "m.gguf", "--spec-type", "draft-assistant", "--spec-draft-n-max", "4"},
+		},
+		{
+			name:      "assistant on stock llama.cpp stays draft-mtp",
+			args:      base,
+			draftType: draftTypeAssistant,
+			opencoti:  false,
+			want:      base,
+		},
+		{
+			name:      "a plain mtp drafter is untouched on opencoti",
+			args:      base,
+			draftType: draftTypeMTP,
+			opencoti:  true,
+			want:      base,
+		},
+		{
+			name:      "no --spec-type in argv is left alone",
+			args:      []string{"--model", "m.gguf"},
+			draftType: draftTypeAssistant,
+			opencoti:  true,
+			want:      []string{"--model", "m.gguf"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := slices.Clone(tt.args)
+			got := retargetSpecType(tt.args, tt.draftType, tt.opencoti)
+			if !slices.Equal(got, tt.want) {
+				t.Fatalf("retargetSpecType = %v, want %v", got, tt.want)
+			}
+			if !slices.Equal(tt.args, before) {
+				t.Fatalf("retargetSpecType mutated its input: %v, want %v", tt.args, before)
 			}
 		})
 	}
@@ -4313,4 +4418,67 @@ func approxEqual(got, want uint64) bool {
 		return got-want < tolerance
 	}
 	return want-got < tolerance
+}
+
+// A model that pins a --spec-type gets it verbatim, but the pin still goes
+// through the engine mapping: pinning draft-assistant on stock llama.cpp must
+// resolve to draft-mtp, the spelling that engine actually accepts.
+func TestDraftSpecTypeOverrideStillRetargets(t *testing.T) {
+	tests := []struct {
+		name      string
+		override  string
+		opencoti  bool
+		wantOnCLI string
+	}{
+		{name: "pinned assistant on opencoti", override: draftTypeAssistant, opencoti: true, wantOnCLI: "draft-assistant"},
+		{name: "pinned assistant on llama.cpp", override: draftTypeAssistant, opencoti: false, wantOnCLI: "draft-mtp"},
+		{name: "pinned mtp is untouched", override: draftTypeMTP, opencoti: true, wantOnCLI: "draft-mtp"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params := appendDraftArgs([]string{"base"}, tt.override, "draft.gguf",
+				api.Options{Runner: api.Runner{DraftNumPredict: 4}})
+			args := retargetSpecType(params, tt.override, tt.opencoti)
+
+			i := slices.Index(args, "--spec-type")
+			if i < 0 || i+1 >= len(args) {
+				t.Fatalf("no --spec-type in %v", args)
+			}
+			if args[i+1] != tt.wantOnCLI {
+				t.Fatalf("--spec-type = %q, want %q (argv %v)", args[i+1], tt.wantOnCLI, args)
+			}
+		})
+	}
+}
+
+// The accessors must tolerate a model with no xollama config, which is almost
+// every model — a nil deref here would break every plain load.
+func TestLlamaServerConfigXollamaAccessorsTolerateNil(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		cfg  LlamaServerConfig
+	}{
+		{name: "no config at all", cfg: LlamaServerConfig{}},
+		{name: "config without draft", cfg: LlamaServerConfig{Xollama: &xollama.Config{Version: 1, Engine: xollama.EngineOpencoti}}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.cfg.draftSpecTypeOverride(); got != "" {
+				t.Fatalf("draftSpecTypeOverride = %q, want empty", got)
+			}
+		})
+	}
+
+	empty := LlamaServerConfig{}
+	if got := empty.enginePin(); got != "" {
+		t.Fatalf("enginePin = %q, want empty", got)
+	}
+	pinned := LlamaServerConfig{Xollama: &xollama.Config{Version: 1, Engine: xollama.EngineOpencoti}}
+	if got := pinned.enginePin(); got != xollama.EngineOpencoti {
+		t.Fatalf("enginePin = %q, want %q", got, xollama.EngineOpencoti)
+	}
+	spec := LlamaServerConfig{Xollama: &xollama.Config{Version: 1, Draft: &xollama.Draft{SpecType: draftTypeAssistant}}}
+	if got := spec.draftSpecTypeOverride(); got != draftTypeAssistant {
+		t.Fatalf("draftSpecTypeOverride = %q, want %q", got, draftTypeAssistant)
+	}
 }
