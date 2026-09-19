@@ -94,6 +94,8 @@ XOLLAMA {"version": 1, "engine": "opencoti"}
 | `version` | Required. A version newer than your build is an error, not a warning |
 | `engine` | `opencoti` or `llamacpp`. Omit it — the normal case — and `XOLLAMA_ENGINE` decides. `auto` is **not** valid: a model saying "auto" is a model saying nothing |
 | `draft.spec_type` | Overrides the speculative driver inferred from the drafter |
+| `session.affinity` | Whether conversations of this model are pinned to the slot holding their cache. See [Sessions](/xollama/sessions) |
+| `session.pool` | Whether conversations of this model share one copy of their common opening |
 
 The directive takes inline JSON or a path to a `.json` file beside the
 Modelfile, and is validated while the Modelfile is parsed, so a typo is reported

@@ -86,6 +86,13 @@ question and not a one-liner. Worth an explicit decision rather than a patch.
 
 ## G5 — no per-request passthrough, so PolyKV's request half is unreachable
 
+> **Partly closed, 2026-09-19.** `session_id` now ships: derived in
+> `server/routes.go` from the stable head of a conversation, resolved in
+> `llm/engine_session.go` against `xollama.json` then `XOLLAMA_SESSION_AFFINITY`,
+> and emitted only when the load ran on opencoti. `pool_id` is plumbed and
+> gated the same way but has no source yet — see the note at the end of this
+> section. `overcommit` and `backend_sampling` are untouched.
+
 opencoti parses `session_id`, `pool_id`, `shared_pool_slot`,
 `shared_prefix_n_tokens`, `overcommit` and `backend_sampling` from the
 completion body. xollama builds that body itself and has no channel for
@@ -103,6 +110,14 @@ engine-specific fields, so:
 
 **Fix:** a narrow, named passthrough — not an arbitrary body merge. `session_id`
 in particular could be derived by xollama rather than asked for.
+
+**What remains for the pool half**, and it is launch-side rather than
+request-side: the engine has to be started with `--kv-unified
+--polykv-max-pools N`, which is G7's question, and something has to create a
+pool (`POST /polykv/pools` with `from_session`, the documented agent path) and
+remember its id per model. Until both exist, `session.pool` in a model config is
+recorded and carried but changes nothing, which the user documentation says
+plainly.
 
 ## G6 — engine introspection is not exposed
 
@@ -140,8 +155,8 @@ deprecated tier and miss the ring.
 
 ## Order I would fix these in
 
-1. **G5** (`session_id`, then pool attach) — unlocks the feature PolyKV is named
-   for, and `session_id` pays off on the stock path too.
+1. **G5** (`session_id`, then pool attach) — `session_id` done; pool attach
+   needs the launch flags first, so it now depends on G7.
 2. **G2 + G3** — cheap, and between them make the whole KV stack expressible.
 3. **G6** — without it nothing above is verifiable from the outside.
 4. **G1** — the right home for all of it once the argv side works.

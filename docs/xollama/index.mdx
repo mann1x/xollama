@@ -39,6 +39,8 @@ xollama and Ollama side by side with different settings. An **empty**
 | `XOLLAMA_ENGINE` | `auto` (default), `opencoti` or `llamacpp` |
 | `XOLLAMA_ENGINE_PATH` | Path to an opencoti-llamafile artifact, overriding the search |
 | `XOLLAMA_ENGINE_FALLBACK` | Retry a failed opencoti load on stock `llama.cpp`. Default `false` |
+| `XOLLAMA_SESSION_AFFINITY` | Return a conversation to the slot holding its cache, on opencoti. Default `true` |
+| `XOLLAMA_SESSION_POOL` | Share one copy of a common prefix between conversations, on opencoti. Default `false` |
 | `XOLLAMA_HOST`, `XOLLAMA_MODELS`, `XOLLAMA_DEBUG`, `XOLLAMA_FLASH_ATTENTION`, `XOLLAMA_LLAMA_ARG_FIT` | Aliases for the `OLLAMA_*` variables of the same name |
 
 Run `xollama serve --help` or `ollama show --help` for the full list as your
@@ -59,5 +61,8 @@ build sees it.
 </Card>
 <Card title="Gemma-4 drafters" icon="gauge-high" href="/xollama/gemma4-drafter">
   Faster decoding on Gemma-4, and which drafters need which engine.
+</Card>
+<Card title="Sessions" icon="link" href="/xollama/sessions">
+  Keeping a conversation on the slot that already holds its cache.
 </Card>
 </CardGroup>

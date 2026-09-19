@@ -260,6 +260,20 @@ var (
 	// llama.cpp. Off by default: a silent downgrade hides that the engine
 	// could not serve the model at all.
 	EngineFallback = Bool("XOLLAMA_ENGINE_FALLBACK")
+	// SessionAffinity asks the engine to send a conversation back to the slot
+	// that already holds its KV, instead of letting the engine choose a slot
+	// by its own heuristics. On by default -- returning to your own cache is
+	// what a caller already expects when it sets cache_prompt.
+	//
+	// Only the opencoti engine has session affinity; on stock llama.cpp the
+	// setting is inert and nothing is sent, so the off path stays upstream's.
+	// A model's xollama.json overrides this for that model.
+	SessionAffinity = func() bool { return BoolWithDefault("XOLLAMA_SESSION_AFFINITY")(true) }
+	// SessionPool opts in to sharing one physical copy of a common prefix --
+	// a system prompt and tool definitions -- between the conversations of a
+	// model, instead of one copy each. Off by default: it changes how KV is
+	// allocated, and a server-wide default is the wrong place to decide that.
+	SessionPool = Bool("XOLLAMA_SESSION_POOL")
 
 	LLMLibrary = String("OLLAMA_LLM_LIBRARY")
 	Editor     = String("OLLAMA_EDITOR")
@@ -329,6 +343,8 @@ func AsMap() map[string]EnvVar {
 		"XOLLAMA_ENGINE":              {"XOLLAMA_ENGINE", Engine(), "Inference engine for GGML loads: auto (default), opencoti, or llamacpp"},
 		"XOLLAMA_ENGINE_PATH":         {"XOLLAMA_ENGINE_PATH", EnginePath(), "Path to an opencoti-llamafile artifact, overriding the search"},
 		"XOLLAMA_ENGINE_FALLBACK":     {"XOLLAMA_ENGINE_FALLBACK", EngineFallback(), "Retry a failed opencoti load on stock llama.cpp (default false: fail instead of downgrading silently)"},
+		"XOLLAMA_SESSION_AFFINITY":    {"XOLLAMA_SESSION_AFFINITY", SessionAffinity(), "Return a conversation to the slot holding its KV, on the opencoti engine (default true)"},
+		"XOLLAMA_SESSION_POOL":        {"XOLLAMA_SESSION_POOL", SessionPool(), "Share one copy of a common prefix between conversations, on the opencoti engine (default false)"},
 		"OLLAMA_DEBUG":                {"OLLAMA_DEBUG", LogLevel(), "Show additional debug information (e.g. XOLLAMA_DEBUG=1)"},
 		"OLLAMA_DEBUG_LOG_REQUESTS":   {"OLLAMA_DEBUG_LOG_REQUESTS", DebugLogRequests(), "Log inference request bodies and replay curl commands to a temp directory"},
 		"OLLAMA_GO_TEMPLATE":          {"OLLAMA_GO_TEMPLATE", GoTemplate(true), "Enable Modelfile TEMPLATE based rendering when available"},

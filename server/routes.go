@@ -566,6 +566,7 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 					Shift:       req.Shift == nil || *req.Shift,
 					Logprobs:    req.Logprobs,
 					TopLogprobs: req.TopLogprobs,
+					SessionID:   sessionIDForRequest(req.SessionID, m, values.Messages, nil),
 				}, genTruncate)
 				if err != nil {
 					slog.Error("chat template prompt error", "error", err)
@@ -665,16 +666,21 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 		var parserErr error
 
 		if err := r.Completion(ctx, llm.CompletionRequest{
-			Prompt:             prompt,
-			Media:              media,
-			Format:             req.Format,
-			Options:            opts,
-			Shift:              req.Shift == nil || *req.Shift,
-			Truncate:           req.Truncate == nil || *req.Truncate,
-			Logprobs:           req.Logprobs,
-			TopLogprobs:        req.TopLogprobs,
-			PreservedTokens:    preservedTokensForCompletion(builtinParser),
-			LeadingBOS:         leadingBOS,
+			Prompt:          prompt,
+			Media:           media,
+			Format:          req.Format,
+			Options:         opts,
+			Shift:           req.Shift == nil || *req.Shift,
+			Truncate:        req.Truncate == nil || *req.Truncate,
+			Logprobs:        req.Logprobs,
+			TopLogprobs:     req.TopLogprobs,
+			PreservedTokens: preservedTokensForCompletion(builtinParser),
+			LeadingBOS:      leadingBOS,
+			// A generate request is not a conversation: there is no stable
+			// head to derive an identity from, and deriving one per request
+			// would pin every unrelated prompt to a slot of its own. A caller
+			// that knows these requests belong together sends session_id.
+			SessionID:          req.SessionID,
 			ThinkBudget:        thinkBudget,
 			ThinkBudgetMessage: opts.ThinkBudgetMessage,
 			ThinkingStartTag:   thinkStartTag,
@@ -3038,6 +3044,7 @@ func (s *Server) ChatHandler(c *gin.Context) {
 				ToolCallTag:                toolCallTagForCompletion(toolParser),
 				LeadingBOS:                 leadingBOSForModel(m),
 				IncludeIntermediateMetrics: includeIntermediateMetrics,
+				SessionID:                  sessionIDForRequest(req.SessionID, m, msgs, req.Tools),
 				ThinkBudget:                thinkBudget,
 				ThinkBudgetMessage:         opts.ThinkBudgetMessage,
 				ThinkingStartTag:           thinkStartTag,
@@ -3219,6 +3226,25 @@ func (s *Server) ChatHandler(c *gin.Context) {
 	writeChatResponse(c, req, ch)
 }
 
+// xollama-hook: engine-session — see docs/xollama/sessions.mdx.
+//
+// sessionIDForRequest names the conversation a request belongs to. A caller
+// that sent its own identifier keeps it; otherwise one is derived from the part
+// of the conversation that does not move as it grows.
+//
+// Whether the identifier is USED is not decided here. The runner drops it on an
+// engine without session affinity, and on a model or a server that switched
+// affinity off, so this can be computed unconditionally and cheaply.
+func sessionIDForRequest(explicit string, m *Model, msgs []api.Message, tools api.Tools) string {
+	if explicit != "" {
+		return explicit
+	}
+	if m == nil {
+		return ""
+	}
+	return llm.DeriveSessionID(m.Digest, msgs, tools)
+}
+
 func prepareNativeChatRequest(ctx context.Context, m *Model, r llm.LlamaServer, opts *api.Options, nativeReq llm.ChatRequest, truncate bool) (llm.ChatRequest, error) {
 	var err error
 	nativeReq.Messages, err = truncateNativeChatMessages(ctx, m, r, optionsForPrompt(opts, r), nativeReq, truncate)
@@ -3236,6 +3262,7 @@ func (s *Server) handleNativeChat(c *gin.Context, req api.ChatRequest, m *Model,
 		Shift:       req.Shift == nil || *req.Shift,
 		Logprobs:    req.Logprobs,
 		TopLogprobs: req.TopLogprobs,
+		SessionID:   sessionIDForRequest(req.SessionID, m, msgs, req.Tools),
 	}, truncate)
 	if err != nil {
 		slog.Error("chat template prompt error", "error", err)

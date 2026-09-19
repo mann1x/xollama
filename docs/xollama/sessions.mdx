@@ -1,0 +1,136 @@
+---
+title: Sessions and prefix pools
+---
+
+When you send a follow-up turn, the server should ideally already have your
+conversation's KV cache sitting in a slot, and continue from it rather than
+re-reading the whole conversation. Stock `llama-server` decides which slot to
+use by its own heuristics, and with several conversations in flight it does not
+always pick yours.
+
+The opencoti engine can be told directly. xollama does that for you.
+
+<Note>
+  This page is about the opencoti engine. On stock `llama.cpp` nothing on this
+  page is sent, and the request is byte-for-byte what upstream Ollama would
+  send.
+</Note>
+
+## Session affinity
+
+A **session** is one conversation. Give it a name and the engine returns it to
+the slot already holding its cache.
+
+It is **on by default** and you do not have to do anything. xollama derives the
+name from the part of a conversation that does not change as it grows — the
+model, the system prompt, the tool definitions and the first user message — so
+the same conversation gets the same name on every turn, and different
+conversations get different names.
+
+### Turning it off, per server or per model
+
+<Tabs>
+<Tab title="Server">
+For a service, set it where the service reads its environment — a systemd
+drop-in on Linux, or the system environment on Windows:
+
+```ini
+# /etc/systemd/system/ollama.service.d/xollama.conf
+[Service]
+Environment="XOLLAMA_SESSION_AFFINITY=0"
+```
+</Tab>
+<Tab title="One model">
+In the Modelfile, which travels with the model:
+
+```dockerfile
+FROM gemma4:e4b
+
+XOLLAMA {"version": 1, "session": {"affinity": true}}
+```
+</Tab>
+</Tabs>
+
+The model's own setting wins over the server's. That is the point of having
+both: a server default that suits most of your models, and an override on the
+one it does not suit.
+
+Affinity is worth switching **off** for a model that answers unrelated one-shot
+prompts. There is no conversation to return to, and naming each prompt a session
+only adds bookkeeping.
+
+### Naming a session yourself
+
+Send `session_id` on `/api/chat` or `/api/generate` and yours is used instead of
+the derived one:
+
+```shell
+curl http://localhost:11434/api/chat -d '{
+  "model": "gemma4:e4b",
+  "session_id": "review-pr-4172",
+  "messages": [{ "role": "user", "content": "…" }]
+}'
+```
+
+Two reasons to bother. First, if your conversation's opening legitimately
+changes — you rewrote the system prompt, or compacted the history — the derived
+name changes with it and you lose the slot; your own name does not. Second, if
+two genuinely different conversations happen to share a model, a system prompt,
+their tools *and* their first user message, they derive the same name and will
+compete for one slot. That costs you the optimisation, never a correct answer —
+each request is still served from its own prompt — but your own names avoid it.
+
+`/api/generate` derives nothing, because a one-shot prompt has no stable opening
+to derive from and naming every prompt separately would be worse than naming
+none. If you know a series of generate calls belongs together, send
+`session_id`.
+
+<Warning>
+  If affinity is off — on the server or on the model — a `session_id` you send
+  is ignored rather than switching the feature back on. "Off" is the operator or
+  the model publisher saying this model must not pin conversations to slots, and
+  a field in a request is not the place to overrule that.
+</Warning>
+
+## Shared prefix pools
+
+Several conversations usually start the same way: one system prompt, one set of
+tool definitions, tens of thousands of tokens repeated once per conversation. A
+**pool** keeps one physical copy and lets every conversation attend it.
+
+```dockerfile
+FROM gemma4:e4b
+
+XOLLAMA {"version": 1, "session": {"affinity": true, "pool": true}}
+```
+
+or, for a whole server, `XOLLAMA_SESSION_POOL=1`.
+
+A pool needs session affinity — it attaches to a session, so with no session
+identity there is nothing to attach. Asking for `"pool": true` together with
+`"affinity": false` in a Modelfile is refused when the model is created, rather
+than accepted and then quietly doing nothing.
+
+<Warning>
+  **Not yet doing anything.** The request field that attaches a conversation to
+  a pool is plumbed and tested, and the setting above is accepted and carried
+  with the model. But xollama does not yet create pools or start the engine with
+  pooling enabled, so nothing hands out a pool to attach to. Setting it today
+  records your intent and changes no behaviour. The next piece of work is the
+  pool lifecycle and the launch flags it needs.
+</Warning>
+
+When it does land, you will not have to compute anything: the engine works out
+how much of your prompt matches the pool itself, token by token, and a pool that
+has gone away is a silent full reprocess rather than an error.
+
+## Settings summary
+
+| | Environment | Modelfile | Request | Default |
+|---|---|---|---|---|
+| Session affinity | `XOLLAMA_SESSION_AFFINITY` | `session.affinity` | — | on |
+| Session name | — | — | `session_id` | derived |
+| Shared prefix pool | `XOLLAMA_SESSION_POOL` | `session.pool` | — | off |
+
+Most specific wins: the request names the session, the model decides whether
+sessions are used at all, and the server decides for models that say nothing.

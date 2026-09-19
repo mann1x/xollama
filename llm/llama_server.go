@@ -1583,6 +1583,13 @@ type llamaServerCompletionRequest struct {
 	// field is present. A pointer keeps the empty string on the wire.
 	ReasoningBudgetMessage *string `json:"reasoning_budget_message,omitempty"`
 	GenerationPrompt       string  `json:"generation_prompt,omitempty"`
+
+	// xollama-hook: engine-session — opencoti-llamafile only. SessionID binds
+	// this request to the slot already holding that conversation's KV; PoolID
+	// attaches it to a shared prefix pool, whose overlap the engine computes
+	// itself token-exactly. Omitted entirely on every other engine.
+	SessionID string `json:"session_id,omitempty"`
+	PoolID    int    `json:"pool_id,omitempty"`
 }
 
 func llamaServerPreservedTokens(parserTokens []string, toolCallTag string) []string {
@@ -1810,6 +1817,9 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 		// instead: llama-server replays it into the sampler before decoding.
 		lsReq.GenerationPrompt = thinkingGenerationPrompt(req.Prompt, req.ThinkingStartTag, req.ThinkingEndTag)
 	}
+
+	// xollama-hook: engine-session — see docs/xollama/sessions.mdx.
+	applySession(&lsReq, s.usedOpencoti, s.launch.config, req.SessionID, req.PoolID)
 
 	// Handle format: pass JSON schema directly to llama-server, or use grammar
 	if len(req.Format) > 0 {
@@ -2412,6 +2422,19 @@ func (s *llamaServerRunner) llamaServerChatRequest(req ChatRequest, stream bool)
 		"typical_p":         req.Options.TypicalP,
 		"seed":              req.Options.Seed,
 	}
+
+	// xollama-hook: engine-session — see docs/xollama/sessions.mdx. The chat
+	// path owns its own body, so the fields have to be added here too; on any
+	// engine without session affinity neither key appears.
+	if id, pool := sessionFieldsFor(s.usedOpencoti, s.launch.config, req.SessionID, req.PoolID); id != "" || pool > 0 {
+		if id != "" {
+			body["session_id"] = id
+		}
+		if pool > 0 {
+			body["pool_id"] = pool
+		}
+	}
+
 	if len(req.Tools) > 0 {
 		body["tools"] = req.Tools
 	}

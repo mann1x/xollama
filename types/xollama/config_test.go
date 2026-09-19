@@ -144,3 +144,55 @@ func TestIsZero(t *testing.T) {
 		})
 	}
 }
+
+// A shared prefix pool attaches to a session, so a model asking for a pool
+// while switching session identity off is asking for something that cannot
+// work. Catching it at create time is better than serving a model whose stated
+// configuration silently does nothing.
+func TestValidateSessionPoolRequiresAffinity(t *testing.T) {
+	no, yes := false, true
+
+	if err := (&Config{Version: 1, Session: &Session{Pool: &yes, Affinity: &no}}).Validate(); err == nil {
+		t.Error("expected session.pool with session.affinity=false to be refused")
+	}
+	for _, tt := range []struct {
+		name string
+		s    *Session
+	}{
+		{"pool with affinity on", &Session{Pool: &yes, Affinity: &yes}},
+		{"pool with affinity unstated, which leaves it to the server default", &Session{Pool: &yes}},
+		{"affinity off on its own", &Session{Affinity: &no}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := (&Config{Version: 1, Session: tt.s}).Validate(); err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+// A session block round-trips through the layer, and a config carrying only a
+// session block is not "empty" -- writing no layer for it would drop the
+// setting on publish.
+func TestSessionRoundTripAndIsZero(t *testing.T) {
+	yes := true
+	c := &Config{Version: 1, Session: &Session{Affinity: &yes, Pool: &yes}}
+	if c.IsZero() {
+		t.Fatal("a config carrying a session block must be stored")
+	}
+	data, err := c.Marshal()
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got, err := Parse(data)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got.Session == nil || got.Session.Affinity == nil || !*got.Session.Affinity ||
+		got.Session.Pool == nil || !*got.Session.Pool {
+		t.Errorf("session did not survive the round trip: %s", data)
+	}
+	if (&Config{Version: 1, Session: &Session{}}).IsZero() != true {
+		t.Error("a session block stating nothing carries nothing worth storing")
+	}
+}

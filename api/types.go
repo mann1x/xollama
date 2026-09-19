@@ -111,6 +111,20 @@ type GenerateRequest struct {
 	// before this option was introduced)
 	Think *ThinkValue `json:"think,omitempty"`
 
+	// SessionID names the conversation this request belongs to, so an engine
+	// that can do so returns it to the slot already holding its KV instead of
+	// choosing one by its own heuristics.
+	//
+	// Leave it unset and xollama derives one from the stable head of the
+	// conversation, which is what a client that knows nothing about this field
+	// wants. Set it when you know better than the derivation does -- when two
+	// conversations legitimately share a long opening, or when one conversation
+	// must keep its slot across a change to its own opening.
+	//
+	// It is honoured only by an engine with session affinity; elsewhere it is
+	// ignored. See docs/xollama/sessions.mdx.
+	SessionID string `json:"session_id,omitempty"`
+
 	// Truncate is a boolean that, when set to true, truncates the chat history messages
 	// if the rendered prompt exceeds the context length limit.
 	Truncate *bool `json:"truncate,omitempty"`
@@ -161,6 +175,20 @@ type ChatRequest struct {
 	// string ("minimal", "low", "medium", "high", "max") or a positive integer giving an
 	// explicit thinking-token budget.
 	Think *ThinkValue `json:"think,omitempty"`
+
+	// SessionID names the conversation this request belongs to, so an engine
+	// that can do so returns it to the slot already holding its KV instead of
+	// choosing one by its own heuristics.
+	//
+	// Leave it unset and xollama derives one from the stable head of the
+	// conversation, which is what a client that knows nothing about this field
+	// wants. Set it when you know better than the derivation does -- when two
+	// conversations legitimately share a long opening, or when one conversation
+	// must keep its slot across a change to its own opening.
+	//
+	// It is honoured only by an engine with session affinity; elsewhere it is
+	// ignored. See docs/xollama/sessions.mdx.
+	SessionID string `json:"session_id,omitempty"`
 
 	// Truncate is a boolean that, when set to true, truncates the chat history messages
 	// if the rendered prompt exceeds the context length limit.

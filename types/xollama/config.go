@@ -51,6 +51,38 @@ type Config struct {
 
 	// Draft carries drafter settings that have no api.Options equivalent.
 	Draft *Draft `json:"draft,omitempty"`
+
+	// Session carries per-request engine session settings: which requests the
+	// engine should treat as belonging to the same conversation, and whether
+	// they may share a KV prefix pool with each other.
+	//
+	// It lives here rather than in an environment variable because the right
+	// answer differs per model. A model serving one long agent conversation
+	// wants affinity; a model answering unrelated one-shot prompts does not,
+	// and pinning those to one slot would make it worse.
+	Session *Session `json:"session,omitempty"`
+}
+
+// Session holds this model's session settings.
+//
+// Precedence, most specific first: the request, then this block, then the
+// XOLLAMA_SESSION_AFFINITY environment variable, then the default. A pointer
+// distinguishes "this model says off" from "this model says nothing", which an
+// ordinary bool cannot.
+type Session struct {
+	// Affinity asks the engine to return a conversation to the slot that
+	// already holds its KV, instead of choosing a slot by its own heuristics.
+	// Nil means the model has no opinion.
+	Affinity *bool `json:"affinity,omitempty"`
+
+	// Pool asks for requests of this model to share one physical copy of their
+	// common prefix -- a system prompt and tool definitions -- rather than one
+	// copy per conversation. Nil means the model has no opinion.
+	//
+	// It is a request for the behaviour, not a pool identifier: pool ids are
+	// handed out by the engine at runtime and cannot be known when a model is
+	// published.
+	Pool *bool `json:"pool,omitempty"`
 }
 
 // Draft holds speculative-decoding settings for this model.
@@ -97,6 +129,14 @@ func (c *Config) Validate() error {
 	if c.Draft != nil && c.Draft.SpecType != "" && !slices.Contains(validSpecTypes, c.Draft.SpecType) {
 		return fmt.Errorf("xollama config: unknown draft.spec_type %q (want one of %v)", c.Draft.SpecType, validSpecTypes)
 	}
+	// A pool is a shared prefix between requests the engine knows are
+	// different conversations, so it has nothing to key on without affinity.
+	// Refuse the combination at create time rather than serving a model whose
+	// stated configuration cannot do what it says.
+	if c.Session != nil && c.Session.Pool != nil && *c.Session.Pool &&
+		c.Session.Affinity != nil && !*c.Session.Affinity {
+		return fmt.Errorf("xollama config: session.pool requires session.affinity; a shared prefix pool has nothing to attach to without session identity")
+	}
 	return nil
 }
 
@@ -135,5 +175,7 @@ func (c *Config) IsZero() bool {
 	if c == nil {
 		return true
 	}
-	return c.Engine == "" && (c.Draft == nil || c.Draft.SpecType == "")
+	return c.Engine == "" &&
+		(c.Draft == nil || c.Draft.SpecType == "") &&
+		(c.Session == nil || (c.Session.Affinity == nil && c.Session.Pool == nil))
 }

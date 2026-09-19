@@ -173,6 +173,7 @@
           {
             "group": "opencoti engine",
             "pages": [
+              "/xollama/sessions",
               "/xollama/opencoti-tuning"
             ]
           }

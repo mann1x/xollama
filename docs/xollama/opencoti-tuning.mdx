@@ -146,11 +146,11 @@ LLAMA_ARG_POLYKV_MAX_POOLS=4    # enables the /polykv/* control plane
 ```
 
 <Warning>
-  **The request half is not.** Attaching a request to a pool is a per-request
-  JSON field (`pool_id`, or `shared_pool_slot` + `shared_prefix_n_tokens`), and
-  xollama builds the completion body itself — there is no passthrough for
-  engine-specific fields from `/api/chat` or `/api/generate`. The pools can be
-  created and will sit there unused.
+  **The request half is half-built.** `session_id` is now sent, so session
+  affinity works — see [Sessions](/xollama/sessions). `pool_id` is plumbed to
+  the wire and gated the same way, but xollama does not yet create pools or
+  launch the engine with pooling enabled, so nothing hands out an id to attach
+  to.
 
   `--kv-unified` also changes what `-c` and `--parallel` mean, and it is
   mutually exclusive with the rolling-KV window. Switching it on under xollama,
@@ -202,8 +202,9 @@ any document disagree, `--help` wins.
 | Mixed-KV spilled-tail types (`-ctkt`/`-ctvt`) | **Yes**, no twin conflict |
 | DCA on/off and chunk size | **Yes** |
 | DCA past the model's native context | **No** — no `--override-kv` twin, and `num_ctx` is clamped first |
-| PolyKV pool creation | **Yes** (boot flags) |
-| PolyKV per-request attach | **No** — no per-request passthrough |
+| Session affinity (`session_id`) | **Yes** — on by default, see [Sessions](/xollama/sessions) |
+| PolyKV pool creation | Boot flags only, and xollama does not set them yet |
+| PolyKV per-request attach | Plumbed and tested; nothing hands out a pool id yet |
 | Sparse attention, elastic slots, admission, RYS | **Yes** (boot env) |
 | Any of it per-model instead of per-server | **No** — server-global only |
 | Engine introspection (`/props`, `/slots`, `/polykv/*`) | **Not proxied** — query the engine directly |

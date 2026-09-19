@@ -109,6 +109,29 @@ func (c LlamaServerConfig) draftSpecTypeOverride() string {
 	return c.Xollama.Draft.SpecType
 }
 
+// sessionAffinity reports whether this model asks for session affinity, and
+// whether it said anything at all. A model that says nothing leaves the
+// decision to XOLLAMA_SESSION_AFFINITY.
+//
+// xollama-hook: model-config
+func (c LlamaServerConfig) sessionAffinity() (want, stated bool) {
+	if c.Xollama == nil || c.Xollama.Session == nil || c.Xollama.Session.Affinity == nil {
+		return false, false
+	}
+	return *c.Xollama.Session.Affinity, true
+}
+
+// sessionPool reports whether this model asks for a shared prefix pool, and
+// whether it said anything at all.
+//
+// xollama-hook: model-config
+func (c LlamaServerConfig) sessionPool() (want, stated bool) {
+	if c.Xollama == nil || c.Xollama.Session == nil || c.Xollama.Session.Pool == nil {
+		return false, false
+	}
+	return *c.Xollama.Session.Pool, true
+}
+
 // LoadModel loads GGUF model metadata from disk.
 //
 // It collects array values for arrays with a size less than or equal to
@@ -246,6 +269,16 @@ type CompletionRequest struct {
 
 	// TopLogprobs specifies the number of most likely alternative tokens to return (0-20)
 	TopLogprobs int
+
+	// xollama-hook: engine-session — see docs/xollama/sessions.mdx.
+	//
+	// SessionID names the conversation, so an engine with session affinity
+	// returns it to the slot already holding its KV. PoolID attaches it to a
+	// shared prefix pool the engine owns. Both are emitted only when the load
+	// actually ran on an engine that has them; on stock llama.cpp nothing is
+	// sent and the request body is upstream's, byte for byte.
+	SessionID string
+	PoolID    int
 }
 
 type ChatRequest struct {
@@ -258,6 +291,16 @@ type ChatRequest struct {
 
 	Logprobs    bool
 	TopLogprobs int
+
+	// xollama-hook: engine-session — see docs/xollama/sessions.mdx.
+	//
+	// SessionID names the conversation, so an engine with session affinity
+	// returns it to the slot already holding its KV. PoolID attaches it to a
+	// shared prefix pool the engine owns. Both are emitted only when the load
+	// actually ran on an engine that has them; on stock llama.cpp nothing is
+	// sent and the request body is upstream's, byte for byte.
+	SessionID string
+	PoolID    int
 }
 
 type ChatResponse struct {
