@@ -71,6 +71,15 @@ type Config struct {
 	// route at all, and the ones that do have their own pretrain window.
 	DCA *DCA `json:"dca,omitempty"`
 
+	// FlashAttention overrides the server's OLLAMA_FLASH_ATTENTION for this
+	// model: "on", "off" or "auto". Empty means the model has no opinion.
+	//
+	// It belongs to the model because the right answer is a property of the
+	// model and its cache, not of the machine: some architectures give wrong
+	// answers with it, and some quantised cache types need it. A server-wide
+	// switch forces one answer onto every model loaded.
+	FlashAttention string `json:"flash_attention,omitempty"`
+
 	// Session carries per-request engine session settings: which requests the
 	// engine should treat as belonging to the same conversation, and whether
 	// they may share a KV prefix pool with each other.
@@ -110,6 +119,21 @@ type Slots struct {
 	// admitted, so a co-resident process is not squeezed out. Zero means
 	// unstated.
 	VRAMReserveMiB int `json:"vram_reserve_mib,omitempty"`
+
+	// SWASeqBudget sizes the sliding-window cache for this many sequences
+	// instead of for every slot and pool the model could open. It applies only
+	// to sliding-window models, where each sequence otherwise reserves a whole
+	// window up front whether or not anyone uses it.
+	//
+	// Zero means no budget, which reserves one window per sequence and is the
+	// safe answer. A budget below that trades worst-case headroom for memory:
+	// a window is reclaimable once its token leaves the sequence that owned it,
+	// so B windows serve rather more than B short conversations -- but a
+	// sustained full-window load against a smaller pool will run out.
+	//
+	// It is worth setting where the sequence count is large. At a ceiling of a
+	// few it saves little and risks something.
+	SWASeqBudget int `json:"swa_seq_budget,omitempty"`
 }
 
 // DCA holds this model's dual chunk attention setting.
@@ -215,6 +239,9 @@ const (
 
 var validEngines = []string{EngineOpencoti, EngineLlamaCpp}
 
+// validFlashAttention is what llama-server's --flash-attn accepts.
+var validFlashAttention = []string{"on", "off", "auto"}
+
 // Spec types a model may pin. Kept in step with llm/llama_server.go; the
 // duplication is deliberate, because types must not import llm.
 var validSpecTypes = []string{"draft-mtp", "draft-dflash", "draft-assistant", "draft-simple", "draft-eagle3", "draft-dspark"}
@@ -234,6 +261,12 @@ func (c *Config) Validate() error {
 	}
 	if c.Engine != "" && !slices.Contains(validEngines, c.Engine) {
 		return fmt.Errorf("xollama config: unknown engine %q (want one of %v)", c.Engine, validEngines)
+	}
+	// Unlike a cache type, this IS a closed set: both engines take the same
+	// three words and a fourth would be rejected by the engine's own parser
+	// after the model had already been published.
+	if c.FlashAttention != "" && !slices.Contains(validFlashAttention, c.FlashAttention) {
+		return fmt.Errorf("xollama config: unknown flash_attention %q (want one of %v)", c.FlashAttention, validFlashAttention)
 	}
 	if c.Draft != nil && c.Draft.SpecType != "" && !slices.Contains(validSpecTypes, c.Draft.SpecType) {
 		return fmt.Errorf("xollama config: unknown draft.spec_type %q (want one of %v)", c.Draft.SpecType, validSpecTypes)
@@ -260,6 +293,9 @@ func (c *Config) Validate() error {
 		}
 		if c.Slots.VRAMReserveMiB < 0 {
 			return fmt.Errorf("xollama config: slots.vram_reserve_mib %d must not be negative", c.Slots.VRAMReserveMiB)
+		}
+		if c.Slots.SWASeqBudget < 0 {
+			return fmt.Errorf("xollama config: slots.swa_seq_budget %d must not be negative", c.Slots.SWASeqBudget)
 		}
 		// A ceiling, a rate floor or a memory reserve only mean anything while
 		// slots are being admitted dynamically. Saying one while switching the
@@ -333,9 +369,11 @@ func (c *Config) IsZero() bool {
 		return true
 	}
 	return c.Engine == "" &&
+		c.FlashAttention == "" &&
 		(c.Draft == nil || c.Draft.SpecType == "") &&
 		(c.KV == nil || (c.KV.K == "" && c.KV.V == "" && c.KV.KSWA == "" && c.KV.VSWA == "")) &&
-		(c.Slots == nil || (c.Slots.Dynamic == nil && c.Slots.Max == 0 && c.Slots.TPSFloor == 0 && c.Slots.VRAMReserveMiB == 0)) &&
+		(c.Slots == nil || (c.Slots.Dynamic == nil && c.Slots.Max == 0 && c.Slots.TPSFloor == 0 &&
+			c.Slots.VRAMReserveMiB == 0 && c.Slots.SWASeqBudget == 0)) &&
 		(c.DCA == nil || (c.DCA.Enabled == nil && c.DCA.ChunkSize == 0)) &&
 		(c.Session == nil || (c.Session.Affinity == nil && c.Session.Pool == nil && c.Session.MaxPools == 0))
 }

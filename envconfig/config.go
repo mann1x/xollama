@@ -333,6 +333,14 @@ var (
 	// sliding-window model that costs a window exactly as a slot does, so this
 	// is sized by distinct system prompts rather than by conversations.
 	PolyKVMaxPools = Uint("XOLLAMA_POLYKV_MAX_POOLS", 0)
+	// SWASeqBudget sizes a sliding-window model's short cache for this many
+	// sequences instead of for every slot and pool it could open.
+	//
+	// Zero, the default, reserves one window per sequence, which is the safe
+	// answer. It is worth setting only where the sequence count is large: at a
+	// ceiling of a few it saves little and risks running the pool out under
+	// sustained full-window load.
+	SWASeqBudget = Uint("XOLLAMA_SWA_SEQ_BUDGET", 0)
 
 	LLMLibrary = String("OLLAMA_LLM_LIBRARY")
 	Editor     = String("OLLAMA_EDITOR")
@@ -415,6 +423,7 @@ func AsMap() map[string]EnvVar {
 		"XOLLAMA_DCA":                 {"XOLLAMA_DCA", DCA(), "Serve a model past its trained context with dual chunk attention (needs a supported engine and architecture)"},
 		"XOLLAMA_DCA_CHUNK_SIZE":      {"XOLLAMA_DCA_CHUNK_SIZE", DCAChunkSize(), "DCA chunk length in tokens (0 = the model's own pretrain window)"},
 		"XOLLAMA_POLYKV_MAX_POOLS":    {"XOLLAMA_POLYKV_MAX_POOLS", PolyKVMaxPools(), "Shared prefix pools a model may hold at once (0 = the model decides)"},
+		"XOLLAMA_SWA_SEQ_BUDGET":      {"XOLLAMA_SWA_SEQ_BUDGET", SWASeqBudget(), "Size a sliding-window model's short cache for this many sequences (0 = one per sequence)"},
 		"OLLAMA_DEBUG":                {"OLLAMA_DEBUG", LogLevel(), "Show additional debug information (e.g. XOLLAMA_DEBUG=1)"},
 		"OLLAMA_DEBUG_LOG_REQUESTS":   {"OLLAMA_DEBUG_LOG_REQUESTS", DebugLogRequests(), "Log inference request bodies and replay curl commands to a temp directory"},
 		"OLLAMA_GO_TEMPLATE":          {"OLLAMA_GO_TEMPLATE", GoTemplate(true), "Enable Modelfile TEMPLATE based rendering when available"},

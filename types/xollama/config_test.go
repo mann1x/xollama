@@ -371,3 +371,53 @@ func TestDCARoundTripsThroughTheLayer(t *testing.T) {
 		t.Error("a config that turns DCA on is not empty")
 	}
 }
+
+func TestValidateFlashAttention(t *testing.T) {
+	for _, tc := range []struct {
+		in      string
+		wantErr bool
+	}{
+		{in: ""},
+		{in: "on"},
+		{in: "off"},
+		{in: "auto"},
+		// Unlike a cache type, this is a closed set: both engines take the same
+		// three words, and a fourth would be rejected by the engine's own
+		// parser long after the model had been published.
+		{in: "yes", wantErr: true},
+		{in: "true", wantErr: true},
+		{in: "ON", wantErr: true},
+	} {
+		t.Run("flash_attention="+tc.in, func(t *testing.T) {
+			err := (&Config{Version: 1, FlashAttention: tc.in}).Validate()
+			if tc.wantErr && err == nil {
+				t.Errorf("Validate() = nil, want an error for %q", tc.in)
+			}
+			if !tc.wantErr && err != nil {
+				t.Errorf("Validate() = %v, want nil for %q", err, tc.in)
+			}
+		})
+	}
+}
+
+func TestValidateSWASeqBudget(t *testing.T) {
+	if err := (&Config{Version: 1, Slots: &Slots{SWASeqBudget: 4}}).Validate(); err != nil {
+		t.Errorf("Validate() = %v, want nil", err)
+	}
+	err := (&Config{Version: 1, Slots: &Slots{SWASeqBudget: -1}}).Validate()
+	if err == nil || !strings.Contains(err.Error(), "must not be negative") {
+		t.Errorf("Validate() = %v, want a negative-value error", err)
+	}
+	// It sizes a cache rather than the slot mechanism, so unlike the other
+	// slots fields it is allowed alongside dynamic slots being off.
+	off := false
+	if err := (&Config{Version: 1, Slots: &Slots{Dynamic: &off, SWASeqBudget: 2}}).Validate(); err != nil {
+		t.Errorf("Validate() = %v, want a window budget to be allowed with fixed slots", err)
+	}
+	if (&Config{Slots: &Slots{SWASeqBudget: 2}}).IsZero() {
+		t.Error("a config that sets a window budget is not empty")
+	}
+	if (&Config{FlashAttention: "off"}).IsZero() {
+		t.Error("a config that pins flash attention is not empty")
+	}
+}

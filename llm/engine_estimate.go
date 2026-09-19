@@ -111,7 +111,17 @@ func PredictServerSlotVRAM(f *gguf.Model, cfg LlamaServerConfig, gpus []ml.Devic
 	// sequence's worth of sliding window exactly as a slot does. Leaving the
 	// pools out here would under-count a pooled load by that much.
 	seqs := plan.concurrency() + resolvePoolCount(cfg)
-	if seqs <= plan.Live || !wouldUseOpencoti(cfg, gpus) {
+
+	// A window budget sizes the short cache for fewer sequences than exist, and
+	// values above n_seq_max are clamped by the engine. Predicting without it
+	// would over-count by exactly the amount the budget was set to save, which
+	// would make the setting look like it did nothing.
+	windows := seqs
+	if plan.SWASeqBudget > 0 {
+		windows = min(plan.SWASeqBudget, seqs)
+	}
+
+	if !wouldUseOpencoti(cfg, gpus) || (seqs <= plan.Live && windows >= seqs) {
 		return 0
 	}
 
@@ -122,7 +132,7 @@ func PredictServerSlotVRAM(f *gguf.Model, cfg LlamaServerConfig, gpus []ml.Devic
 	// its Live streams; with it, one short cache covering the whole pool, whose
 	// context is the pool's -- num_ctx x num_parallel, which is what -c says.
 	split := slidingWindowCells(window, numBatch, numCtxSeq, 1) * plan.Live
-	unified := slidingWindowCells(window, numBatch, numCtxSeq*plan.Live, seqs)
+	unified := slidingWindowCells(window, numBatch, numCtxSeq*plan.Live, windows)
 
 	extra := unified - split
 	if extra <= 0 {

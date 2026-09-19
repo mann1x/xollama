@@ -63,6 +63,27 @@ Two practical consequences:
 - On a sliding-window model, a high ceiling is a real memory decision. Raise it
   in steps and watch what the load actually allocates.
 
+### Sliding-window models: the one lever that helps
+
+On a sliding-window model the reservation is per **sequence**, and both a slot
+and a pool are sequences. At a ceiling of four with two pools that is six
+windows reserved up front.
+
+```dockerfile
+XOLLAMA {"version": 1, "slots": {"dynamic": true, "max": 32, "swa_seq_budget": 8}}
+```
+
+`swa_seq_budget` sizes that short cache for fewer sequences than exist. It is
+sound rather than a fudge: a window's cells become reclaimable once their token
+falls out of the sequence that owned it, so eight windows serve rather more than
+eight short conversations. What you give up is worst-case headroom — a sustained
+load where every conversation stays at full window length will run the pool out.
+
+It is worth setting where the sequence count is large. At a ceiling of four it
+saves little and risks something, so leave it alone there. The memory xollama
+plans for follows the budget, so setting it actually frees the memory rather
+than merely telling the engine to use less of what was already reserved.
+
 ## Setting it
 
 <Tabs>

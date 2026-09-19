@@ -440,7 +440,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	kvTypes := resolveKVCacheTypes(launch.config, launch.kvCacheType)
 	params = appendKVCacheArgs(params, kvTypes)
 
-	params = appendFlashAttentionArgs(params, launch.gpus)
+	params = appendFlashAttentionArgs(params, launch.config, launch.gpus)
 
 	params = appendBatchArgs(params, launch.opts, launch.embedding, launch.numParallel)
 
@@ -500,9 +500,9 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	args = appendKVCacheRingArgs(args, kvTypes, usedOpencoti)
 
 	// xollama-hook: launch-config — dynamic slots. See docs/xollama/slots.mdx.
-	args = appendSlotArgs(args,
-		resolveSlotPlan(launch.config, launch.numParallel, launch.config.SingleSequenceOnly),
-		resolvePoolCount(launch.config), usedOpencoti)
+	slots := resolveSlotPlan(launch.config, launch.numParallel, launch.config.SingleSequenceOnly)
+	args = appendSlotArgs(args, slots, resolvePoolCount(launch.config), usedOpencoti)
+	args = appendSWABudgetArgs(args, slots, usedOpencoti)
 
 	// xollama-hook: launch-config — dual chunk attention. See docs/xollama/dca.mdx.
 	//
@@ -706,8 +706,29 @@ func appendBatchArgs(params []string, opts api.Options, embedding bool, numParal
 	return params
 }
 
-// LlamaServerFlashAttention resolves the flash-attention mode passed to llama-server.
-func LlamaServerFlashAttention(gpus []ml.DeviceInfo) ml.FlashAttentionType {
+// LlamaServerFlashAttention resolves the flash-attention mode passed to
+// llama-server.
+//
+// xollama-hook: launch-config — cfg carries the model's own answer, which beats
+// the server's OLLAMA_FLASH_ATTENTION. Whether flash attention helps or breaks
+// a model is a property of the model and its cache, not of the machine, and
+// upstream has only the server-wide switch. A model that says nothing takes
+// exactly upstream's path below.
+func LlamaServerFlashAttention(cfg LlamaServerConfig, gpus []ml.DeviceInfo) ml.FlashAttentionType {
+	switch cfg.flashAttention() {
+	case "on":
+		return ml.FlashAttentionEnabled
+	case "off":
+		return ml.FlashAttentionDisabled
+	case "auto":
+		// An explicit "auto" still defers to what the devices can do, exactly
+		// as an unset server does; it means "decide for me", not "force on".
+		if !ml.FlashAttentionSupported(gpus) {
+			return ml.FlashAttentionDisabled
+		}
+		return ml.FlashAttentionAuto
+	}
+
 	enabled := envconfig.FlashAttention(false)
 	userSet := enabled == envconfig.FlashAttention(true)
 	if userSet {
@@ -723,8 +744,8 @@ func LlamaServerFlashAttention(gpus []ml.DeviceInfo) ml.FlashAttentionType {
 	return ml.FlashAttentionAuto
 }
 
-func appendFlashAttentionArgs(params []string, gpus []ml.DeviceInfo) []string {
-	switch LlamaServerFlashAttention(gpus) {
+func appendFlashAttentionArgs(params []string, cfg LlamaServerConfig, gpus []ml.DeviceInfo) []string {
+	switch LlamaServerFlashAttention(cfg, gpus) {
 	case ml.FlashAttentionEnabled:
 		return append(params, "--flash-attn", "on")
 	case ml.FlashAttentionDisabled:

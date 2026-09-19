@@ -27,6 +27,36 @@ has no `extraArgs` equivalent; opencoti's own TS adapter does.
 
 ## G1 — no per-model engine options
 
+> **Closed, 2026-09-19.** The carrier is `types/xollama/config.go` and it now
+> holds `engine`, `flash_attention`, `kv` (both halves plus the sliding-window
+> ring), `slots` (dynamic, max, tps_floor, vram_reserve_mib, swa_seq_budget),
+> `session` (affinity, pool, max_pools), `dca` and `draft.spec_type`. The
+> original example — a model needing `kvarn3` plus a `q4_0` ring — was closed by
+> G3; what this entry was really asking for was the rest of the settings that
+> could only be said server-wide.
+>
+> The two added to close it:
+>
+> - **`flash_attention`**, because `OLLAMA_FLASH_ATTENTION` forces one answer
+>   onto every model on the machine, and whether flash attention helps or breaks
+>   is a property of the model and its cache. `"auto"` is a request to be
+>   decided for rather than to switch on, so it still defers to the devices —
+>   which is how a model opts out of a server that forced it on.
+> - **`slots.swa_seq_budget`**, which opencoti specifically asked us to expose
+>   per model rather than server-wide. It also feeds the memory prediction: a
+>   budget the estimate ignored would free memory the scheduler then refused to
+>   use, which would make the setting look inert.
+>
+> Documented as a whole in [`../xollama/model-settings.mdx`](../xollama/model-settings.mdx).
+>
+> **The generic `engine_options` object proposed below was deliberately NOT
+> built, and should not be.** A model is pulled from a registry, often unread,
+> and the engine's command line can write files and change where it loads from.
+> A model able to add arguments to it is a model able to act on the machine that
+> ran it. Every setting is a named field with a checked value for that reason,
+> and an argument with no field is a gap to fill with a field. This also
+> retires the model-carried half of G2.
+
 `types/xollama/config.go` is the natural carrier and already survives a round
 trip through push, pull and `ollama show --modelfile` on stock ollama. It has no
 field for engine tuning, so a model that *needs* `kvarn3` plus a `q4_0` ring —
@@ -271,10 +301,14 @@ Updated 2026-09-19. G3, G4 and G7 are closed; G5 is half closed.
 1. ~~**G6**~~ — done, `GET /api/engine`.
 2. ~~**G5, the pool half**~~ — done. Needs an end-to-end run against a live
    engine before it can be called validated.
-3. **G1** — the per-model options carrier, now that `xollama.json` carries kv,
-   slots, session and dca. What is left is moving the remaining launch settings
-   into it rather than adding new ones beside it.
-4. **G2** — an argv escape hatch for flags with no home. Demoted: G4 was the
-   case that needed it and was closed without it, by writing the specific
-   override rather than a general hatch. It is worth doing for flags nobody has
-   modelled yet, not as a dependency of anything currently planned.
+3. ~~**G1**~~ — done.
+4. **G2** — an argv escape hatch, and only ever an **operator-side** one: an
+   environment variable a person sets on their own machine, never a field a
+   pulled model can carry. Demoted twice over — G4 was the case that needed it
+   and was closed without it, and G1 established that the model-carried half
+   must not exist at all. Worth doing for engine flags nobody has modelled yet,
+   not as a dependency of anything planned.
+
+Everything else in this report is closed. What is left is not a gap but a
+measurement: none of PolyKV, DCA beyond native, or elastic slots has been run
+against a live engine end to end.

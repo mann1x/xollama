@@ -2055,7 +2055,7 @@ func TestAppendFlashAttentionArgs(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			setFlashAttentionEnv(t, tt.env, tt.set)
-			got := appendFlashAttentionArgs([]string{"base"}, tt.gpus)
+			got := appendFlashAttentionArgs([]string{"base"}, LlamaServerConfig{}, tt.gpus)
 			if !slices.Equal(got, tt.want) {
 				t.Fatalf("appendFlashAttentionArgs = %v, want %v", got, tt.want)
 			}

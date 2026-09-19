@@ -116,6 +116,16 @@ func (c LlamaServerConfig) draftSpecTypeOverride() string {
 	return c.Xollama.Draft.SpecType
 }
 
+// flashAttention returns the flash-attention mode this model pins, or "".
+//
+// xollama-hook: model-config
+func (c LlamaServerConfig) flashAttention() string {
+	if c.Xollama == nil {
+		return ""
+	}
+	return c.Xollama.FlashAttention
+}
+
 // sessionAffinity reports whether this model asks for session affinity, and
 // whether it said anything at all. A model that says nothing leaves the
 // decision to XOLLAMA_SESSION_AFFINITY.

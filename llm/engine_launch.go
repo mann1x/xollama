@@ -172,6 +172,10 @@ type slotPlan struct {
 	// slot. Zero leaves each to the engine's own default.
 	TPSFloor       float64
 	VRAMReserveMiB int
+	// SWASeqBudget sizes a sliding-window model's short cache for this many
+	// sequences rather than for every slot and pool. Zero means one window per
+	// sequence, which is what the engine does on its own.
+	SWASeqBudget int
 }
 
 // defaultMaxParallel is the ceiling when nobody named one.
@@ -195,6 +199,7 @@ func resolveSlotPlan(cfg LlamaServerConfig, numParallel int, forcedSingle bool) 
 		Live:           max(numParallel, 1),
 		Max:            int(envconfig.MaxParallel()),
 		VRAMReserveMiB: int(envconfig.SlotsVRAMReserve()),
+		SWASeqBudget:   int(envconfig.SWASeqBudget()),
 	}
 	if v := strings.TrimSpace(envconfig.SlotsTPSFloor()); v != "" {
 		if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 {
@@ -216,6 +221,9 @@ func resolveSlotPlan(cfg LlamaServerConfig, numParallel int, forcedSingle bool) 
 		if s.VRAMReserveMiB > 0 {
 			plan.VRAMReserveMiB = s.VRAMReserveMiB
 		}
+		if s.SWASeqBudget > 0 {
+			plan.SWASeqBudget = s.SWASeqBudget
+		}
 	}
 
 	// An architecture ollama refuses to run above one sequence must not be
@@ -226,7 +234,11 @@ func resolveSlotPlan(cfg LlamaServerConfig, numParallel int, forcedSingle bool) 
 		plan.Dynamic = false
 	}
 	if !plan.Dynamic {
-		return slotPlan{Live: plan.Live}
+		// The window budget is not a slot setting -- it sizes the cache a
+		// sliding-window model keeps for however many sequences exist, and
+		// those exist whether or not slots are elastic. It is the one field
+		// that survives here.
+		return slotPlan{Live: plan.Live, SWASeqBudget: plan.SWASeqBudget}
 	}
 
 	if plan.Max <= 0 {
@@ -310,6 +322,19 @@ func appendSlotArgs(args []string, plan slotPlan, pools int, usedOpencoti bool) 
 		args = append(args, "--polykv-max-pools", strconv.Itoa(pools))
 	}
 	return args
+}
+
+// appendSWABudgetArgs sizes a sliding-window model's short cache, once the
+// engine is known.
+//
+// Separate from appendSlotArgs because it is not conditional on the same
+// things: the budget applies to a fixed single-slot load as much as to an
+// elastic one, since even there the pools and the slot each hold a window.
+func appendSWABudgetArgs(args []string, plan slotPlan, usedOpencoti bool) []string {
+	if !usedOpencoti || plan.SWASeqBudget <= 0 {
+		return args
+	}
+	return append(args, "--swa-seq-budget", strconv.Itoa(plan.SWASeqBudget))
 }
 
 // concurrency is how many requests may be in flight at once.

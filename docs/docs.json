@@ -173,6 +173,7 @@
           {
             "group": "Engine tuning",
             "pages": [
+              "/xollama/model-settings",
               "/xollama/kv-cache",
               "/xollama/slots",
               "/xollama/dca",

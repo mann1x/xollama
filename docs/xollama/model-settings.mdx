@@ -1,0 +1,123 @@
+---
+title: Settings that belong to the model
+---
+
+Most of what decides how a model is served is a property of **the model**, not of
+the machine it runs on. Which cache type it tolerates, whether flash attention
+helps or breaks it, how many conversations it should serve at once — none of
+that changes when you move the model to another server, and all of it changes
+when you swap the model.
+
+Ollama has nowhere to put any of it. Its settings for these are environment
+variables, which are server-wide by construction: set one and every model loaded
+gets the same answer.
+
+xollama gives the model its own say.
+
+## The `XOLLAMA` directive
+
+```dockerfile
+FROM gemma4:e4b
+
+XOLLAMA {
+  "version": 1,
+  "flash_attention": "on",
+  "kv": { "k": "q8_0", "v": "kvarn3" },
+  "slots": { "dynamic": true, "max": 8 },
+  "session": { "affinity": true, "pool": true, "max_pools": 4 }
+}
+```
+
+It travels with the model through `push` and `pull`, and a **stock Ollama can
+still use the model** — it stores the settings and ignores them. That is
+deliberate: publishing a model from xollama must not make it unusable for
+everyone else.
+
+<Note>
+  These cannot be Modelfile `PARAMETER` lines. Ollama resolves every parameter
+  name against a fixed list and rejects anything else, so a model carrying one
+  would fail to create on stock Ollama — the opposite of what a soft fork should
+  do. They travel as their own layer instead, under a media type Ollama already
+  knows how to carry.
+</Note>
+
+## Everything you can set
+
+| Field | What it does | Server-wide equivalent |
+|---|---|---|
+| `engine` | Pins this model to `opencoti` or `llamacpp`, for models that genuinely only run on one. | `XOLLAMA_ENGINE` |
+| `flash_attention` | `on`, `off` or `auto`. | `OLLAMA_FLASH_ATTENTION` |
+| `kv.k`, `kv.v` | Cache type per half — keys and values are not equally sensitive to quantisation. | `OLLAMA_KV_CACHE_TYPE` (both halves at once) |
+| `kv.k_swa`, `kv.v_swa` | Cache type for a sliding-window model's short cache. | `XOLLAMA_K_CACHE_TYPE_SWA`, `XOLLAMA_V_CACHE_TYPE_SWA` |
+| `slots.dynamic` | Let concurrency grow with demand instead of reserving it. | `XOLLAMA_DYNAMIC_SLOTS` |
+| `slots.max` | Ceiling on concurrent requests. | `XOLLAMA_MAX_PARALLEL` |
+| `slots.tps_floor` | Per-slot decode rate to protect before admitting another. | `XOLLAMA_SLOTS_TPS_FLOOR` |
+| `slots.vram_reserve_mib` | Free VRAM to keep before admitting another slot. | `XOLLAMA_SLOTS_VRAM_RESERVE` |
+| `slots.swa_seq_budget` | Size the sliding-window cache for fewer sequences than exist. | `XOLLAMA_SWA_SEQ_BUDGET` |
+| `session.affinity` | Return a conversation to the slot already holding its cache. | `XOLLAMA_SESSION_AFFINITY` |
+| `session.pool` | Share one copy of a common prefix between conversations. | `XOLLAMA_SESSION_POOL` |
+| `session.max_pools` | How many distinct prefixes to hold. | `XOLLAMA_POLYKV_MAX_POOLS` |
+| `dca.enabled` | Serve past the context the model was trained on. | `XOLLAMA_DCA` |
+| `dca.chunk_size` | Chunk length for that. | `XOLLAMA_DCA_CHUNK_SIZE` |
+| `draft.spec_type` | Override the speculative driver inferred from a drafter. | — |
+
+Each links to its own page: [engines](/xollama/engines),
+[KV cache](/xollama/kv-cache), [slots](/xollama/slots),
+[sessions](/xollama/sessions), [DCA](/xollama/dca).
+
+## Flash attention
+
+Worth calling out because it is the setting most often wrong server-wide.
+
+```dockerfile
+XOLLAMA {"version": 1, "flash_attention": "off"}
+```
+
+Some architectures give wrong answers with it. Some quantised cache types need
+it. `OLLAMA_FLASH_ATTENTION` forces one answer onto every model on the machine,
+so a single model that cannot take it costs you the setting everywhere.
+
+`"auto"` is a request to be **decided for**, not a request to switch on: it
+still defers to what the devices can actually do. Use it to opt one model out of
+a server that has forced flash attention on, without forcing it off either.
+
+A model that says nothing takes exactly Ollama's own path, environment variable
+and all.
+
+## Which setting wins
+
+Most specific first:
+
+1. **The request** — for the few settings that can vary per request at all
+   (`session_id`, `pool_id`, and the ordinary options like `num_ctx`).
+2. **The model** — this file.
+3. **`XOLLAMA_*`** — the fork's environment variables.
+4. **`OLLAMA_*`** — Ollama's own, where one exists.
+5. The default.
+
+A model that says nothing about a setting falls through to the server, which is
+what makes it safe to publish a model with a partial config.
+
+## What will never be here
+
+There is no field for passing arbitrary arguments to the engine, and there will
+not be one.
+
+A model is something you **pull from a registry**, often without reading it. The
+engine's command line can write files and change where it loads from, so a model
+able to add arguments to it would be a model able to act on your machine the
+moment you ran it. Every setting above is a named field with a checked value for
+that reason.
+
+If you need an argument that has no field yet, that is a gap worth filling with
+a field — [open an issue](https://github.com/mann1x/xollama/issues) rather than
+reaching for an escape hatch.
+
+## Checking it applied
+
+```sh
+curl -s 'localhost:11434/api/engine?model=gemma4:e4b' | jq
+```
+
+Settings are resolved at load time, so a change needs the model reloaded. See
+[Seeing what the engine did](/xollama/introspection).
