@@ -21,6 +21,7 @@ concurrency makes wall-clock the only honest measure.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import pathlib
@@ -313,6 +314,33 @@ def median(xs):
 AXES = ("compat", "throughput", "multislot", "gemma4", "overflow")
 
 
+# The opencoti artifact does not contain its CUDA backend: it side-loads
+# ggml-cuda.so from ~/.llamafile/v/<version>/, and a build finishing on bs2
+# RE-MIRRORS that file onto this host while we may be mid-run. Two axes taken
+# either side of that swap are two different engines wearing one artifact sha,
+# and nothing in the artifact or the logs says so. Hashing it per axis, before
+# and after, is what makes such a run detectable instead of merely wrong.
+def sideloaded_dso_sha(artifact):
+    if not artifact:
+        return None
+    home = pathlib.Path(os.path.expanduser("~/.llamafile/v"))
+    if not home.is_dir():
+        return None
+    best = None
+    for d in home.iterdir():
+        dso = d / "ggml-cuda.so"
+        if dso.is_file() and (best is None or dso.stat().st_mtime > best[1]):
+            best = (dso, dso.stat().st_mtime)
+    if best is None:
+        return None
+    h = hashlib.sha256()
+    with open(best[0], "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            h.update(chunk)
+    return {"path": str(best[0]), "sha256": h.hexdigest(),
+            "mtime": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(best[1]))}
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--engine", required=True, choices=("llamacpp", "opencoti"))
@@ -356,9 +384,19 @@ def main():
                       "multislot": lambda: axis_multislot(srv, args.model_multislot, args.parallel),
                       "gemma4": lambda: axis_gemma4(srv, args.model_gemma4),
                       "overflow": lambda: axis_overflow(srv, args.model_overflow)}[axis]
+                dso_before = sideloaded_dso_sha(args.artifact)
                 data = fn()
                 data["routed_to"] = srv.engine_line()
                 data["server_log"] = str(srv.logpath)
+                dso_after = sideloaded_dso_sha(args.artifact)
+                if dso_before:
+                    data["dso"] = dso_before
+                # A swap mid-axis invalidates that axis. Say so in the result
+                # rather than leaving a number that looks fine.
+                if dso_before != dso_after:
+                    data["dso_changed_mid_axis"] = {"before": dso_before, "after": dso_after}
+                    print(f"[{args.engine}] {axis}: WARNING side-loaded DSO changed mid-axis "
+                          f"- this result mixes two engines", flush=True)
         except Exception as e:  # one axis failing must not lose the others
             data = {"error": f"{type(e).__name__}: {e}"[:500]}
         data["seconds_total"] = round(time.time() - t0, 1)

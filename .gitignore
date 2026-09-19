@@ -29,3 +29,10 @@ integration/testdata/models/
 # Regenerate with claude-hooks/scripts/sync_cclsp.py --write --mcp
 cclsp.json
 cclsp.json.bak-*
+
+# xollama Docker build lane
+build-docker/
+.cache/
+
+# phase2-engine-ab.py leaves these behind when imported as a module
+__pycache__/
