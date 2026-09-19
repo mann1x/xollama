@@ -25,7 +25,7 @@ v0.34.2, and all thirteen are still OPEN against `ollama/ollama`.**
 | #17563 | `1e384e33` | #17914 | `27e10549` |
 | #17564 | `a765e728` | #18212 | `a6dc8df3` |
 | #17565 | `5dc1d79a` | #18281 | `bb54003d` |
-| #17566 | `2fd06701`, `aa991d47` | #18288 | `5a80b98b` |
+| #17566 | `2fd06701`, `aa991d47`, `f830f71d` | #18288 | `5a80b98b` |
 | #17567 | `43be0f1d` | #18289 | `ddb0fec9` |
 | #17626 | `c7d7a3fb` | #18307 | `0c0db3d9` |
 | #16820 | `a4a6dd7b` | | |
@@ -45,11 +45,34 @@ revert of an identifiable set of merges, now two. Verified on the merge:
 (0 issues). The four "not ours" failures noted above did not reproduce in this
 run.
 
-**Open on this patch:** the same commit guards `thinkBudgetForShow`, which
-exists only on `up-think-budget` (and so only here, not on the `think-budget`
-branch), and that guard ships **untested** — `TestShowThinkBudget` has no
-`think: false` case. The test belongs on the PR branch first, per rule 2;
-adding it here first would collide with the same block on the next merge.
+**2026-09-19 — #17566 carries a third merge, and it closed the gap above.**
+`f830f71d` brings `821f4705` and `fc275769`. The first is the missing
+`TestShowThinkBudget` case, written on the PR branch as rule 2 requires rather
+than here — which is why there was nothing to collide with. The second is a
+*separate* defect found behind it: the `/api/show` response cache is keyed on
+`{Model, Verbose}` plus the manifest digest and knows nothing about `Think`,
+while the response carries `think_budget` and `think_budget_tokens` — answers
+*about* the think value the caller intends to send. Ask `think: true` then
+`think: false` and the second is served an armed budget for a request that
+switched thinking off. Keyed now on the marshalled think value, because
+`String()` renders `false`, `nil` and an integer budget all as `""`.
+
+**One adaptation was needed, and the upstream PR is right as it stands.**
+`server/model_show_cache_test.go` arrived importing `fs/ggml` for `ggml.KV`.
+That package does not exist on v0.34.2 — this tree has `fs/gguf`, and the test
+helper is `gguftest "internal/testutil/gguf"`, which is what the rest of
+`server`'s tests use. Substituted `gguftest.KV`; no behaviour change, and
+nothing to send upstream, because the branch is correct against the newer base
+it targets. Expect the same one-line fixup on every future merge of this file
+until we rebase past the rename.
+
+Both fixes were verified by removal, not just by a green run: dropping the
+cache-key field fails `TestModelShowCacheKeysOnTheThinkValue`, and dropping the
+`thinkBudgetForShow` guard fails
+`TestShowThinkBudget/says_nothing_when_the_caller_has_switched_thinking_off`.
+Gates on the merge: `gofmt`, `go build .`, `go vet ./...`, `go test ./...`
+(58 ok, 0 fail, exit 0), `-race` on `server api openai anthropic`, and
+`golangci-lint run` (0 issues).
 
 ## Tier 1 — the reason this fork exists
 
