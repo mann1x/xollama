@@ -1,0 +1,42 @@
+diff --git a/src/llama-model-loader.cpp b/src/llama-model-loader.cpp
+--- a/src/llama-model-loader.cpp
++++ b/src/llama-model-loader.cpp
+@@ -894,6 +894,19 @@
+         throw std::runtime_error(format("%s: tensor '%s' not found", __func__, name.c_str()));
+     }
+ 
++    // An empty `ne` means the caller is not asserting a shape. Without this
++    // early return the loop below reads it as "every dimension must be 1",
++    // because for i >= ne.size() the condition is `cur->ne[i] != 1` -- so a
++    // tensor deliberately left unchecked fails unless it happens to be a
++    // scalar. The two call sites that do this are the gemma4-assistant
++    // masked_embd_centroids / masked_embd_ordering tensors, which are real
++    // 2-D and 1-D tensors, so loading an E2B/E4B assistant drafter always
++    // threw. See also llama_format_tensor_shape, which could not even print
++    // the resulting error.
++    if (ne.empty()) {
++        return cur;
++    }
++
+     bool is_ok = true;
+ 
+     if (allow_reshape) {
+diff --git a/src/llama-impl.cpp b/src/llama-impl.cpp
+--- a/src/llama-impl.cpp
++++ b/src/llama-impl.cpp
+@@ -99,6 +99,15 @@
+ }
+ 
+ std::string llama_format_tensor_shape(const std::vector<int64_t> & ne) {
++    // Called only from check_tensor_dims' error path. `ne.at(0)` on an empty
++    // vector throws std::out_of_range, which replaces the real "wrong shape"
++    // diagnostic with "vector::_M_range_check: __n (which is 0) >= this->size()
++    // (which is 0)" -- an error about the error. Never let the reporting path
++    // outlive the thing it is reporting.
++    if (ne.empty()) {
++        return "(unchecked)";
++    }
++
+     char buf[256];
+     snprintf(buf, sizeof(buf), "%6" PRId64, ne.at(0));
+     for (size_t i = 1; i < ne.size(); i++) {

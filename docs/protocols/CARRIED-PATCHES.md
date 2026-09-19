@@ -183,6 +183,46 @@ to know these diffs are deliberate and whose they are.
 | `gofmt` | `integration/vision_test_data_test.go` | Missing blank line between a base64 const and the next doc comment. Unformatted at `v0.34.2`; CI's gofmt gate flags it on any change to the file. | fixed here, **to send** |
 | Session-file mtime pre-filter loses the first prompts | `cmd/launch/codex_app_profile.go` | `start` comes from `time.Now()` (fine-grained clock); file mtimes come from the kernel's coarse clock, which advances once per timer tick. A session file written just after `start` is recorded carries an *earlier* mtime and is skipped entirely. Measured: start `14:42:19.515114114Z`, mtime of a file created after it `14:42:19.514497780Z`. | fixed here, **to send** |
 
+### One of them is upstream-of-upstream
+
+`llama/compat/005-gemma4-assistant-unchecked-tensor-shape.patch` belongs to
+**ggml-org/llama.cpp**, not ollama/ollama, so it retires on a `LLAMA_CPP_VERSION`
+bump rather than on an ollama merge. It lives in `llama/compat/` with the other
+carried llama.cpp patches and is registered in that directory's README.
+
+| Fix | File | Why it is upstream's | Status |
+|---|---|---|---|
+| An empty expected `ne` means "all dims must be 1", not "unchecked" | `src/llama-model-loader.cpp`, `src/llama-impl.cpp`, `src/models/gemma4-assistant.cpp` | `gemma4-assistant.cpp` passes `{}` for `masked_embd_centroids` / `masked_embd_ordering` to claim them without asserting a shape. `check_tensor_dims` instead requires `cur->ne[i] == 1` for every `i >= ne.size()`, so the real `[256 2048]` and `[262144]` tensors fail. The error path then calls `llama_format_tensor_shape(ne)`, whose first statement is `ne.at(0)` on that same empty vector, so the diagnostic is replaced by `vector::_M_range_check`. Both call sites are upstream's, and `{}` appears nowhere else in the tree. | fixed here, **to send** |
+
+Loading a Gemma 4 **E2B/E4B** assistant drafter is impossible without this — it
+is the only thing standing between those two heads and the llama.cpp engine.
+12B, 26B-A4B and 31B carry no `masked_embd_*` and were never affected, which is
+why this looked model-specific for so long.
+
+The patch deliberately stops at *loading*. llama.cpp registers the architecture
+but does not implement the centroid / ordered-embedding head:
+`load_arch_hparams` never reads `n_centroids`, `centroid_top_k` or
+`use_ordered_embeddings`, all three of which the GGUF declares. Speculative
+decoding verifies every drafted token against the target, so **output stays
+correct**; what degrades is the acceptance rate, i.e. speed. Implementing the
+head is separate work.
+
+A third hunk was written and then **removed after testing**, which is worth
+recording. It logged a warning when the centroids were present, on the reasoning
+that a head which loads and drafts badly is harder to diagnose than one that
+fails. The E4B run showed it never fired *and* was redundant: llama.cpp already
+prints, from `llama-model-loader.cpp:1196`,
+
+```
+model has unused tensor masked_embd_centroids.weight (size = 557056 bytes) -- ignoring
+model has unused tensor masked_embd_ordering (size = 1048576 bytes) -- ignoring
+```
+
+which names both tensors and their sizes — strictly better than the warning
+being added. It never fired because ollama's own compat hook (patch 001)
+`should_skip_tensor` hides MTP-class tensors, so `create_tensor` returns
+`nullptr` for them. The concern was real; upstream had already answered it.
+
 The root guard follows the file's existing idiom rather than inventing one:
 
 ```go
