@@ -168,6 +168,13 @@ rolling-KV spill actually do something — and it does not survive contact.
 > gives `fattn-common.cuh:87: GGML_ASSERT(dst->op == GGML_OP_FLASH_ATTN_EXT)`;
 > ours surfaced earlier, in CPU KV placement, but it is the same unshipped fix.
 >
+> Mitigated as far as it can be. `llm/engine_defects.go` recognises this
+> failure — by artifact name *and* the engine's own dying words, so it cannot
+> blame an unrelated crash or a build that has the fix — and reports it as a
+> known defect with the workaround attached, instead of leaving a CUDA assertion
+> for someone to decode. It is diagnosis only: no retry, no downgrade. That is
+> what `XOLLAMA_ENGINE_FALLBACK` is for and it stays opt-in.
+>
 > `llm/engine/pin.txt` pins exactly that artifact —
 > `3c907bc7511359054dbf55c9d2d69fb49324ef75bdbb45efa092c3facad8951e`, verified
 > against the payload at `/usr/local/lib/ollama/` — so **spill is a crash for

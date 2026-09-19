@@ -1238,7 +1238,9 @@ func (s *llamaServerRunner) Load(ctx context.Context, systemInfo ml.SystemInfo, 
 				return nil, stockErr
 			}
 			if !stockRetried {
-				return nil, err
+				// xollama-hook: engine-defects — a published engine build we
+				// cannot patch still gets to fail with a readable message.
+				return nil, s.annotateEngineDefect(err)
 			}
 			if err := s.WaitUntilRunning(ctx); err != nil {
 				return nil, fmt.Errorf("llama-server startup failed after falling back to the stock engine: %w", err)

@@ -158,4 +158,8 @@ Ollama's own, unchanged.
   Until there is: keep the cache resident. Lower `num_ctx`, or compress it with
   a quantised [KV cache type](/xollama/kv-cache), rather than relying on spill.
   This is unrelated to slots — it is the same on a single-slot load.
+
+  You do not have to recognise it yourself. A load that dies this way is
+  reported with the defect named and this workaround attached, rather than with
+  the engine's own assertion text.
 </Warning>
