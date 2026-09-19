@@ -287,3 +287,66 @@ func TestLaunchReportsWhichEngineItChose(t *testing.T) {
 		t.Error("reported opencoti when no artifact was found")
 	}
 }
+
+// TestCommandTranslatesLoadMode covers the flag that made this engine unable to
+// load anything at all. ollama disables mmap by default for a llama-server
+// load, so "--load-mode none" is on essentially every argv; the engine's
+// llama.cpp predates that flag and refused the whole command line with
+// "error: invalid argument: --load-mode" (measured, opencoti-llamafile-0.10.5-c7
+// on windows/amd64).
+func TestCommandTranslatesLoadMode(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		params []string
+		want   []string
+		absent []string
+	}{
+		{
+			name:   "none becomes --no-mmap",
+			params: []string{"--model", "m.gguf", "--load-mode", "none"},
+			want:   []string{"--no-mmap"},
+			absent: []string{"--load-mode", "none"},
+		},
+		{
+			name:   "the joined spelling too",
+			params: []string{"--model", "m.gguf", "--load-mode=none"},
+			want:   []string{"--no-mmap"},
+			absent: []string{"--load-mode=none"},
+		},
+		{
+			// dio bypasses the page cache for an integrated CUDA/ROCm GPU on
+			// Linux. This engine has no equivalent and is never routed to on
+			// that hardware, so it goes rather than becoming something it is not.
+			name:   "dio is dropped, not guessed at",
+			params: []string{"--model", "m.gguf", "--load-mode", "dio"},
+			absent: []string{"--load-mode", "dio", "--no-mmap"},
+		},
+		{
+			name:   "an argv without it is untouched",
+			params: []string{"--model", "m.gguf", "--flash-attn", "on"},
+			want:   []string{"--model", "m.gguf", "--flash-attn", "on"},
+			absent: []string{"--no-mmap"},
+		},
+		{
+			// A truncated argv must not make the value be read as a flag.
+			name:   "a trailing --load-mode takes nothing with it",
+			params: []string{"--model", "m.gguf", "--load-mode"},
+			want:   []string{"--model", "m.gguf"},
+			absent: []string{"--load-mode", "--no-mmap"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, args := Command("/engines/a.llamafile", tc.params, nil, "windows")
+			for _, w := range tc.want {
+				if !slices.Contains(args, w) {
+					t.Errorf("argv is missing %q: %v", w, args)
+				}
+			}
+			for _, a := range tc.absent {
+				if slices.Contains(args, a) {
+					t.Errorf("argv still carries %q: %v", a, args)
+				}
+			}
+		})
+	}
+}

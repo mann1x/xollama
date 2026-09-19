@@ -152,7 +152,7 @@ const logVerbosity = "5"
 func Command(artifact string, params []string, devices []Device, goos string) (string, []string) {
 	args := make([]string, 0, len(params)+5)
 	args = append(args, "--server")
-	args = append(args, withoutLogVerbosity(params)...)
+	args = append(args, translateLoadMode(withoutLogVerbosity(params))...)
 	// After the stock params, not before them. llama.cpp's parser takes the
 	// last occurrence of a flag, and ollama passes --log-verbosity 4 of its
 	// own; prepending ours left it inert and the scheduler planning against
@@ -184,6 +184,58 @@ func withoutLogVerbosity(params []string) []string {
 		out = append(out, params[i])
 	}
 	return out
+}
+
+// translateLoadMode rewrites ollama's --load-mode, which this engine does not
+// have, into the flag it does.
+//
+// ollama gained --load-mode as one flag covering how weights are read off disk:
+// "none" means do not memory-map them, "dio" means bypass the page cache on an
+// integrated GPU that would otherwise buffer them twice. The engine's llama.cpp
+// predates that merge and still spells the first half --no-mmap. It has no
+// equivalent of the second, which costs nothing here: "dio" is only ever chosen
+// for an integrated CUDA or ROCm GPU on Linux, and this engine is not routed to
+// on that hardware.
+//
+// This matters more than a missing flag usually would, because ollama disables
+// mmap by default for a llama-server load. --load-mode none is therefore on
+// essentially every argv, and an engine that rejects it can load nothing at
+// all -- which is exactly what it did: "error: invalid argument: --load-mode",
+// on every model, measured against opencoti-llamafile-0.10.5-c7.
+//
+// Translating rather than dropping is deliberate. Dropping would leave the
+// weights memory-mapped after ollama had decided they should not be, and the
+// scheduler's memory accounting is built on that decision.
+func translateLoadMode(params []string) []string {
+	out := make([]string, 0, len(params))
+	for i := 0; i < len(params); {
+		mode, consumed, ok := loadModeValue(params, i)
+		if !ok {
+			out = append(out, params[i])
+			i++
+			continue
+		}
+		if mode == "none" {
+			out = append(out, "--no-mmap")
+		}
+		i += consumed
+	}
+	return out
+}
+
+// loadModeValue recognises --load-mode in either spelling, returning its value
+// and how many arguments it occupies.
+func loadModeValue(params []string, i int) (value string, consumed int, ok bool) {
+	if params[i] == "--load-mode" {
+		if i+1 < len(params) {
+			return params[i+1], 2, true
+		}
+		return "", 1, true
+	}
+	if value, found := strings.CutPrefix(params[i], "--load-mode="); found {
+		return value, 1, true
+	}
+	return "", 0, false
 }
 
 // gpuFlag maps the devices ollama selected onto the artifact's --gpu selector.

@@ -110,7 +110,11 @@ func PredictServerSlotVRAM(f *gguf.Model, cfg LlamaServerConfig, gpus []ml.Devic
 	// (common_n_parallel_max(params) + polykv_max_pools), so a pool costs a
 	// sequence's worth of sliding window exactly as a slot does. Leaving the
 	// pools out here would under-count a pooled load by that much.
-	seqs := plan.concurrency() + resolvePoolCount(cfg)
+	// A model that keeps recurrent state is never pooled, so its seats are
+	// never reserved and must not be planned for either -- otherwise the
+	// estimate carries memory the load will not use and the model is placed
+	// more conservatively than it needs to be.
+	seqs := plan.concurrency() + effectivePoolCount(cfg, modelKeepsRecurrentState(f))
 
 	// A window budget sizes the short cache for fewer sequences than exist, and
 	// values above n_seq_max are clamped by the engine. Predicting without it

@@ -144,3 +144,43 @@ build.
   model that actually overflows VRAM were left to Phase 2's A/B, which has now
   run them: [phase2-engine-ab.md](./phase2-engine-ab.md). Single-stream is
   parity, `-np 4` is 27% slower on opencoti, and the overflow path aborts.
+
+## Correction, 2026-09-19: "no flag translation layer is needed" has expired
+
+The conclusion above — *"No flag translation layer is needed beyond `--server`,
+the APE launch form, and `--gpu`"* — was true when it was measured and is not
+true now. It is kept rather than edited, because the way it went stale is the
+lesson.
+
+ollama has since gained `--load-mode {none,dio,auto}`, one flag covering how
+weights are read off disk, and it disables mmap **by default** for a
+llama-server load. So `--load-mode none` is on essentially every argv we build.
+`opencoti-llamafile-0.10.5-c7` predates that merge and still spells it
+`--no-mmap`, and rejects the whole command line:
+
+```
+error: invalid argument: --load-mode
+```
+
+The effect was total: on the first live end-to-end run against a real engine
+(eleven2go, Win11, RTX 3090, CUDA compute 8.6) the opencoti path could not load
+a single model. Discovery, policy and artifact selection were all correct; the
+argv was not. There is now a translation layer, in `Command`.
+
+A second flag failed the same way and is still open: `--cache-type-k-swa` /
+`--cache-type-v-swa` do not exist in c7 either — see bug-034 and mail #107.
+
+**The rule this establishes.** A compatibility claim has a date, and both sides
+move. Before shipping a flag to the engine, probe the pinned artifact rather
+than reading anyone's documentation, ours included:
+
+```sh
+<artifact> --server <flag> <value> --model C:\nonexistent.gguf
+# "no ... file found in zip archive"  -> accepted (parsing got past the flag)
+# "error: invalid argument: <flag>"   -> rejected
+```
+
+Measured this way against c7, on 2026-09-19: `--gpu`, `--no-mmap`,
+`--max-parallel`, `--max-parallel-tps-floor`, `--max-parallel-vram-reserve`,
+`--kv-unified` and `--swa-seq-budget` are accepted; `--load-mode`,
+`--cache-type-k-swa` and `--cache-type-v-swa` are rejected.

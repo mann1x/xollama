@@ -188,7 +188,14 @@ type llamaServerLaunchConfig struct {
 	// being asked for more than that. Zero means the file did not say.
 	//
 	// xollama-hook: launch-config
-	trainContext         int
+	trainContext int
+	// recurrentState is set when the model keeps state that cannot be cut at an
+	// arbitrary prefix, so no pool can ever help it. It is carried rather than
+	// recomputed because it is read from the GGUF, which this struct is built
+	// from and the launch path no longer has. See engine_pool_arch.go.
+	//
+	// xollama-hook: engine-session
+	recurrentState       bool
 	draftType            string
 	projectors           []string
 	mmprojMemory         uint64
@@ -501,7 +508,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 
 	// xollama-hook: launch-config — dynamic slots. See docs/xollama/slots.mdx.
 	slots := resolveSlotPlan(launch.config, launch.numParallel, launch.config.SingleSequenceOnly)
-	args = appendSlotArgs(args, slots, resolvePoolCount(launch.config), usedOpencoti)
+	args = appendSlotArgs(args, slots, effectivePoolCount(launch.config, launch.recurrentState), usedOpencoti)
 	args = appendSWABudgetArgs(args, slots, usedOpencoti)
 
 	// xollama-hook: launch-config — dual chunk attention. See docs/xollama/dca.mdx.
@@ -1115,22 +1122,23 @@ func NewLlamaServerRunner(
 	serverEnvs["LLAMA_MEDIA_MARKER"] = mediaMarker
 
 	launch := llamaServerLaunchConfig{
-		modelPath:    splitModel.modelPath,
-		modelArch:    arch,
-		trainContext: int(f.KV().ContextLength()),
-		draftType:    draftType,
-		projectors:   slices.Clone(splitModel.projectors),
-		mmprojMemory: mmprojMemory,
-		modelLayers:  f.KV().BlockCount() + 1,
-		adapters:     slices.Clone(adapters),
-		opts:         opts,
-		numParallel:  numParallel,
-		kvCacheType:  kvCacheType,
-		embedding:    isEmbedding,
-		config:       config,
-		gpus:         slices.Clone(gpus),
-		gpuLibs:      slices.Clone(gpuLibs),
-		extraEnvs:    cloneStringMap(serverEnvs),
+		modelPath:      splitModel.modelPath,
+		modelArch:      arch,
+		trainContext:   int(f.KV().ContextLength()),
+		recurrentState: modelKeepsRecurrentState(f),
+		draftType:      draftType,
+		projectors:     slices.Clone(splitModel.projectors),
+		mmprojMemory:   mmprojMemory,
+		modelLayers:    f.KV().BlockCount() + 1,
+		adapters:       slices.Clone(adapters),
+		opts:           opts,
+		numParallel:    numParallel,
+		kvCacheType:    kvCacheType,
+		embedding:      isEmbedding,
+		config:         config,
+		gpus:           slices.Clone(gpus),
+		gpuLibs:        slices.Clone(gpuLibs),
+		extraEnvs:      cloneStringMap(serverEnvs),
 	}
 
 	s := &llamaServerRunner{
@@ -1217,14 +1225,19 @@ func (s *llamaServerRunner) startProcess() error {
 	// xollama-hook: engine-session — the pool registry is sized to the same
 	// number the engine was given seats for, and is rebuilt per process: pool
 	// ids belong to the engine that issued them.
-	switch pools := resolvePoolCount(s.launch.config); {
-	case !usedOpencoti || pools <= 0:
+	switch pools := effectivePoolCount(s.launch.config, s.launch.recurrentState); {
+	case !usedOpencoti:
 		s.pools = nil
-	case modelKeepsRecurrentState(s.metadata):
+	// Before the pools <= 0 case, not after it: effectivePoolCount returns 0
+	// for exactly these models, so testing the count first would swallow the
+	// one explanation the operator actually needs.
+	case s.launch.recurrentState && resolvePoolCount(s.launch.config) > 0:
 		// Said once, at load, rather than never: an operator who asked for
 		// pooling is owed the reason it is not happening. See engine_pool_arch.go.
 		slog.Info("shared prefix pools are off for this model: its recurrent state cannot be shared as a prefix",
-			"model", s.modelPath, "architecture", s.metadata.KV().Architecture())
+			"model", s.modelPath, "architecture", s.launch.modelArch)
+		s.pools = nil
+	case pools <= 0:
 		s.pools = nil
 	default:
 		s.pools = newPoolRegistry(pools)
