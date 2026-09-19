@@ -92,10 +92,10 @@ func DerivePoolKey(model string, messages []api.Message, tools api.Tools) string
 // It is bounded by the same number passed to the engine as
 // --polykv-max-pools, because a pool id the engine has no seat for cannot be
 // created. When the bound is reached the least recently used pool is released
-// to make room, which is a decision made here rather than left to the engine's
-// idle sweep: the sweep would drop a pool while xollama still had its id, and
-// the next attach would silently fall back to a full reprocess with nothing
-// saying so.
+// to make room -- before the create that needs the room, see claim -- which is
+// a decision made here rather than left to the engine's idle sweep: the sweep
+// would drop a pool while xollama still had its id, and the next attach would
+// silently fall back to a full reprocess with nothing saying so.
 type poolRegistry struct {
 	mu    sync.Mutex
 	max   int
@@ -132,40 +132,40 @@ func (r *poolRegistry) lookup(key string) (int, bool) {
 	return e.id, true
 }
 
-// claim reserves the right to create a pool for this prefix, so only one of a
-// burst of simultaneous first requests does.
-func (r *poolRegistry) claim(key string) bool {
+// claim reserves a seat for a pool over this prefix, so only one of a burst of
+// simultaneous first requests creates it, and returns the pools that must be
+// released BEFORE the create is attempted.
+//
+// The ordering is not a preference. The engine holds exactly
+// --polykv-max-pools seats, and a create past the last one is refused outright
+// -- "pool capacity exhausted (--polykv-max-pools); release a pool first" --
+// rather than queued, and rather than the engine evicting something itself.
+// Releasing after a successful create, which is what this used to do,
+// therefore never runs at the one moment it was needed: the create it was
+// making room for is the create that failed.
+//
+// Seats are held by live pools AND by creations still in flight, so both count
+// against the bound. When only in-flight creations hold them there is nothing
+// safe to evict -- releasing another request's pool-to-be would move the
+// failure rather than fix it -- so the claim is refused and the prefix is tried
+// again on a later request.
+func (r *poolRegistry) claim(key string) ([]int, bool) {
 	if r == nil || key == "" || r.max <= 0 {
-		return false
+		return nil, false
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if _, ok := r.byKey[key]; ok {
-		return false
+		return nil, false
 	}
 	if r.creating[key] {
-		return false
+		return nil, false
 	}
 	r.creating[key] = true
-	return true
-}
 
-// remember records a created pool and returns any pool ids that must be
-// released to stay within the bound.
-func (r *poolRegistry) remember(key string, id int) []int {
-	if r == nil || key == "" {
-		return nil
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	delete(r.creating, key)
-	r.clock++
-	r.byKey[key] = &poolEntry{id: id, used: r.clock}
-
-	var evict []int
-	for len(r.byKey) > r.max && r.max > 0 {
+	var release []int
+	for len(r.byKey)+len(r.creating) > r.max {
 		var oldestKey string
 		var oldest *poolEntry
 		for k, e := range r.byKey {
@@ -173,10 +173,28 @@ func (r *poolRegistry) remember(key string, id int) []int {
 				oldestKey, oldest = k, e
 			}
 		}
-		evict = append(evict, oldest.id)
+		if oldest == nil {
+			delete(r.creating, key)
+			return nil, false
+		}
+		release = append(release, oldest.id)
 		delete(r.byKey, oldestKey)
 	}
-	return evict
+	return release, true
+}
+
+// remember records a created pool. Room for it was made by claim, before the
+// create ran, so nothing is evicted here.
+func (r *poolRegistry) remember(key string, id int) {
+	if r == nil || key == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	delete(r.creating, key)
+	r.clock++
+	r.byKey[key] = &poolEntry{id: id, used: r.clock}
 }
 
 // abandon drops a claim that did not produce a pool, so a later request may try
@@ -299,13 +317,26 @@ func (s *llamaServerRunner) poolFor(key string) int {
 // this one. Everything it can go wrong with is logged and dropped: a load that
 // cannot pool is a load that works exactly as it did before pooling existed.
 func (s *llamaServerRunner) capturePool(key, sessionID string) {
-	if key == "" || sessionID == "" || !s.usedOpencoti || !s.pools.claim(key) {
+	if key == "" || sessionID == "" || !s.usedOpencoti {
+		return
+	}
+	release, ok := s.pools.claim(key)
+	if !ok {
 		return
 	}
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), poolCreateTimeout)
 		defer cancel()
+
+		// Release first. The seat has to be free before the create, not after
+		// it: see claim.
+		for _, old := range release {
+			if err := s.releasePool(ctx, old); err != nil {
+				slog.Warn("could not release a superseded prefix pool; the engine may now refuse the pool replacing it",
+					"pool_id", old, "error", err)
+			}
+		}
 
 		id, err := s.createPoolFromSession(ctx, sessionID)
 		if err != nil {
@@ -316,11 +347,7 @@ func (s *llamaServerRunner) capturePool(key, sessionID string) {
 		}
 
 		slog.Info("shared prefix pool created", "model", s.modelPath, "pool_id", id)
-		for _, old := range s.pools.remember(key, id) {
-			if err := s.releasePool(ctx, old); err != nil {
-				slog.Warn("could not release a superseded prefix pool", "pool_id", old, "error", err)
-			}
-		}
+		s.pools.remember(key, id)
 	}()
 }
 

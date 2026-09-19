@@ -294,13 +294,44 @@ when `arg.cpp:345` marks them **deprecated and frozen**, does not mention the
 the win on iSWA models. Anyone configuring from that file today would pick a
 deprecated tier and miss the ring.
 
+## G5 leftover: `expect_len` on a pool create
+
+Open, and blocked on the engine rather than on us. Recorded here so it is not
+mistaken for an oversight.
+
+A pool created with `from_session` is capped at nothing, so a pinned pool holds
+the shared prefix **plus the first turn and the first answer** for its whole
+life. Those cells can never be reclaimed and never match anything, because the
+attach only ever shares the prefix. `POST /polykv/pools` takes an `expect_len`
+that would cap the pool at the prefix.
+
+We cannot currently supply the number. On the native chat path the **engine**
+renders the chat template, so the token boundary between the shared prefix and
+the first user turn exists only inside the engine. xollama has the system
+message text and the tool names; it does not have the rendered token offset, and
+the markup that wraps them is the engine's. Tokenizing the system text through
+`/tokenize` would undercount that markup by an unknown amount.
+
+Whether undercounting is merely wasteful or actually wrong is the question put
+to opencoti in mail #105: auto-P computes the share token-exactly on attach, so
+on an attention-only model a bad `expect_len` should cost cells rather than
+correctness — but that is an inference about their engine, not something we have
+from them, and the fork has already been burned once by reasoning from their
+prose. Until they answer, `expect_len` stays out: a pool that wastes cells is a
+known cost, and a pool that truncates state on a model we mis-classified is not.
+
+The clean fix, if it exists, is server side — an `expect_len: -1`, or a create
+that takes a message count instead of a token count — because that puts the
+boundary where the knowledge already is.
+
 ## Order I would fix these in
 
 Updated 2026-09-19. G3, G4 and G7 are closed; G5 is half closed.
 
 1. ~~**G6**~~ — done, `GET /api/engine`.
-2. ~~**G5, the pool half**~~ — done. Needs an end-to-end run against a live
-   engine before it can be called validated.
+2. ~~**G5, the pool half**~~ — done, less `expect_len` (see above, blocked on
+   opencoti). Release is now ordered before create, and pooling is off on models
+   that keep recurrent state, both from their mail #104.
 3. ~~**G1**~~ — done.
 4. **G2** — an argv escape hatch, and only ever an **operator-side** one: an
    environment variable a person sets on their own machine, never a field a

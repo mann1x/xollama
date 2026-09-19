@@ -11,8 +11,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ollama/ollama/api"
+	gguftest "github.com/ollama/ollama/internal/testutil/gguf"
 )
 
 // TestDerivePoolKeyIsNotTheSessionID is the distinction the whole feature rests
@@ -94,11 +96,27 @@ func TestDerivePoolKey(t *testing.T) {
 }
 
 func TestPoolRegistry(t *testing.T) {
+	// claimOrFail takes the seat and asserts nothing had to be released for it.
+	claimOrFail := func(t *testing.T, r *poolRegistry, key string) {
+		t.Helper()
+		release, ok := r.claim(key)
+		if !ok {
+			t.Fatalf("claim(%q) refused", key)
+		}
+		if len(release) != 0 {
+			t.Fatalf("claim(%q) wanted %v released with room to spare", key, release)
+		}
+	}
+	// add is claim + remember, the whole successful creation.
+	add := func(t *testing.T, r *poolRegistry, key string, id int) {
+		t.Helper()
+		claimOrFail(t, r, key)
+		r.remember(key, id)
+	}
+
 	t.Run("remembers and finds", func(t *testing.T) {
 		r := newPoolRegistry(2)
-		if evict := r.remember("a", 7); len(evict) != 0 {
-			t.Errorf("evicted %v with room to spare", evict)
-		}
+		add(t, r, "a", 7)
 		if id, ok := r.lookup("a"); !ok || id != 7 {
 			t.Errorf("lookup = %d, %v, want 7, true", id, ok)
 		}
@@ -107,26 +125,63 @@ func TestPoolRegistry(t *testing.T) {
 		}
 	})
 
-	t.Run("evicts the least recently used at the bound", func(t *testing.T) {
-		// The bound is the number of seats the engine was given. Going over it
-		// would ask for a pool id the engine has nowhere to put.
+	t.Run("the least recently used is released before the create needing its seat", func(t *testing.T) {
+		// The bound is the number of seats the engine was given, and a create
+		// past the last seat is refused rather than queued. So the release has
+		// to come out of claim, before the create -- if it came out of remember
+		// it would run only after a create that, at the bound, cannot succeed.
 		r := newPoolRegistry(2)
-		r.remember("a", 1)
-		r.remember("b", 2)
+		add(t, r, "a", 1)
+		add(t, r, "b", 2)
 		r.lookup("a") // a is now the more recent of the two
 
-		evict := r.remember("c", 3)
-		if !slices.Equal(evict, []int{2}) {
-			t.Fatalf("evicted %v, want [2] — b was the least recently used", evict)
+		release, ok := r.claim("c")
+		if !ok {
+			t.Fatal("claim refused at the bound instead of making room")
+		}
+		if !slices.Equal(release, []int{2}) {
+			t.Fatalf("claim asked to release %v, want [2] — b was the least recently used", release)
 		}
 		if _, ok := r.lookup("b"); ok {
-			t.Error("the evicted pool is still in the registry")
+			t.Error("the released pool is still in the registry")
 		}
+
+		r.remember("c", 3)
 		for _, k := range []string{"a", "c"} {
 			if _, ok := r.lookup(k); !ok {
-				t.Errorf("%q should have survived eviction", k)
+				t.Errorf("%q should have survived", k)
 			}
 		}
+	})
+
+	t.Run("in-flight creations hold seats too", func(t *testing.T) {
+		// A creation that has not returned yet has already taken a seat on the
+		// engine. Counting only live pools would let two creations race for one
+		// seat and lose.
+		r := newPoolRegistry(2)
+		add(t, r, "a", 1)
+		claimOrFail(t, r, "b") // in flight, not yet remembered
+
+		release, ok := r.claim("c")
+		if !ok {
+			t.Fatal("claim refused")
+		}
+		if !slices.Equal(release, []int{1}) {
+			t.Fatalf("claim asked to release %v, want [1] — the in-flight claim on b occupies the other seat", release)
+		}
+	})
+
+	t.Run("a claim is refused when only in-flight creations hold the seats", func(t *testing.T) {
+		// There is nothing safe to evict here: releasing another request's
+		// pool-to-be would move the failure rather than fix it.
+		r := newPoolRegistry(1)
+		claimOrFail(t, r, "a")
+		if _, ok := r.claim("b"); ok {
+			t.Error("granted a seat that only an in-flight creation could have given up")
+		}
+		// and the refusal must not have left b marked as creating
+		r.abandon("a")
+		claimOrFail(t, r, "b")
 	})
 
 	t.Run("one claim wins", func(t *testing.T) {
@@ -141,7 +196,7 @@ func TestPoolRegistry(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				if r.claim("a") {
+				if _, ok := r.claim("a"); ok {
 					mu.Lock()
 					wins++
 					mu.Unlock()
@@ -157,30 +212,26 @@ func TestPoolRegistry(t *testing.T) {
 
 	t.Run("a claim that fails can be retried", func(t *testing.T) {
 		r := newPoolRegistry(1)
-		if !r.claim("a") {
-			t.Fatal("first claim refused")
-		}
-		if r.claim("a") {
+		claimOrFail(t, r, "a")
+		if _, ok := r.claim("a"); ok {
 			t.Fatal("second claim granted while the first was in flight")
 		}
 		r.abandon("a")
-		if !r.claim("a") {
-			t.Error("a prefix whose creation failed must be claimable again, or it can never be pooled")
-		}
+		claimOrFail(t, r, "a")
 	})
 
 	t.Run("an existing pool is not re-claimed", func(t *testing.T) {
 		r := newPoolRegistry(2)
-		r.remember("a", 1)
-		if r.claim("a") {
+		add(t, r, "a", 1)
+		if _, ok := r.claim("a"); ok {
 			t.Error("claimed a prefix that already has a pool")
 		}
 	})
 
 	t.Run("drain empties and reports", func(t *testing.T) {
 		r := newPoolRegistry(4)
-		r.remember("a", 3)
-		r.remember("b", 1)
+		add(t, r, "a", 3)
+		add(t, r, "b", 1)
 
 		if got := r.drain(); !slices.Equal(got, []int{1, 3}) {
 			t.Errorf("drain = %v, want [1 3]", got)
@@ -196,12 +247,10 @@ func TestPoolRegistry(t *testing.T) {
 		if _, ok := r.lookup("a"); ok {
 			t.Error("a nil registry found something")
 		}
-		if r.claim("a") {
+		if _, ok := r.claim("a"); ok {
 			t.Error("a nil registry granted a claim")
 		}
-		if got := r.remember("a", 1); got != nil {
-			t.Errorf("remember on a nil registry = %v", got)
-		}
+		r.remember("a", 1)
 		r.abandon("a")
 		if got := r.drain(); got != nil {
 			t.Errorf("drain on a nil registry = %v", got)
@@ -210,7 +259,7 @@ func TestPoolRegistry(t *testing.T) {
 
 	t.Run("an empty key is never pooled", func(t *testing.T) {
 		r := newPoolRegistry(2)
-		if r.claim("") {
+		if _, ok := r.claim(""); ok {
 			t.Error("claimed the empty prefix")
 		}
 		if _, ok := r.lookup(""); ok {
@@ -396,4 +445,123 @@ func TestPoolCreateResponseIgnoresTheRest(t *testing.T) {
 	if strings.Contains(body, "pool_id") && res.PoolID == 0 {
 		t.Error("the one field that matters was not read")
 	}
+}
+
+// TestCapturePoolReleasesBeforeCreating pins the ordering the engine forces on
+// us: at the pool bound it refuses a create outright rather than making room,
+// so the release for the seat has to reach it FIRST. Asserting on the order of
+// the calls rather than the set of them is the whole point of the test.
+func TestCapturePoolReleasesBeforeCreating(t *testing.T) {
+	stub := &poolStub{payload: `{"pool_id":9}`}
+	s := poolRunner(t, stub) // registry bound is 2
+
+	// Fill both seats, so the third prefix can only be pooled by giving one up.
+	for key, id := range map[string]int{"a": 1, "b": 2} {
+		if _, ok := s.pools.claim(key); !ok {
+			t.Fatalf("claim(%q) refused", key)
+		}
+		s.pools.remember(key, id)
+	}
+	s.pools.lookup("b") // a is now the least recently used
+
+	s.capturePool("c", "xo-abc")
+
+	paths := waitForPoolCalls(t, stub, 2)
+	want := []string{"POST /polykv/pools/1/release", "POST /polykv/pools"}
+	if !slices.Equal(paths, want) {
+		t.Errorf("engine saw\n  %v\nwant\n  %v", paths, want)
+	}
+}
+
+// waitForPoolCalls waits for the background capture goroutine to finish its
+// work, since capturePool deliberately does not block the request that
+// triggered it.
+func waitForPoolCalls(t *testing.T, stub *poolStub, n int) []string {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		stub.mu.Lock()
+		paths := slices.Clone(stub.paths)
+		stub.mu.Unlock()
+
+		if len(paths) >= n {
+			return paths
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("engine saw only %v, want %d calls", paths, n)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestModelKeepsRecurrentState(t *testing.T) {
+	// A pool is a prefix of a per-token cache. A model whose state is a rolling
+	// summary has no such prefix to share, and pooling it wastes a seat while
+	// looking like it works -- so these have to be recognised before a pool is
+	// ever created.
+	for _, tc := range []struct {
+		name string
+		kv   gguftest.KV
+		want bool
+	}{
+		{
+			name: "plain attention",
+			kv:   gguftest.KV{"general.architecture": "llama", "llama.block_count": uint32(4)},
+			want: false,
+		},
+		{
+			name: "an SSM announces itself structurally",
+			kv:   gguftest.KV{"general.architecture": "mamba2", "mamba2.ssm.state_size": uint32(128)},
+			want: true,
+		},
+		{
+			name: "RWKV time-mix",
+			kv:   gguftest.KV{"general.architecture": "rwkv7", "rwkv7.wkv.head_size": uint32(64)},
+			want: true,
+		},
+		{
+			name: "a short convolution counts too",
+			kv:   gguftest.KV{"general.architecture": "lfm2", "lfm2.shortconv.l_cache": uint32(3)},
+			want: true,
+		},
+		{
+			// The braces: an architecture newer than the list, recognised only
+			// because it announces its state the way every SSM does. Without
+			// this the list would have to be right about models that did not
+			// exist when it was written.
+			name: "a hybrid too new for the list",
+			kv: gguftest.KV{
+				"general.architecture":              "someneweng3hybrid",
+				"someneweng3hybrid.ssm.conv_kernel": uint32(4),
+			},
+			want: true,
+		},
+		{
+			// The belt: a hybrid that carries none of the keys above is still
+			// recurrent, and llama.cpp classifies it by name alone.
+			name: "a hybrid known only by name",
+			kv:   gguftest.KV{"general.architecture": "falcon-h1", "falcon-h1.block_count": uint32(4)},
+			want: true,
+		},
+		{
+			// Hyphenation is not cosmetic: the GGUF string and the llama.cpp
+			// enum disagree, and matching the enum would miss the model.
+			name: "a hyphenated architecture string",
+			kv:   gguftest.KV{"general.architecture": "minimax-01", "minimax-01.block_count": uint32(4)},
+			want: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := modelKeepsRecurrentState(loadTestGGUF(t, tc.kv)); got != tc.want {
+				t.Errorf("modelKeepsRecurrentState = %v, want %v", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("no model at all", func(t *testing.T) {
+		if modelKeepsRecurrentState(nil) {
+			t.Error("a model that could not be read is not a reason to refuse pooling")
+		}
+	})
 }

@@ -1217,10 +1217,17 @@ func (s *llamaServerRunner) startProcess() error {
 	// xollama-hook: engine-session — the pool registry is sized to the same
 	// number the engine was given seats for, and is rebuilt per process: pool
 	// ids belong to the engine that issued them.
-	if pools := resolvePoolCount(s.launch.config); usedOpencoti && pools > 0 {
-		s.pools = newPoolRegistry(pools)
-	} else {
+	switch pools := resolvePoolCount(s.launch.config); {
+	case !usedOpencoti || pools <= 0:
 		s.pools = nil
+	case modelKeepsRecurrentState(s.metadata):
+		// Said once, at load, rather than never: an operator who asked for
+		// pooling is owed the reason it is not happening. See engine_pool_arch.go.
+		slog.Info("shared prefix pools are off for this model: its recurrent state cannot be shared as a prefix",
+			"model", s.modelPath, "architecture", s.metadata.KV().Architecture())
+		s.pools = nil
+	default:
+		s.pools = newPoolRegistry(pools)
 	}
 	s.done = make(chan struct{})
 	s.doneErr = nil

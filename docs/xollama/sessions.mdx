@@ -145,7 +145,29 @@ model is placed and evicted against the number it will actually hold — see
 [Concurrent requests](/xollama/slots).
 
 When more distinct prefixes turn up than there are pools, the least recently
-used pool is released to make room.
+used pool is released to make room — released first, then the new one created.
+The engine holds a fixed number of pool seats and refuses a creation past the
+last one rather than making room itself, so the order is the difference between
+the replacement happening and the replacement failing.
+
+### Models that cannot be pooled
+
+Pooling is off, whatever you set, on models that keep **recurrent state** —
+Mamba and RWKV, and the growing family of hybrids that put an SSM, a short
+convolution or a linear-attention block beside the attention ones: Jamba,
+Falcon-H1, Granite hybrid, LFM2, Nemotron-H, Qwen3-Next, Qwen3.5, Kimi Linear
+and their relatives.
+
+The reason is structural. A pool is a *prefix* of a cache, and it works because
+an attention cache is a per-token record that can be cut anywhere. Recurrent
+state is not: it is one rolling summary of everything seen so far, with no
+"first N tokens" to hand out. The engine can share such a state only when the
+match covers it entirely, which a conversation that merely *starts* the same way
+never does.
+
+So the attach would succeed, share nothing, and spend a reserved sequence for
+no benefit — working, as far as anything visible goes. That is worse than off,
+so it is off, and the server log says once at load which model and why.
 
 ### Seeing it
 
