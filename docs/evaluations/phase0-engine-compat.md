@@ -184,3 +184,18 @@ Measured this way against c7, on 2026-09-19: `--gpu`, `--no-mmap`,
 `--max-parallel`, `--max-parallel-tps-floor`, `--max-parallel-vram-reserve`,
 `--kv-unified` and `--swa-seq-budget` are accepted; `--load-mode`,
 `--cache-type-k-swa` and `--cache-type-v-swa` are rejected.
+
+### Follow-up, same day
+
+opencoti confirmed the second finding against their patch chain rather than
+their prose: `--cache-type-k-swa` / `--cache-type-v-swa` are added by patch
+0288, the c7 chain ends at 0244, and c7-r2 is c7 plus the single window-abort
+fix. They are therefore in **no published cut** and first ship in c8. Twenty-one
+other development-tree flags are in the same position; their flags document now
+carries a generated availability table, which it did not when we read it.
+
+The rule survives the correction unchanged, and is worth stating in its strong
+form: **a flag in the vendor's source tree is not a flag in the vendor's
+published binary.** Probe the artifact the pin names. And because a flag probe
+cannot see values, probe those too — `-ctk kvarn3` against a bogus model path
+should fail on the *type*, not on the file.

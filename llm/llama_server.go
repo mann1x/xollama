@@ -504,6 +504,14 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 		return nil, 0, false, fmt.Errorf("this KV cache configuration needs the opencoti engine: %s; set %s=opencoti, or choose a type stock llama.cpp accepts (%s)",
 			why, engine.EnvSelector, strings.Join(stockCacheTypes, ", "))
 	}
+	// The ring exists in opencoti's development tree but not in the cut this
+	// build ships, and that engine rejects the whole command line rather than
+	// ignoring a flag it does not know. Refuse where the setting was made.
+	if kvTypes.KSWA != "" || kvTypes.VSWA != "" {
+		if why := engine.SlidingWindowRingUnavailable(); why != "" {
+			return nil, 0, false, fmt.Errorf("kv.k_swa / kv.v_swa cannot be used: %s", why)
+		}
+	}
 	args = appendKVCacheRingArgs(args, kvTypes, usedOpencoti)
 
 	// xollama-hook: launch-config — dynamic slots. See docs/xollama/slots.mdx.

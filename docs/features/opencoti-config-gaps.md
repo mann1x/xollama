@@ -361,8 +361,13 @@ Three things the measurement found that no amount of reading would have:
 
 1. **`--load-mode` made every opencoti load fail.** Fixed; see the correction
    appended to `phase0-engine-compat.md`.
-2. **`--cache-type-k-swa` / `--cache-type-v-swa` do not exist in c7.** Open,
-   bug-034, mail #107. The split-KV feature cannot work on the pinned engine.
+2. **`--cache-type-k-swa` / `--cache-type-v-swa` do not exist in c7.** Closed,
+   bug-034. opencoti confirmed against the patch chain (#108): added by patch
+   0288, and the c7 chain ends at 0244 — so they are in no published cut and
+   first ship in c8, which has no date. The spelling and the probe were both
+   right; their flags doc described the development tree without saying so.
+   Such a load is now refused up front naming the pinned tag, gated on the pin's
+   cut number so the refusal lifts by itself when we re-pin.
 3. **Pool seats were reserved for models that can never use them.** Fixed by
    `effectivePoolCount`.
 

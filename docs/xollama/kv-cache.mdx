@@ -92,6 +92,21 @@ The ring needs an engine that has a separate short-window cache; stock
 `llama.cpp` has no such flag, so asking for one there is refused the same way as
 an unknown type.
 
+<Warning>
+  **The engine build xollama currently ships cannot do this yet.** The
+  `--cache-type-k-swa` / `--cache-type-v-swa` flags arrive in opencoti **c8**;
+  the pinned cut is c7, and the c7-r2 re-cut is c7 plus one crash fix and
+  nothing else. Setting `k_swa` / `v_swa` is refused at load, naming the build,
+  rather than being sent to an engine that would reject the whole command line
+  over it.
+
+  On this engine `k` and `v` set **both** halves of the cache together, so a
+  quantised global type still reaches the ring — you simply cannot give the ring
+  a *different* type from the global cache. On a sliding-window model that is
+  where most of the memory is, so `{"k": "q8_0", "v": "q8_0"}` is still worth
+  setting; it is the separate, more aggressive ring type that has to wait.
+</Warning>
+
 ## Settings summary
 
 | | Environment | Modelfile | Applies to | Default |
