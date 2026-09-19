@@ -26,10 +26,42 @@ when there is no room waits rather than failing.
 
 <Note>
   The total number of cache cells does not change. Ollama sizes the cache as
-  context × parallel and plans its memory estimate against that, and xollama
-  leaves that alone. What changes is whether one conversation may use all of
-  them, or only its own fixed share.
+  context × parallel, and the engine allocates that same total whether the cells
+  are one shared pool or a fixed split. What changes is whether one conversation
+  may use all of them, or only its own fixed share.
 </Note>
+
+## What the ceiling costs
+
+Almost nothing, on most models — and that is the point. A shared pool of four
+slots holds the same cells as the single slot it replaced, so raising the
+ceiling from one to four buys you three more concurrent conversations without
+buying more memory.
+
+"Almost" is doing some work in that sentence, and it is worth knowing where.
+
+A **sliding-window model** — Gemma-3, Gemma-4 and their relatives — keeps a
+second, much shorter cache beside the main one, holding just the recent window
+for each conversation. That one is *not* shared. Every slot the ceiling allows
+gets its own window, so a ceiling of four makes the short cache roughly four
+times larger, whether or not four conversations ever arrive.
+
+It is bounded: the short cache can never grow past one full context, so the most
+a raised ceiling can cost you is one extra context's worth of cache. But on a
+model with a large window it is real memory, and it is spent at load time.
+
+xollama accounts for this when it decides where a model fits and what to evict.
+The figure it plans against is the **ceiling**, not the slot the model starts on
+— otherwise the plan would describe only the first request, and would go stale
+the moment the engine admitted a second slot and quietly grew into memory that
+had already been promised to something else.
+
+Two practical consequences:
+
+- On a model with no sliding window, raise the ceiling freely. It costs nothing
+  at load and the engine's own brakes decide the rest.
+- On a sliding-window model, a high ceiling is a real memory decision. Raise it
+  in steps and watch what the load actually allocates.
 
 ## Setting it
 
@@ -112,9 +144,4 @@ Ollama's own, unchanged.
   **rolling-KV window** — the feature that spills cache to host RAM instead of
   failing — requires the per-slot split and cannot run alongside it. If you
   depend on rolling-KV, switch dynamic slots off for that model.
-
-  On sliding-window models (Gemma-4 and relatives) each slot also reserves its
-  own sliding window up front, so a high ceiling costs real memory there even
-  though the main pool is shared. Raise the ceiling gradually on those and watch
-  what the load actually allocates.
 </Warning>

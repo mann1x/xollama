@@ -149,9 +149,17 @@ func appendKVCacheRingArgs(args []string, kv kvCacheTypes, usedOpencoti bool) []
 // is using.
 //
 // The total cell count is deliberately NOT changed: ollama sized -c as
-// num_ctx x num_parallel and planned its memory estimate against that, so the
-// same cells are allocated either way. What changes is whether one long
+// num_ctx x num_parallel, and llama.cpp allocates that same product whether the
+// cells are one shared pool or a fixed split. What changes is whether one long
 // conversation may use all of them.
+//
+// "Almost the same" is not "the same", though, and the difference is not in the
+// pool. A sliding-window model keeps a second, short cache that is sized per
+// sequence even when the pool is shared, so raising the ceiling raises that one
+// -- which is why the memory prediction has to be made against the ceiling and
+// not against the live count. PredictServerSlotVRAM in engine_estimate.go is
+// that correction, and it is the reason this plan is resolved twice: once to
+// build the argv, and once, earlier, to predict what the argv will cost.
 type slotPlan struct {
 	// Dynamic is false when this is upstream's fixed split, in which case
 	// nothing below applies and no argument is added.

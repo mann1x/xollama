@@ -3065,14 +3065,18 @@ var deviceFreeRegex = regexp.MustCompile(`using device (\S+)\s+\(.*\)\s+-\s+(\d+
 // component so repeated fit/probe values can be replaced by the final load.
 // xollama-hook: memory-scrape — see docs/features/engine-opencoti-llamafile.md
 //
-// A multi-slot server without --kv-unified -- which ollama never passes --
-// prints its KV lines per stream:
+// A multi-slot server without --kv-unified prints its KV lines per stream:
 //
 //	llama_kv_cache:      CUDA0 KV buffer (stream 0) size =  3584.00 MiB
 //
 // and KVarN caches say "KVarN buffer" rather than "KV buffer". Both were
 // invisible here, so a -np > 1 load silently under-counted its KV: no warning
 // fired, because the model and compute lines still matched.
+//
+// Both shapes still have to be read. Dynamic slots do pass --kv-unified, under
+// which the cells are one pool and the stream suffix goes away -- but that flag
+// reaches only opencoti loads that raised their ceiling, so every other load
+// still prints per stream. The stream group stays optional for that reason.
 //
 // KVarN precedes KV in the alternation: Go's regexp is leftmost-first, so "KV"
 // would match the prefix of "KVarN" and then fail on the following " buffer".

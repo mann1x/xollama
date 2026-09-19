@@ -4346,9 +4346,11 @@ func TestMemoryParsingRevisedAllocationSupersedesWholeBlock(t *testing.T) {
 	}
 }
 
-// A multi-slot server without --kv-unified prints per-stream KV lines, and
-// ollama never passes --kv-unified. The old regex required "buffer size =" and
-// so matched none of them: memGPU lost the whole KV cache while the model and
+// A multi-slot server without --kv-unified prints per-stream KV lines. Dynamic
+// slots pass --kv-unified and so print one unsuffixed line instead, but only on
+// an opencoti load that raised its ceiling -- every other multi-slot load still
+// prints per stream. The old regex required "buffer size =" and so matched none
+// of them: memGPU lost the whole KV cache while the model and
 // compute lines still matched, so no warning fired either. Lines are verbatim
 // from an opencoti -np 4 load of qwen2.5:1.5b on an RTX 3090.
 func TestMemoryParsingCountsPerStreamKVBuffers(t *testing.T) {
