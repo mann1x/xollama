@@ -5,12 +5,24 @@ Written while mapping the user documentation
 where the user-facing half of this lives. This file is the engineering list: what
 a user cannot configure today, why, and what the fix would be.
 
-**The one-line summary.** The engine adapter passes ollama's argv through and
-adds three flags. Everything else opencoti can do is reachable only because the
-subprocess inherits the server's environment and every engine flag has a
-`LLAMA_ARG_*` twin. That channel is server-global, silently inert wherever
+**Status: every gap in this report is closed as of 2026-09-20** (G2 last). The
+sections below keep their original problem statements, each with the closure
+note above it, because what was wrong and why is the part worth being able to
+read back.
+
+**The one-line summary, as written.** The engine adapter passes ollama's argv
+through and adds three flags. Everything else opencoti can do is reachable only
+because the subprocess inherits the server's environment and every engine flag
+has a `LLAMA_ARG_*` twin. That channel is server-global, silently inert wherever
 xollama already passes the explicit flag, and does not exist at all for
 per-request fields.
+
+**What it looks like now.** There are four planes instead of one: the inherited
+environment as before, a per-model `xollama.json` of named fields, per-request
+fields on the engine-session hook, and `XOLLAMA_ENGINE_ARGS` for anything with
+no twin at all. The env channel's two weaknesses are unchanged and always will
+be — it is server-global, and it is inert wherever xollama passes the explicit
+flag — which is why the other three exist.
 
 ## How configuration reaches the engine today
 
@@ -18,8 +30,9 @@ per-request fields.
 |---|---|---|
 | Boot flags | `LLAMA_ARG_*` env twins, inherited via `cmd.Env = os.Environ()` in `SetupLlamaServerCommandEnv` (`llm/llama_server.go`) | Works, server-global |
 | Boot flags xollama already sets | explicit flag beats env twin | **Twin is inert, with no warning** |
-| Per-model | `xollama.json` — `types/xollama/config.go` | Carries `engine` and `draft.spec_type` only |
-| Per-request | none | **No passthrough exists** |
+| Per-model | `xollama.json` — `types/xollama/config.go` | `engine`, `draft`, `kv`, `slots`, `dca`, `flash_attention`, `session` — named fields, checked values, never raw argv (G1) |
+| Per-request | `session_id` / `pool_id` on the engine-session hook | Works (G5) |
+| Flags with no env twin | `XOLLAMA_ENGINE_ARGS`, appended last | Works, server-global, operator-side only (G2) |
 
 `llm/engine/opencoti.go:152` `Command()` adds exactly `--server`,
 `--log-verbosity 5` and `--gpu`, and strips any inherited `--log-verbosity`. It
@@ -68,6 +81,33 @@ tolerates a v2 model. Bump `version` only if the semantics of existing fields
 change.
 
 ## G2 — no argv passthrough
+
+> **Closed, 2026-09-20.** `XOLLAMA_ENGINE_ARGS` is appended verbatim to the
+> engine command line by `appendEngineArgs` (`llm/engine_args.go`), called last
+> in `startLlamaServer` — after every argument xollama and ollama produce, so
+> last-wins puts the operator ahead without this code reordering or removing
+> anything. Unset, it adds nothing, logs nothing and copies nothing, which is
+> what keeps the `XOLLAMA_ENGINE=llamacpp` path byte-identical. What is
+> appended is named at INFO.
+>
+> **No per-model equivalent, by design, and not "not yet".** A model is pulled
+> from a registry and run unread; llama-server's command line can write files
+> to caller-chosen paths and change what gets loaded, so a model able to append
+> to it is a model able to act on the host at pull-and-run time. Model-side
+> settings stay named fields with checked values — see the decision note of
+> 2026-09-19 in `.wolf/cerebrum.md` and G1 above.
+>
+> The refusal list is the other half. `-c`, `-np`, `-ngl`, `-b`, `-ub` feed
+> `PredictServerSlotVRAM`; `-m`, `--host`, `--port` are how the server finds
+> and reuses the runner; `-lv`, `--verbosity`, `--log-disable`, `--log-file`
+> are how it reads the load. Overriding any of those would not break the engine
+> — it would break xollama's model OF the engine, and nothing downstream could
+> detect it. Each is refused by name, in both the `--flag value` and
+> `--flag=value` forms, wherever it appears in the value.
+>
+> User documentation: `docs/xollama/engine-args.mdx`. Guarded by
+> `llm/engine_args_test.go`, including a spare-capacity case that actually
+> fails without the defensive copy.
 
 There is no `XOLLAMA_ENGINE_ARGS` and no per-model equivalent, so any flag
 without an env twin is unreachable. The one that matters is `--override-kv`

@@ -43,6 +43,10 @@ These are the ones xollama sets, so their `LLAMA_ARG_*` twins do nothing:
 
 Anything else is yours.
 
+3. **A flag with no twin at all** — `--override-kv` is the notorious one — is
+   reachable through `XOLLAMA_ENGINE_ARGS`, which is appended to the engine
+   command line verbatim. See [Passing your own engine flags](/xollama/engine-args).
+
 ## KVarN — KV cache compression
 
 The KV cache is usually what runs out first. KVarN is opencoti's current
@@ -209,7 +213,8 @@ any document disagree, `--help` wins.
 | Rolling-KV window and VRAM target | **Yes** |
 | Mixed-KV spilled-tail types (`-ctkt`/`-ctvt`) | **Yes**, no twin conflict |
 | DCA on/off and chunk size | **Yes** |
-| DCA past the model's native context | **No** — no `--override-kv` twin, and `num_ctx` is clamped first |
+| DCA past the model's native context | **Yes** — xollama writes the `--override-kv` itself and the clamp stands aside for it |
+| Any engine flag with no environment twin | **Yes** — `XOLLAMA_ENGINE_ARGS`, appended last; see [Passing your own engine flags](/xollama/engine-args) |
 | Session affinity (`session_id`) | **Yes** — on by default, see [Sessions](/xollama/sessions) |
 | PolyKV pool creation | Boot flags only, and xollama does not set them yet |
 | PolyKV per-request attach | Plumbed and tested; nothing hands out a pool id yet |

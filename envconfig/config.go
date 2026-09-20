@@ -260,6 +260,14 @@ var (
 	// llama.cpp. Off by default: a silent downgrade hides that the engine
 	// could not serve the model at all.
 	EngineFallback = Bool("XOLLAMA_ENGINE_FALLBACK")
+	// EngineArgs are extra llama-server arguments, appended verbatim to the
+	// end of the engine command line. The escape hatch for engine flags with
+	// no LLAMA_ARG_* twin -- `--override-kv` above all. Operator-side only:
+	// this is never read from a model, because a model that could append to
+	// llama-server's argv could act on the machine that pulled it. Flags the
+	// scheduler's memory accounting and process handling depend on are refused
+	// by name rather than silently allowed to break it; see llm/engine_args.go.
+	EngineArgs = String("XOLLAMA_ENGINE_ARGS")
 	// SessionAffinity asks the engine to send a conversation back to the slot
 	// that already holds its KV, instead of letting the engine choose a slot
 	// by its own heuristics. On by default -- returning to your own cache is
@@ -410,6 +418,7 @@ func AsMap() map[string]EnvVar {
 		"XOLLAMA_ENGINE":              {"XOLLAMA_ENGINE", Engine(), "Inference engine for GGML loads: auto (default), opencoti, or llamacpp"},
 		"XOLLAMA_ENGINE_PATH":         {"XOLLAMA_ENGINE_PATH", EnginePath(), "Path to an opencoti-llamafile artifact, overriding the search"},
 		"XOLLAMA_ENGINE_FALLBACK":     {"XOLLAMA_ENGINE_FALLBACK", EngineFallback(), "Retry a failed opencoti load on stock llama.cpp (default false: fail instead of downgrading silently)"},
+		"XOLLAMA_ENGINE_ARGS":         {"XOLLAMA_ENGINE_ARGS", EngineArgs(), "Extra llama-server arguments appended to the engine command line, for flags with no env twin"},
 		"XOLLAMA_SESSION_AFFINITY":    {"XOLLAMA_SESSION_AFFINITY", SessionAffinity(), "Return a conversation to the slot holding its KV, on the opencoti engine (default true)"},
 		"XOLLAMA_SESSION_POOL":        {"XOLLAMA_SESSION_POOL", SessionPool(), "Share one copy of a common prefix between conversations, on the opencoti engine (default false)"},
 		"XOLLAMA_K_CACHE_TYPE":        {"XOLLAMA_K_CACHE_TYPE", KCacheType(), "KV cache type for keys, overriding OLLAMA_KV_CACHE_TYPE for that half"},
