@@ -27,21 +27,32 @@ func TestCommittedPinParses(t *testing.T) {
 		t.Errorf("Channel = %q, want %q or %q", p.Channel, ChannelRelease, ChannelDev)
 	}
 
+	// An arch may carry one bin and one dso: a development snapshot ships the
+	// GPU payload beside the engine instead of embedding it. A second row of
+	// the SAME kind is still a mistake, because the lookup would return
+	// whichever came first.
 	seen := map[string]bool{}
+	bins := 0
 	for _, a := range p.Assets {
-		if a.Kind != "bin" {
-			t.Errorf("%s: kind = %q, want bin (dso rows are deliberately not carried)", a.Arch, a.Kind)
+		if a.Kind != "bin" && a.Kind != "dso" {
+			t.Errorf("%s: kind = %q, want bin or dso", a.Arch, a.Kind)
+		}
+		if a.Kind == "bin" {
+			bins++
 		}
 		if !sha256Re.MatchString(a.SHA256) {
 			t.Errorf("%s: sha256 = %q, want 64 lowercase hex", a.Arch, a.SHA256)
 		}
-		if seen[a.Arch] {
-			t.Errorf("%s: duplicate arch row; Asset() would return whichever came first", a.Arch)
+		if seen[a.Kind+" "+a.Arch] {
+			t.Errorf("%s: duplicate %s row; the lookup would return whichever came first", a.Arch, a.Kind)
 		}
-		seen[a.Arch] = true
+		seen[a.Kind+" "+a.Arch] = true
 		if strings.HasPrefix(a.Path, "/") || strings.Contains(a.Path, "..") {
 			t.Errorf("%s: path %q must be a plain repo-relative path", a.Arch, a.Path)
 		}
+	}
+	if bins == 0 {
+		t.Error("the pin carries no bin row; a dso alone is not an engine")
 	}
 }
 

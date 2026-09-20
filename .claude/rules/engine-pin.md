@@ -39,6 +39,9 @@ paths:
   beside the binary). Release bins embed their payloads and carry no `dso` row;
   a dev snapshot is a bare APE that needs one. Address them with `pin.Asset`
   (bin rows only) and `pin.DSO`; build offline with `-DLOCAL_DSO_FILE=<payload>`.
+  One row per kind per arch, and at least one `bin` overall —
+  `TestCommittedPinParses` in `llm/engine/pin_test.go` fails a duplicate
+  `<kind> <arch>` pair and a pin that carries only `dso` rows.
 - Moving to a new artifact is one commit: `repo`, `rev`, `tag`, `channel`, every
   `sha256`, and the `feature` and `accel` rows corrected to what the new bytes
   carry.
