@@ -129,12 +129,37 @@ the full 512 tokens.
 > `bufferSizeRegex` did not match, so `memGPU` was short by 3584 MiB of CUDA0 KV
 > and the scheduler planned against a wrong figure. No warning fired, because
 > the model and compute lines still matched. The parser is fixed (`memory-scrape`
-> in the hook Registry); the number is not re-taken.
+> in the hook Registry).
+>
+> **Re-taken 2026-09-20**, with that parser fixed, run as the `ollama` user (see
+> `.claude/rules/solidpc-testing.md`). Raw:
+> `/srv/ml/xollama-phase2/as-ollama/multislot/`.
+>
+> | engine | wall | aggregate (tok/s) | vs llama.cpp | per slot (tok/s) |
+> |---|---|---|---|---|
+> | llama.cpp | 3.27 s | 625.6 | — | 159.2, 159.2, 159.2, 157.8 |
+> | opencoti c7 **r2** | 5.13 s | 399.2 | **−36.2%** | 106.0, 104.6, 104.6, 104.6 |
+> | opencoti **build 18** (c8 line) | 3.25 s | **630.1** | **+0.7%** | 162.7, 162.5, 162.1, 162.3 |
+>
+> Two things change here. The provisional −27% was **optimistic**: measured
+> honestly on the shipped release pin the concurrency deficit is −36.2%, not
+> −27%. And it is **gone on the development line** — build 18 carries opencoti's
+> patch 0311, and four slots reach parity with stock llama.cpp, marginally ahead
+> of it and within noise of it.
+>
+> So the one real performance difference this A/B found is a property of the c7
+> release cut, not of the engine. It is the strongest single argument for the
+> move to c8: on the release pin xollama serves four concurrent requests at
+> roughly two thirds of stock throughput; on the line we are integrating
+> towards, it does not.
 
 This is the one real performance difference the A/B found: single-stream parity
 does **not** carry over to concurrency. All four opencoti slots reported an
-identical 111.34 tok/s, which is consistent with stricter lockstep batching.
-Worth understanding before Phase 3 exposes any knob that changes batching.
+identical 111.34 tok/s, which is consistent with stricter lockstep batching —
+and the re-take above shows the same signature on r2 (104.6 x3) and its
+disappearance on build 18, where the four slots sit at 162 each, above stock's
+159. The lockstep is still there; what changed is that it no longer costs
+anything.
 
 ## 4. Gemma-4 parsers
 

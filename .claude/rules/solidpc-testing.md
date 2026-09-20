@@ -39,6 +39,9 @@ paths:
   lasts. Check `nvidia-smi --query-compute-apps` first, keep big arms short, and
   confirm VRAM came back afterwards — the harness already kills the whole
   process group and sleeps 5 s between arms for this reason.
+- **A provisional number is not a measurement.** Re-taken as `ollama` with the
+  `bufferSizeRegex` fix, the multislot deficit is −36.2% on the c7 r2 pin and
+  gone on build 18. Append a re-take to `docs/evaluations/phase2-engine-ab.md`.
 - Repairing the cache if it does get broken:
 
   ```sh
