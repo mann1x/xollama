@@ -8,9 +8,15 @@ engine.
 > **Status.** `main` is upstream `v0.34.2` with all twelve carried patches
 > replayed onto it — see
 > [`docs/protocols/CARRIED-PATCHES.md`](docs/protocols/CARRIED-PATCHES.md).
-> The engine swap is verified but not yet implemented: Phase 0 passed
-> ([`docs/evaluations/phase0-engine-compat.md`](docs/evaluations/phase0-engine-compat.md)),
-> and the design is in [`docs/features/`](docs/features/).
+> The engine swap is implemented and has been run against a live engine:
+> routing and policy, the pinned artifact and its build-time fetch, argv
+> translation, dynamic slots, engine sessions and shared prefix pools. The
+> pinned engine is opencoti c7 r2 (`llm/engine/pin.txt`); a `dev` branch pins a
+> development snapshot for integration testing. With `XOLLAMA_ENGINE=llamacpp`
+> and no xollama flags the launch is byte-identical to upstream, which is what
+> keeps the A/B honest. Measurements are in
+> [`docs/evaluations/`](docs/evaluations/) and the designs in
+> [`docs/features/`](docs/features/).
 
 ## Why
 
