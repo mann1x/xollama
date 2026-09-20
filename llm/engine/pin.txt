@@ -35,6 +35,10 @@
 #     channel release | dev    which line this pin follows; required, because a
 #                              pin that forgot to say would read as a release
 #     feature <name>           zero or more; a capability this artifact HAS
+#     accel   <arch> <backend>  zero or more; a backend this artifact can
+#                               actually accelerate on that arch. Backend is
+#                               spelled as ml.DeviceID.Library does it: CUDA,
+#                               Vulkan, CPU, ROCm, Metal.
 #
 #   Why the rev is a commit and never a branch. opencoti re-cuts a release IN
 #   PLACE: the c7 r2 re-cut replaced all five host binaries under their exact
@@ -59,18 +63,29 @@
 #                       iSWA cache and the separate ring type is refused up
 #                       front. See llm/engine/capability.go.
 #
+#   Why acceleration is declared too. The tested matrix in policy.go is a claim
+#   about the ENGINE; a pin is a claim about the BYTES, and they are not the
+#   same fact. A release bin embeds its GPU payloads and self-extracts, so it
+#   accelerates everything it was built for. A dev snapshot is a bare APE that
+#   accelerates only what its dso row provides -- Linux x86_64 CUDA, and
+#   nothing else. Routing a Vulkan or an aarch64 load to that artifact would
+#   not fail; it would be served on the CPU, silently, and a silent drop to CPU
+#   is the one outcome that cannot be diagnosed from the outside. So routing is
+#   the tested matrix INTERSECTED with these rows (see pinUncovered).
+#
 #   Asset rows (4 whitespace-separated fields):
 #     <kind> <arch> <hf-path> <sha256>
-#       kind   bin (the engine) -- dso rows are opencoti's side-load story and
-#              are deliberately NOT carried here: the x86_64 and aarch64
-#              artifacts embed their own GPU payloads and self-extract.
+#       kind   bin  the engine itself; every packaged arch needs one
+#              dso  a side-loadable GPU payload, staged beside the binary. The
+#                   release bins below embed their payloads and self-extract,
+#                   so they carry no dso rows; a dev snapshot does.
 #       arch   x86_64 | aarch64 | win-x86_64 | win-x86_64-gpu | universal
 #       sha256 verified by CMake at fetch time; a mismatch fails the build
 #              rather than shipping an unknown binary.
 #
 # To move to a new artifact: bump repo/rev/tag/channel, replace the sha256 of
-# every row, and correct the feature rows to what the new bytes actually carry,
-# in one commit. The digests below were verified against the published
+# every row, and correct the feature and accel rows to what the new bytes
+# actually carry, in one commit. The digests below were verified against the published
 # artifacts.
 # ---------------------------------------------------------------------------
 
@@ -93,3 +108,15 @@ bin  aarch64         opencoti-llamafile-0.10.5-c7-aarch64.llamafile             
 bin  win-x86_64      opencoti-llamafile-0.10.5-c7-win-x86_64.llamafile.exe      e7308ebec853f69bdce79578ea4f077ef6835244c3de9c185af5dd547bde39d2
 bin  win-x86_64-gpu  opencoti-llamafile-0.10.5-c7-win-x86_64-gpu.llamafile.exe  19ff1d87292bb9147793b43651631b4f003c5541c6a5d35096ca8883a2a4d0f6
 bin  universal       opencoti-llamafile-0.10.5-c7-universal.llamafile.exe       002d7ee826db5d446001ef3cddfbe8615b9979a1dff61fc46938da48f505090a
+
+# What these bins embed (c7 F6 V2: the x86_64, win-x86_64-gpu and universal
+# artifacts carry the Vulkan payload as well as CUDA; aarch64 is CUDA sbsa).
+# win-x86_64 is the bare APE with no GPU payload at all, so it gets no rows and
+# a Windows host that resolves to it routes accelerators to llama.cpp.
+accel  x86_64          CUDA
+accel  x86_64          Vulkan
+accel  aarch64         CUDA
+accel  win-x86_64-gpu  CUDA
+accel  win-x86_64-gpu  Vulkan
+accel  universal       CUDA
+accel  universal       Vulkan

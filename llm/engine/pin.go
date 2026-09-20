@@ -20,7 +20,7 @@ var pinText string
 
 // Asset is one published engine artifact.
 type Asset struct {
-	Kind   string // "bin"
+	Kind   string // "bin" (the engine) or "dso" (a side-loaded GPU payload)
 	Arch   string // x86_64 | aarch64 | win-x86_64 | win-x86_64-gpu | universal
 	Path   string // path within the Hugging Face repo
 	SHA256 string
@@ -40,7 +40,19 @@ type Pin struct {
 	// Features are the engine capabilities this artifact carries, named
 	// explicitly. See the note on feature directives in pin.txt.
 	Features []string
-	Assets   []Asset
+	// Accels are the backends this artifact can actually accelerate, per arch.
+	// A release bin embeds its payloads; a dev snapshot is a bare APE that
+	// accelerates only what its dso rows provide. Declaring it is what stops
+	// routing handing a GPU load to an engine that would quietly serve it on
+	// the CPU.
+	Accels []Accel
+	Assets []Asset
+}
+
+// Accel is one (arch, backend) pair the pinned artifact accelerates.
+type Accel struct {
+	Arch    string
+	Backend Backend
 }
 
 // Channel values.
@@ -48,6 +60,15 @@ const (
 	ChannelRelease = "release"
 	ChannelDev     = "dev"
 )
+
+// Accelerates reports whether the pinned artifact carries a payload that runs
+// this backend on this arch. CPU is always true: the host binary is the engine.
+func (p Pin) Accelerates(arch string, b Backend) bool {
+	if b == BackendCPU {
+		return true
+	}
+	return slices.Contains(p.Accels, Accel{Arch: arch, Backend: b})
+}
 
 // HasFeature reports whether the pinned artifact declares a capability.
 func (p Pin) HasFeature(name string) bool {
@@ -86,7 +107,16 @@ func ParsePin(text string) (Pin, error) {
 			case "feature":
 				p.Features = append(p.Features, fields[1])
 			}
-		case "bin":
+		case "accel":
+			if len(fields) != 3 {
+				return Pin{}, fmt.Errorf("pin.txt:%d: accel row needs <arch> <backend>, got %d fields", n+1, len(fields)-1)
+			}
+			b := Backend(fields[2])
+			if !slices.Contains(knownBackends, b) {
+				return Pin{}, fmt.Errorf("pin.txt:%d: accel backend %q is not one of %v", n+1, fields[2], knownBackends)
+			}
+			p.Accels = append(p.Accels, Accel{Arch: fields[1], Backend: b})
+		case "bin", "dso":
 			if len(fields) != 4 {
 				return Pin{}, fmt.Errorf("pin.txt:%d: asset row needs <kind> <arch> <path> <sha256>, got %d fields", n+1, len(fields))
 			}
@@ -119,6 +149,13 @@ func ParsePin(text string) (Pin, error) {
 	if len(p.Assets) == 0 {
 		return Pin{}, fmt.Errorf("pin.txt: no asset rows")
 	}
+	// Claiming acceleration for an arch whose engine is not shipped is the one
+	// inconsistency the format can catch on its own.
+	for _, a := range p.Accels {
+		if _, ok := p.Asset(a.Arch); !ok {
+			return Pin{}, fmt.Errorf("pin.txt: accel %s %s has no bin row for %s", a.Arch, a.Backend, a.Arch)
+		}
+	}
 	return p, nil
 }
 
@@ -129,10 +166,23 @@ func isCommitRev(rev string) bool {
 	return strings.TrimLeft(rev, "0123456789abcdef") == ""
 }
 
-// Asset returns the row for an arch label.
+// Asset returns the bin row for an arch label. dso rows are addressed with
+// DSO: an arch can have both, and the engine is always the bin.
 func (p Pin) Asset(arch string) (Asset, bool) {
 	for _, a := range p.Assets {
-		if a.Arch == arch {
+		if a.Kind == "bin" && a.Arch == arch {
+			return a, true
+		}
+	}
+	return Asset{}, false
+}
+
+// DSO returns the side-loadable payload for an arch label, if the pin carries
+// one. Release bins embed their payloads and self-extract, so this is normally
+// empty; a dev snapshot ships the GPU payload beside the binary instead.
+func (p Pin) DSO(arch string) (Asset, bool) {
+	for _, a := range p.Assets {
+		if a.Kind == "dso" && a.Arch == arch {
 			return a, true
 		}
 	}

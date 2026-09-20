@@ -40,6 +40,8 @@ set(_channel "")
 set(_tag "")
 set(_asset_path "")
 set(_asset_sha "")
+set(_dso_path "")
+set(_dso_sha "")
 
 file(STRINGS "${PIN_FILE}" _lines)
 foreach(_line IN LISTS _lines)
@@ -72,11 +74,24 @@ foreach(_line IN LISTS _lines)
         # Declared engine capabilities. Only the Go side gates on these; they
         # are read here so that adding one cannot fail the build, and so the
         # two parsers stay able to read the same file. See llm/engine/pin.go.
+    elseif(_key STREQUAL "accel" AND _n EQUAL 3)
+        # Declared accelerator coverage. Routing-time fact, gated in Go; read
+        # here only so an accel row cannot fail the build.
     elseif(_key STREQUAL "bin" AND _n EQUAL 4)
         list(GET _fields 1 _row_arch)
         if(_row_arch STREQUAL "${ARCH}")
             list(GET _fields 2 _asset_path)
             list(GET _fields 3 _asset_sha)
+        endif()
+    elseif(_key STREQUAL "dso" AND _n EQUAL 4)
+        # Side-loadable GPU payload. A release bin embeds its own and carries
+        # no dso row; a dev snapshot is a bare APE and this is the only way it
+        # reaches a GPU. It is staged beside the binary because the
+        # executable's own directory wins the engine's DSO search.
+        list(GET _fields 1 _row_arch)
+        if(_row_arch STREQUAL "${ARCH}")
+            list(GET _fields 2 _dso_path)
+            list(GET _fields 3 _dso_sha)
         endif()
     else()
         message(FATAL_ERROR "opencoti-fetch: cannot parse pin line: ${_line}")
@@ -178,5 +193,53 @@ file(CHMOD "${_dest}" PERMISSIONS
     OWNER_READ OWNER_WRITE OWNER_EXECUTE
     GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
+
+# Stage the side-loadable GPU payload, when the pin carries one for this arch.
+# Without it a dev snapshot still runs -- on the CPU, saying nothing -- which is
+# why the Go side refuses to route accelerators to a pin with no accel rows.
+if(NOT _dso_path STREQUAL "")
+    get_filename_component(_dso_name "${_dso_path}" NAME)
+    set(_dso_dest "${DEST_DIR}/${_dso_name}")
+
+    set(_dso_have FALSE)
+    if(EXISTS "${_dso_dest}")
+        _opencoti_verify("${_dso_dest}" "${_dso_sha}" _dso_have)
+    endif()
+    if(NOT _dso_have AND DEFINED LOCAL_DSO_FILE AND NOT "${LOCAL_DSO_FILE}" STREQUAL "")
+        if(NOT EXISTS "${LOCAL_DSO_FILE}")
+            message(FATAL_ERROR "opencoti-fetch: LOCAL_DSO_FILE=${LOCAL_DSO_FILE} does not exist")
+        endif()
+        _opencoti_verify("${LOCAL_DSO_FILE}" "${_dso_sha}" _dso_ok)
+        if(NOT _dso_ok)
+            file(SHA256 "${LOCAL_DSO_FILE}" _dso_got)
+            message(FATAL_ERROR
+                "opencoti-fetch: ${LOCAL_DSO_FILE} does not match the dso pin for ${ARCH}.\n"
+                "  expected ${_dso_sha}\n"
+                "  actual   ${_dso_got}")
+        endif()
+        file(COPY_FILE "${LOCAL_DSO_FILE}" "${_dso_dest}" ONLY_IF_DIFFERENT)
+        set(_dso_have TRUE)
+    endif()
+    if(NOT _dso_have)
+        set(_dso_url "https://huggingface.co/${_repo}/resolve/${_rev}/${_dso_path}")
+        message(STATUS "opencoti-llamafile ${_tag} (${ARCH}): fetching ${_dso_url}")
+        file(DOWNLOAD "${_dso_url}" "${_dso_dest}.part"
+            EXPECTED_HASH "SHA256=${_dso_sha}"
+            TLS_VERIFY ON
+            SHOW_PROGRESS
+            STATUS _dso_status)
+        list(GET _dso_status 0 _dso_code)
+        if(NOT _dso_code EQUAL 0)
+            list(GET _dso_status 1 _dso_message)
+            file(REMOVE "${_dso_dest}.part")
+            message(FATAL_ERROR
+                "opencoti-fetch: could not fetch ${_dso_url}\n"
+                "  ${_dso_message}\n"
+                "  Build offline with -DLOCAL_DSO_FILE=<payload>.")
+        endif()
+        file(RENAME "${_dso_dest}.part" "${_dso_dest}")
+    endif()
+    message(STATUS "opencoti-llamafile ${_tag} (${ARCH}) GPU payload staged at ${_dso_dest}")
+endif()
 
 message(STATUS "opencoti-llamafile ${_tag}${_chan_note} (${ARCH}) staged at ${_dest}")

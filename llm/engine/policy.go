@@ -47,6 +47,12 @@ const (
 	BackendMetal  Backend = "Metal"
 )
 
+// knownBackends is every backend name the pin format will accept in an accel
+// row, so a typo is a parse error rather than an arch that quietly accelerates
+// nothing. ROCm and Metal are here because the spelling is valid, not because
+// opencoti-llamafile is tested on them.
+var knownBackends = []Backend{BackendCPU, BackendCUDA, BackendVulkan, BackendROCm, BackendMetal}
+
 type support struct {
 	Platform
 	Backend Backend
@@ -133,6 +139,9 @@ func deviceUnsupported(p Platform, d Device) string {
 	if !Supports(p, d.Backend) {
 		return fmt.Sprintf("opencoti-llamafile is not tested on %s/%s with %s", p.OS, p.Arch, d.Backend)
 	}
+	if reason := pinUncovered(p, d.Backend); reason != "" {
+		return reason
+	}
 	// Unknown capability (0) is treated as unsupported rather than assumed
 	// modern. Routing wrongly to llama.cpp costs the engine's features and
 	// says so in the log; routing wrongly to opencoti costs a silent drop to
@@ -144,6 +153,40 @@ func deviceUnsupported(p Platform, d Device) string {
 		return fmt.Sprintf(
 			"opencoti-llamafile carries no CUDA code below compute %d.%d and this device is %d.%d",
 			minCUDACompute/10, minCUDACompute%10, d.ComputeMajor, d.ComputeMinor)
+	}
+	return ""
+}
+
+// pinUncovered returns the reason the PINNED artifact cannot serve this
+// backend here, or "" when it can.
+//
+// The tested matrix is a claim about the engine; the pin is a claim about the
+// bytes we actually ship, and the two are not the same fact. A dev snapshot is
+// a bare APE whose only GPU payload is a Linux x86_64 CUDA dso, so on the
+// branch that pins one, every other accelerator has to route to llama.cpp.
+// Without this it would route to opencoti and be served on the CPU, silently.
+// loadPin is DefaultPin behind a seam, so a test can route against a pin other
+// than the one committed on this branch. Nothing else swaps it.
+var loadPin = DefaultPin
+
+func pinUncovered(p Platform, b Backend) string {
+	pin, err := loadPin()
+	if err != nil {
+		return fmt.Sprintf("the engine pin does not parse (%v)", err)
+	}
+	return pinUncoveredIn(pin, p, b)
+}
+
+func pinUncoveredIn(pin Pin, p Platform, b Backend) string {
+	arch, err := PackageArch(p.OS, p.Arch)
+	if err != nil {
+		return fmt.Sprintf("no opencoti-llamafile artifact is packaged for %s/%s", p.OS, p.Arch)
+	}
+	if _, ok := pin.Asset(arch); !ok {
+		return fmt.Sprintf("the pinned engine %s ships no %s artifact", pin.Tag, arch)
+	}
+	if !pin.Accelerates(arch, b) {
+		return fmt.Sprintf("the pinned engine %s (channel %s) carries no %s payload for %s", pin.Tag, pin.Channel, b, arch)
 	}
 	return ""
 }
