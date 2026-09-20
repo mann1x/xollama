@@ -522,7 +522,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 
 	// xollama-hook: launch-config — dynamic slots. See docs/xollama/slots.mdx.
 	slots := resolveSlotPlan(launch.config, launch.numParallel, launch.config.SingleSequenceOnly)
-	args = appendSlotArgs(args, slots, resolvePoolCount(launch.config), usedOpencoti)
+	args = appendSlotArgs(args, slots, effectivePoolCount(launch.config, len(launch.projectors) > 0), usedOpencoti)
 	args = appendSWABudgetArgs(args, slots, usedOpencoti)
 
 	// xollama-hook: launch-config — dual chunk attention. See docs/xollama/dca.mdx.
@@ -1239,8 +1239,15 @@ func (s *llamaServerRunner) startProcess() error {
 	// xollama-hook: engine-session — the pool registry is sized to the same
 	// number the engine was given seats for, and is rebuilt per process: pool
 	// ids belong to the engine that issued them.
-	switch pools := resolvePoolCount(s.launch.config); {
+	switch pools := effectivePoolCount(s.launch.config, len(s.launch.projectors) > 0); {
 	case !usedOpencoti:
+		s.pools = nil
+	// Before the pools <= 0 case: effectivePoolCount returns 0 for exactly
+	// this, so testing the count first would swallow the one explanation an
+	// operator who asked for pooling actually needs.
+	case len(s.launch.projectors) > 0 && resolvePoolCount(s.launch.config) > 0:
+		slog.Info("shared prefix pools are off for this model: the engine does not support them on a multimodal load",
+			"model", s.modelPath)
 		s.pools = nil
 	case pools <= 0:
 		s.pools = nil
@@ -1251,7 +1258,7 @@ func (s *llamaServerRunner) startProcess() error {
 		// Completion path, where it cannot. An operator watching for pools on
 		// a hybrid model is owed that. See engine_pool_arch.go.
 		if s.launch.recurrentState {
-			slog.Info("shared prefix pools on this model are built from chat requests only: its recurrent state is shared only as a whole, so the pool has to stop exactly at the template",
+			slog.Info("shared prefix pools on this model need an exact prefix: its recurrent state is shared only as a whole, so a pool is created only where the template boundary can be measured",
 				"model", s.modelPath, "architecture", s.launch.modelArch)
 		}
 		s.pools = newPoolRegistry(pools)
@@ -1882,7 +1889,7 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 	// a pool is built from. ollama rendered this prompt, so it is handed over
 	// as it stands. It happens after the response, in the background, and can
 	// only fail quietly. See engine_pool.go.
-	pooled := poolSource{prompt: req.Prompt}
+	pooled := poolSource{prompt: req.Prompt, probes: req.PoolProbes}
 	defer func() {
 		if err == nil {
 			s.capturePool(req.PoolKey, pooled)

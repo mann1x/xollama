@@ -116,7 +116,7 @@ func chatWith(question string) *ChatRequest {
 func TestTemplateBoundaryStopsWhereTheConversationStarts(t *testing.T) {
 	s, _ := templateRunner(t, false)
 
-	boundary, err := s.templateBoundary(t.Context(), chatWith("What is the capital of France"))
+	boundary, err := s.templateBoundary(t.Context(), poolSource{chat: chatWith("What is the capital of France")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestTemplateBoundaryStopsWhereTheConversationStarts(t *testing.T) {
 	}
 
 	var eng templateEngine
-	for _, probe := range templateProbes {
+	for _, probe := range PoolProbeContents {
 		tok := eng.tokenize(probe)[0]
 		for i, got := range boundary {
 			if got == tok {
@@ -183,12 +183,12 @@ func TestPoolStopsAtTheTemplateNotAtWhatTwoUsersHappenedToShare(t *testing.T) {
 	}
 }
 
-// TestRecurrentModelIsNotPooledFromACompletion guards the one path where the
-// boundary cannot be measured. ollama renders a completion prompt somewhere
-// this code cannot reach, so the only prefix available is what two
-// conversations happened to share -- exactly the thing that cannot be trusted
-// on a model that shares state only as a whole.
-func TestRecurrentModelIsNotPooledFromACompletion(t *testing.T) {
+// TestRecurrentModelIsNotPooledWithoutAMeasuredBoundary guards the case where
+// nothing can say where the template stops: a prompt rendered elsewhere, with
+// no probe renderings carried in. The only prefix available is then what two
+// conversations happened to share, which is exactly what cannot be trusted on
+// a model that shares its state only as a whole.
+func TestRecurrentModelIsNotPooledWithoutAMeasuredBoundary(t *testing.T) {
 	s, stub := templateRunner(t, true)
 
 	prefix := longSystem()
@@ -204,6 +204,55 @@ func TestRecurrentModelIsNotPooledFromACompletion(t *testing.T) {
 		if strings.Contains(p, "/polykv/pools") {
 			t.Fatalf("created a pool for a recurrent model from a completion: %v", paths)
 		}
+	}
+}
+
+// TestPoolStopsAtTheTemplateOnTheOllamaRenderedPath is the path this feature
+// actually runs on, and the one a live run caught being excluded.
+//
+// ollama renders the prompt itself for any model with a renderer, a parser,
+// harmony or a Modelfile TEMPLATE -- which is most of them -- and calls the
+// completion path. The engine's own template is then the wrong ruler, so the
+// server package renders the probes against ollama's template and carries them
+// in. Same overshoot, same trim, on the path that matters.
+func TestPoolStopsAtTheTemplateOnTheOllamaRenderedPath(t *testing.T) {
+	var eng templateEngine
+
+	render := func(question string) string {
+		return eng.render([]message{
+			{Role: "system", Content: longSystem()},
+			{Role: "user", Content: question},
+		})
+	}
+	probes := make([]string, 0, len(PoolProbeContents))
+	for _, p := range PoolProbeContents {
+		probes = append(probes, render(p))
+	}
+
+	s, stub := templateRunner(t, true) // recurrent: the exacting case
+
+	s.capturePool("k", poolSource{prompt: render("What is the capital of France"), probes: probes})
+	waitForPoolCalls(t, stub, 1)
+	s.capturePool("k", poolSource{prompt: render("What is two plus two"), probes: probes})
+
+	if calls := polykvCalls(t, stub, 1); calls[0] != "POST /polykv/pools" {
+		t.Fatalf("engine saw %v, want a pool create on the ollama-rendered path", calls)
+	}
+
+	var created struct {
+		Tokens []int `json:"tokens"`
+	}
+	stub.mu.Lock()
+	bodies := append([]string(nil), stub.bodies...)
+	stub.mu.Unlock()
+	for _, b := range bodies {
+		if strings.Contains(b, `"tokens"`) {
+			_ = json.Unmarshal([]byte(b), &created)
+		}
+	}
+	const wantTemplate = 1 + 300 + 1
+	if len(created.Tokens) != wantTemplate {
+		t.Errorf("pooled %d tokens, want %d", len(created.Tokens), wantTemplate)
 	}
 }
 
