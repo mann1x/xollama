@@ -172,6 +172,16 @@ func TestKnownDefectsMatchThePinnedArtifact(t *testing.T) {
 		t.Fatalf("the compiled-in engine pin does not parse: %v", err)
 	}
 
+	// This is a release-channel invariant. A development pin deliberately
+	// carries different bytes -- build 18 of the c7 dev line includes patch
+	// 0253, which is the fix for the row below -- and the rows describing the
+	// release artifact must not be deleted just because a dev branch is
+	// pointed somewhere else. They are inert there: a row can only ever speak
+	// when its sha256 matches the artifact that actually failed.
+	if pin.Channel != engine.ChannelRelease {
+		t.Skipf("pin is on the %s channel (%s); retiring rows is a release-channel decision", pin.Channel, pin.Tag)
+	}
+
 	pinned := make([]string, 0, len(pin.Assets))
 	for _, a := range pin.Assets {
 		pinned = append(pinned, strings.ToLower(a.SHA256))
