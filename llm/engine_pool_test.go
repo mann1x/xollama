@@ -769,6 +769,25 @@ func TestModelKeepsRecurrentState(t *testing.T) {
 // spent on nothing. Both reasons are gone -- the pool is built from the prefix
 // tokens and stops at the measured template -- so these models are pooled like
 // any other, and the seats they reserve are seats they can use.
+// TestNoPoolSeatsOnAMultimodalLoad pins a refusal measured on a live engine,
+// not inferred: a pool create against opencoti build 18 with an --mmproj on
+// the command line answers 501, "This feature is not supported by multimodal".
+// Seats reserved for it can never be used, and n_seq_max is --parallel plus
+// --polykv-max-pools, so the memory is spent to earn a warning on every second
+// conversation.
+func TestNoPoolSeatsOnAMultimodalLoad(t *testing.T) {
+	cfg := LlamaServerConfig{}
+	t.Setenv("XOLLAMA_SESSION_POOL", "1")
+	t.Setenv("XOLLAMA_POLYKV_MAX_POOLS", "2")
+
+	if got := effectivePoolCount(cfg, false); got != 2 {
+		t.Errorf("effectivePoolCount(text) = %d, want 2", got)
+	}
+	if got := effectivePoolCount(cfg, true); got != 0 {
+		t.Errorf("effectivePoolCount(multimodal) = %d, want 0 — the engine refuses the create", got)
+	}
+}
+
 func TestPoolSeatsAreReservedRegardlessOfArchitecture(t *testing.T) {
 	cfg := LlamaServerConfig{}
 	t.Setenv("XOLLAMA_SESSION_POOL", "1")

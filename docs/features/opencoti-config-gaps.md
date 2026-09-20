@@ -399,6 +399,62 @@ and an `omitempty` int on the wire, either of which alone drops pool 0. The
 engine's first pool could never be attached to, silently, because an unattached
 pool looks exactly like a pool nobody is using.
 
+## Pooling a recurrent model, measured 2026-09-20
+
+The gate that kept recurrent and hybrid models out of pooling is gone, and the
+run that proves it also found two defects in the change that removed it.
+
+Host: solidPC, RTX 3090 (compute 8.6). Engine: the pinned development snapshot
+`opencoti-0.10.5-c7-2609200554001`, DSO `bef1ab64…`, side-loaded. Model:
+LiquidAI LFM2.5-1.2B-Instruct BF16, architecture `lfm2` — a hybrid, so the
+engine takes a share only on an exact full-state match. Four chat requests
+sharing a 500-word system prompt; the first two both open "What is", which is
+the overshoot condition the two-sample prefix used to fall into.
+
+```
+trimmed a shared prefix back to the template boundary  from_tokens=686 to_tokens=684
+polykv: created pool 0 (seq 1, prefix_len 684, source 'tokens/slot')
+polykv P7: new session 'xo-…' admitted to pool 0 — settle window open (48 tok / 5000 ms)
+polykv-pools: attached pool 0 — shared 684-token prefix (n_past -> 684)
+"n_pool_shared":684
+```
+
+684 created, 684 shared, zero `bug-2203`. The counterfactual was run on the
+same hardware with the trim disabled and nothing else changed:
+
+```
+shared prefix pool created  prefix_tokens=686
+polykv-pools: hybrid/recurrent target needs exact full-state share
+              (P=684, pool state=686, prompt=693) — skipping share (bug-2203)
+```
+
+Two tokens of "What is" are the entire difference between a share and a full
+reprocess. That is the measurement the earlier `347`/`346` run should have been
+read as.
+
+### What the run caught
+
+**The boundary was being measured against the wrong renderer.** The first
+attempt measured it only where the engine owns the template, on the assumption
+that `/api/chat` reaches the engine's template. It usually does not: any model
+with a renderer, a parser, harmony or a Modelfile `TEMPLATE` is rendered by
+ollama and served through the completion path, so the feature was excluded from
+the path nearly every model uses, and quietly. Fixed by rendering the probes
+where the template actually lives — `poolProbesForRequest` in `server/routes.go`,
+carried on `CompletionRequest.PoolProbes`.
+
+**Multimodal loads reserve seats they can never use.** The first model tried,
+`qwen3.5:2b`, is a vision model. The engine answered the create with
+`501, "This feature is not supported by multimodal"` — after `--polykv-max-pools 2`
+had already been passed and the seats reserved. `effectivePoolCount` now returns
+zero for a load carrying an `--mmproj`, and the decision reaches the argv and the
+registry together, which is the same mistake `--polykv-max-pools` made once
+before on recurrent models.
+
+Also seen, and not chased: `nemotron-3-nano:4b` (`nemotron_h`) fails to load on
+this engine build with `ggml_backend_sched_alloc_splits: failed to allocate
+graph`, then segfaults. Unrelated to pooling — it never reached a pool call.
+
 ## The measurement, taken 2026-09-19
 
 It has now been run. Host: eleven2go, Windows 11, RTX 3090 (CUDA compute 8.6),

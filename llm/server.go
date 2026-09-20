@@ -305,6 +305,14 @@ type CompletionRequest struct {
 	// sent and the request body is upstream's, byte for byte.
 	SessionID string
 	PoolID    *int
+	// PoolProbes are this request's prefix rendered against
+	// llm.PoolProbeContents by whichever template produced Prompt. The pool has
+	// to stop exactly where the shared template stops, and only the renderer
+	// that made the prompt can say where that is; on this path that renderer is
+	// ollama's and lives in the server package. Empty means no pool boundary
+	// can be measured for this request.
+	PoolProbes []string
+
 	// PoolKey identifies the prefix this request would share with others --
 	// the system prompt and tool names, not the conversation. When pooling is
 	// on and a pool already holds this prefix, the request attaches to it; when

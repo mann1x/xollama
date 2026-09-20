@@ -265,6 +265,26 @@ const defaultMaxPools = 2
 // environment, then the default. Zero means pooling is off, and a model that
 // has not asked for pooling gets zero however the environment is set -- the
 // count sizes the feature, it does not switch it on.
+// effectivePoolCount is how many pool seats this load should ask the engine to
+// reserve.
+//
+// A seat is not free: n_seq_max is --parallel plus --polykv-max-pools, and on a
+// sliding-window model every sequence carries its own window. The engine
+// refuses a pool create on a multimodal load outright -- "This feature is not
+// supported by multimodal", HTTP 501, measured against build 18 -- so those
+// seats could never be used, and asking for them spends the memory to earn a
+// warning on every second conversation.
+//
+// The decision has to reach the argv and the registry together. Reserving the
+// seats and then declining to use them, or the reverse, is how --polykv-max-pools
+// was once passed for a model that could never pool.
+func effectivePoolCount(cfg LlamaServerConfig, multimodal bool) int {
+	if multimodal {
+		return 0
+	}
+	return resolvePoolCount(cfg)
+}
+
 func resolvePoolCount(cfg LlamaServerConfig) int {
 	want, stated := cfg.sessionPool()
 	if !stated {

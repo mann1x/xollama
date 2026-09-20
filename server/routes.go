@@ -3074,6 +3074,7 @@ func (s *Server) ChatHandler(c *gin.Context) {
 				IncludeIntermediateMetrics: includeIntermediateMetrics,
 				SessionID:                  sessionIDForRequest(req.SessionID, m, msgs, req.Tools),
 				PoolKey:                    poolKeyForRequest(m, msgs, req.Tools),
+				PoolProbes:                 poolProbesForRequest(c.Request.Context(), m, poolKeyForRequest(m, msgs, req.Tools), promptOpts, msgs, processedTools, req.Think),
 				ThinkBudget:                thinkBudget,
 				ThinkBudgetMessage:         opts.ThinkBudgetMessage,
 				ThinkingStartTag:           thinkStartTag,
@@ -3281,6 +3282,44 @@ func sessionIDForRequest(explicit string, m *Model, msgs []api.Message, tools ap
 // ignores it unless this model asked for pooling and the load actually ran on
 // an engine that has pools. Computing it unconditionally keeps that decision in
 // one place.
+// xollama-hook: engine-session — the template boundary for a shared prefix
+// pool, rendered here because only this package can.
+//
+// A pool must stop exactly where the shared template stops. One token past it
+// and a recurrent model can never match the pool, because the engine takes
+// that share only when the match covers the pool entirely. The boundary is
+// found by rendering the same prefix against stand-in user messages that share
+// no opening and keeping what they agree on — and on this path the renderer is
+// ollama's own, so llm/engine_pool.go cannot produce these itself.
+//
+// truncate is false, so this is a template execution and no tokenisation, and
+// it is skipped entirely when there is no prefix worth pooling.
+func poolProbesForRequest(ctx context.Context, m *Model, key string, opts *api.Options, msgs []api.Message, tools []api.Tool, think *api.ThinkValue) []string {
+	if m == nil || key == "" {
+		return nil
+	}
+
+	var system []api.Message
+	for _, msg := range msgs {
+		if msg.Role != "system" {
+			break
+		}
+		system = append(system, msg)
+	}
+
+	probes := make([]string, 0, len(llm.PoolProbeContents))
+	for _, probe := range llm.PoolProbeContents {
+		conv := append(slices.Clone(system), api.Message{Role: "user", Content: probe})
+		prompt, _, err := chatPrompt(ctx, m, nil, opts, conv, tools, think, false)
+		if err != nil {
+			slog.Debug("could not render a prefix-pool probe", "error", err)
+			return nil
+		}
+		probes = append(probes, prompt)
+	}
+	return probes
+}
+
 func poolKeyForRequest(m *Model, msgs []api.Message, tools api.Tools) string {
 	if m == nil {
 		return ""

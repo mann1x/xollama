@@ -209,11 +209,37 @@ That is the template and nothing past it. The measurement can only come out
 *short* — a shorter pool is still a prefix of every prompt that has it, and the
 engine simply matches all of it.
 
-Pooling on these models therefore needs a template the engine owns, which is
-the chat path. A `/api/generate` completion is rendered by ollama before it
-reaches the engine, so no such measurement is possible there and these models
-are not pooled from it. The server log says once at load which model this
-applies to.
+Pooling on these models therefore needs a measured boundary, and the
+measurement has to use the renderer that produced the prompt. Sometimes that is
+the engine's template; more often it is ollama's own, because any model with a
+renderer, a parser, harmony or a Modelfile `TEMPLATE` is rendered before it
+reaches the engine. Both are covered: on the first, xollama asks the engine; on
+the second, the probe renderings are made where the template lives and carried
+down with the request. A request that can supply neither is not pooled on these
+models, and the server log says once at load which model that applies to.
+
+Measured on a hybrid model (LFM2.5, `lfm2`) against opencoti build
+`opencoti-0.10.5-c7-2609200554001`, with two conversations that both open
+"What is":
+
+```
+trimmed a shared prefix back to the template boundary  from_tokens=686 to_tokens=684
+polykv: created pool 0 (seq 1, prefix_len 684, source 'tokens/slot')
+polykv-pools: attached pool 0 — shared 684-token prefix (n_past -> 684)
+```
+
+684 created, 684 shared, and no `bug-2203` line. With the trim disabled the
+same run pools 686 and the engine answers
+`hybrid/recurrent target needs exact full-state share (P=684, pool state=686,
+prompt=693) — skipping share (bug-2203)`. Those two tokens are the whole
+difference between sharing and reprocessing.
+
+<Note>
+  **Multimodal loads are not pooled.** The engine refuses the create outright —
+  `501, "This feature is not supported by multimodal"` — so a vision model gets
+  no pool seats rather than seats it could never use. `--polykv-max-pools` is
+  not passed at all on such a load, and the reason is logged once at load.
+</Note>
 
 ### Seeing it
 
