@@ -522,7 +522,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 
 	// xollama-hook: launch-config — dynamic slots. See docs/xollama/slots.mdx.
 	slots := resolveSlotPlan(launch.config, launch.numParallel, launch.config.SingleSequenceOnly)
-	args = appendSlotArgs(args, slots, effectivePoolCount(launch.config, launch.recurrentState), usedOpencoti)
+	args = appendSlotArgs(args, slots, resolvePoolCount(launch.config), usedOpencoti)
 	args = appendSWABudgetArgs(args, slots, usedOpencoti)
 
 	// xollama-hook: launch-config — dual chunk attention. See docs/xollama/dca.mdx.
@@ -1239,21 +1239,21 @@ func (s *llamaServerRunner) startProcess() error {
 	// xollama-hook: engine-session — the pool registry is sized to the same
 	// number the engine was given seats for, and is rebuilt per process: pool
 	// ids belong to the engine that issued them.
-	switch pools := effectivePoolCount(s.launch.config, s.launch.recurrentState); {
+	switch pools := resolvePoolCount(s.launch.config); {
 	case !usedOpencoti:
-		s.pools = nil
-	// Before the pools <= 0 case, not after it: effectivePoolCount returns 0
-	// for exactly these models, so testing the count first would swallow the
-	// one explanation the operator actually needs.
-	case s.launch.recurrentState && resolvePoolCount(s.launch.config) > 0:
-		// Said once, at load, rather than never: an operator who asked for
-		// pooling is owed the reason it is not happening. See engine_pool_arch.go.
-		slog.Info("shared prefix pools are off for this model: its recurrent state cannot be shared as a prefix",
-			"model", s.modelPath, "architecture", s.launch.modelArch)
 		s.pools = nil
 	case pools <= 0:
 		s.pools = nil
 	default:
+		// Said once, at load: on these models the engine takes a share only
+		// when it covers the pool exactly, so pooling works from the Chat path,
+		// where the template boundary can be measured, and is skipped on the
+		// Completion path, where it cannot. An operator watching for pools on
+		// a hybrid model is owed that. See engine_pool_arch.go.
+		if s.launch.recurrentState {
+			slog.Info("shared prefix pools on this model are built from chat requests only: its recurrent state is shared only as a whole, so the pool has to stop exactly at the template",
+				"model", s.modelPath, "architecture", s.launch.modelArch)
+		}
 		s.pools = newPoolRegistry(pools)
 	}
 	s.done = make(chan struct{})

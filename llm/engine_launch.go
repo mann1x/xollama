@@ -302,21 +302,6 @@ const defaultMaxPools = 2
 // environment, then the default. Zero means pooling is off, and a model that
 // has not asked for pooling gets zero however the environment is set -- the
 // count sizes the feature, it does not switch it on.
-// effectivePoolCount is how many pool seats this load should actually ask the
-// engine to reserve.
-//
-// A seat is not free: n_seq_max is --parallel plus --polykv-max-pools, and on a
-// sliding-window model every sequence carries its own window. Reserving seats
-// for a model whose state can never be shared as a prefix spends that memory
-// for nothing, so the same decision that switches pooling off has to reach the
-// argv and the memory estimate, not just the registry.
-func effectivePoolCount(cfg LlamaServerConfig, recurrentState bool) int {
-	if recurrentState {
-		return 0
-	}
-	return resolvePoolCount(cfg)
-}
-
 func resolvePoolCount(cfg LlamaServerConfig) int {
 	want, stated := cfg.sessionPool()
 	if !stated {
