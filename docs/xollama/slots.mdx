@@ -178,11 +178,20 @@ Ollama's own, unchanged.
   model on the same card, and the same engine serves a model that *fits* at
   full speed — so it is the partial offload specifically.
 
-  Until a fixed cut is published, keep the load resident: a smaller model or
-  quantisation, a lower `num_ctx`, or a compressed
-  [KV cache type](/xollama/kv-cache). `XOLLAMA_ENGINE=llamacpp` serves it too,
-  and is the measured way through. xollama recognises this abort and says so
-  rather than leaving you the raw message.
+  It is the rolling-KV **position-window** tactic specifically, which
+  `--kv-residency-mode auto` picks only under real VRAM pressure. Forcing the
+  other tactic is measured to work, and is the fix to reach for first:
+
+  ```shell
+  LLAMA_ARG_KV_RESIDENCY_MODE=head xollama serve
+  ```
+
+  That loaded the same 39.2 GiB model on the same 24 GiB card at 2.85 tok/s —
+  faster than stock llama.cpp managed on the same arm. Failing that, keep the
+  load resident: a smaller model or quantisation, a lower `num_ctx`, or a
+  compressed [KV cache type](/xollama/kv-cache); `XOLLAMA_ENGINE=llamacpp`
+  serves it too. xollama recognises this abort and says all of this rather than
+  leaving you the raw message.
 
   A *second*, separate crash — a failed assertion in the attention kernel as
   soon as the rolling-KV window spilled to host RAM — was real in the first c7

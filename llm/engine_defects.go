@@ -76,6 +76,17 @@ var knownEngineDefects = []knownEngineDefect{
 		// and not the artifact. Measurements in
 		// docs/evaluations/phase2-engine-ab.md.
 		//
+		// Narrowed the same day, after opencoti asked (their bug-3515): the
+		// failing load logs "rolling-kv POSITION_WINDOW mode ON
+		// (--kv-residency-mode auto) -- window 256 / 32768 cells", and
+		// forcing the other tactic with LLAMA_ARG_KV_RESIDENCY_MODE=head
+		// loads the same model on the same card at 2.85 tok/s -- faster than
+		// stock llama.cpp's 2.71 on that arm. So the defect is in the
+		// POSITION_WINDOW path, not in partial offload as such, and the
+		// workaround below keeps the user on this engine rather than off it.
+		// It also explains why opencoti could not reproduce it on a roomy
+		// card: auto only picks the window under real VRAM pressure.
+		//
 		// So they are two defects, not one. bug-3369's own signature is gone
 		// from r2 and is deliberately NOT listed below -- accusing bytes of a
 		// fault nobody has shown they still have is exactly what the sha256
@@ -84,12 +95,13 @@ var knownEngineDefects = []knownEngineDefect{
 		Signatures: []string{
 			"ggml_new_object: not enough space in the context's memory pool",
 		},
-		Summary: "this build of the opencoti engine (0.10.5-c7 r2) aborts while placing KV cache layers on the CPU, which is what happens when a model is too large for VRAM and part of it is offloaded to host memory",
-		Workaround: "keep the load resident rather than relying on a partial offload: choose a " +
-			"smaller model or quantisation, lower num_ctx, or compress the cache with " +
-			"OLLAMA_KV_CACHE_TYPE=q8_0 (or XOLLAMA_K_CACHE_TYPE / XOLLAMA_V_CACHE_TYPE per " +
-			"half). Serving this model on stock llama.cpp instead, with XOLLAMA_ENGINE=llamacpp, " +
-			"loads it and is the measured way through",
+		Summary: "this build of the opencoti engine (0.10.5-c7 r2) aborts while placing KV cache layers on the CPU, under the rolling-KV POSITION_WINDOW residency tactic that --kv-residency-mode auto selects when a model is too large for VRAM",
+		Workaround: "set LLAMA_ARG_KV_RESIDENCY_MODE=head, which forces the other residency " +
+			"tactic and is measured to load the same model on the same card. Failing that, keep " +
+			"the load resident -- a smaller model or quantisation, a lower num_ctx, or a " +
+			"compressed cache with OLLAMA_KV_CACHE_TYPE=q8_0 (or XOLLAMA_K_CACHE_TYPE / " +
+			"XOLLAMA_V_CACHE_TYPE per half). Stock llama.cpp serves it too, with " +
+			"XOLLAMA_ENGINE=llamacpp",
 	},
 }
 
