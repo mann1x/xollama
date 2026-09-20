@@ -169,16 +169,33 @@ Ollama's own, unchanged.
   physical copy under the split. You do not have to choose.
 </Note>
 
-<Note>
-  **The rolling-KV crash is fixed in the build xollama ships.** The first
-  `opencoti-llamafile-0.10.5-c7` cut aborted with a failed assertion in the
-  attention kernel as soon as cache spilled to host RAM, on either cache layout.
-  opencoti re-published that cut as r2 with the fix and nothing else, and it is
-  what `llm/engine/pin.txt` pins.
+<Warning>
+  **A model too large for your VRAM still aborts on the engine xollama ships.**
+  Measured 2026-09-20 on `opencoti-llamafile-0.10.5-c7` r2: a 39.2 GiB model on
+  a 24 GiB card fails in under three seconds with
+  `ggml_new_object: not enough space in the context's memory pool`, while the
+  engine is placing KV cache layers on the CPU. Stock llama.cpp loads the same
+  model on the same card, and the same engine serves a model that *fits* at
+  full speed — so it is the partial offload specifically.
 
-  Spill on r2 has not been measured here — the defect is fixed by the patch
-  that caused it, not by anything this project observed. If you are keeping the
-  cache resident because of the old warning, you no longer have to, but lowering
-  `num_ctx` or compressing with a quantised
-  [KV cache type](/xollama/kv-cache) is still the faster arrangement.
-</Note>
+  It is the rolling-KV **position-window** tactic specifically, which
+  `--kv-residency-mode auto` picks only under real VRAM pressure. Forcing the
+  other tactic is measured to work, and is the fix to reach for first:
+
+  ```shell
+  LLAMA_ARG_KV_RESIDENCY_MODE=head xollama serve
+  ```
+
+  That loaded the same 39.2 GiB model on the same 24 GiB card at 2.85 tok/s —
+  faster than stock llama.cpp managed on the same arm. Failing that, keep the
+  load resident: a smaller model or quantisation, a lower `num_ctx`, or a
+  compressed [KV cache type](/xollama/kv-cache); `XOLLAMA_ENGINE=llamacpp`
+  serves it too. xollama recognises this abort and says all of this rather than
+  leaving you the raw message.
+
+  A *second*, separate crash — a failed assertion in the attention kernel as
+  soon as the rolling-KV window spilled to host RAM — was real in the first c7
+  cut and **is** fixed in the r2 build that ships (opencoti's patch 0253). The
+  two were reported to us as one bug; retaking the measurement is what showed
+  they are not. Numbers for both: [Phase 2](https://github.com/mann1x/xollama/blob/main/docs/evaluations/phase2-engine-ab.md).
+</Warning>

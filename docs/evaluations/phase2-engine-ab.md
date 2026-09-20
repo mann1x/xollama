@@ -181,14 +181,64 @@ rolling-KV spill actually do something — and it does not survive contact.
 > our users, and the dev-build row below was the measurement of a fix nobody
 > could install.
 >
-> **Resolved, 2026-09-20.** opencoti re-published c7 as r2: the same cut plus
+> **Re-pinned, 2026-09-20.** opencoti re-published c7 as r2: the same cut plus
 > patch 0253 and nothing else. `main` now pins that commit
 > (`3cf95ad25b7cb18c278cc6fb6a7d29ffea703b9e`, artifact
-> `4f4102d6d8dd39bf794dee4f4d9000120766fd1fccc42090feff2e710a48104e`), the
-> known-defect row was retired with it, and the numbers above stand as a
-> measurement of r1 rather than of what ships. The measurement has NOT been
-> retaken on r2; the abort is fixed by the patch that caused it, not by
-> anything observed here. Spill on r2 is untested, not proven good.
+> `4f4102d6d8dd39bf794dee4f4d9000120766fd1fccc42090feff2e710a48104e`), and the
+> known-defect row was retired with it on the strength of that changelog.
+>
+> **NOT resolved — retaken on r2 the same day, and it still aborts.** Raw:
+> `/srv/ml/xollama-phase2/c7r2-overflow-clean/`.
+>
+> | arm | result |
+> |---|---|
+> | llama.cpp (control) | loads in 28.1 s, **56.8% resident** (23.9 of 42.0 GB), 2.71 tok/s |
+> | opencoti c7 **r2** | **aborts in 2.7 s**: `ggml_new_object: not enough space in the context's memory pool (needed 118128, available 117760)`, while placing KV cache layers 30..53 on the CPU |
+> | opencoti c7 **r2**, model that fits (`llama3:latest`) | loads, **75.5 tok/s** |
+> | opencoti c7 **r2**, `LLAMA_ARG_KV_RESIDENCY_MODE=head` | **loads** in 34.8 s, 56.8% resident, **2.85 tok/s** |
+>
+> Byte-identical numbers to r1 — the same 368 bytes short, at the same point.
+> The control reproduces the 2026-09-18 figure exactly (56.8% resident), so the
+> host has not drifted, and r2 serving a fitting model at 75.5 tok/s rules out a
+> broken artifact. **The abort is specific to the partial-offload path and patch
+> 0253 does not fix it.**
+>
+> So the row covered *two* defects and only one was fixed. bug-3369's assertion
+> is gone from r2; this is not that bug. The row is re-instated in
+> `llm/engine_defects.go` against r2's sha256 with the spill signature only,
+> because retiring it removed the only diagnosis a user gets for a failure that
+> still ships. Reported to opencoti.
+>
+> **Narrowed, same day**, after opencoti asked (their bug-3515). The failing
+> load says which tactic it chose:
+>
+> ```
+> llama_kv_cache: rolling-kv POSITION_WINDOW mode ON (--kv-residency-mode auto)
+>   - window 256 / 32768 cells, host tail 32512 (M2 head split forced off)
+> ```
+>
+> and there is **nothing** between `layer 53: dev = CPU` and the abort — it dies
+> on the next layer it tries to place. Forcing the other tactic with
+> `LLAMA_ARG_KV_RESIDENCY_MODE=head` loads the same model on the same card and
+> generates faster than stock llama.cpp does on this arm (2.85 vs 2.71 tok/s);
+> its plan reads `GPU_RESIDENT=80 ... POSITION_WINDOW=0` and no KV layer is
+> placed on the CPU at all. So the defect is in the POSITION_WINDOW path, not in
+> partial offload as such — which is also why opencoti could not reproduce it on
+> a roomy card, since `auto` only picks the window under real VRAM pressure.
+> Their reading of the arithmetic: the KV metadata pool is budgeted 4 tensors
+> per layer (4 x 80 x 368 = 117,760, exactly the `available`), and this path puts
+> one more than that into the CPU buffer-type context.
+>
+> That makes the workaround a real one — it keeps the user on this engine
+> instead of off it — and it is what `llm/engine_defects.go` now tells them.
+>
+> One hazard found while measuring, worth knowing before trusting any r1-vs-r2
+> comparison: the llamafile self-extraction cache is keyed by version string,
+> and an in-place re-cut keeps that string, so r1 and r2 share
+> `~/.llamafile/v/opencoti-0.10.5-c7/`. The first r2 run here replaced a
+> `ggml-cuda.so` left by r1 *during* the load — the harness's
+> `dso_changed_mid_axis` guard caught it and that run was discarded. The numbers
+> above are from the re-run with a warm r2 cache and a stable DSO.
 
 ## Re-run on a dev build — NOT PINNABLE
 

@@ -60,19 +60,65 @@ type knownEngineDefect struct {
 // artifact without the defect is pinned -- it describes a specific build, not a
 // permanent property of the engine.
 var knownEngineDefects = []knownEngineDefect{
-	// EMPTY, and that is the healthy state. A row is an accusation against
-	// specific bytes, so it is retired the day a published artifact without
-	// the defect is pinned.
-	//
-	// Retired 2026-09-20: opencoti bug-3369, a 0.10.5-port regression in the
-	// streaming-attention fallbacks that aborted as soon as the KV cache began
-	// spilling to host memory, on either cache layout. It was carried here
-	// because c7 was the only published cut and there was nothing to re-pin
-	// to; the c7 r2 re-cut is that cut plus patch 0253, which is the fix, and
-	// llm/engine/pin.txt now points at it. The exact bytes it described, the
-	// signatures it matched and the workaround it gave live on as the fixture
-	// in llm/engine_defects_test.go, so the machinery stays tested with the
-	// table empty -- which is the condition it has to work in.
+	{
+		// The partial-offload abort, RE-INSTATED 2026-09-20 after measuring it.
+		//
+		// It was retired earlier the same day along with opencoti bug-3369, on
+		// the assumption that their patch 0253 -- the whole difference between
+		// c7 and c7 r2 -- fixed this too, because they had told us the two
+		// failures were the same bug reaching us by different paths. Retaking
+		// the Phase 2 overflow axis on the r2 bytes disproved that: with
+		// llama3.1:70b-instruct-q3_K_S on a 24 GiB card, r2 aborts in 2.7 s
+		// with byte-identical numbers to r1 (needed 118128, available 117760)
+		// while placing KV cache layers 30..53 on the CPU. Stock llama.cpp
+		// loads the same model on the same host at 56.8% resident, and r2
+		// itself serves a model that fits at 75.5 tok/s, so it is this path
+		// and not the artifact. Measurements in
+		// docs/evaluations/phase2-engine-ab.md.
+		//
+		// Narrowed the same day, after opencoti asked (their bug-3515): the
+		// failing load logs "rolling-kv POSITION_WINDOW mode ON
+		// (--kv-residency-mode auto) -- window 256 / 32768 cells", and
+		// forcing the other tactic with LLAMA_ARG_KV_RESIDENCY_MODE=head
+		// loads the same model on the same card at 2.85 tok/s -- faster than
+		// stock llama.cpp's 2.71 on that arm. So the defect is in the
+		// POSITION_WINDOW path, not in partial offload as such, and the
+		// workaround below keeps the user on this engine rather than off it.
+		// It also explains why opencoti could not reproduce it on a roomy
+		// card: auto only picks the window under real VRAM pressure.
+		//
+		// RETIREMENT CONDITION, agreed with the user 2026-09-20. opencoti is
+		// fixing this properly in c8 rather than patching c7 again; it is
+		// queued there behind the KVarN position-ops work. The day the pin
+		// moves to a c8 artifact, RE-RUN the recipe -- 70B q3_K_S on a 24 GiB
+		// card, confirming "POSITION_WINDOW mode ON" appears in the log -- and
+		// if it loads under --kv-residency-mode auto, remove three things
+		// together in one commit:
+		//   1. this row;
+		//   2. the LLAMA_ARG_KV_RESIDENCY_MODE=head workaround wherever it is
+		//      offered, including the Warning in docs/xollama/slots.mdx;
+		//   3. the measured tables in docs/evaluations/phase2-engine-ab.md get
+		//      the c8 result appended, not deleted -- the history is the point.
+		// Do NOT remove any of it on the strength of a c8 changelog. That
+		// mistake has already been made once with this exact row; see
+		// .claude/rules/engine-defects.md.
+		//
+		// So they are two defects, not one. bug-3369's own signature is gone
+		// from r2 and is deliberately NOT listed below -- accusing bytes of a
+		// fault nobody has shown they still have is exactly what the sha256
+		// half of this table exists to prevent.
+		SHA256: []string{"4f4102d6d8dd39bf794dee4f4d9000120766fd1fccc42090feff2e710a48104e"},
+		Signatures: []string{
+			"ggml_new_object: not enough space in the context's memory pool",
+		},
+		Summary: "this build of the opencoti engine (0.10.5-c7 r2) aborts while placing KV cache layers on the CPU, under the rolling-KV POSITION_WINDOW residency tactic that --kv-residency-mode auto selects when a model is too large for VRAM",
+		Workaround: "set LLAMA_ARG_KV_RESIDENCY_MODE=head, which forces the other residency " +
+			"tactic and is measured to load the same model on the same card. Failing that, keep " +
+			"the load resident -- a smaller model or quantisation, a lower num_ctx, or a " +
+			"compressed cache with OLLAMA_KV_CACHE_TYPE=q8_0 (or XOLLAMA_K_CACHE_TYPE / " +
+			"XOLLAMA_V_CACHE_TYPE per half). Stock llama.cpp serves it too, with " +
+			"XOLLAMA_ENGINE=llamacpp",
+	},
 }
 
 // describeEngineDefect returns an explanation when a failure matches a known

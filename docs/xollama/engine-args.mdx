@@ -1,0 +1,103 @@
+---
+title: Passing your own engine flags
+---
+
+Most engine settings have an environment twin — `LLAMA_ARG_DCA`,
+`LLAMA_ARG_SPARSE_ATTN`, and so on — and [Tuning opencoti](/xollama/opencoti-tuning)
+is about reaching them that way. Some flags have no twin at all.
+`--override-kv` is the one people hit first: `common/arg.cpp` declares it
+without `set_env`, so no amount of environment gets you there. The opencoti
+development builds add more with every cut, faster than any fork can wrap them
+in named settings.
+
+`XOLLAMA_ENGINE_ARGS` is the escape hatch. Whatever you put in it is appended
+to the engine's command line, verbatim:
+
+```shell
+XOLLAMA_ENGINE_ARGS='--override-kv qwen3.context_length=int:262144' xollama serve
+```
+
+It applies to whichever engine serves the load — opencoti or stock
+`llama-server`. Unset, it does nothing at all: no argument is added, nothing is
+logged, and the command line is the one upstream would have produced.
+
+## It is appended last, on purpose
+
+`llama-server` takes the **final** occurrence of a repeated flag. Your
+arguments go after everything xollama and Ollama produce, so where a flag
+appears twice, yours is the one that applies. That also means this hatch never
+has to understand, reorder or delete anything already on the line — it only
+adds.
+
+You can see what went on in the server log:
+
+```
+level=INFO msg="appending operator-supplied engine arguments"
+  source=XOLLAMA_ENGINE_ARGS args="[--override-kv qwen3.context_length=int:262144]" count=2
+```
+
+If that line is absent, the variable was empty or unset — check the spelling
+before looking any further.
+
+## Quoting
+
+Whitespace separates arguments. Single and double quotes group a value that
+contains spaces:
+
+```shell
+XOLLAMA_ENGINE_ARGS='--chat-template "{{ .Prompt }}"'
+```
+
+A backslash is a **literal backslash**, never an escape, so a Windows path
+survives unquoted:
+
+```
+--spec-draft-model C:\models\draft.gguf
+```
+
+An unterminated quote is refused rather than closed for you: silently guessing
+where a value ended would hand the engine an argument you did not write.
+
+## What it will not let you set
+
+Some flags are refused by name, with an error that names the flag and the
+reason. They are not refused because the engine would object — it would take
+every one of them — but because **xollama's own model of the process is built
+from them**:
+
+| Refused | Why |
+|---|---|
+| `-c` / `--ctx-size`, `-np` / `--parallel`, `-ngl` / `--gpu-layers` / `--n-gpu-layers`, `-b` / `--batch-size`, `-ub` / `--ubatch-size` | The scheduler decides whether the model fits, and how many copies of the cache to pay for, from exactly these numbers. Change one here and the engine allocates a size the scheduler never predicted — the load is admitted against arithmetic that is simply wrong, and it surfaces later, somewhere else, as an OOM nobody can trace back to an environment variable. |
+| `-m` / `--model`, `--host`, `--port` | xollama starts this process, talks to it on a port it chose, and reuses or reloads it when the model changes. Repointing any of that leaves a runner the server believes is serving one thing while it serves another. |
+| `-lv` / `--log-verbosity` / `--verbosity`, `-v` / `--verbose`, `--log-disable`, `--log-file` | Load progress, the port handshake and the known-defect matcher are all read out of the subprocess log at the verbosity xollama set. |
+
+Every one of those has its own supported knob — context length is `num_ctx`,
+concurrency is [Concurrent requests](/xollama/slots), verbosity is
+`OLLAMA_DEBUG`. The refusal is there so a setting that would quietly break
+estimation fails at the point it was made instead.
+
+A guarded flag is refused wherever it appears in the value, including behind
+another flag, and in both the `--flag value` and `--flag=value` forms.
+
+## Why there is no per-model version of this
+
+There is deliberately no `engine_args` field in a model's
+[`xollama.json`](/xollama/model-settings), and there will not be one.
+
+A model is pulled from a registry and, almost always, run without anyone
+reading it. `llama-server`'s command line can write files to caller-chosen
+paths and change what gets loaded. A model able to append to that command line
+is a model able to act on the machine that ran it, at pull-and-run time, with
+no prompt and nothing to click.
+
+So model-side settings stay named fields with checked values, and this hatch
+stays where a person has to set it themselves. An engine flag that turns out to
+be worth carrying per model is a reason to add a field for it — not a reason to
+open the argv.
+
+<Note>
+  Arguments passed this way are not validated. A flag the engine does not know
+  makes it reject the whole command line, and the load fails at startup with
+  the engine's own error. That is the trade: the hatch exists precisely for
+  flags this codebase has never heard of.
+</Note>

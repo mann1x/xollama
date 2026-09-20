@@ -69,7 +69,8 @@ scheduling `server/sched.go`, model IO `server/images.go` `server/create.go`
 **Runners**: GGUF as a `llama-server` subprocess via `llm/server.go` +
 `llm/llama_server.go`, built from `llama/server/CMakePresets.json`; MLX via
 `mlxrunner/` (`runner.go`, `pipeline.go`, `prefix_cache.go`, `cache/`, `model/`,
-`tokenizer/`, `xgrammar/`).
+`tokenizer/`, `xgrammar/`). `llm/engine_args.go` appends the operator's
+`XOLLAMA_ENGINE_ARGS` last on the engine command line.
 **Prompting**: `model/renderers/` (per-model `Render`) ↔ `model/parsers/`
 (streaming output), plus `template/`, `thinking/`, `harmony/`.
 **API shims**: `api/types.go`, `openai/openai.go`, `anthropic/anthropic.go`,
@@ -100,7 +101,9 @@ orchestrated by `CMakeLists.txt` / `CMakePresets.json`; the opencoti engine
 artifact is pinned by `llm/engine/pin.txt` (`repo`, `rev` commit sha, `tag`,
 `channel`, `feature`, `accel`, plus `bin` / `dso` asset rows), read by both
 `llm/engine/pin.go` and `cmake/opencoti-fetch.cmake`. Moving that pin retires
-any row the new bytes fix in `llm/engine_defects.go` in the same commit.
+only the rows in `llm/engine_defects.go` the new bytes are *measured* to fix —
+a changelog is not a measurement; the measurement is `scripts/phase2-engine-ab.py`,
+run as the `ollama` user (`.claude/rules/solidpc-testing.md`).
 
 ## Tooling and conventions
 

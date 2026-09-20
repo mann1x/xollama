@@ -179,7 +179,8 @@
               "/xollama/dca",
               "/xollama/sessions",
               "/xollama/introspection",
-              "/xollama/opencoti-tuning"
+              "/xollama/opencoti-tuning",
+              "/xollama/engine-args"
             ]
           }
         ]

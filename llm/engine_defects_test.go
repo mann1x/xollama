@@ -185,21 +185,49 @@ func TestAnnotateEngineDefect(t *testing.T) {
 	})
 }
 
-// TestTheShippedTableAccusesNothing pins the healthy state. Every other test
-// here installs a fixture row, so without this one an empty shipped table would
-// be untested -- and empty is what it should normally be. It also checks the
-// retirement actually took: the signature that used to fire must no longer fire
-// against the bytes we now ship.
-func TestTheShippedTableAccusesNothing(t *testing.T) {
-	path := artifactWithDigest(t, "the artifact main pins today")
+// TestTheShippedTableAccusesExactlyWhatWasMeasured pins the SHIPPED row's own
+// signatures, in both directions -- which is the part that went wrong once
+// already.
+//
+// The two outputs below were once a single row, retired together on 2026-09-20
+// because opencoti said they were one bug and r2 carried its fix. Retaking the
+// Phase 2 overflow axis on r2 showed the spill abort reproducing with identical
+// numbers, so it is back; bug-3369's assertion is not, because nothing has
+// shown r2 still has it. A table that accuses too little leaves someone
+// decoding a CUDA abort alone; one that accuses too much explains away a
+// failure that is really theirs.
+//
+// The row names a 678 MB artifact by digest, and a digest is a preimage no
+// fixture can produce, so the real row is pointed at a fixture and its real
+// Signatures are what gets exercised. The predecessor of this test called
+// describeEngineDefect with an unrelated digest and asserted nothing came
+// back: it could not have failed whatever the table said. Which sha is shipped
+// is TestKnownDefectsMatchThePinnedArtifact's job.
+func TestTheShippedTableAccusesExactlyWhatWasMeasured(t *testing.T) {
+	if len(knownEngineDefects) != 1 {
+		t.Fatalf("expected exactly the partial-offload row in the shipped table, got %d rows", len(knownEngineDefects))
+	}
 
-	for _, output := range []string{
-		"fattn-common.cuh:87: GGML_ASSERT(dst->op == GGML_OP_FLASH_ATTN_EXT) failed",
-		"ggml_new_object: not enough space in the context's memory pool (needed 118128, available 117760)",
-	} {
-		if got := describeEngineDefect(path, output); got != "" {
-			t.Errorf("the shipped table explained %q as a known defect: %s", output, got)
-		}
+	path := artifactWithDigest(t, "stand-in for the artifact main pins today")
+	digest := fileDigest(path)
+	if digest == "" {
+		t.Fatal("could not hash the fixture")
+	}
+
+	shipped := knownEngineDefects[0]
+	shipped.SHA256 = []string{digest}
+	original := knownEngineDefects
+	knownEngineDefects = []knownEngineDefect{shipped}
+	t.Cleanup(func() { knownEngineDefects = original })
+
+	const spill = "ggml_new_object: not enough space in the context's memory pool (needed 118128, available 117760)"
+	if got := describeEngineDefect(path, spill); got == "" {
+		t.Error("the shipped row did not explain the partial-offload abort, which is measured on the pinned bytes in docs/evaluations/phase2-engine-ab.md")
+	}
+
+	const fixed = "fattn-common.cuh:87: GGML_ASSERT(dst->op == GGML_OP_FLASH_ATTN_EXT) failed"
+	if got := describeEngineDefect(path, fixed); got != "" {
+		t.Errorf("the shipped row still blames these bytes for bug-3369, which patch 0253 fixed: %s", got)
 	}
 }
 

@@ -553,6 +553,17 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 		args = retargetSpecType(args, launch.draftType, usedOpencoti)
 	}
 
+	// xollama-hook: engine-args — the operator's append-only escape hatch, for
+	// engine flags with no LLAMA_ARG_* twin. LAST on purpose: llama-server
+	// takes the final occurrence of a repeated flag, so appending here puts the
+	// operator ahead of everything above without this code having to reorder or
+	// remove anything. Operator-side only, never model-carried — see
+	// llm/engine_args.go for why that boundary is where it is.
+	args, err = appendEngineArgs(args, envconfig.EngineArgs())
+	if err != nil {
+		return nil, 0, false, err
+	}
+
 	// Set up library paths for GPU backend discovery
 	cmd = exec.Command(name, args...)
 
