@@ -90,24 +90,30 @@
 # ---------------------------------------------------------------------------
 
 repo     ManniX-ITA/opencoti-llamafile
-rev      619e163221eebf248c49db7d16533130328e26f6
+rev      3cf95ad25b7cb18c278cc6fb6a7d29ffea703b9e
 tag      llamafile-v0.10.5+opencoti.c7
 channel  release
 
-# The commit below is the c7 r1 cut -- the bytes measured in
-# docs/evaluations/phase0-engine-compat.md and run live on eleven2go. main now
-# serves r2 (c7 plus patch 0253, the rolling-KV field fix) under these same file
-# names; we do not follow it, because r2 adds no capability and pinning to it
-# would fix the fork at c7 scope.
+# The commit below is the c7 R2 cut: c7 plus patch 0253 and nothing else. r2 is
+# not a feature move -- the fork follows c8 development on the dev branch, and
+# this channel is not where that happens -- it is a correctness one. r1 carries
+# opencoti bug-3369, an abort as soon as a rolling-KV position window engages,
+# which xollama shipped a known-defect row for because there was nothing to
+# re-pin to at the time. There is now: same scope, same file names, the abort
+# gone. The row was retired in the same commit that moved this rev.
+#
+# r1's bytes are still reachable at commit 619e163221eebf248c49db7d16533130328e26f6
+# if a measurement ever needs them; phase0-engine-compat.md and the eleven2go
+# run were taken on those.
 #
 # No feature rows: c7's patch chain ends at 0244, so it carries none of the
-# capabilities below 0245. r2 would not add any either.
+# capabilities below 0245. Patch 0253 adds none either.
 
-bin  x86_64          opencoti-llamafile-0.10.5-c7-x86_64.llamafile              3c907bc7511359054dbf55c9d2d69fb49324ef75bdbb45efa092c3facad8951e
-bin  aarch64         opencoti-llamafile-0.10.5-c7-aarch64.llamafile             a83141a5afe8053937e4461b238eb4a974ec456cbaa7849c70e6f529c124ea74
-bin  win-x86_64      opencoti-llamafile-0.10.5-c7-win-x86_64.llamafile.exe      e7308ebec853f69bdce79578ea4f077ef6835244c3de9c185af5dd547bde39d2
-bin  win-x86_64-gpu  opencoti-llamafile-0.10.5-c7-win-x86_64-gpu.llamafile.exe  19ff1d87292bb9147793b43651631b4f003c5541c6a5d35096ca8883a2a4d0f6
-bin  universal       opencoti-llamafile-0.10.5-c7-universal.llamafile.exe       002d7ee826db5d446001ef3cddfbe8615b9979a1dff61fc46938da48f505090a
+bin  x86_64          opencoti-llamafile-0.10.5-c7-x86_64.llamafile              4f4102d6d8dd39bf794dee4f4d9000120766fd1fccc42090feff2e710a48104e
+bin  aarch64         opencoti-llamafile-0.10.5-c7-aarch64.llamafile             6d6a6581cdbc2b2eeaad1f9cff9ece7a28e8aad2cede695e86a713eb8cbc61fc
+bin  win-x86_64      opencoti-llamafile-0.10.5-c7-win-x86_64.llamafile.exe      d6b6f66b32394648a492b5afcabbe5579b2600b13ac7a3345ff83ce529502fcb
+bin  win-x86_64-gpu  opencoti-llamafile-0.10.5-c7-win-x86_64-gpu.llamafile.exe  36e70b6375d9020246c9a3cd452619d5c45c40ae4a16b46844745d4d06cb79f5
+bin  universal       opencoti-llamafile-0.10.5-c7-universal.llamafile.exe       f887689a3c496593cc441603616b2eca34c232621f0b2cf5468c376e92f1546a
 
 # What these bins embed (c7 F6 V2: the x86_64, win-x86_64-gpu and universal
 # artifacts carry the Vulkan payload as well as CUDA; aarch64 is CUDA sbsa).

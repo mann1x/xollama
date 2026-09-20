@@ -175,12 +175,20 @@ rolling-KV spill actually do something — and it does not survive contact.
 > for someone to decode. It is diagnosis only: no retry, no downgrade. That is
 > what `XOLLAMA_ENGINE_FALLBACK` is for and it stays opt-in.
 >
-> `llm/engine/pin.txt` pins exactly that artifact —
+> `llm/engine/pin.txt` pinned exactly that artifact —
 > `3c907bc7511359054dbf55c9d2d69fb49324ef75bdbb45efa092c3facad8951e`, verified
-> against the payload at `/usr/local/lib/ollama/` — so **spill is a crash for
-> our users today**, and the dev-build row below is the measurement of a fix
-> nobody can install. Until a new cut ships, the guidance is to keep the cache
-> resident rather than rely on spill. Recorded in `docs/xollama/slots.mdx`.
+> against the payload at `/usr/local/lib/ollama/` — so spill was a crash for
+> our users, and the dev-build row below was the measurement of a fix nobody
+> could install.
+>
+> **Resolved, 2026-09-20.** opencoti re-published c7 as r2: the same cut plus
+> patch 0253 and nothing else. `main` now pins that commit
+> (`3cf95ad25b7cb18c278cc6fb6a7d29ffea703b9e`, artifact
+> `4f4102d6d8dd39bf794dee4f4d9000120766fd1fccc42090feff2e710a48104e`), the
+> known-defect row was retired with it, and the numbers above stand as a
+> measurement of r1 rather than of what ships. The measurement has NOT been
+> retaken on r2; the abort is fixed by the patch that caused it, not by
+> anything observed here. Spill on r2 is untested, not proven good.
 
 ## Re-run on a dev build — NOT PINNABLE
 

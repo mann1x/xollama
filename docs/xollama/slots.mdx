@@ -169,18 +169,16 @@ Ollama's own, unchanged.
   physical copy under the split. You do not have to choose.
 </Note>
 
-<Warning>
-  **The engine build xollama currently ships crashes if the rolling-KV window
-  engages.** `opencoti-llamafile-0.10.5-c7` aborts with a failed assertion in
-  the attention kernel as soon as cache spills to host RAM — on either cache
-  layout, so dynamic slots neither cause nor avoid it. The fix landed two days
-  after that build was published and there is no newer release yet.
+<Note>
+  **The rolling-KV crash is fixed in the build xollama ships.** The first
+  `opencoti-llamafile-0.10.5-c7` cut aborted with a failed assertion in the
+  attention kernel as soon as cache spilled to host RAM, on either cache layout.
+  opencoti re-published that cut as r2 with the fix and nothing else, and it is
+  what `llm/engine/pin.txt` pins.
 
-  Until there is: keep the cache resident. Lower `num_ctx`, or compress it with
-  a quantised [KV cache type](/xollama/kv-cache), rather than relying on spill.
-  This is unrelated to slots — it is the same on a single-slot load.
-
-  You do not have to recognise it yourself. A load that dies this way is
-  reported with the defect named and this workaround attached, rather than with
-  the engine's own assertion text.
-</Warning>
+  Spill on r2 has not been measured here — the defect is fixed by the patch
+  that caused it, not by anything this project observed. If you are keeping the
+  cache resident because of the old warning, you no longer have to, but lowering
+  `num_ctx` or compressing with a quantised
+  [KV cache type](/xollama/kv-cache) is still the faster arrangement.
+</Note>

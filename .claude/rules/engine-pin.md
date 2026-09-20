@@ -45,6 +45,8 @@ paths:
   `llm/engine/policy_test.go` routes against an all-payload pin so what it
   measures is the compute floor, not the payloads the shipped pin happens to carry.
 - Moving to a new artifact is one commit: `repo`, `rev`, `tag`, `channel`, every
-  `sha256`, and the `feature` and `accel` rows corrected to what the new bytes
-  carry.
+  `sha256`, the `feature` and `accel` rows corrected to what the new bytes carry,
+  and any `llm/engine_defects.go` row those bytes retire (see
+  `.claude/rules/engine-defects.md`). A re-published cut keeps the tag and the
+  file names and changes every `sha256`.
 - Background and the channel table: `docs/features/engine-opencoti-llamafile.md`.

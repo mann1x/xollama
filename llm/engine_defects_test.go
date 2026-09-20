@@ -37,13 +37,37 @@ func defectiveArtifact(t *testing.T) string {
 	}
 
 	original := knownEngineDefects
-	patched := make([]knownEngineDefect, len(original))
-	copy(patched, original)
-	patched[0].SHA256 = []string{digest}
-	knownEngineDefects = patched
+	knownEngineDefects = []knownEngineDefect{retiredC7Defect(digest)}
 	t.Cleanup(func() { knownEngineDefects = original })
 
 	return path
+}
+
+// retiredC7Defect is the row this machinery was built for, kept here after it
+// was retired from the shipped table.
+//
+// It is a real defect, reported by opencoti as bug-3369 and independently
+// measured in docs/evaluations/phase2-engine-ab.md before it had a name: the
+// c7 r1 engine aborted as soon as the KV cache began spilling to host memory.
+// The r2 re-cut fixed it and the pin moved, so the row no longer belongs in
+// the table -- but the tests below are about whether an explanation reaches a
+// user at all, and they need something to explain. Using the real thing keeps
+// them honest about what these messages are for, and keeps them passing with
+// the shipped table empty, which is the state it should normally be in.
+func retiredC7Defect(digest string) knownEngineDefect {
+	return knownEngineDefect{
+		SHA256: []string{digest},
+		Signatures: []string{
+			"GGML_ASSERT(dst->op == GGML_OP_FLASH_ATTN_EXT)",
+			"fattn-common.cuh",
+			"ggml_new_object: not enough space in the context's memory pool",
+		},
+		Summary: "this build of the opencoti engine (0.10.5-c7) aborts when the KV cache does not fit in VRAM and starts spilling to host memory, on either cache layout",
+		Workaround: "keep the cache resident rather than relying on spill: lower num_ctx, " +
+			"or compress the cache with OLLAMA_KV_CACHE_TYPE=q8_0 (or XOLLAMA_K_CACHE_TYPE / " +
+			"XOLLAMA_V_CACHE_TYPE per half). Serving this model on stock llama.cpp instead, " +
+			"with XOLLAMA_ENGINE=llamacpp, also avoids it",
+	}
 }
 
 func TestDescribeEngineDefect(t *testing.T) {
@@ -159,6 +183,24 @@ func TestAnnotateEngineDefect(t *testing.T) {
 			t.Errorf("annotated with no command: %v", got)
 		}
 	})
+}
+
+// TestTheShippedTableAccusesNothing pins the healthy state. Every other test
+// here installs a fixture row, so without this one an empty shipped table would
+// be untested -- and empty is what it should normally be. It also checks the
+// retirement actually took: the signature that used to fire must no longer fire
+// against the bytes we now ship.
+func TestTheShippedTableAccusesNothing(t *testing.T) {
+	path := artifactWithDigest(t, "the artifact main pins today")
+
+	for _, output := range []string{
+		"fattn-common.cuh:87: GGML_ASSERT(dst->op == GGML_OP_FLASH_ATTN_EXT) failed",
+		"ggml_new_object: not enough space in the context's memory pool (needed 118128, available 117760)",
+	} {
+		if got := describeEngineDefect(path, output); got != "" {
+			t.Errorf("the shipped table explained %q as a known defect: %s", output, got)
+		}
+	}
 }
 
 // TestKnownDefectsMatchThePinnedArtifact keeps the table honest: a row exists
