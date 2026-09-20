@@ -113,8 +113,10 @@ channel  dev
 # score 0.988, kvarn3 DCA off n=12 score 0.983, zero faults. Patches 0245-0315
 # were each gated at capture; work for 0316 is in these bytes but uncaptured.
 
-# The chain includes patch 0288, so the sliding-window ring types are here.
-# Verified against the artifact, not taken from the chain listing.
+# The chain includes patch 0288, so the sliding-window ring types should be
+# here. DECLARED FROM THE CHAIN, pending a probe of these actual bytes -- the
+# rule this fork works by is that the artifact is the authority and the
+# vendor's prose is not, and a feature row is a claim we owe a measurement.
 feature  swa-cache-types
 
 # Linux x86_64 CUDA and nothing else. The host binary is a bare cosmocc APE:

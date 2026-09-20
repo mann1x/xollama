@@ -22,13 +22,14 @@ paths:
 - Engine capabilities come from `feature` rows, read through `pin.HasFeature`
   (`featureSWACacheTypes` in `llm/engine/capability.go`), and are never inferred
   from the cut number in `tag`: a dev build carries part of the next cut under
-  the previous cut's tag.
-- `accel <arch> <backend>` rows declare what the pinned BYTES accelerate, which
-  is a different fact from the tested matrix in `llm/engine/policy.go`. Routing
-  is the two intersected — `pinUncovered` / `pinUncoveredIn` call
-  `pin.Accelerates`, so an uncovered accelerator goes to llama.cpp instead of
-  being served silently on the CPU. Backend spellings must be in `knownBackends`
-  (`llm/engine/policy.go`); a typo is a parse error.
+  the previous cut's tag. The artifact is the authority, not the vendor's prose —
+  a row declared from opencoti's patch chain rather than probed against the bytes
+  is a claim still owed a measurement, and the comment above it must say so.
+- `accel <arch> <backend>` rows declare what the pinned BYTES accelerate, a
+  different fact from the tested matrix in `llm/engine/policy.go`. Routing is the
+  two intersected — `pinUncovered` / `pinUncoveredIn` call `pin.Accelerates`, so
+  an uncovered accelerator goes to llama.cpp instead of being served silently on
+  the CPU. Backend spellings must be in `knownBackends`; a typo is a parse error.
 - A tested platform does **not** have to have an artifact — a dev pin ships a
   subset. It must be served by the pin or refused for a stated reason, which is
   what `TestEveryTestedPlatformIsServedOrRefused` in `llm/engine/pin_test.go`
@@ -42,9 +43,8 @@ paths:
 - A test about policy must not also be a test of what this branch pins: stub the
   pin with `withPin` (`llm/engine/coverage_test.go`), which swaps `loadPin` and
   restores it in `t.Cleanup`. `TestSupportsDeviceHonoursTheCUDAComputeFloor` in
-  `llm/engine/policy_test.go` routes against an all-payload pin so what it
-  measures is the compute floor, not the payloads the shipped pin happens to carry.
+  `llm/engine/policy_test.go` routes against an all-payload pin so it measures the
+  compute floor, not the payloads the shipped pin happens to carry.
 - Moving to a new artifact is one commit: `repo`, `rev`, `tag`, `channel`, every
-  `sha256`, and the `feature` and `accel` rows corrected to what the new bytes
-  carry.
+  `sha256`, and the `feature` / `accel` rows corrected to what the new bytes carry.
 - Background and the channel table: `docs/features/engine-opencoti-llamafile.md`.
