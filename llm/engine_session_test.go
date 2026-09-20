@@ -17,6 +17,8 @@ import (
 
 func boolPtr(b bool) *bool { return &b }
 
+func intPtr(i int) *int { return &i }
+
 func cfgWithSession(s *xollama.Session) LlamaServerConfig {
 	return LlamaServerConfig{Xollama: &xollama.Config{Version: 1, Session: s}}
 }
@@ -97,9 +99,9 @@ func TestSessionFieldsPrecedence(t *testing.T) {
 		envPool  string
 		cfg      LlamaServerConfig
 		id       string
-		pool     int
+		pool     *int
 		wantID   string
-		wantPool int
+		wantPool *int
 		wantWhy  string
 	}{
 		{
@@ -108,8 +110,8 @@ func TestSessionFieldsPrecedence(t *testing.T) {
 			// the one rule that outranks every other setting here.
 			opencoti: false, envAff: "1", envPool: "1",
 			cfg: cfgWithSession(&xollama.Session{Affinity: boolPtr(true), Pool: boolPtr(true)}),
-			id:  "xo-abc", pool: 3,
-			wantID: "", wantPool: 0,
+			id:  "xo-abc", pool: intPtr(3),
+			wantID: "", wantPool: nil,
 			wantWhy: "engine gate",
 		},
 		{
@@ -147,16 +149,16 @@ func TestSessionFieldsPrecedence(t *testing.T) {
 		{
 			name:     "a pool is dropped unless pooling was asked for",
 			opencoti: true,
-			id:       "xo-abc", pool: 7,
-			wantID: "xo-abc", wantPool: 0,
+			id:       "xo-abc", pool: intPtr(7),
+			wantID: "xo-abc", wantPool: nil,
 			wantWhy: "pool defaults off",
 		},
 		{
 			name:     "pooling on carries the pool through",
 			opencoti: true,
 			cfg:      cfgWithSession(&xollama.Session{Pool: boolPtr(true)}),
-			id:       "xo-abc", pool: 7,
-			wantID: "xo-abc", wantPool: 7,
+			id:       "xo-abc", pool: intPtr(7),
+			wantID: "xo-abc", wantPool: intPtr(7),
 			wantWhy: "model asked for a pool",
 		},
 		{
@@ -165,8 +167,8 @@ func TestSessionFieldsPrecedence(t *testing.T) {
 			// identity. The config validator refuses this pair, but the
 			// environment can still be asked for it.
 			opencoti: true, envAff: "0", envPool: "1",
-			id: "xo-abc", pool: 7,
-			wantID: "", wantPool: 0,
+			id: "xo-abc", pool: intPtr(7),
+			wantID: "", wantPool: nil,
 			wantWhy: "pool needs affinity",
 		},
 	}
@@ -183,8 +185,12 @@ func TestSessionFieldsPrecedence(t *testing.T) {
 			if gotID != tt.wantID {
 				t.Errorf("session id = %q, want %q (%s)", gotID, tt.wantID, tt.wantWhy)
 			}
-			if gotPool != tt.wantPool {
-				t.Errorf("pool id = %d, want %d (%s)", gotPool, tt.wantPool, tt.wantWhy)
+			switch {
+			case gotPool == nil && tt.wantPool == nil:
+			case gotPool == nil || tt.wantPool == nil:
+				t.Errorf("pool id = %v, want %v (%s)", fmtPool(gotPool), fmtPool(tt.wantPool), tt.wantWhy)
+			case *gotPool != *tt.wantPool:
+				t.Errorf("pool id = %d, want %d (%s)", *gotPool, *tt.wantPool, tt.wantWhy)
 			}
 		})
 	}
@@ -212,14 +218,14 @@ func TestLlamaServerCompletionSessionFields(t *testing.T) {
 			name:     "opencoti carries a pool when the model asked for one",
 			opencoti: true,
 			cfg:      cfgWithSession(&xollama.Session{Pool: boolPtr(true)}),
-			req:      CompletionRequest{Prompt: "hi", SessionID: "xo-1234", PoolID: 2},
+			req:      CompletionRequest{Prompt: "hi", SessionID: "xo-1234", PoolID: intPtr(2)},
 			wantID:   "xo-1234",
 			wantPool: float64(2),
 		},
 		{
 			name:     "stock llama.cpp carries neither",
 			opencoti: false,
-			req:      CompletionRequest{Prompt: "hi", SessionID: "xo-1234", PoolID: 2},
+			req:      CompletionRequest{Prompt: "hi", SessionID: "xo-1234", PoolID: intPtr(2)},
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -287,4 +293,11 @@ func TestLlamaServerCompletionSessionFields(t *testing.T) {
 			}
 		})
 	}
+}
+
+func fmtPool(p *int) string {
+	if p == nil {
+		return "none"
+	}
+	return fmt.Sprintf("%d", *p)
 }

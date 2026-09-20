@@ -1716,7 +1716,7 @@ type llamaServerCompletionRequest struct {
 	// attaches it to a shared prefix pool, whose overlap the engine computes
 	// itself token-exactly. Omitted entirely on every other engine.
 	SessionID string `json:"session_id,omitempty"`
-	PoolID    int    `json:"pool_id,omitempty"`
+	PoolID    *int   `json:"pool_id,omitempty"`
 }
 
 func llamaServerPreservedTokens(parserTokens []string, toolCallTag string) []string {
@@ -1959,11 +1959,11 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 
 	// xollama-hook: engine-session — see docs/xollama/sessions.mdx.
 	poolID := req.PoolID
-	if poolID == 0 {
+	if poolID == nil {
 		poolID = s.poolFor(req.PoolKey)
 	}
 	applySession(&lsReq, s.usedOpencoti, s.launch.config, req.SessionID, poolID)
-	if poolID != 0 {
+	if poolID != nil {
 		// Already attached to a pool, so this request has nothing left to teach
 		// us about the prefix: it is the prefix, shared.
 		pooled = poolSource{}
@@ -2291,7 +2291,7 @@ func (s *llamaServerRunner) Chat(ctx context.Context, req ChatRequest, fn func(C
 	// Only a request that did NOT attach to a pool is worth learning from: one
 	// that attached already has its prefix shared.
 	var pooled poolSource
-	if req.PoolID == 0 && s.poolFor(req.PoolKey) == 0 {
+	if req.PoolID == nil && s.poolFor(req.PoolKey) == nil {
 		chat := req
 		pooled = poolSource{chat: &chat}
 	}
@@ -2589,15 +2589,15 @@ func (s *llamaServerRunner) llamaServerChatRequest(req ChatRequest, stream bool)
 	// path owns its own body, so the fields have to be added here too; on any
 	// engine without session affinity neither key appears.
 	chatPool := req.PoolID
-	if chatPool == 0 {
+	if chatPool == nil {
 		chatPool = s.poolFor(req.PoolKey)
 	}
-	if id, pool := sessionFieldsFor(s.usedOpencoti, s.launch.config, req.SessionID, chatPool); id != "" || pool > 0 {
+	if id, pool := sessionFieldsFor(s.usedOpencoti, s.launch.config, req.SessionID, chatPool); id != "" || pool != nil {
 		if id != "" {
 			body["session_id"] = id
 		}
-		if pool > 0 {
-			body["pool_id"] = pool
+		if pool != nil {
+			body["pool_id"] = *pool
 		}
 	}
 

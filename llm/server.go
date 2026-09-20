@@ -304,7 +304,7 @@ type CompletionRequest struct {
 	// actually ran on an engine that has them; on stock llama.cpp nothing is
 	// sent and the request body is upstream's, byte for byte.
 	SessionID string
-	PoolID    int
+	PoolID    *int
 	// PoolKey identifies the prefix this request would share with others --
 	// the system prompt and tool names, not the conversation. When pooling is
 	// on and a pool already holds this prefix, the request attaches to it; when
@@ -332,7 +332,7 @@ type ChatRequest struct {
 	// actually ran on an engine that has them; on stock llama.cpp nothing is
 	// sent and the request body is upstream's, byte for byte.
 	SessionID string
-	PoolID    int
+	PoolID    *int
 	// PoolKey identifies the prefix this request would share with others --
 	// the system prompt and tool names, not the conversation. When pooling is
 	// on and a pool already holds this prefix, the request attaches to it; when

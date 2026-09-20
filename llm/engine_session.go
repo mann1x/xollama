@@ -121,32 +121,35 @@ func DeriveSessionID(model string, messages []api.Message, tools api.Tools) stri
 // deliberate. "Off" is an operator or a publisher saying this model must not
 // pin conversations to slots, and a client header is not the place to overrule
 // it; a caller who wants affinity asks the server for it.
-func sessionFieldsFor(engineHasSessions bool, cfg LlamaServerConfig, sessionID string, poolID int) (string, int) {
+func sessionFieldsFor(engineHasSessions bool, cfg LlamaServerConfig, sessionID string, poolID *int) (string, *int) {
 	if !engineHasSessions {
-		return "", 0
+		return "", nil
 	}
 	set := resolveSessionSettings(cfg)
 	if !set.Affinity {
-		return "", 0
+		return "", nil
 	}
 	if !set.Pool {
-		poolID = 0
+		poolID = nil
 	}
-	// Pool ids are handed out by the engine, and zero is a meaningful slot in
-	// the legacy field it replaces, so only a positive id means "attached".
-	if poolID < 0 {
-		poolID = 0
+	// Pool ids are handed out by the engine and the FIRST one is zero, so
+	// "attached" cannot be spelled as a non-zero int. It is a pointer for that
+	// reason alone: a nil means no pool, and a pool numbered zero attaches like
+	// any other. Spelling it as "> 0" cost pool 0 every attach it should have
+	// had, silently, because an unattached pool is not an error.
+	if poolID != nil && *poolID < 0 {
+		poolID = nil
 	}
 	return sessionID, poolID
 }
 
 // applySession fills the session fields of a completion body.
-func applySession(lsReq *llamaServerCompletionRequest, engineHasSessions bool, cfg LlamaServerConfig, sessionID string, poolID int) {
+func applySession(lsReq *llamaServerCompletionRequest, engineHasSessions bool, cfg LlamaServerConfig, sessionID string, poolID *int) {
 	id, pool := sessionFieldsFor(engineHasSessions, cfg, sessionID, poolID)
 	if id != "" {
 		lsReq.SessionID = id
 	}
-	if pool > 0 {
+	if pool != nil {
 		lsReq.PoolID = pool
 	}
 }

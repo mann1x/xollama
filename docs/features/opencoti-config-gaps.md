@@ -331,6 +331,38 @@ BPE-merge tail to worry about. One option does matter — `/tokenize` defaults
 `add_special` to **false** while the serving path tokenises with it **true**, so
 leaving it out would shift every token by the BOS and match at zero.
 
+## The pool path, measured end to end (2026-09-20)
+
+After the redesign, against the same live c7:
+
+```
+polykv: created pool 0 (seq 4, prefix_len 347, source 'tokens/slot')
+polykv P7: new session 'xo-...' admitted to pool 0
+polykv-pools: pool 0 match P=344 not better than cached n_past=347 — skipping share
+polykv-pools: attached pool 0 — shared 346-token prefix (n_past -> 346)
+```
+
+Every line of that is the design working:
+
+- `source 'tokens/slot'` — the materialising create, not a session snapshot.
+- `prefix_len` equals what two conversations were observed to share, and the
+  first conversation alone created nothing.
+- `P == prefix_len == 346` on the attach, which is the proof that our
+  tokenisation matches the engine's exactly — `add_special: true` was the option
+  that decided it.
+- The `skipping share` lines are the documented `P > n_past` rule and are not
+  failures: those slots already held more of the prefix than the pool offered.
+  The share is taken as soon as a request lands on a slot that does not.
+
+Nothing is wasted: under the old design the same prefix gave a pool of 50 tokens
+serving a share of 29.
+
+Finding it required fixing one more thing first. The engine numbers pools from
+**zero**, and xollama spelled "attached" as a non-zero int — a `pool > 0` guard
+and an `omitempty` int on the wire, either of which alone drops pool 0. The
+engine's first pool could never be attached to, silently, because an unattached
+pool looks exactly like a pool nobody is using.
+
 ## The measurement, taken 2026-09-19
 
 It has now been run. Host: eleven2go, Windows 11, RTX 3090 (CUDA compute 8.6),

@@ -484,13 +484,16 @@ func (s *llamaServerRunner) postPool(ctx context.Context, path string, body []by
 	return res.StatusCode, out, nil
 }
 
-// poolFor returns the pool this request should attach to, or 0 for none.
-func (s *llamaServerRunner) poolFor(key string) int {
+// poolFor returns the pool this request should attach to, or nil for none.
+//
+// Nil rather than zero because the engine numbers its first pool ZERO, so there
+// is no int value left over to mean "none".
+func (s *llamaServerRunner) poolFor(key string) *int {
 	id, ok := s.pools.lookup(key)
 	if !ok {
-		return 0
+		return nil
 	}
-	return id
+	return &id
 }
 
 // poolSource is where the rendered prompt for a prefix comes from.

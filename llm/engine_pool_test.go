@@ -541,8 +541,8 @@ func TestReleasePoolsAtShutdown(t *testing.T) {
 // attaches nothing, which is what every stock and unpooled load must do.
 func TestPoolForIsInertWithoutPooling(t *testing.T) {
 	s := &llamaServerRunner{}
-	if got := s.poolFor("some-key"); got != 0 {
-		t.Errorf("poolFor = %d, want 0 with pooling off", got)
+	if got := s.poolFor("some-key"); got != nil {
+		t.Errorf("poolFor = %d, want no pool with pooling off", *got)
 	}
 }
 
@@ -779,5 +779,42 @@ func TestEffectivePoolCountIgnoresPoolsOnRecurrentModels(t *testing.T) {
 	}
 	if got := effectivePoolCount(cfg, true); got != 0 {
 		t.Errorf("effectivePoolCount(recurrent) = %d, want 0 — the seats can never be used", got)
+	}
+}
+
+// TestPoolZeroAttaches is the bug that made the engine's FIRST pool useless.
+// Pool ids are handed out from zero, so "attached" cannot be spelled as a
+// non-zero int -- and it was, in two places at once: a `pool > 0` guard and an
+// `omitempty` on the wire field. Pool 0 was created, pinned and never once
+// attached to, which looks exactly like a pool that is simply not being used.
+func TestPoolZeroAttaches(t *testing.T) {
+	r := newPoolRegistry(2)
+	if _, ok := r.claim("k"); !ok {
+		t.Fatal("claim refused")
+	}
+	r.remember("k", 0)
+
+	s := &llamaServerRunner{usedOpencoti: true, pools: r}
+	got := s.poolFor("k")
+	if got == nil {
+		t.Fatal("poolFor found nothing; pool 0 is a real pool")
+	}
+	if *got != 0 {
+		t.Fatalf("poolFor = %d, want 0", *got)
+	}
+
+	// and it has to survive all the way onto the wire
+	var lsReq llamaServerCompletionRequest
+	cfg := LlamaServerConfig{}
+	t.Setenv("XOLLAMA_SESSION_AFFINITY", "1")
+	t.Setenv("XOLLAMA_SESSION_POOL", "1")
+	applySession(&lsReq, true, cfg, "xo-abc", got)
+
+	body, err := json.Marshal(lsReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"pool_id":0`) {
+		t.Errorf("pool 0 did not reach the wire: %s", body)
 	}
 }
