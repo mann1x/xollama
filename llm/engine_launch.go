@@ -111,6 +111,43 @@ func (kv kvCacheTypes) requiresEngineExtension() string {
 	return ""
 }
 
+// isKVarNCacheType reports whether a type name is one of opencoti's KVarN
+// compressed widths, which is the axis the ring rules turn on.
+func isKVarNCacheType(t string) bool {
+	return strings.HasPrefix(t, "kvarn")
+}
+
+// ringShapeError returns why this ring cannot be asked for, or "" when it can.
+//
+// These rules were MEASURED against the pinned artifact, not read off the
+// vendor's flag table, which states only the second of them. Probed on
+// opencoti-0.10.5-c7-2609200554001:
+//
+//	-ctk f16    -ctv f16    -swa q4_0  /q4_0    refused: base must be KVarN
+//	-ctk q8_0   -ctv q8_0   -swa q4_0  /q4_0    refused: base must be KVarN
+//	-ctk kvarn3 -ctv kvarn3 -swa q4_0  /kvarn3  refused: ring halves mixed
+//	-ctk kvarn3 -ctv kvarn3 -swa q4_0  /q4_0    accepted
+//	-ctk kvarn3 -ctv kvarn3 -swa kvarn4/kvarn4  accepted
+//
+// The engine states each of these clearly and then exits during startup, which
+// to the operator is a model that would not load. Refusing here names the
+// setting that has to change instead.
+func (kv kvCacheTypes) ringShapeError() string {
+	if kv.KSWA == "" && kv.VSWA == "" {
+		return ""
+	}
+	if kv.KSWA == "" || kv.VSWA == "" {
+		return "kv.k_swa and kv.v_swa must be set together; the engine quantises both halves of the one ring"
+	}
+	if isKVarNCacheType(kv.KSWA) != isKVarNCacheType(kv.VSWA) {
+		return fmt.Sprintf("kv.k_swa = %q and kv.v_swa = %q must both be KVarN widths or both be plain types", kv.KSWA, kv.VSWA)
+	}
+	if !isKVarNCacheType(kv.K) || !isKVarNCacheType(kv.V) {
+		return fmt.Sprintf("a sliding-window ring needs a KVarN base, and kv.k = %q, kv.v = %q are not: set both to a kvarnN width, or leave the ring unset and let -ctk/-ctv cover the whole cache", kv.K, kv.V)
+	}
+	return ""
+}
+
 // appendKVCacheArgs writes the global cache types, which both engines accept.
 // The ring is not written here: it is engine-specific and is added after the
 // engine has actually been chosen, the same way --spec-type is retargeted.

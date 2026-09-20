@@ -511,6 +511,12 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 		if why := engine.SlidingWindowRingUnavailable(); why != "" {
 			return nil, 0, false, fmt.Errorf("kv.k_swa / kv.v_swa cannot be used: %s", why)
 		}
+		// Available is not the same as askable in this shape. An engine that
+		// has the ring still refuses combinations of it, during startup, which
+		// reaches the operator as a load that failed.
+		if why := kvTypes.ringShapeError(); why != "" {
+			return nil, 0, false, fmt.Errorf("this sliding-window ring configuration would be refused by the engine: %s", why)
+		}
 	}
 	args = appendKVCacheRingArgs(args, kvTypes, usedOpencoti)
 

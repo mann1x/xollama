@@ -20,11 +20,11 @@ paths:
   different repo whenever a cut is in flight. Tests check the `<owner>/<name>`
   shape only.
 - Engine capabilities come from `feature` rows, read through `pin.HasFeature`
-  (`featureSWACacheTypes` in `llm/engine/capability.go`), and are never inferred
-  from the cut number in `tag`: a dev build carries part of the next cut under
-  the previous cut's tag. The artifact is the authority, not the vendor's prose —
-  a row declared from opencoti's patch chain rather than probed against the bytes
-  is a claim still owed a measurement, and the comment above it must say so.
+  (`featureSWACacheTypes` in `llm/engine/capability.go`), never inferred from the
+  cut number in `tag`: a dev build carries part of the next cut under the previous
+  cut's tag. A row from the patch chain owes a measurement and says so until a
+  probe replaces it with the flags run, the date and the verdicts; the artifact is
+  the authority, not the vendor's prose (shapes: `.claude/rules/engine-kv-cache.md`).
 - `accel <arch> <backend>` rows declare what the pinned BYTES accelerate, a
   different fact from the tested matrix in `llm/engine/policy.go`. Routing is the
   two intersected — `pinUncovered` / `pinUncoveredIn` call `pin.Accelerates`, so
