@@ -190,9 +190,32 @@ byte-identical to upstream, which is what makes the A/B honest.
 
 ### Getting the binary
 
-The opencoti repo is private; the engine is published on Hugging Face at
-`ManniX-ITA/opencoti-llamafile`, and the artifacts are 0.7–2 GB — too big to
-vendor in git and not ours to relicense.
+The opencoti repo is private; the engine is published on Hugging Face, and the
+artifacts are 0.7–2 GB — too big to vendor in git and not ours to relicense.
+
+**Which repo is a variable, and nothing in the tree may assume it.** There are
+two, and `llm/engine/pin.txt` is the only place that says which one this branch
+follows:
+
+| Channel | Repo | What it holds |
+|---|---|---|
+| `release` | [`ManniX-ITA/opencoti-llamafile`](https://huggingface.co/ManniX-ITA/opencoti-llamafile) | cut releases, stable, backed up |
+| `dev` | [`ManniX-ITA/opencoti-llamafile-dev`](https://huggingface.co/ManniX-ITA/opencoti-llamafile-dev) | snapshots published on request, for integration testing only |
+
+xollama is built for the scope of the **next** cut, not the scope of whatever
+is published today, so the dev branch pins a dev snapshot whenever one is in
+flight and the release repo when nothing is. The pin carries a `channel`
+directive so a dev build can never be mistaken for a release by omission.
+
+Two properties of that arrangement drive the pin format:
+
+- **A dev build is tagged with the PREVIOUS release tag** (`opencoti-0.10.5-c7-<id>`).
+  That is a build id, not a claim about which cut it is. Deriving capabilities
+  from the tag would therefore refuse the very flags the snapshot was pinned to
+  test, which is why `feature` rows are declared rather than inferred.
+- **A release is re-cut in place.** The c7 r2 re-cut replaced all five host
+  binaries under their existing names on `main`. So `rev` is a commit sha and
+  never a branch; `ParsePin` rejects anything else.
 
 **Implemented today: discovery of a pre-placed artifact.** `engine.Find` looks
 at `XOLLAMA_ENGINE_PATH` first — set, it is used as given, and a missing file is

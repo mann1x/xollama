@@ -36,6 +36,7 @@ endif()
 # (TestPinFormatIsWhatCMakeParses) pins the assumptions made here.
 set(_repo "")
 set(_rev "")
+set(_channel "")
 set(_tag "")
 set(_asset_path "")
 set(_asset_sha "")
@@ -65,6 +66,12 @@ foreach(_line IN LISTS _lines)
         list(GET _fields 1 _rev)
     elseif(_key STREQUAL "tag" AND _n EQUAL 2)
         list(GET _fields 1 _tag)
+    elseif(_key STREQUAL "channel" AND _n EQUAL 2)
+        list(GET _fields 1 _channel)
+    elseif(_key STREQUAL "feature" AND _n EQUAL 2)
+        # Declared engine capabilities. Only the Go side gates on these; they
+        # are read here so that adding one cannot fail the build, and so the
+        # two parsers stay able to read the same file. See llm/engine/pin.go.
     elseif(_key STREQUAL "bin" AND _n EQUAL 4)
         list(GET _fields 1 _row_arch)
         if(_row_arch STREQUAL "${ARCH}")
@@ -78,6 +85,13 @@ endforeach()
 
 if(_repo STREQUAL "" OR _rev STREQUAL "")
     message(FATAL_ERROR "opencoti-fetch: ${PIN_FILE} is missing a repo or rev directive")
+endif()
+
+# A dev pin is said out loud in the build log. Building against a moving engine
+# is a deliberate choice and should never be something you have to go and check.
+set(_chan_note "")
+if(NOT _channel STREQUAL "release")
+    set(_chan_note " [channel ${_channel}: ${_repo}]")
 endif()
 if(_asset_path STREQUAL "")
     message(FATAL_ERROR "opencoti-fetch: ${PIN_FILE} has no 'bin ${ARCH}' row")
@@ -165,4 +179,4 @@ file(CHMOD "${_dest}" PERMISSIONS
     GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
 
-message(STATUS "opencoti-llamafile ${_tag} (${ARCH}) staged at ${_dest}")
+message(STATUS "opencoti-llamafile ${_tag}${_chan_note} (${ARCH}) staged at ${_dest}")

@@ -5,79 +5,78 @@ import (
 	"testing"
 )
 
-func TestCut(t *testing.T) {
-	for _, tc := range []struct {
-		tag  string
-		want int
-		ok   bool
-	}{
-		{"llamafile-v0.10.5+opencoti.c7", 7, true},
-		{"llamafile-v0.10.5+opencoti.c8", 8, true},
-		{"llamafile-v0.10.3+opencoti.c10", 10, true},
-		// r2 is c7 plus one fix; it is still c7 for capability purposes.
-		{"llamafile-v0.10.5+opencoti.c7-r2", 7, true},
-		{"llamafile-v0.10.5", 0, false},
-		{"", 0, false},
-	} {
-		t.Run(tc.tag, func(t *testing.T) {
-			got, ok := Cut(tc.tag)
-			if got != tc.want || ok != tc.ok {
-				t.Errorf("Cut(%q) = %d, %v; want %d, %v", tc.tag, got, ok, tc.want, tc.ok)
-			}
-		})
-	}
-}
+// TestSlidingWindowRingFollowsTheDeclaration is the point of the file: the
+// capability comes from what the pin SAYS the artifact carries, not from the
+// shape of its tag. Inferring it from a cut number was wrong for exactly the
+// case this fork now lives in -- a dev artifact carrying part of the next cut
+// while still tagged as the current one.
+func TestSlidingWindowRingFollowsTheDeclaration(t *testing.T) {
+	const assets = "\nbin x86_64 a.llamafile " + "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-// TestSlidingWindowRingByCut pins which cuts have the flags, against named
-// tags rather than against whatever is pinned today. The flags are real -- they
-// are in opencoti's development tree, added by patch 0288 -- but the c7 chain
-// ends at 0244, and c7-r2 is c7 plus 0253 alone. Confirmed against the patch
-// chain, not the documentation, which described the development tree without
-// saying so.
-func TestSlidingWindowRingByCut(t *testing.T) {
 	for _, tc := range []struct {
-		tag  string
+		name string
+		text string
 		want bool
 	}{
-		{"llamafile-v0.10.5+opencoti.c7", false},
-		{"llamafile-v0.10.5+opencoti.c7-r2", false},
-		{"llamafile-v0.10.3+opencoti.c6", false},
-		{"llamafile-v0.10.5+opencoti.c8", true},
-		{"llamafile-v0.11.0+opencoti.c9", true},
-		// A tag we cannot read is treated as not having it: refusing a load is
-		// recoverable, sending a flag the engine rejects is not.
-		{"llamafile-v0.10.5", false},
+		{
+			name: "a release without it",
+			text: "repo o/r\nrev 619e163221eebf248c49db7d16533130328e26f6\ntag v0.10.5+opencoti.c7\nchannel release" + assets,
+			want: false,
+		},
+		{
+			name: "a release with it",
+			text: "repo o/r\nrev 619e163221eebf248c49db7d16533130328e26f6\ntag v0.10.5+opencoti.c8\nchannel release\nfeature swa-cache-types" + assets,
+			want: true,
+		},
+		{
+			// The case the tag regex got wrong: a dev build carrying patch 0288
+			// while still tagged c7. Inferring from the tag refused the very
+			// flags the build was pinned to test.
+			name: "a dev build tagged as the older cut but carrying the flags",
+			text: "repo o/r-dev\nrev 619e163221eebf248c49db7d16533130328e26f6\ntag v0.10.5+opencoti.c7-dev\nchannel dev\nfeature swa-cache-types" + assets,
+			want: true,
+		},
+		{
+			// And the reverse: a dev build on the c8 line that has not picked
+			// up 0288 yet. A cut number would have promised it.
+			name: "a dev build on the newer line that does not carry them yet",
+			text: "repo o/r-dev\nrev 619e163221eebf248c49db7d16533130328e26f6\ntag v0.10.6+opencoti.c8-dev\nchannel dev" + assets,
+			want: false,
+		},
 	} {
-		t.Run(tc.tag, func(t *testing.T) {
-			if got := tagHasSlidingWindowRing(tc.tag); got != tc.want {
-				t.Errorf("tagHasSlidingWindowRing(%q) = %v, want %v", tc.tag, got, tc.want)
+		t.Run(tc.name, func(t *testing.T) {
+			p, err := ParsePin(tc.text)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := p.HasFeature(featureSWACacheTypes); got != tc.want {
+				t.Errorf("HasFeature(%q) = %v, want %v", featureSWACacheTypes, got, tc.want)
 			}
 		})
 	}
 }
 
-// TestSlidingWindowRingIsRefusedOnTheShippedCut asserts the consequence for the
-// artifact actually pinned, and that the refusal says something the operator
-// can act on.
-func TestSlidingWindowRingIsRefusedOnTheShippedCut(t *testing.T) {
+// TestSlidingWindowRingMatchesTheShippedPin asserts the consequence for the
+// artifact actually pinned, and that a refusal says something actionable.
+func TestSlidingWindowRingMatchesTheShippedPin(t *testing.T) {
 	pin, err := DefaultPin()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	why := SlidingWindowRingUnavailable()
-	if tagHasSlidingWindowRing(pin.Tag) {
+	if pin.HasFeature(featureSWACacheTypes) {
 		if why != "" {
-			t.Errorf("pinned %s has the ring, but it is refused: %s", pin.Tag, why)
+			t.Errorf("pinned %s declares the ring, but it is refused: %s", pin.Tag, why)
 		}
 		return
 	}
 	if why == "" {
-		t.Fatalf("pinned %s has no --cache-type-k-swa, but the ring was allowed through", pin.Tag)
+		t.Fatalf("pinned %s does not declare the ring, but it was allowed through", pin.Tag)
 	}
 	// The message has to name the build and the way out, or it is just another
 	// "invalid argument" with a different prefix.
-	for _, want := range []string{pin.Tag, "--cache-type-k-swa", "kv.k"} {
+	for _, want := range []string{pin.Tag, pin.Channel, "--cache-type-k-swa", "kv.k"} {
 		if !strings.Contains(why, want) {
 			t.Errorf("refusal does not mention %q: %s", want, why)
 		}

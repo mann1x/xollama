@@ -96,7 +96,10 @@ with the Bubble Tea menu in `cmd/tui/tui.go`.
 **Desktop UI**: `app/ui/app/src/routes/` (React 19 + TanStack Router + Vite),
 sibling to the `app` workspace (`vite.config.ts`, `vitest.config.ts`).
 Pinned natives: `LLAMA_CPP_VERSION`, `MLX_VERSION`, `MLX_C_VERSION`,
-orchestrated by `CMakeLists.txt` / `CMakePresets.json`.
+orchestrated by `CMakeLists.txt` / `CMakePresets.json`; the opencoti engine
+artifact is pinned by `llm/engine/pin.txt` (`repo`, `rev` commit sha, `tag`,
+`channel`, `feature`), read by both `llm/engine/pin.go` and
+`cmake/opencoti-fetch.cmake`.
 
 ## Tooling and conventions
 

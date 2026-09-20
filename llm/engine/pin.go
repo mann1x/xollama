@@ -3,6 +3,7 @@ package engine
 import (
 	_ "embed"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -25,13 +26,32 @@ type Asset struct {
 	SHA256 string
 }
 
-// Pin is the parsed pin file: where the artifacts live and which bytes are
-// the right ones.
+// Pin is the parsed pin file: where the artifacts live, which bytes are the
+// right ones, and what that build can be asked to do.
 type Pin struct {
-	Repo   string
-	Rev    string
-	Tag    string
-	Assets []Asset
+	Repo string
+	Rev  string
+	Tag  string
+	// Channel is release or dev. It is declared rather than guessed from the
+	// repo name because the two channels may share a repo -- a dev channel
+	// points at the release repo whenever nothing new is in flight -- and
+	// because a build has to be able to say which one it is.
+	Channel string
+	// Features are the engine capabilities this artifact carries, named
+	// explicitly. See the note on feature directives in pin.txt.
+	Features []string
+	Assets   []Asset
+}
+
+// Channel values.
+const (
+	ChannelRelease = "release"
+	ChannelDev     = "dev"
+)
+
+// HasFeature reports whether the pinned artifact declares a capability.
+func (p Pin) HasFeature(name string) bool {
+	return slices.Contains(p.Features, name)
 }
 
 // DefaultPin is the pin compiled into this binary.
@@ -50,7 +70,7 @@ func ParsePin(text string) (Pin, error) {
 			continue
 		}
 		switch fields[0] {
-		case "repo", "rev", "tag":
+		case "repo", "rev", "tag", "channel", "feature":
 			if len(fields) != 2 {
 				return Pin{}, fmt.Errorf("pin.txt:%d: %s takes exactly one value, got %d", n+1, fields[0], len(fields)-1)
 			}
@@ -61,6 +81,10 @@ func ParsePin(text string) (Pin, error) {
 				p.Rev = fields[1]
 			case "tag":
 				p.Tag = fields[1]
+			case "channel":
+				p.Channel = fields[1]
+			case "feature":
+				p.Features = append(p.Features, fields[1])
 			}
 		case "bin":
 			if len(fields) != 4 {
@@ -74,15 +98,35 @@ func ParsePin(text string) (Pin, error) {
 	for _, missing := range []struct {
 		name  string
 		value string
-	}{{"repo", p.Repo}, {"rev", p.Rev}, {"tag", p.Tag}} {
+	}{{"repo", p.Repo}, {"rev", p.Rev}, {"tag", p.Tag}, {"channel", p.Channel}} {
 		if missing.value == "" {
 			return Pin{}, fmt.Errorf("pin.txt: no %s directive", missing.name)
 		}
+	}
+	// A channel is required rather than defaulted, so a dev pin can never be
+	// mistaken for a release one by omission.
+	if p.Channel != ChannelRelease && p.Channel != ChannelDev {
+		return Pin{}, fmt.Errorf("pin.txt: channel %q is not %s or %s", p.Channel, ChannelRelease, ChannelDev)
+	}
+	// The revision must be an immutable commit, never a branch. opencoti
+	// re-cuts a release in place: the c7 r2 re-cut replaced all five host
+	// binaries under their existing names on `main`, which turned every
+	// downstream pin that said `rev main` into a build that fetches bytes its
+	// own sha256 rows reject. Naming the commit is what makes a pin a pin.
+	if !isCommitRev(p.Rev) {
+		return Pin{}, fmt.Errorf("pin.txt: rev %q is not a 40-character commit sha; a branch or tag can be moved under the pinned sha256 rows", p.Rev)
 	}
 	if len(p.Assets) == 0 {
 		return Pin{}, fmt.Errorf("pin.txt: no asset rows")
 	}
 	return p, nil
+}
+
+func isCommitRev(rev string) bool {
+	if len(rev) != 40 {
+		return false
+	}
+	return strings.TrimLeft(rev, "0123456789abcdef") == ""
 }
 
 // Asset returns the row for an arch label.

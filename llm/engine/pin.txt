@@ -11,9 +11,16 @@
 #   - llm/engine/pin.go            embeds it, for provenance and for tests that
 #                                  keep this file honest
 #
-# Source of record is Hugging Face only (ManniX-ITA/opencoti-llamafile). The
-# artifacts exceed GitHub's release-asset cap and live on HF as LFS blobs.
+# Source of record is Hugging Face: the artifacts exceed GitHub's release-asset
+# cap and live there as LFS blobs.
 # URL shape: https://huggingface.co/<repo>/resolve/<rev>/<hf-path>
+#
+# WHICH repo is not fixed, and nothing in the tree may assume it. xollama tracks
+# opencoti's DEVELOPMENT line, because the fork is built for the scope of the
+# next cut rather than the scope of whatever is published today; a released cut
+# is pinned only when it is the newest thing that carries what we support.
+# So this file names its repo, and the dev branch names a different one whenever
+# a cut is in flight -- or the same one when nothing is.
 #
 # ---------------------------------------------------------------------------
 # FORMAT
@@ -21,9 +28,36 @@
 # Comments (#) and blank lines are ignored. Two kinds of line:
 #
 #   Directives (key + value):
-#     repo <hf-owner/name>    HF repo hosting the assets
-#     rev  <git-revision>     HF revision (branch/tag/commit)
-#     tag  <release-tag>      human release tag, provenance only
+#     repo    <hf-owner/name>  HF repo hosting the assets
+#     rev     <commit-sha>     HF revision; a 40-character commit, never a
+#                              branch (see the note below), enforced by pin.go
+#     tag     <release-tag>    human release tag, provenance only
+#     channel release | dev    which line this pin follows; required, because a
+#                              pin that forgot to say would read as a release
+#     feature <name>           zero or more; a capability this artifact HAS
+#
+#   Why the rev is a commit and never a branch. opencoti re-cuts a release IN
+#   PLACE: the c7 r2 re-cut replaced all five host binaries under their exact
+#   existing names on main. A pin that said "rev main" therefore kept pointing
+#   at the newest bytes while still carrying the digests of the old ones, so the
+#   next clean build fetched an artifact its own sha256 rows rejected. Naming
+#   the commit is what makes a pin a pin. The dev repo says the same thing in
+#   its README: pin by commit revision + sha256, never by main alone.
+#
+#   Why features are declared and not inferred. They used to be worked out from
+#   the cut number in the tag -- "c8 or newer has the SWA cache types". That is
+#   exactly wrong for a dev build, which carries part of the next cut while
+#   still being tagged as the current one: the flags we pinned it to test would
+#   have been refused. A dev artifact is also a moving target, carrying some of
+#   a cut and not the rest. So the pin states what the bytes can do, we test
+#   that claim, and a wrong claim is a bug report to opencoti rather than a
+#   silent mismatch.
+#
+#   Known feature names:
+#     swa-cache-types   --cache-type-k-swa / --cache-type-v-swa (patch 0288).
+#                       On a build without it, -ctk/-ctv set BOTH halves of an
+#                       iSWA cache and the separate ring type is refused up
+#                       front. See llm/engine/capability.go.
 #
 #   Asset rows (4 whitespace-separated fields):
 #     <kind> <arch> <hf-path> <sha256>
@@ -34,13 +68,25 @@
 #       sha256 verified by CMake at fetch time; a mismatch fails the build
 #              rather than shipping an unknown binary.
 #
-# To move to a new cut: bump rev/tag and replace the sha256 of every row, in
-# one commit. The digests below were verified against the published artifacts.
+# To move to a new artifact: bump repo/rev/tag/channel, replace the sha256 of
+# every row, and correct the feature rows to what the new bytes actually carry,
+# in one commit. The digests below were verified against the published
+# artifacts.
 # ---------------------------------------------------------------------------
 
-repo  ManniX-ITA/opencoti-llamafile
-rev   main
-tag   llamafile-v0.10.5+opencoti.c7
+repo     ManniX-ITA/opencoti-llamafile
+rev      619e163221eebf248c49db7d16533130328e26f6
+tag      llamafile-v0.10.5+opencoti.c7
+channel  release
+
+# The commit below is the c7 r1 cut -- the bytes measured in
+# docs/evaluations/phase0-engine-compat.md and run live on eleven2go. main now
+# serves r2 (c7 plus patch 0253, the rolling-KV field fix) under these same file
+# names; we do not follow it, because r2 adds no capability and pinning to it
+# would fix the fork at c7 scope.
+#
+# No feature rows: c7's patch chain ends at 0244, so it carries none of the
+# capabilities below 0245. r2 would not add any either.
 
 bin  x86_64          opencoti-llamafile-0.10.5-c7-x86_64.llamafile              3c907bc7511359054dbf55c9d2d69fb49324ef75bdbb45efa092c3facad8951e
 bin  aarch64         opencoti-llamafile-0.10.5-c7-aarch64.llamafile             a83141a5afe8053937e4461b238eb4a974ec456cbaa7849c70e6f529c124ea74
