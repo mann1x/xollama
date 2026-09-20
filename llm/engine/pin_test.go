@@ -45,12 +45,16 @@ func TestCommittedPinParses(t *testing.T) {
 	}
 }
 
-// TestEveryTestedPlatformHasAnArtifact is the invariant that keeps policy.go
-// and pin.txt from drifting apart. Adding a platform to the tested matrix
-// without publishing an artifact for it means the router sends loads to an
-// engine the package does not ship, and the only symptom is a fallback log
-// line on a user's machine.
-func TestEveryTestedPlatformHasAnArtifact(t *testing.T) {
+// TestEveryTestedPlatformIsServedOrRefused is the invariant that keeps
+// policy.go and pin.txt from drifting apart. The original form of this test
+// required an artifact for every tested platform, which was right while the
+// fork only ever pinned a full release. A development snapshot ships a subset
+// -- opencoti publishes no Windows or aarch64 GPU payload on that channel --
+// so the invariant is now the one that actually matters: a tested platform
+// must either be served by the pinned bytes or be refused for a stated reason.
+// What must never happen is routing a load to an engine the package does not
+// ship.
+func TestEveryTestedPlatformIsServedOrRefused(t *testing.T) {
 	p, err := DefaultPin()
 	if err != nil {
 		t.Fatal(err)
@@ -62,8 +66,13 @@ func TestEveryTestedPlatformHasAnArtifact(t *testing.T) {
 			t.Errorf("%s/%s is in the tested matrix but PackageArch says: %v", s.OS, s.Arch, err)
 			continue
 		}
-		if _, ok := p.Asset(arch); !ok {
-			t.Errorf("%s/%s maps to arch %q, which has no row in pin.txt", s.OS, s.Arch, arch)
+		if _, ok := p.Asset(arch); ok {
+			continue
+		}
+		// No artifact for it, so routing has to say so rather than try.
+		if reason := pinUncoveredIn(p, s.Platform, s.Backend); reason == "" {
+			t.Errorf("%s/%s maps to arch %q, which has no row in pin.txt, yet routing would send %s to it",
+				s.OS, s.Arch, arch, s.Backend)
 		}
 	}
 }

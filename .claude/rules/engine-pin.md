@@ -30,6 +30,11 @@ paths:
   `pin.Accelerates`, so an uncovered accelerator goes to llama.cpp instead of
   being served silently on the CPU. Backend spellings must be in
   `knownBackends` (`llm/engine/policy.go`); a typo is a parse error.
+- A tested platform does **not** have to have an artifact — a dev pin ships a
+  subset. It must be served by the pin or refused for a stated reason, which is
+  what `TestEveryTestedPlatformIsServedOrRefused` in `llm/engine/pin_test.go`
+  asserts: no `bin` row for a tested platform means `pinUncoveredIn` has to
+  return a reason, never route.
 - Asset rows are `bin` (the engine) or `dso` (a side-loadable GPU payload staged
   beside the binary). Release bins embed their payloads and carry no `dso` row;
   a dev snapshot is a bare APE that needs one. Address them with `pin.Asset`
