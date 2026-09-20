@@ -10,7 +10,8 @@ engine.
 > [`docs/protocols/CARRIED-PATCHES.md`](docs/protocols/CARRIED-PATCHES.md).
 > The engine swap is implemented and has been run against a live engine:
 > routing and policy, the pinned artifact and its build-time fetch, argv
-> translation, dynamic slots, engine sessions and shared prefix pools. The
+> translation, dynamic slots, engine sessions, shared prefix pools and the
+> `XOLLAMA_ENGINE_ARGS` argv passthrough. The
 > pinned engine is opencoti c7 r2 (`llm/engine/pin.txt`); a `dev` branch pins a
 > development snapshot for integration testing. With `XOLLAMA_ENGINE=llamacpp`
 > and no xollama flags the launch is byte-identical to upstream, which is what
