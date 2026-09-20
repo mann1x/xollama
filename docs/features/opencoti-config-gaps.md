@@ -324,12 +324,34 @@ that share a prefix are rendered by whoever owns the template — ollama on the
 Completion path, the engine via `/apply-template` on the Chat path — tokenised
 by the engine, and the longest common **token** prefix of the two is the answer.
 
-Comparing tokens rather than strings also disposes of opencoti's caveat about
-cutting back to a template boundary: a run of whole tokens that two real prompts
-both begin with is, by construction, a valid prefix of both, so there is no
-BPE-merge tail to worry about. One option does matter — `/tokenize` defaults
-`add_special` to **false** while the serving path tokenises with it **true**, so
-leaving it out would shift every token by the BOS and match at zero.
+Comparing tokens rather than strings disposes of the BPE-merge tail: a run of
+whole tokens that two real prompts both begin with is, by construction, a valid
+prefix of both. One option does matter — `/tokenize` defaults `add_special` to
+**false** while the serving path tokenises with it **true**, so leaving it out
+would shift every token by the BOS and match at zero.
+
+It does **not** dispose of opencoti's caveat about cutting back to a template
+boundary, which this document previously claimed. Two real conversations share
+the template *and* whatever their own first messages happen to have in common:
+"What is the capital of France" and "What is two plus two" agree for two tokens
+past the point where the template stops. That overshoot is the origin of the
+`347` / `346` discrepancy in the measurement below.
+
+So the boundary is measured, not inferred. Before a pool is created, the
+conversation's system prompt and tools are rendered against several stand-in
+user messages that share no opening, and only the tokens every rendering agrees
+on are kept — `templateBoundary` in `llm/engine_pool.go`. The result is then
+intersected with what the two real prompts shared, so it is guaranteed to be a
+prefix of prompts the engine actually saw even if the last template token merges
+with what follows it. The measurement can only come out short, and short is the
+safe direction.
+
+Which is the difference between wasteful and broken. On plain attention an
+over-long pool costs a few cells. On a **recurrent or hybrid** model
+`server-context.cpp` takes the share only when `P == pool_max + 1` and the
+prompt is strictly longer — the match must cover the pool entirely — so a pool
+two tokens too long can never be matched by anything. That, not the nature of
+recurrent state, was what kept these models out of pooling.
 
 ## The pool path, measured end to end (2026-09-20)
 
@@ -347,9 +369,13 @@ Every line of that is the design working:
 - `source 'tokens/slot'` — the materialising create, not a session snapshot.
 - `prefix_len` equals what two conversations were observed to share, and the
   first conversation alone created nothing.
-- `P == prefix_len == 346` on the attach, which is the proof that our
-  tokenisation matches the engine's exactly — `add_special: true` was the option
-  that decided it.
+- `P == 346` on the attach, which is the proof that our tokenisation matches the
+  engine's exactly — `add_special: true` was the option that decided it.
+- `prefix_len 347` against a share of `346` is **one token of overshoot**, and
+  it was reported here as a clean success. opencoti caught it: the two sampled
+  conversations agreed one token further than the template did. Harmless on this
+  attention model, fatal on a recurrent one, and now fixed by measuring the
+  boundary rather than taking the pair's word for it.
 - The `skipping share` lines are the documented `P > n_past` rule and are not
   failures: those slots already held more of the prefix than the pool offered.
   The share is taken as soon as a request lands on a slot that does not.
@@ -376,7 +402,7 @@ artifact `opencoti-llamafile-0.10.5-c7-win-x86_64-gpu.llamafile.exe`, sha
 | `--kv-unified` | emitted once, for both features |
 | DCA beyond native (G4) | `num_ctx=65536` on a 40960-trained qwen3; engine confirms `validate_override … = 65536`; chunk **40960**, derived from the ORIGINAL trained context |
 | `GET /api/engine` (G6) | all four endpoints live; `metrics` returned as text; `completion` refused 400 |
-| Recurrent gate | fired on qwen35; engine corroborates with `qwen35.attention.recurrent_layers` and `llama_memory_recurrent` |
+| Recurrent gate | fired on qwen35; engine corroborates with `qwen35.attention.recurrent_layers` and `llama_memory_recurrent`. Since the boundary is measured, these models are no longer excluded — they are pooled from the chat path only |
 | PolyKV attach (G5) | pool created, `pool_id` sent, engine matched the prefix token-exactly at P=29 |
 | Off-path `XOLLAMA_ENGINE=llamacpp` | stock `llama-server.exe`, **zero** xollama flags, `--load-mode` left untranslated |
 

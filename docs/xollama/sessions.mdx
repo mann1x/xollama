@@ -183,24 +183,37 @@ The engine holds a fixed number of pool seats and refuses a creation past the
 last one rather than making room itself, so the order is the difference between
 the replacement happening and the replacement failing.
 
-### Models that cannot be pooled
+### Models that keep recurrent state
 
-Pooling is off, whatever you set, on models that keep **recurrent state** —
-Mamba and RWKV, and the growing family of hybrids that put an SSM, a short
-convolution or a linear-attention block beside the attention ones: Jamba,
-Falcon-H1, Granite hybrid, LFM2, Nemotron-H, Qwen3-Next, Qwen3.5, Kimi Linear
-and their relatives.
+Models that keep **recurrent state** — Mamba and RWKV, and the growing family of
+hybrids that put an SSM, a short convolution or a linear-attention block beside
+the attention ones: Jamba, Falcon-H1, Granite hybrid, LFM2, Nemotron-H,
+Qwen3-Next, Qwen3.5, Kimi Linear and their relatives — are pooled, but only from
+**chat** requests.
 
-The reason is structural. A pool is a *prefix* of a cache, and it works because
-an attention cache is a per-token record that can be cut anywhere. Recurrent
-state is not: it is one rolling summary of everything seen so far, with no
-"first N tokens" to hand out. The engine can share such a state only when the
-match covers it entirely, which a conversation that merely *starts* the same way
-never does.
+The difference is structural. A pool is a *prefix* of a cache, and that works
+because an attention cache is a per-token record which can be cut anywhere.
+Recurrent state is not: it is one rolling summary of everything seen so far,
+with no "first N tokens" to hand out. The engine will share such a state only
+when the match covers the pool **entirely** and the prompt is strictly longer.
 
-So the attach would succeed, share nothing, and spend a reserved sequence for
-no benefit — working, as far as anything visible goes. That is worse than off,
-so it is off, and the server log says once at load which model and why.
+That makes the pool's length the whole question, and it is why the length is
+*measured* rather than inferred. Two conversations that both open "What is the
+capital of France" and "What is two plus two" share two tokens more than the
+template does, and a pool two tokens too long is a pool nothing can ever match:
+the attach succeeds, shares nothing, and spends a reserved sequence while
+looking like it works. So before a pool is created, xollama renders this
+conversation's system prompt and tools against several stand-in user messages
+that share no opening, and keeps only the tokens every rendering agrees on.
+That is the template and nothing past it. The measurement can only come out
+*short* — a shorter pool is still a prefix of every prompt that has it, and the
+engine simply matches all of it.
+
+Pooling on these models therefore needs a template the engine owns, which is
+the chat path. A `/api/generate` completion is rendered by ollama before it
+reaches the engine, so no such measurement is possible there and these models
+are not pooled from it. The server log says once at load which model this
+applies to.
 
 ### Seeing it
 

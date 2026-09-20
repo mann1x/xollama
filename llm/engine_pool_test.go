@@ -763,22 +763,19 @@ func TestModelKeepsRecurrentState(t *testing.T) {
 	})
 }
 
-// TestEffectivePoolCountIgnoresPoolsOnRecurrentModels pins the seat cost, not
-// just the registry. n_seq_max is --parallel plus --polykv-max-pools, and on a
-// sliding-window model every sequence carries its own window, so reserving
-// seats for pools that can never be created spends real memory on nothing.
-// Measured on a live engine: a qwen35 load still carried --polykv-max-pools 2
-// after pooling had been switched off for it.
-func TestEffectivePoolCountIgnoresPoolsOnRecurrentModels(t *testing.T) {
+// TestPoolSeatsAreReservedRegardlessOfArchitecture pins the seat cost. It used
+// to assert the opposite: a recurrent model got zero seats, because a pool
+// snapshotted from a session could never be matched by one and the memory was
+// spent on nothing. Both reasons are gone -- the pool is built from the prefix
+// tokens and stops at the measured template -- so these models are pooled like
+// any other, and the seats they reserve are seats they can use.
+func TestPoolSeatsAreReservedRegardlessOfArchitecture(t *testing.T) {
 	cfg := LlamaServerConfig{}
 	t.Setenv("XOLLAMA_SESSION_POOL", "1")
 	t.Setenv("XOLLAMA_POLYKV_MAX_POOLS", "2")
 
-	if got := effectivePoolCount(cfg, false); got != 2 {
-		t.Errorf("effectivePoolCount(attention) = %d, want 2", got)
-	}
-	if got := effectivePoolCount(cfg, true); got != 0 {
-		t.Errorf("effectivePoolCount(recurrent) = %d, want 0 — the seats can never be used", got)
+	if got := resolvePoolCount(cfg); got != 2 {
+		t.Errorf("resolvePoolCount() = %d, want 2", got)
 	}
 }
 

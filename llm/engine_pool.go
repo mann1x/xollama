@@ -519,6 +519,82 @@ func (s *llamaServerRunner) render(ctx context.Context, src poolSource) (string,
 	return s.ApplyChatTemplate(ctx, *src.chat)
 }
 
+// templateProbes are stand-in user messages used to find where the shared
+// template ends. Three rather than two, and deliberately unalike from their
+// first character, because the whole point is that they must not agree with
+// each other for even one token beyond the template.
+var templateProbes = []string{"alpha", "zulu", "7"}
+
+// leadingSystemMessages is the part of a conversation that every conversation
+// sharing this pool key has in common: the system messages it opens with.
+//
+// Leading ones only. DerivePoolKey hashes system content wherever it appears,
+// but a system message that arrives after a user turn is not in the shared
+// PREFIX, and including it here would describe a template no real prompt has.
+func leadingSystemMessages(msgs []api.Message) []api.Message {
+	out := make([]api.Message, 0, len(msgs))
+	for _, m := range msgs {
+		if m.Role != "system" {
+			break
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// templateBoundary is where the shared template stops and the conversation
+// starts, in tokens.
+//
+// This exists because the longest common prefix of two REAL conversations
+// overshoots. Two users who both open with "What" hand the pool a couple of
+// tokens of their own question, and the pool then describes a conversation
+// rather than a template. On an attention model that is merely wasteful. On a
+// recurrent or hybrid model it is fatal to the whole feature: the engine takes
+// the share only when the match covers the pool ENTIRELY (P == pool_max + 1 in
+// server-context.cpp), so a pool one token too long is a pool nothing can ever
+// match, and the reserved sequence is spent to no effect while looking like it
+// works.
+//
+// So the boundary is measured instead of inferred: render this conversation's
+// system messages and tools against several stand-in user messages that share
+// no opening, and take the tokens all the renders agree on. That is the
+// template and nothing else. It can only come out SHORT -- if the last template
+// token merges with the first character of a probe, the probes disagree there
+// and it is dropped -- and short is the safe direction, because a shorter pool
+// is still a prefix of every prompt that has it.
+//
+// Only the Chat path can do this: the engine owns that template, so asking it
+// is exact. On the Completion path ollama rendered the prompt somewhere this
+// code cannot reach, and no such probe is possible.
+func (s *llamaServerRunner) templateBoundary(ctx context.Context, chat *ChatRequest) ([]int, error) {
+	system := leadingSystemMessages(chat.Messages)
+
+	var boundary []int
+	for i, probe := range templateProbes {
+		req := *chat
+		req.Messages = append(slices.Clone(system), api.Message{Role: "user", Content: probe})
+
+		prompt, err := s.ApplyChatTemplate(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		tokens, err := s.tokenizePrompt(ctx, prompt)
+		if err != nil {
+			return nil, err
+		}
+
+		if i == 0 {
+			boundary = tokens
+			continue
+		}
+		boundary = commonTokenPrefix(boundary, tokens)
+		if len(boundary) == 0 {
+			break
+		}
+	}
+	return boundary, nil
+}
+
 // capturePool works towards a pool for this prefix, in the background.
 //
 // It runs after the response has been delivered, on its own context, because it
@@ -558,6 +634,40 @@ func (s *llamaServerRunner) capturePool(key string, src poolSource) {
 
 		shared := s.pools.offer(key, tokens)
 		if len(shared) == 0 {
+			return
+		}
+
+		// Trim the overshoot. What two conversations have in common is an
+		// upper bound on the template, never a measurement of it.
+		if src.chat != nil {
+			boundary, err := s.templateBoundary(ctx, src.chat)
+			if err != nil {
+				slog.Debug("could not measure the template boundary for prefix pooling",
+					"model", s.modelPath, "error", err)
+			} else if len(boundary) > 0 {
+				// Against the observed prompts, not blindly: this both drops
+				// the conversation tokens the pair agreed on and guarantees the
+				// result is a prefix of two prompts the engine really saw, even
+				// if the last template token merges with what follows it.
+				if trimmed := commonTokenPrefix(shared, boundary); len(trimmed) < len(shared) {
+					slog.Debug("trimmed a shared prefix back to the template boundary",
+						"model", s.modelPath, "from_tokens", len(shared), "to_tokens", len(trimmed))
+					shared = trimmed
+				}
+			}
+		}
+		if len(shared) < minPoolPrefixTokens {
+			return
+		}
+
+		// A recurrent model shares only an exact, whole-pool match, so it may
+		// be pooled only from a boundary that was measured. The Completion
+		// path cannot measure one, and a pool built from two conversations'
+		// common prefix would hold tokens no third conversation has -- an
+		// attach that succeeds, shares nothing, and costs a sequence.
+		if s.launch.recurrentState && src.chat == nil {
+			slog.Debug("not pooling a recurrent model from a completion request: the template boundary cannot be measured on this path",
+				"model", s.modelPath)
 			return
 		}
 

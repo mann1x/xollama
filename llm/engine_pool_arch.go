@@ -24,15 +24,28 @@ import (
 //
 // Nothing fails when that happens. The attach succeeds, shares nothing, and the
 // reserved sequence is spent for no benefit, which is worse than not pooling
-// because it looks like it is working. So pooling is switched off for these
-// models at load time and said out loud once, rather than left to disappoint
-// per request.
+// because it looks like it is working.
 //
-// Making it genuinely work needs a pool materialised from the prefix tokens
-// themselves -- POST /polykv/pools {"tokens": [...]} -- instead of snapshotted
-// from a session. That is correct on every architecture, and it is the route
-// out of here; it needs a token boundary xollama does not currently know. See
-// docs/features/opencoti-config-gaps.md.
+// Pooling used to be switched off for these models for that reason. It is not
+// any more, because both halves of what made it impossible are now fixed. The
+// pool is materialised from the prefix TOKENS -- POST /polykv/pools {"tokens":
+// [...]} -- rather than snapshotted from a finished session, so there is a
+// prefix to share at all; and the length of that prefix is measured against the
+// template instead of guessed from two conversations, so it stops exactly where
+// every conversation with this prefix stops agreeing.
+//
+// Exactly is the operative word. server-context.cpp takes the share only when
+// P == pool_max + 1 and the prompt is strictly longer -- the match must cover
+// the pool entirely -- so a pool one token too long can never be matched by
+// anything, and one token too short works fine. That asymmetry is why
+// templateBoundary in engine_pool.go measures the boundary from renders that
+// disagree immediately, and why the measurement is then clamped against real
+// prompts rather than trusted on its own.
+//
+// What this still gates: the boundary can only be measured where the engine
+// owns the template, which is the Chat path. A Completion request on one of
+// these models is not pooled from, because the only prefix available there is
+// what two conversations happened to have in common. See capturePool.
 
 // recurrentStateKeys are the GGUF keys a model carries when it has recurrent
 // state to keep: an SSM block, an RWKV time-mix, or a short convolution. The
@@ -60,7 +73,8 @@ var recurrentArchitectures = []string{
 }
 
 // modelKeepsRecurrentState reports whether this model carries state that cannot
-// be cut at an arbitrary prefix, and so cannot be usefully pooled.
+// be cut at an arbitrary prefix, and so can be pooled only from a prefix that
+// is known to be exact.
 func modelKeepsRecurrentState(f *gguf.Model) bool {
 	if f == nil {
 		return false
