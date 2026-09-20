@@ -87,6 +87,22 @@ var knownEngineDefects = []knownEngineDefect{
 		// It also explains why opencoti could not reproduce it on a roomy
 		// card: auto only picks the window under real VRAM pressure.
 		//
+		// RETIREMENT CONDITION, agreed with the user 2026-09-20. opencoti is
+		// fixing this properly in c8 rather than patching c7 again; it is
+		// queued there behind the KVarN position-ops work. The day the pin
+		// moves to a c8 artifact, RE-RUN the recipe -- 70B q3_K_S on a 24 GiB
+		// card, confirming "POSITION_WINDOW mode ON" appears in the log -- and
+		// if it loads under --kv-residency-mode auto, remove three things
+		// together in one commit:
+		//   1. this row;
+		//   2. the LLAMA_ARG_KV_RESIDENCY_MODE=head workaround wherever it is
+		//      offered, including the Warning in docs/xollama/slots.mdx;
+		//   3. the measured tables in docs/evaluations/phase2-engine-ab.md get
+		//      the c8 result appended, not deleted -- the history is the point.
+		// Do NOT remove any of it on the strength of a c8 changelog. That
+		// mistake has already been made once with this exact row; see
+		// .claude/rules/engine-defects.md.
+		//
 		// So they are two defects, not one. bug-3369's own signature is gone
 		// from r2 and is deliberately NOT listed below -- accusing bytes of a
 		// fault nobody has shown they still have is exactly what the sha256
