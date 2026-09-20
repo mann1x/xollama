@@ -1871,15 +1871,15 @@ type llamaServerTokenProb struct {
 func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionRequest, fn func(CompletionResponse)) (err error) {
 	slog.Debug("llama-server completion request", "media", len(req.Media), "prompt_len", len(req.Prompt))
 
-	// xollama-hook: engine-session — a request that succeeded is the chance to
-	// snapshot its prefix into a pool, so the next conversation with the same
-	// system prompt attaches instead of storing its own copy. It happens after
-	// the response, in the background, and can only fail quietly. See
-	// engine_pool.go.
-	var pooledSession string
+	// xollama-hook: engine-session — a request that succeeded is evidence about
+	// what conversations with this system prompt have in common, which is what
+	// a pool is built from. ollama rendered this prompt, so it is handed over
+	// as it stands. It happens after the response, in the background, and can
+	// only fail quietly. See engine_pool.go.
+	pooled := poolSource{prompt: req.Prompt}
 	defer func() {
 		if err == nil {
-			s.capturePool(req.PoolKey, pooledSession)
+			s.capturePool(req.PoolKey, pooled)
 		}
 	}()
 
@@ -1963,8 +1963,10 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 		poolID = s.poolFor(req.PoolKey)
 	}
 	applySession(&lsReq, s.usedOpencoti, s.launch.config, req.SessionID, poolID)
-	if poolID == 0 {
-		pooledSession = lsReq.SessionID
+	if poolID != 0 {
+		// Already attached to a pool, so this request has nothing left to teach
+		// us about the prefix: it is the prefix, shared.
+		pooled = poolSource{}
 	}
 
 	// Handle format: pass JSON schema directly to llama-server, or use grammar
@@ -2283,18 +2285,19 @@ func (s *llamaServerRunner) ApplyChatTemplate(ctx context.Context, req ChatReque
 func (s *llamaServerRunner) Chat(ctx context.Context, req ChatRequest, fn func(ChatResponse)) (err error) {
 	slog.Debug("llama-server chat request", "messages", len(req.Messages), "tools", len(req.Tools))
 
-	// xollama-hook: engine-session — see the note on Completion. The chat body
-	// is built by a helper, so the session that would be snapshotted is
-	// resolved here, through the same function the helper uses. Only a request
-	// that did NOT attach to a pool is worth snapshotting: one that attached
-	// already has its prefix shared.
-	var pooledSession string
+	// xollama-hook: engine-session — see the note on Completion. On this path
+	// the ENGINE renders the template, so the request itself is handed over and
+	// the rendering is asked of the engine rather than reconstructed here.
+	// Only a request that did NOT attach to a pool is worth learning from: one
+	// that attached already has its prefix shared.
+	var pooled poolSource
 	if req.PoolID == 0 && s.poolFor(req.PoolKey) == 0 {
-		pooledSession, _ = sessionFieldsFor(s.usedOpencoti, s.launch.config, req.SessionID, 0)
+		chat := req
+		pooled = poolSource{chat: &chat}
 	}
 	defer func() {
 		if err == nil {
-			s.capturePool(req.PoolKey, pooledSession)
+			s.capturePool(req.PoolKey, pooled)
 		}
 	}()
 

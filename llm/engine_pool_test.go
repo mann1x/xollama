@@ -2,6 +2,7 @@ package llm
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -275,6 +276,9 @@ type poolStub struct {
 	bodies  []string
 	status  int
 	payload string
+	// tokenPayload answers /tokenize, which the pool path calls before it
+	// creates anything.
+	tokenPayload string
 }
 
 func (p *poolStub) handler() http.HandlerFunc {
@@ -285,6 +289,9 @@ func (p *poolStub) handler() http.HandlerFunc {
 		p.paths = append(p.paths, r.Method+" "+r.URL.Path)
 		p.bodies = append(p.bodies, string(body))
 		status, payload := p.status, p.payload
+		if r.URL.Path == "/tokenize" {
+			status, payload = 0, p.tokenPayload
+		}
 		p.mu.Unlock()
 
 		if status == 0 {
@@ -312,11 +319,11 @@ func poolRunner(t *testing.T, stub *poolStub) *llamaServerRunner {
 	return &llamaServerRunner{port: port, usedOpencoti: true, pools: newPoolRegistry(2)}
 }
 
-func TestCreatePoolFromSession(t *testing.T) {
+func TestCreatePoolFromTokens(t *testing.T) {
 	stub := &poolStub{payload: `{"pool_id":4,"seq_id":9,"prefix_len":812}`}
 	s := poolRunner(t, stub)
 
-	id, err := s.createPoolFromSession(t.Context(), "xo-abc123")
+	id, err := s.createPoolFromTokens(t.Context(), []int{1, 2, 3})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -331,23 +338,169 @@ func TestCreatePoolFromSession(t *testing.T) {
 	if err := json.Unmarshal([]byte(stub.bodies[0]), &sent); err != nil {
 		t.Fatal(err)
 	}
-	if sent["from_session"] != "xo-abc123" {
-		t.Errorf("from_session = %v, want the session that just ran", sent["from_session"])
+
+	// The tokens form, not from_session. A session pool holds the whole
+	// conversation, most of which can never be shared -- and on a
+	// sliding-window model the cells below its window become reclaimable once
+	// the session moves on, so a later attach can land over a hole.
+	if _, ok := sent["from_session"]; ok {
+		t.Error("created from a session; the pool must be the shared prefix itself")
 	}
-	// Pools created from a session default ephemeral and are swept after a
-	// minute of no attaches. A swept pool whose id xollama still holds is not
-	// an error — it is a silent full reprocess — so the lifetime has to be ours.
+	tokens, ok := sent["tokens"].([]any)
+	if !ok || len(tokens) != 3 {
+		t.Fatalf("tokens = %v, want the three that were passed", sent["tokens"])
+	}
+
+	// A swept pool whose id xollama still holds is not an error -- it is a
+	// silent full reprocess -- so the lifetime has to be ours.
 	if sent["pin"] != true {
 		t.Error("the pool must be pinned, or the engine's idle sweep can drop it while we still hold its id")
 	}
+	if sent["ephemeral"] != false {
+		t.Error("ephemeral must be cleared explicitly; pinned wins either way, but the engine's JSON should read true")
+	}
 }
 
-func TestCreatePoolFromSessionRefused(t *testing.T) {
+func TestCreatePoolFromTokensRefused(t *testing.T) {
 	stub := &poolStub{status: http.StatusConflict, payload: `{"error":"no free pool seq-ids"}`}
 	s := poolRunner(t, stub)
 
-	if _, err := s.createPoolFromSession(t.Context(), "xo-abc123"); err == nil {
+	if _, err := s.createPoolFromTokens(t.Context(), []int{1, 2}); err == nil {
 		t.Fatal("a refused creation must be an error, not a pool id of zero")
+	}
+}
+
+func TestCreatePoolFromTokensNeedsTokens(t *testing.T) {
+	stub := &poolStub{payload: `{"pool_id":1}`}
+	s := poolRunner(t, stub)
+
+	if _, err := s.createPoolFromTokens(t.Context(), nil); err == nil {
+		t.Error("a pool over nothing is not a pool")
+	}
+	if len(stub.paths) != 0 {
+		t.Errorf("asked the engine anyway: %v", stub.paths)
+	}
+}
+
+// TestTokenizePromptMatchesTheServingPath pins the one option that decides
+// whether a pool shares anything at all. The engine tokenises a prompt it is
+// about to run with add_special AND parse_special true; /tokenize defaults
+// add_special to false. Leaving it out drops the leading token on any model
+// whose tokeniser adds one, and a pool whose first token differs from the
+// request's matches at zero.
+func TestTokenizePromptMatchesTheServingPath(t *testing.T) {
+	stub := &poolStub{tokenPayload: `{"tokens":[9,8,7]}`}
+	s := poolRunner(t, stub)
+
+	tokens, err := s.tokenizePrompt(t.Context(), "<|im_start|>system")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(tokens, []int{9, 8, 7}) {
+		t.Errorf("tokens = %v, want [9 8 7]", tokens)
+	}
+	if got := stub.paths[0]; got != "POST /tokenize" {
+		t.Errorf("called %q, want POST /tokenize", got)
+	}
+
+	var sent map[string]any
+	if err := json.Unmarshal([]byte(stub.bodies[0]), &sent); err != nil {
+		t.Fatal(err)
+	}
+	if sent["add_special"] != true {
+		t.Error("add_special must be true: /tokenize defaults it to false, the serving path does not")
+	}
+	if sent["parse_special"] != true {
+		t.Error("parse_special must be true, or the template's own markup tokenises as plain text")
+	}
+}
+
+func TestCommonTokenPrefix(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		a, b []int
+		want []int
+	}{
+		{"shared opening", []int{1, 2, 3, 9}, []int{1, 2, 3, 4, 5}, []int{1, 2, 3}},
+		{"nothing in common", []int{7}, []int{8}, []int{}},
+		{"one contains the other", []int{1, 2}, []int{1, 2, 3}, []int{1, 2}},
+		{"identical", []int{1, 2}, []int{1, 2}, []int{1, 2}},
+		{"empty", nil, []int{1}, []int{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := commonTokenPrefix(tc.a, tc.b); !slices.Equal(got, tc.want) {
+				t.Errorf("commonTokenPrefix(%v, %v) = %v, want %v", tc.a, tc.b, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestOfferWaitsForASecondConversation is the behaviour the redesign turns on.
+// One conversation is not evidence of a shared anything, and a pool for a
+// prefix that never recurs is a reserved sequence spent on nobody.
+func TestOfferWaitsForASecondConversation(t *testing.T) {
+	long := make([]int, minPoolPrefixTokens+50)
+	for i := range long {
+		long[i] = i
+	}
+	diverged := slices.Clone(long)
+	diverged[minPoolPrefixTokens+10] = -1
+
+	r := newPoolRegistry(2)
+	if got := r.offer("k", long); got != nil {
+		t.Fatalf("first sighting produced a pool of %d tokens; it has nothing to compare against", len(got))
+	}
+
+	got := r.offer("k", diverged)
+	if len(got) != minPoolPrefixTokens+10 {
+		t.Fatalf("shared prefix = %d tokens, want %d — the run the two agree on", len(got), minPoolPrefixTokens+10)
+	}
+}
+
+func TestOfferIgnoresPrefixesTooShortToPayForASeat(t *testing.T) {
+	short := make([]int, minPoolPrefixTokens-1)
+	r := newPoolRegistry(2)
+
+	r.offer("k", short)
+	if got := r.offer("k", short); got != nil {
+		t.Errorf("pooled %d tokens; a seat costs a sequence and does not repay that", len(got))
+	}
+}
+
+func TestOfferIsBounded(t *testing.T) {
+	long := make([]int, maxPoolPrefixTokens+500)
+	r := newPoolRegistry(2)
+
+	r.offer("k", long)
+	got := r.offer("k", long)
+	if len(got) != maxPoolPrefixTokens {
+		t.Errorf("shared prefix = %d tokens, want it capped at %d", len(got), maxPoolPrefixTokens)
+	}
+
+	// and the first-sighting map must not grow without bound either
+	r2 := newPoolRegistry(2)
+	for i := range maxPendingPrefixes + 20 {
+		r2.offer(fmt.Sprintf("key-%d", i), []int{i})
+	}
+	r2.mu.Lock()
+	pending := len(r2.pending)
+	r2.mu.Unlock()
+	if pending > maxPendingPrefixes {
+		t.Errorf("holding %d first-sightings, want at most %d", pending, maxPendingPrefixes)
+	}
+}
+
+func TestOfferStopsOncePooled(t *testing.T) {
+	long := make([]int, minPoolPrefixTokens+10)
+	r := newPoolRegistry(2)
+	if _, ok := r.claim("k"); !ok {
+		t.Fatal("claim refused")
+	}
+	r.remember("k", 1)
+
+	r.offer("k", long)
+	if got := r.offer("k", long); got != nil {
+		t.Error("kept working towards a pool this prefix already has")
 	}
 }
 
@@ -400,7 +553,7 @@ func TestCapturePoolIsGatedOnTheEngine(t *testing.T) {
 	s := poolRunner(t, stub)
 	s.usedOpencoti = false
 
-	s.capturePool("key", "xo-abc")
+	s.capturePool("key", poolSource{prompt: "a rendered prompt"})
 
 	stub.mu.Lock()
 	defer stub.mu.Unlock()
@@ -409,21 +562,25 @@ func TestCapturePoolIsGatedOnTheEngine(t *testing.T) {
 	}
 }
 
-func TestCapturePoolNeedsBothAKeyAndASession(t *testing.T) {
-	for _, tc := range []struct{ name, key, session string }{
-		{"no key", "", "xo-abc"},
-		{"no session", "key", ""},
+func TestCapturePoolNeedsAKeyAndSomethingToRender(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		key  string
+		src  poolSource
+	}{
+		{"no key", "", poolSource{prompt: "rendered"}},
+		{"nothing to render", "key", poolSource{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stub := &poolStub{payload: `{"pool_id":1}`}
 			s := poolRunner(t, stub)
 
-			s.capturePool(tc.key, tc.session)
+			s.capturePool(tc.key, tc.src)
 
 			stub.mu.Lock()
 			defer stub.mu.Unlock()
 			if len(stub.paths) != 0 {
-				t.Errorf("created a pool anyway: %v", stub.paths)
+				t.Errorf("went to the engine anyway: %v", stub.paths)
 			}
 		})
 	}
@@ -452,7 +609,16 @@ func TestPoolCreateResponseIgnoresTheRest(t *testing.T) {
 // so the release for the seat has to reach it FIRST. Asserting on the order of
 // the calls rather than the set of them is the whole point of the test.
 func TestCapturePoolReleasesBeforeCreating(t *testing.T) {
-	stub := &poolStub{payload: `{"pool_id":9}`}
+	prefix := make([]int, minPoolPrefixTokens+10)
+	for i := range prefix {
+		prefix[i] = i
+	}
+	payload, err := json.Marshal(map[string]any{"tokens": prefix})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stub := &poolStub{payload: `{"pool_id":9}`, tokenPayload: string(payload)}
 	s := poolRunner(t, stub) // registry bound is 2
 
 	// Fill both seats, so the third prefix can only be pooled by giving one up.
@@ -464,12 +630,43 @@ func TestCapturePoolReleasesBeforeCreating(t *testing.T) {
 	}
 	s.pools.lookup("b") // a is now the least recently used
 
-	s.capturePool("c", "xo-abc")
+	// Two conversations: the first is only remembered, the second is what the
+	// pool is built from.
+	s.capturePool("c", poolSource{prompt: "rendered one"})
+	waitForPoolCalls(t, stub, 1)
+	s.capturePool("c", poolSource{prompt: "rendered two"})
 
-	paths := waitForPoolCalls(t, stub, 2)
+	paths := polykvCalls(t, stub, 2)
 	want := []string{"POST /polykv/pools/1/release", "POST /polykv/pools"}
 	if !slices.Equal(paths, want) {
 		t.Errorf("engine saw\n  %v\nwant\n  %v", paths, want)
+	}
+}
+
+// polykvCalls waits for n pool-registry calls and returns them, ignoring the
+// tokenize calls that precede them.
+func polykvCalls(t *testing.T, stub *poolStub, n int) []string {
+	t.Helper()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		stub.mu.Lock()
+		var pool []string
+		for _, p := range stub.paths {
+			if strings.Contains(p, "/polykv/") {
+				pool = append(pool, p)
+			}
+		}
+		all := slices.Clone(stub.paths)
+		stub.mu.Unlock()
+
+		if len(pool) >= n {
+			return pool
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("engine saw only %v, want %d pool calls", all, n)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 

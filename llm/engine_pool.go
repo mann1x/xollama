@@ -10,6 +10,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -33,14 +34,46 @@ import (
 // declare a shared length -- getting that number wrong is the failure mode this
 // design avoids by not having the number.
 //
-// The lifecycle is: serve one conversation normally, snapshot its context into
-// a pool, and attach every later conversation with the same prefix to it. The
-// snapshot is zero-copy on the engine side, which is why it is done from a
-// session that has already run rather than by sending the prefix again.
+// The lifecycle is: watch two conversations that share a prefix, take the part
+// they actually have in common, and materialise a pool from exactly those
+// tokens. Later conversations with the same prefix attach to it.
+//
+// It used to be done by snapshotting a finished session instead, which was
+// simpler and wrong in two ways. A session pool holds the WHOLE conversation --
+// prefix, first question and first answer -- so most of what it pins can never
+// match anything; measured on a live engine, a pool of 50 tokens against a
+// shared prefix of 29. And on a sliding-window model an over-long pool is not
+// merely wasteful: once the session that built it moves on, the pool is sole
+// owner of its cells and the ones below its window become reclaimable, so a
+// later conversation can attach over a hole and get quietly degraded attention
+// with no error and no warning.
+//
+// Building the pool from the shared prefix itself removes both. The pool is
+// exactly as long as the thing being shared, so the cells a sharer needs are
+// the ones the pool's own window keeps alive.
 
 // poolCreateTimeout bounds a pool creation. It runs after a response has
 // already been delivered, so it must never be able to hold anything up.
 const poolCreateTimeout = 30 * time.Second
+
+// minPoolPrefixTokens is the shortest prefix worth a pool.
+//
+// A pool costs a reserved sequence for the life of the runner, and on a
+// sliding-window model a reserved sequence costs its own window. Sharing a
+// couple of hundred tokens does not repay that; sharing a system prompt and a
+// set of tool schemas -- which is what this feature is for -- repays it many
+// times over.
+const minPoolPrefixTokens = 256
+
+// maxPoolPrefixTokens caps both what is remembered while waiting for a second
+// conversation and what is ultimately pooled, so a very long prompt cannot make
+// this hold an unbounded amount of memory. A prefix longer than this is still
+// pooled, just truncated to it.
+const maxPoolPrefixTokens = 8192
+
+// maxPendingPrefixes bounds how many first-sightings are held at once, for the
+// same reason.
+const maxPendingPrefixes = 8
 
 // DerivePoolKey identifies the prefix a set of conversations would share.
 //
@@ -104,6 +137,18 @@ type poolRegistry struct {
 	// creating dedupes in-flight creations, so a burst of first requests for
 	// one prefix does not spend several pool seats on the same prefix.
 	creating map[string]bool
+	// pending holds the tokens of the FIRST conversation seen for a prefix,
+	// until a second one arrives to be compared against it. The shared prefix
+	// is what the two actually have in common, which is a thing to observe
+	// rather than a thing to infer.
+	pending map[string]*pendingPrefix
+	seen    uint64
+}
+
+// pendingPrefix is one first-sighting waiting for its second.
+type pendingPrefix struct {
+	tokens []int
+	seen   uint64
 }
 
 type poolEntry struct {
@@ -112,7 +157,90 @@ type poolEntry struct {
 }
 
 func newPoolRegistry(max int) *poolRegistry {
-	return &poolRegistry{max: max, byKey: map[string]*poolEntry{}, creating: map[string]bool{}}
+	return &poolRegistry{
+		max:      max,
+		byKey:    map[string]*poolEntry{},
+		creating: map[string]bool{},
+		pending:  map[string]*pendingPrefix{},
+	}
+}
+
+// offer reports what this conversation and an earlier one with the same prefix
+// have in common, or nil when there is nothing to do yet.
+//
+// The first conversation for a prefix is remembered and nothing is created: one
+// conversation is not evidence of a shared anything, and a pool for a prefix
+// that never recurs is a reserved sequence spent on nobody. The second one is
+// compared against it, and what they agree on -- token for token, from the
+// start -- is the prefix worth pooling.
+func (r *poolRegistry) offer(key string, tokens []int) []int {
+	if r == nil || key == "" || len(tokens) == 0 {
+		return nil
+	}
+	if len(tokens) > maxPoolPrefixTokens {
+		tokens = tokens[:maxPoolPrefixTokens]
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.byKey[key]; ok {
+		return nil
+	}
+	if r.creating[key] {
+		return nil
+	}
+
+	prev, ok := r.pending[key]
+	if !ok {
+		r.seen++
+		r.pending[key] = &pendingPrefix{tokens: slices.Clone(tokens), seen: r.seen}
+		r.evictPendingLocked()
+		return nil
+	}
+
+	delete(r.pending, key)
+	shared := commonTokenPrefix(prev.tokens, tokens)
+	if len(shared) < minPoolPrefixTokens {
+		return nil
+	}
+	return shared
+}
+
+// evictPendingLocked keeps the first-sighting map bounded. Dropping the oldest
+// only costs the pool another pair of conversations to be noticed again.
+func (r *poolRegistry) evictPendingLocked() {
+	for len(r.pending) > maxPendingPrefixes {
+		var oldestKey string
+		var oldest *pendingPrefix
+		for k, p := range r.pending {
+			if oldest == nil || p.seen < oldest.seen {
+				oldestKey, oldest = k, p
+			}
+		}
+		if oldest == nil {
+			return
+		}
+		delete(r.pending, oldestKey)
+	}
+}
+
+// commonTokenPrefix is the longest run both token sequences begin with.
+//
+// Comparing TOKENS rather than the rendered strings is what makes the result
+// safe to hand to the engine. A common string prefix can end in the middle of
+// what the tokeniser treats as one unit, and the pool would then hold a last
+// token that does not reappear when the same text is tokenised inside a longer
+// prompt -- so the share would silently stop a token or two early, or not
+// happen. A run of whole tokens that two real prompts both start with is, by
+// construction, a valid prefix of both.
+func commonTokenPrefix(a, b []int) []int {
+	n := min(len(a), len(b))
+	i := 0
+	for i < n && a[i] == b[i] {
+		i++
+	}
+	return a[:i]
 }
 
 // lookup returns the pool holding this prefix, marking it recently used.
@@ -222,6 +350,7 @@ func (r *poolRegistry) drain() []int {
 	}
 	r.byKey = map[string]*poolEntry{}
 	r.creating = map[string]bool{}
+	r.pending = map[string]*pendingPrefix{}
 	sort.Ints(ids)
 	return ids
 }
@@ -232,15 +361,30 @@ type poolCreateResponse struct {
 	PoolID int `json:"pool_id"`
 }
 
-// createPoolFromSession snapshots a session that has already run into a pool.
+// createPoolFromTokens materialises a pool from the shared prefix itself.
 //
-// pin is set because these pools are ours to manage. An unpinned pool created
-// from a session is swept after a minute of no attaches, which would leave
-// xollama holding an id the engine has forgotten -- and a stale id is not an
-// error, it is a silent full reprocess, so the sharing would simply stop with
-// nothing to see. Pinning makes the lifetime ours, and drain releases them.
-func (s *llamaServerRunner) createPoolFromSession(ctx context.Context, sessionID string) (int, error) {
-	body, err := json.Marshal(map[string]any{"from_session": sessionID, "pin": true})
+// This is the "tokens" form of the create rather than "from_session", and the
+// difference is the whole point: the pool is exactly the prefix, so there is
+// nothing in it that cannot be shared and nothing below a sharer's window that
+// can be reclaimed out from under them. It is also the only form that is
+// correct on every architecture rather than on attention-only ones.
+//
+// pin is set because these pools are ours to manage: an unpinned pool is swept
+// once it goes quiet, which would leave xollama holding an id the engine has
+// forgotten -- and a stale id is not an error, it is a silent full reprocess,
+// so the sharing would just stop with nothing to see. ephemeral is cleared for
+// the same reason; a pinned pool is never reaped whatever it says, but saying
+// the true thing costs nothing and reads correctly in the engine's own JSON.
+func (s *llamaServerRunner) createPoolFromTokens(ctx context.Context, tokens []int) (int, error) {
+	if len(tokens) == 0 {
+		return 0, fmt.Errorf("refusing to create a pool over no tokens")
+	}
+
+	body, err := json.Marshal(map[string]any{
+		"tokens":    tokens,
+		"pin":       true,
+		"ephemeral": false,
+	})
 	if err != nil {
 		return 0, err
 	}
@@ -261,6 +405,45 @@ func (s *llamaServerRunner) createPoolFromSession(ctx context.Context, sessionID
 		return 0, fmt.Errorf("engine returned no pool id")
 	}
 	return res.PoolID, nil
+}
+
+// tokenizeResponse is the part of the engine's tokenize JSON this needs.
+type tokenizeResponse struct {
+	Tokens []int `json:"tokens"`
+}
+
+// tokenizePrompt asks the engine to tokenise a rendered prompt exactly as it
+// would when serving it.
+//
+// add_special and parse_special are both true because that is what the engine
+// does to a prompt it is about to run: tokenize_input_prompts(vocab, mctx,
+// prompt, true, true) on the completion and chat paths. /tokenize defaults
+// add_special to FALSE, so leaving it out would drop the leading token on any
+// model whose tokeniser adds one, and a pool whose first token differs from the
+// request's shares nothing at all.
+func (s *llamaServerRunner) tokenizePrompt(ctx context.Context, prompt string) ([]int, error) {
+	body, err := json.Marshal(map[string]any{
+		"content":       prompt,
+		"add_special":   true,
+		"parse_special": true,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	status, out, err := s.postPool(ctx, "/tokenize", body)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("engine refused to tokenize a prompt: %s: %s", http.StatusText(status), bytes.TrimSpace(out))
+	}
+
+	var res tokenizeResponse
+	if err := json.Unmarshal(out, &res); err != nil {
+		return nil, fmt.Errorf("engine returned an unreadable tokenization: %w", err)
+	}
+	return res.Tokens, nil
 }
 
 // releasePool detaches a pool and reclaims its cells. Release is a POST, not a
@@ -310,24 +493,75 @@ func (s *llamaServerRunner) poolFor(key string) int {
 	return id
 }
 
-// capturePool snapshots a finished session into a pool, in the background.
+// poolSource is where the rendered prompt for a prefix comes from.
+//
+// The two request paths render in different places, and this has to use
+// whichever one actually produced the tokens the engine will see. On the
+// Completion path ollama renders the prompt itself and it is right here. On the
+// Chat path the ENGINE owns the template, so the only faithful rendering is the
+// engine's own -- asking it is not a round trip we could skip by guessing.
+type poolSource struct {
+	prompt string
+	chat   *ChatRequest
+}
+
+// render returns the prompt the engine will tokenise for this request.
+func (s *llamaServerRunner) render(ctx context.Context, src poolSource) (string, error) {
+	if src.prompt != "" {
+		return src.prompt, nil
+	}
+	if src.chat == nil {
+		return "", nil
+	}
+	return s.ApplyChatTemplate(ctx, *src.chat)
+}
+
+// capturePool works towards a pool for this prefix, in the background.
 //
 // It runs after the response has been delivered, on its own context, because it
-// exists to make the NEXT conversation cheaper and must never delay or fail
-// this one. Everything it can go wrong with is logged and dropped: a load that
+// exists to make LATER conversations cheaper and must never delay or fail this
+// one. Everything it can go wrong with is logged and dropped: a load that
 // cannot pool is a load that works exactly as it did before pooling existed.
-func (s *llamaServerRunner) capturePool(key, sessionID string) {
-	if key == "" || sessionID == "" || !s.usedOpencoti {
+//
+// The first conversation for a prefix only gets remembered. The second is
+// compared against it, and the tokens they agree on become the pool. That is a
+// request later than it used to be, deliberately: it means a prefix that turns
+// up once never costs a reserved sequence, and it means the pool is built from
+// a prefix two real conversations were observed to share rather than one we
+// worked out they ought to.
+func (s *llamaServerRunner) capturePool(key string, src poolSource) {
+	if key == "" || !s.usedOpencoti || s.pools == nil {
 		return
 	}
-	release, ok := s.pools.claim(key)
-	if !ok {
+	if src.prompt == "" && src.chat == nil {
 		return
 	}
 
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), poolCreateTimeout)
 		defer cancel()
+
+		prompt, err := s.render(ctx, src)
+		if err != nil || prompt == "" {
+			slog.Debug("could not render a prompt for prefix pooling", "model", s.modelPath, "error", err)
+			return
+		}
+
+		tokens, err := s.tokenizePrompt(ctx, prompt)
+		if err != nil {
+			slog.Debug("could not tokenize a prompt for prefix pooling", "model", s.modelPath, "error", err)
+			return
+		}
+
+		shared := s.pools.offer(key, tokens)
+		if len(shared) == 0 {
+			return
+		}
+
+		release, ok := s.pools.claim(key)
+		if !ok {
+			return
+		}
 
 		// Release first. The seat has to be free before the create, not after
 		// it: see claim.
@@ -338,7 +572,7 @@ func (s *llamaServerRunner) capturePool(key, sessionID string) {
 			}
 		}
 
-		id, err := s.createPoolFromSession(ctx, sessionID)
+		id, err := s.createPoolFromTokens(ctx, shared)
 		if err != nil {
 			slog.Warn("could not create a shared prefix pool; this model keeps a private copy of the prefix per conversation",
 				"model", s.modelPath, "error", err)
@@ -346,7 +580,7 @@ func (s *llamaServerRunner) capturePool(key, sessionID string) {
 			return
 		}
 
-		slog.Info("shared prefix pool created", "model", s.modelPath, "pool_id", id)
+		slog.Info("shared prefix pool created", "model", s.modelPath, "pool_id", id, "prefix_tokens", len(shared))
 		s.pools.remember(key, id)
 	}()
 }

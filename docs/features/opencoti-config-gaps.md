@@ -294,51 +294,42 @@ when `arg.cpp:345` marks them **deprecated and frozen**, does not mention the
 the win on iSWA models. Anyone configuring from that file today would pick a
 deprecated tier and miss the ring.
 
-## G5 leftover: `expect_len` on a pool create
+## G5 leftover: `expect_len` — closed, by not needing it
 
-Open, and blocked on the engine rather than on us. Recorded here so it is not
-mistaken for an oversight.
+Closed 2026-09-20, and not the way it was framed.
 
-A pool created with `from_session` is capped at nothing, so a pinned pool holds
-the shared prefix **plus the first turn and the first answer** for its whole
-life. Those cells can never be reclaimed and never match anything, because the
-attach only ever shares the prefix. `POST /polykv/pools` takes an `expect_len`
-that would cap the pool at the prefix.
+The question was how to cap a `from_session` pool at the shared prefix, since
+such a pool holds the prefix *plus the first turn and the first answer* for its
+pinned lifetime. opencoti's answer (#106) made the framing itself wrong:
 
-We cannot currently supply the number. On the native chat path the **engine**
-renders the chat template, so the token boundary between the shared prefix and
-the first user turn exists only inside the engine. xollama has the system
-message text and the tool names; it does not have the rendered token offset, and
-the markup that wraps them is the engine's. Tokenizing the system text through
-`/tokenize` would undercount that markup by an unknown amount.
+- On a plain attention model an over-long pool is merely wasteful, as assumed.
+- On a **sliding-window** model it is not. Once the session that built the pool
+  moves on, the pool is sole owner of its cells and the ones outside its own
+  window become reclaimable. A later conversation attaching at a shorter prefix
+  needs exactly those cells, and the attach guard only checks the pool's maximum
+  position. The result is a hole: degraded attention with no error and no WARN.
 
-Whether undercounting is merely wasteful or actually wrong is the question put
-to opencoti in mail #105: auto-P computes the share token-exactly on attach, so
-on an attention-only model a bad `expect_len` should cost cells rather than
-correctness — but that is an inference about their engine, not something we have
-from them, and the fork has already been burned once by reasoning from their
-prose. Until they answer, `expect_len` stays out: a pool that wastes cells is a
-known cost, and a pool that truncates state on a model we mis-classified is not.
+So `expect_len` was never the fix. An *exactly* right `expect_len` still has the
+exposure, because the source slot may already have recycled the tail by the time
+the snapshot is taken.
 
-The clean fix, if it exists, is server side — an `expect_len: -1`, or a create
-that takes a message count instead of a token count — because that puts the
-boundary where the knowledge already is.
+The pool is now built from the shared prefix itself — the materialising
+`{"tokens": [...]}` create — which is correct on plain, sliding-window and
+recurrent architectures alike, and needs no length declared to anyone.
 
-## Order I would fix these in
+**How the prefix is obtained**, which is what made this look hard: the boundary
+was said to be unknowable because on the native chat path the engine renders the
+template. It is knowable without knowing the template at all. Two conversations
+that share a prefix are rendered by whoever owns the template — ollama on the
+Completion path, the engine via `/apply-template` on the Chat path — tokenised
+by the engine, and the longest common **token** prefix of the two is the answer.
 
-Updated 2026-09-19. G3, G4 and G7 are closed; G5 is half closed.
-
-1. ~~**G6**~~ — done, `GET /api/engine`.
-2. ~~**G5, the pool half**~~ — done, less `expect_len` (see above, blocked on
-   opencoti). Release is now ordered before create, and pooling is off on models
-   that keep recurrent state, both from their mail #104.
-3. ~~**G1**~~ — done.
-4. **G2** — an argv escape hatch, and only ever an **operator-side** one: an
-   environment variable a person sets on their own machine, never a field a
-   pulled model can carry. Demoted twice over — G4 was the case that needed it
-   and was closed without it, and G1 established that the model-carried half
-   must not exist at all. Worth doing for engine flags nobody has modelled yet,
-   not as a dependency of anything planned.
+Comparing tokens rather than strings also disposes of opencoti's caveat about
+cutting back to a template boundary: a run of whole tokens that two real prompts
+both begin with is, by construction, a valid prefix of both, so there is no
+BPE-merge tail to worry about. One option does matter — `/tokenize` defaults
+`add_special` to **false** while the serving path tokenises with it **true**, so
+leaving it out would shift every token by the BOS and match at zero.
 
 ## The measurement, taken 2026-09-19
 

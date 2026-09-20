@@ -117,14 +117,47 @@ length to declare and get wrong.
 
 ### How a pool comes to exist
 
-The first conversation with a given system prompt is served normally. Once it
-finishes, its context is snapshotted into a pool — on the engine side that is a
-copy-free operation — and every later conversation that opens the same way
-attaches to it instead of storing its own copy.
+A pool is made of the prefix two conversations were **observed** to share, not
+of one conversation that happened to be first.
 
-Nothing about this is on the critical path. The snapshot happens after the
-response has been sent, and a snapshot that fails is logged and forgotten: the
-model then behaves exactly as it did before pooling existed.
+The first conversation with a given system prompt is served normally and its
+prompt is remembered. The second one is compared against it, token for token
+from the start, and the run they agree on becomes the pool. Every later
+conversation that opens the same way attaches to it instead of storing its own
+copy.
+
+Waiting for the second conversation is deliberate. A prefix that turns up once
+and never again would otherwise cost a reserved sequence for the life of the
+runner, spent on nobody. It also means the pool is exactly as long as the thing
+actually being shared — which matters more than it sounds, below.
+
+Nothing about this is on the critical path. It all happens after the response
+has been sent, and anything that fails is logged and forgotten: the model then
+behaves exactly as it did before pooling existed.
+
+A prefix shorter than 256 tokens is not pooled at all. A pool costs a sequence,
+and sharing a sentence does not repay that; sharing a system prompt and a set of
+tool schemas repays it many times over.
+
+<Note>
+  **Why the pool is the prefix and not the conversation.** An earlier version of
+  this took a snapshot of the finished conversation instead, which was simpler
+  and wrong twice over.
+
+  A conversation snapshot holds the prefix *plus the first question and the
+  first answer*, and only the prefix can ever match anything. Measured against a
+  live engine: a pool of 50 tokens serving a shared prefix of 29. The other 21
+  cells were pinned for the life of the pool and could never be used.
+
+  The second problem is worse, and only bites on sliding-window models. Once the
+  conversation that built an over-long pool moves on, the pool is the sole owner
+  of its cells, and the ones that fall outside its own window become reclaimable.
+  A later conversation attaching to it can then land over a hole — degraded
+  attention across the tokens after the prefix, with no error and no warning.
+
+  Building the pool from the shared prefix itself removes both: the cells a
+  newcomer needs are exactly the ones the pool's own window keeps alive.
+</Note>
 
 ### How many pools
 
