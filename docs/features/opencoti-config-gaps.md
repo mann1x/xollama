@@ -284,15 +284,25 @@ pool costs what the split cost.
 measured. And `--polykv-max-pools` is still not passed, so the pool half of G5
 is still waiting on a pool lifecycle rather than on this.
 
-## Not our bug — a report for opencoti
+## Not our bug — a report for opencoti — CLOSED
+
+> **Closed, 2026-09-20.** All of it is fixed upstream and verified against the
+> live file.
 
 `docs/llamafile-flags.md` in the opencoti tree declares `common/arg.cpp` the
-ground truth and is behind it: it lists the `turbo*` / `*_tcq` tiers as current
-when `arg.cpp:345` marks them **deprecated and frozen**, does not mention the
-`kvarn2..kvarn8` types that replaced them, and omits `--cache-type-k-swa` /
+ground truth and was behind it: it listed the `turbo*` / `*_tcq` tiers as
+current when `arg.cpp:345` marks them **deprecated and frozen**, did not mention
+the `kvarn2..kvarn8` types that replaced them, and omitted `--cache-type-k-swa` /
 `--cache-type-v-swa` entirely — the flags their own KLD tables say carry most of
-the win on iSWA models. Anyone configuring from that file today would pick a
-deprecated tier and miss the ring.
+the win on iSWA models. Anyone configuring from that file would have picked a
+deprecated tier and missed the ring.
+
+The live file now carries the deprecation note, the `kvarn2..kvarn8` tiers and
+the SWA pair. It also states the precondition we found by probing rather than
+reading: the ring requires a KVarN base on **both** `-ctk` and `-ctv`, and a
+plain base is refused at startup. opencoti confirmed our six probe cells against
+`common/arg.cpp:472` / `:505` / `:509`. See `llm/engine_launch.go`
+(`ringShapeError`), which refuses the same combinations before launch.
 
 ## G5 leftover: `expect_len` — closed, by not needing it
 
