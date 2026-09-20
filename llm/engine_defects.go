@@ -60,25 +60,19 @@ type knownEngineDefect struct {
 // artifact without the defect is pinned -- it describes a specific build, not a
 // permanent property of the engine.
 var knownEngineDefects = []knownEngineDefect{
-	{
-		// opencoti bug-3369: a 0.10.5-port regression in the streaming-attention
-		// fallbacks. Fixed by their patch 0253, two days after c7 was published
-		// and never announced; c7 is still the only published cut, so there is
-		// nothing to re-pin to. Reported to us 2026-09-19; the same abort was
-		// independently measured in docs/evaluations/phase2-engine-ab.md before
-		// it had a name.
-		SHA256: []string{"3c907bc7511359054dbf55c9d2d69fb49324ef75bdbb45efa092c3facad8951e"},
-		Signatures: []string{
-			"GGML_ASSERT(dst->op == GGML_OP_FLASH_ATTN_EXT)",
-			"fattn-common.cuh",
-			"ggml_new_object: not enough space in the context's memory pool",
-		},
-		Summary: "this build of the opencoti engine (0.10.5-c7) aborts when the KV cache does not fit in VRAM and starts spilling to host memory, on either cache layout",
-		Workaround: "keep the cache resident rather than relying on spill: lower num_ctx, " +
-			"or compress the cache with OLLAMA_KV_CACHE_TYPE=q8_0 (or XOLLAMA_K_CACHE_TYPE / " +
-			"XOLLAMA_V_CACHE_TYPE per half). Serving this model on stock llama.cpp instead, " +
-			"with XOLLAMA_ENGINE=llamacpp, also avoids it",
-	},
+	// EMPTY, and that is the healthy state. A row is an accusation against
+	// specific bytes, so it is retired the day a published artifact without
+	// the defect is pinned.
+	//
+	// Retired 2026-09-20: opencoti bug-3369, a 0.10.5-port regression in the
+	// streaming-attention fallbacks that aborted as soon as the KV cache began
+	// spilling to host memory, on either cache layout. It was carried here
+	// because c7 was the only published cut and there was nothing to re-pin
+	// to; the c7 r2 re-cut is that cut plus patch 0253, which is the fix, and
+	// llm/engine/pin.txt now points at it. The exact bytes it described, the
+	// signatures it matched and the workaround it gave live on as the fixture
+	// in llm/engine_defects_test.go, so the machinery stays tested with the
+	// table empty -- which is the condition it has to work in.
 }
 
 // describeEngineDefect returns an explanation when a failure matches a known

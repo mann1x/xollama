@@ -20,16 +20,15 @@ paths:
   different repo whenever a cut is in flight. Tests check the `<owner>/<name>`
   shape only.
 - Engine capabilities come from `feature` rows, read through `pin.HasFeature`
-  (`featureSWACacheTypes` in `llm/engine/capability.go`), never inferred from the
-  cut number in `tag`: a dev build carries part of the next cut under the previous
-  cut's tag. A row from the patch chain owes a measurement and says so until a
-  probe replaces it with the flags run, the date and the verdicts; the artifact is
-  the authority, not the vendor's prose (shapes: `.claude/rules/engine-kv-cache.md`).
-- `accel <arch> <backend>` rows declare what the pinned BYTES accelerate, a
-  different fact from the tested matrix in `llm/engine/policy.go`. Routing is the
-  two intersected — `pinUncovered` / `pinUncoveredIn` call `pin.Accelerates`, so
-  an uncovered accelerator goes to llama.cpp instead of being served silently on
-  the CPU. Backend spellings must be in `knownBackends`; a typo is a parse error.
+  (`featureSWACacheTypes` in `llm/engine/capability.go`), and are never inferred
+  from the cut number in `tag`: a dev build carries part of the next cut under
+  the previous cut's tag.
+- `accel <arch> <backend>` rows declare what the pinned BYTES accelerate, which
+  is a different fact from the tested matrix in `llm/engine/policy.go`. Routing
+  is the two intersected — `pinUncovered` / `pinUncoveredIn` call
+  `pin.Accelerates`, so an uncovered accelerator goes to llama.cpp instead of
+  being served silently on the CPU. Backend spellings must be in `knownBackends`
+  (`llm/engine/policy.go`); a typo is a parse error.
 - A tested platform does **not** have to have an artifact — a dev pin ships a
   subset. It must be served by the pin or refused for a stated reason, which is
   what `TestEveryTestedPlatformIsServedOrRefused` in `llm/engine/pin_test.go`
@@ -43,8 +42,11 @@ paths:
 - A test about policy must not also be a test of what this branch pins: stub the
   pin with `withPin` (`llm/engine/coverage_test.go`), which swaps `loadPin` and
   restores it in `t.Cleanup`. `TestSupportsDeviceHonoursTheCUDAComputeFloor` in
-  `llm/engine/policy_test.go` routes against an all-payload pin so it measures the
-  compute floor, not the payloads the shipped pin happens to carry.
+  `llm/engine/policy_test.go` routes against an all-payload pin so what it
+  measures is the compute floor, not the payloads the shipped pin happens to carry.
 - Moving to a new artifact is one commit: `repo`, `rev`, `tag`, `channel`, every
-  `sha256`, and the `feature` / `accel` rows corrected to what the new bytes carry.
+  `sha256`, the `feature` and `accel` rows corrected to what the new bytes carry,
+  and any `llm/engine_defects.go` row those bytes retire (see
+  `.claude/rules/engine-defects.md`). A re-published cut keeps the tag and the
+  file names and changes every `sha256`.
 - Background and the channel table: `docs/features/engine-opencoti-llamafile.md`.
