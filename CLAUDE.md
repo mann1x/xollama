@@ -101,7 +101,8 @@ orchestrated by `CMakeLists.txt` / `CMakePresets.json`; the opencoti engine
 artifact is pinned by `llm/engine/pin.txt` (`repo`, `rev` commit sha, `tag`,
 `channel`, `feature`, `accel`, plus `bin` / `dso` asset rows), read by both
 `llm/engine/pin.go` and `cmake/opencoti-fetch.cmake`. Moving that pin retires
-any row the new bytes fix in `llm/engine_defects.go` in the same commit.
+only the rows in `llm/engine_defects.go` the new bytes are *measured* to fix —
+a changelog is not a measurement.
 
 ## Tooling and conventions
 

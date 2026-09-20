@@ -60,19 +60,37 @@ type knownEngineDefect struct {
 // artifact without the defect is pinned -- it describes a specific build, not a
 // permanent property of the engine.
 var knownEngineDefects = []knownEngineDefect{
-	// EMPTY, and that is the healthy state. A row is an accusation against
-	// specific bytes, so it is retired the day a published artifact without
-	// the defect is pinned.
-	//
-	// Retired 2026-09-20: opencoti bug-3369, a 0.10.5-port regression in the
-	// streaming-attention fallbacks that aborted as soon as the KV cache began
-	// spilling to host memory, on either cache layout. It was carried here
-	// because c7 was the only published cut and there was nothing to re-pin
-	// to; the c7 r2 re-cut is that cut plus patch 0253, which is the fix, and
-	// llm/engine/pin.txt now points at it. The exact bytes it described, the
-	// signatures it matched and the workaround it gave live on as the fixture
-	// in llm/engine_defects_test.go, so the machinery stays tested with the
-	// table empty -- which is the condition it has to work in.
+	{
+		// The partial-offload abort, RE-INSTATED 2026-09-20 after measuring it.
+		//
+		// It was retired earlier the same day along with opencoti bug-3369, on
+		// the assumption that their patch 0253 -- the whole difference between
+		// c7 and c7 r2 -- fixed this too, because they had told us the two
+		// failures were the same bug reaching us by different paths. Retaking
+		// the Phase 2 overflow axis on the r2 bytes disproved that: with
+		// llama3.1:70b-instruct-q3_K_S on a 24 GiB card, r2 aborts in 2.7 s
+		// with byte-identical numbers to r1 (needed 118128, available 117760)
+		// while placing KV cache layers 30..53 on the CPU. Stock llama.cpp
+		// loads the same model on the same host at 56.8% resident, and r2
+		// itself serves a model that fits at 75.5 tok/s, so it is this path
+		// and not the artifact. Measurements in
+		// docs/evaluations/phase2-engine-ab.md.
+		//
+		// So they are two defects, not one. bug-3369's own signature is gone
+		// from r2 and is deliberately NOT listed below -- accusing bytes of a
+		// fault nobody has shown they still have is exactly what the sha256
+		// half of this table exists to prevent.
+		SHA256: []string{"4f4102d6d8dd39bf794dee4f4d9000120766fd1fccc42090feff2e710a48104e"},
+		Signatures: []string{
+			"ggml_new_object: not enough space in the context's memory pool",
+		},
+		Summary: "this build of the opencoti engine (0.10.5-c7 r2) aborts while placing KV cache layers on the CPU, which is what happens when a model is too large for VRAM and part of it is offloaded to host memory",
+		Workaround: "keep the load resident rather than relying on a partial offload: choose a " +
+			"smaller model or quantisation, lower num_ctx, or compress the cache with " +
+			"OLLAMA_KV_CACHE_TYPE=q8_0 (or XOLLAMA_K_CACHE_TYPE / XOLLAMA_V_CACHE_TYPE per " +
+			"half). Serving this model on stock llama.cpp instead, with XOLLAMA_ENGINE=llamacpp, " +
+			"loads it and is the measured way through",
+	},
 }
 
 // describeEngineDefect returns an explanation when a failure matches a known

@@ -6,9 +6,10 @@ paths:
 
 # Known engine defects
 
-- `knownEngineDefects` in `llm/engine_defects.go` is normally **empty**, and
-  empty is the healthy state. A row is an accusation against specific bytes of
-  a published cut, never a permanent property of the engine.
+- `knownEngineDefects` in `llm/engine_defects.go` is an accusation against
+  specific bytes of a published cut, never a permanent property of the engine.
+  Empty is the state to aim for, but **only measurement may empty it** — see
+  the retirement rule below.
 - Both halves must match before anything is said: `Signatures` against the
   engine's dying words, `SHA256` against the artifact. The build alone would
   blame it for every unrelated failure; the signature alone would blame a
@@ -24,11 +25,24 @@ paths:
 - Retire the row in the same commit that moves `llm/engine/pin.txt` to an
   artifact without the defect, including a re-cut under the same file names.
   `TestKnownDefectsMatchThePinnedArtifact` fails until you do.
+- **Retire on a measurement, never on a changelog.** On 2026-09-20 the c7 row
+  was retired because opencoti said patch 0253 fixed it and r2 carries that
+  patch. Retaking the Phase 2 overflow axis on the r2 bytes that same day
+  reproduced the abort with identical numbers: the row covered *two* defects
+  and only one was fixed, so the pin move silently removed the diagnosis for a
+  failure users still hit. If a row cannot be re-measured before the pin moves,
+  move the pin and keep the row until it can be.
+- A row may carry several signatures, and they can have different fates. Split
+  it when the evidence does: keep the signature that still reproduces, drop the
+  one that does not, and say in the comment which was measured and how.
 - A retired row lives on as the test fixture — `retiredC7Defect` in
   `llm/engine_defects_test.go` keeps its bytes, signatures and workaround — so
-  the matcher stays covered while the shipped table is empty.
-- `TestTheShippedTableAccusesNothing` pins that empty state: the signatures
-  that used to fire must not fire against the artifact `main` pins today.
+  the matcher stays covered even when the shipped table is empty.
+- `TestTheShippedTableAccusesExactlyWhatWasMeasured` points the **real** row at
+  a fixture digest and asserts both directions: the signature that reproduces
+  must fire, the one that was fixed must not. Its predecessor passed an
+  unrelated digest to `describeEngineDefect` and asserted nothing came back,
+  which could not fail whatever the table said — do not write that test again.
 - Registry row `engine-defects` in `docs/protocols/UPSTREAM-SYNC.md`. Prose for
   users is in `docs/xollama/slots.mdx`; the measurement behind a row is in
   `docs/evaluations/phase2-engine-ab.md`.
