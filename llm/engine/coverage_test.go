@@ -5,6 +5,16 @@ import (
 	"testing"
 )
 
+// withPin routes the package against a given pin for the duration of a test,
+// so a test that is about policy is not also a test of which channel this
+// branch pins.
+func withPin(t *testing.T, p Pin) {
+	t.Helper()
+	restore := loadPin
+	loadPin = func() (Pin, error) { return p, nil }
+	t.Cleanup(func() { loadPin = restore })
+}
+
 // TestRoutingIsTheTestedMatrixIntersectedWithThePin is the guard on the one
 // failure mode that leaves no trace: an artifact that does not carry a payload
 // does not refuse the load, it serves it on the CPU. The tested matrix says
@@ -96,9 +106,7 @@ func TestDeviceRoutingConsultsThePin(t *testing.T) {
 		Assets: []Asset{{Kind: "bin", Arch: "x86_64"}, {Kind: "dso", Arch: "x86_64"}},
 		Accels: []Accel{{Arch: "x86_64", Backend: BackendCUDA}},
 	}
-	restore := loadPin
-	loadPin = func() (Pin, error) { return dev, nil }
-	t.Cleanup(func() { loadPin = restore })
+	withPin(t, dev)
 
 	linux := Platform{"linux", "amd64"}
 	// Vulkan is in the tested matrix and this artifact has no Vulkan payload.

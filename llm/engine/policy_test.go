@@ -50,6 +50,18 @@ func ada() Device { return Device{Backend: BackendCUDA, ComputeMajor: 8, Compute
 // all of these and routes a V100 into an artifact with no code for it.
 func TestSupportsDeviceHonoursTheCUDAComputeFloor(t *testing.T) {
 	linux := Platform{OS: "linux", Arch: "amd64"}
+	// Route against an artifact that carries every payload, so this measures
+	// the compute floor and not which channel the branch happens to pin. A dev
+	// snapshot ships no Vulkan payload, and the Vulkan case below is a control
+	// for "the floor is CUDA-specific", not a claim about the shipped pin.
+	withPin(t, Pin{
+		Repo: "o/r", Channel: ChannelRelease, Tag: "test",
+		Assets: []Asset{{Kind: "bin", Arch: "x86_64"}},
+		Accels: []Accel{
+			{Arch: "x86_64", Backend: BackendCUDA},
+			{Arch: "x86_64", Backend: BackendVulkan},
+		},
+	})
 
 	cases := []struct {
 		name string
