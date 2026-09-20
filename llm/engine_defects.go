@@ -103,6 +103,13 @@ var knownEngineDefects = []knownEngineDefect{
 		// mistake has already been made once with this exact row; see
 		// .claude/rules/engine-defects.md.
 		//
+		// The expectation is good, though, and it is measured rather than
+		// promised: build 18 of the c7 DEV line already loads the same model
+		// on the same card, through the same POSITION_WINDOW tactic, at 4.25
+		// tok/s. So patch 0308 is the fix and c8 should carry it. That is a
+		// reason to expect the retirement to succeed -- not a reason to skip
+		// re-running it against the c8 bytes that actually ship.
+		//
 		// So they are two defects, not one. bug-3369's own signature is gone
 		// from r2 and is deliberately NOT listed below -- accusing bytes of a
 		// fault nobody has shown they still have is exactly what the sha256

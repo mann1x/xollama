@@ -24,12 +24,14 @@ paths:
   release channel: it skips when `pin.Channel` is not `engine.ChannelRelease`,
   because a dev pin carries different bytes and a row is inert there anyway.
 - **The live row is queued for opencoti c8, not another c7 patch** (agreed
-  2026-09-20). When the pin moves to c8, re-run the recipe — 70B q3_K_S on a
-  24 GiB card, `POSITION_WINDOW mode ON` in the log — and only if it loads
-  under `--kv-residency-mode auto`, drop the row and the
-  `LLAMA_ARG_KV_RESIDENCY_MODE=head` workaround together in one commit, the
-  Warning in `docs/xollama/slots.mdx` included. Append the c8 result to
-  `docs/evaluations/phase2-engine-ab.md`; never delete what it supersedes.
+  2026-09-20). Build 18 of the c7 **dev** line already loads the recipe model at
+  4.25 tok/s through the same POSITION_WINDOW path (opencoti patch 0308) — a
+  reason to expect the retirement to succeed, not to skip it. When the pin moves
+  to c8, re-run the recipe — 70B q3_K_S on a 24 GiB card, `POSITION_WINDOW mode
+  ON` in the log — and only if it loads under `--kv-residency-mode auto`, drop
+  the row and the `LLAMA_ARG_KV_RESIDENCY_MODE=head` workaround together in one
+  commit, the Warning in `docs/xollama/slots.mdx` included. Append the c8 result
+  to `docs/evaluations/phase2-engine-ab.md`; never delete what it supersedes.
 - **Retire on a measurement, never on a changelog.** On 2026-09-20 the c7 row
   was retired on opencoti's word that patch 0253 fixed it; retaking the Phase 2
   overflow axis on the r2 bytes that same day reproduced the abort with
@@ -38,13 +40,11 @@ paths:
   narrowed the same day to the rolling-KV `POSITION_WINDOW` residency tactic
   `--kv-residency-mode auto` picks under real VRAM pressure, not partial offload
   as such; `Workaround` leads with `LLAMA_ARG_KV_RESIDENCY_MODE=head`, measured.
-- A row may carry several signatures, and they can have different fates. Split
-  it when the evidence does: keep the signature that still reproduces, drop the
-  one that does not, and say in the comment which was measured and how.
+- A row may carry several signatures with different fates: keep the one that
+  still reproduces, drop the one that does not, and say so in the comment.
 - A retired row lives on as the test fixture — `retiredC7Defect` in
   `llm/engine_defects_test.go` keeps its bytes, signatures and workaround.
 - `TestTheShippedTableAccusesExactlyWhatWasMeasured` points the **real** row at
-  a fixture digest and asserts both directions: the signature that reproduces
-  must fire, the one that was fixed must not. Its predecessor could not fail.
+  a fixture digest: the reproducing signature must fire, the fixed one must not.
 - Registry row `engine-defects` in `docs/protocols/UPSTREAM-SYNC.md`; user prose
   in `docs/xollama/slots.mdx`, measurements in `docs/evaluations/phase2-engine-ab.md`.

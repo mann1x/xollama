@@ -257,6 +257,29 @@ rolling-KV spill actually do something — and it does not survive contact.
 > That makes the workaround a real one — it keeps the user on this engine
 > instead of off it — and it is what `llm/engine_defects.go` now tells them.
 >
+> **Already fixed on the development line, measured 2026-09-20.** Build 18 of
+> the c7 dev line (`a7a4e7da…` + its side-loaded `bef1ab64…` CUDA payload, both
+> verified against `llm/engine/pin.txt` on the `dev` branch) loads the same
+> model on the same card. Raw: `/srv/ml/xollama-phase2/as-ollama/b18-overflow/`.
+>
+> | arm | result |
+> |---|---|
+> | llama.cpp | loads, 56.8% resident, 2.71 tok/s |
+> | opencoti c7 r2 | aborts in 2.7 s |
+> | opencoti **build 18** | **loads** in 37.5 s, **76.0% resident**, **4.25 tok/s** |
+>
+> It is the same path, not an avoided one — the log still says
+> `rolling-kv POSITION_WINDOW mode ON (--kv-residency-mode auto)` with the same
+> window 256 / 32768 and host tail 32512, and the plan reads
+> `POSITION_WINDOW=80`. It places 310 KV layers on the CPU where r2 died on the
+> 54th, and aborts zero times. So opencoti's patch 0308 (rolling-KV metadata
+> budget) is the fix, and it is already on the line c8 is cut from.
+>
+> It is also the fastest arm of the three, by a distance: 4.25 tok/s against
+> stock's 2.71, because the position window keeps 76% of the model resident
+> where stock's split manages 56.8%. This is the feature working as designed,
+> on the exact case that was chosen to break it.
+>
 > One hazard found while measuring, worth knowing before trusting any r1-vs-r2
 > comparison: the llamafile self-extraction cache is keyed by version string,
 > and an in-place re-cut keeps that string, so r1 and r2 share
