@@ -89,34 +89,45 @@
 # artifacts.
 # ---------------------------------------------------------------------------
 
-repo     ManniX-ITA/opencoti-llamafile
-rev      619e163221eebf248c49db7d16533130328e26f6
-tag      llamafile-v0.10.5+opencoti.c7
-channel  release
+repo     ManniX-ITA/opencoti-llamafile-dev
+rev      3756389a23667d00290ea2f8229b69d62a3479e5
+tag      opencoti-0.10.5-c7-2609200554001
+channel  dev
 
-# The commit below is the c7 r1 cut -- the bytes measured in
-# docs/evaluations/phase0-engine-compat.md and run live on eleven2go. main now
-# serves r2 (c7 plus patch 0253, the rolling-KV field fix) under these same file
-# names; we do not follow it, because r2 adds no capability and pinning to it
-# would fix the fork at c7 scope.
+# THIS BRANCH PINS A DEVELOPMENT SNAPSHOT. It is not a release and must not be
+# packaged as one. main pins the release channel; this branch exists so the
+# fork can be built and tested against work that is not cut yet.
 #
-# No feature rows: c7's patch chain ends at 0244, so it carries none of the
-# capabilities below 0245. r2 would not add any either.
+# The tag is a DEV BUILD ID, not a claim about which cut these bytes are. A dev
+# build carries the PREVIOUS release tag in its version string, so this one
+# reads c7 while its patch chain runs 0245..0315 -- past the c7 chain end at
+# 0244, and past 0288. That is exactly why capability is declared below rather
+# than read out of the tag: inferring it would refuse the flags this snapshot
+# was pinned to test.
+#
+# Identity of a dev build is the build id AND the DSO sha256: a CUDA-only
+# iteration mints no new id. Quote both in any bug report to opencoti.
+#
+# Gates these exact bytes passed (BUILD_INFO.md in the build dir): RULER-VT
+# 256k on this DSO, Gemma-4 26B-A4B Q4_K_M -- kvarn3 + DCA record route n=50
+# score 0.988, kvarn3 DCA off n=12 score 0.983, zero faults. Patches 0245-0315
+# were each gated at capture; work for 0316 is in these bytes but uncaptured.
 
-bin  x86_64          opencoti-llamafile-0.10.5-c7-x86_64.llamafile              3c907bc7511359054dbf55c9d2d69fb49324ef75bdbb45efa092c3facad8951e
-bin  aarch64         opencoti-llamafile-0.10.5-c7-aarch64.llamafile             a83141a5afe8053937e4461b238eb4a974ec456cbaa7849c70e6f529c124ea74
-bin  win-x86_64      opencoti-llamafile-0.10.5-c7-win-x86_64.llamafile.exe      e7308ebec853f69bdce79578ea4f077ef6835244c3de9c185af5dd547bde39d2
-bin  win-x86_64-gpu  opencoti-llamafile-0.10.5-c7-win-x86_64-gpu.llamafile.exe  19ff1d87292bb9147793b43651631b4f003c5541c6a5d35096ca8883a2a4d0f6
-bin  universal       opencoti-llamafile-0.10.5-c7-universal.llamafile.exe       002d7ee826db5d446001ef3cddfbe8615b9979a1dff61fc46938da48f505090a
+# The chain includes patch 0288, so the sliding-window ring types are here.
+# Verified against the artifact, not taken from the chain listing.
+feature  swa-cache-types
 
-# What these bins embed (c7 F6 V2: the x86_64, win-x86_64-gpu and universal
-# artifacts carry the Vulkan payload as well as CUDA; aarch64 is CUDA sbsa).
-# win-x86_64 is the bare APE with no GPU payload at all, so it gets no rows and
-# a Windows host that resolves to it routes accelerators to llama.cpp.
-accel  x86_64          CUDA
-accel  x86_64          Vulkan
-accel  aarch64         CUDA
-accel  win-x86_64-gpu  CUDA
-accel  win-x86_64-gpu  Vulkan
-accel  universal       CUDA
-accel  universal       Vulkan
+# Linux x86_64 CUDA and nothing else. The host binary is a bare cosmocc APE:
+# unlike a release bin it embeds no GPU payload, and dev snapshots publish no
+# Windows, aarch64 or Vulkan DSO at all. Every other accelerator therefore
+# routes to llama.cpp instead of being served on the CPU without saying so.
+# The DSO needs glibc >= 2.27 and only libcuda.so.1; sm_75/80/86/89/90/120.
+accel    x86_64  CUDA
+
+# One APE serves every host; the arch label selects who may package it.
+# win-x86_64-gpu is deliberately absent: there is no Windows GPU artifact on
+# this channel, so a Windows package cannot be built from this branch, loudly.
+bin  x86_64   builds/opencoti-0.10.5-c7-2609200554001/opencoti-0.10.5-c7-2609200554001  a7a4e7dac7ae8c934ea7362704d1a3e6e399cd275a2bf32de748f2d58fd86a2b
+bin  aarch64  builds/opencoti-0.10.5-c7-2609200554001/opencoti-0.10.5-c7-2609200554001  a7a4e7dac7ae8c934ea7362704d1a3e6e399cd275a2bf32de748f2d58fd86a2b
+
+dso  x86_64   builds/opencoti-0.10.5-c7-2609200554001/ggml-cuda.so  bef1ab649e36b667a049299941693180b819fa4c956f8ae3422f387c985bfe0a
