@@ -78,6 +78,24 @@ func (p *Gemma4Parser) PreservedTokens() []string {
 	}
 }
 
+// gemma4UnreadableToolCall is what a tool call becomes when it cannot be read.
+//
+// Not repaired, on purpose. A malformed call is usually a degenerate one -- the
+// run this was taken from has a sibling whose `new_text` is `text=text=text=`
+// repeated -- and a repair that makes such a call well-formed hands the
+// degenerate fragment to the tool, which for an edit means writing it into the
+// user's file. A call the parser cannot read is a call that must not run.
+//
+// But it must not vanish either, which is what used to happen: the warning went
+// to the server log and the client received a turn with no tool call and no
+// content, so nothing downstream could tell a malformed call from a silent
+// model. Returning the raw text keeps the turn intact, lets a client that scans
+// for an unparsed tool call recognise one, and shows the model its own output
+// so the retry has something to correct.
+func gemma4UnreadableToolCall(s string) string {
+	return gemma4ToolCallOpenTag + s + gemma4ToolCallCloseTag
+}
+
 func (p *Gemma4Parser) Init(tools []api.Tool, lastMessage *api.Message, thinkValue *api.ThinkValue) []api.Tool {
 	p.tools = tools
 	p.callIndex = 0
@@ -411,6 +429,7 @@ func (p *Gemma4Parser) eat(done bool) ([]gemma4Event, bool) {
 				events = append(events, gemma4EventToolCall{toolCall: toolCall})
 			} else {
 				slog.Warn("gemma4 tool call parsing failed", "error", err, "content", toolCallContent)
+				events = append(events, gemma4EventContent{content: gemma4UnreadableToolCall(toolCallContent)})
 			}
 			return events, true
 		}
@@ -424,6 +443,7 @@ func (p *Gemma4Parser) eat(done bool) ([]gemma4Event, bool) {
 				events = append(events, gemma4EventToolCall{toolCall: toolCall})
 			} else {
 				slog.Warn("gemma4 tool call flush on done failed", "error", err, "content", bufStr)
+				events = append(events, gemma4EventContent{content: gemma4UnreadableToolCall(bufStr)})
 			}
 			return events, false
 		}
