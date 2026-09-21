@@ -38,6 +38,7 @@ import (
 	"github.com/ollama/ollama/format"
 	"github.com/ollama/ollama/fs/gguf"
 	internalcloud "github.com/ollama/ollama/internal/cloud"
+	"github.com/ollama/ollama/internal/fsowner"
 	"github.com/ollama/ollama/internal/proxy"
 	"github.com/ollama/ollama/llm"
 	"github.com/ollama/ollama/logutil"
@@ -2071,6 +2072,13 @@ func Serve(ln net.Listener) error {
 	slog.Info("server config", "env", envconfig.Values())
 	cloudDisabled, _ := internalcloud.Status()
 	slog.Info(fmt.Sprintf("Ollama cloud disabled: %t", cloudDisabled))
+
+	// xollama-hook: store-ownership
+	//
+	// Said once at startup, because the mirror case cannot be fixed in code: an
+	// ordinary user running against a service-owned store cannot chown what it
+	// writes, and the damage shows up as a slow model list rather than an error.
+	fsowner.Preflight(envconfig.Models())
 
 	blobsDir, err := manifest.BlobsPath("")
 	if err != nil {

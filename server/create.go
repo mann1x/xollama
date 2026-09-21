@@ -28,12 +28,21 @@ import (
 	"github.com/ollama/ollama/envconfig"
 	"github.com/ollama/ollama/format"
 	"github.com/ollama/ollama/fs/gguf"
+	"github.com/ollama/ollama/internal/fsowner"
 	"github.com/ollama/ollama/manifest"
 	"github.com/ollama/ollama/mlx/quant"
 	"github.com/ollama/ollama/mlxrunner"
 	"github.com/ollama/ollama/types/errtypes"
 	"github.com/ollama/ollama/types/model"
 )
+
+// xollama-hook: store-ownership
+//
+// The creating calls below go through internal/fsowner instead of os. On a
+// packaged Linux install the server runs as an unprivileged service account,
+// and anything a root-run command creates here would be unusable by it
+// afterwards -- silently, as a slow model list rather than an error. The
+// wrappers are os plus one stat when there is no service account to find.
 
 var (
 	errNoFilesProvided        = errors.New("no files provided to convert")
@@ -450,7 +459,7 @@ func linkOrCopyFile(ctx context.Context, src, dst string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+	if err := fsowner.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
 	if err := os.Link(src, dst); err == nil {
@@ -466,7 +475,7 @@ func linkOrCopyFile(ctx context.Context, src, dst string) error {
 	}
 	defer in.Close()
 
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	out, err := fsowner.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return err
 	}

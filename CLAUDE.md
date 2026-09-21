@@ -22,7 +22,8 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   a marked surgical hook, and hooks go in the Registry in the same commit.
 - `docs/protocols/CARRIED-PATCHES.md` — the open upstream PRs this fork carries.
   Each is its own `--no-ff` merge, retired the day upstream takes it.
-- `docs/features/engine-opencoti-llamafile.md` · `docs/features/rebrand.md`
+- `docs/features/engine-opencoti-llamafile.md` · `docs/features/rebrand.md` ·
+  `docs/features/store-ownership.md`
 - `docs/evaluations/phase0-engine-compat.md` — measured engine-compat baseline.
 
 Remotes: `origin` = mann1x/xollama · `upstream` = ollama/ollama ·
@@ -91,7 +92,8 @@ local SSH keypair; `manifest/` holds the manifest/blob model (`manifest.go`,
 policy), `internal/modelref` (model reference parsing), `internal/onboarding`
 (first-run app state), `internal/orderedmap` (insertion-ordered maps behind the
 tool schemas), `internal/fsowner` (hands files a root run creates to the owner
-of the model store), plus `internal/testutil` and `internal/proxy`.
+of the model store; `create.go` wrappers, `preflight.go` warning — see
+`.claude/rules/store-ownership.md`), plus `internal/testutil` and `internal/proxy`.
 **Integration tests**: `integration/` — build-tagged end-to-end suites
 (`basic_test.go`, `tools_test.go`, `vision_test.go`, `concurrency_test.go`) with
 fixtures in `integration/testdata/`; they need a running server and pulled models.

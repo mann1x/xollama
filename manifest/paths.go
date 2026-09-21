@@ -9,8 +9,17 @@ import (
 	"strings"
 
 	"github.com/ollama/ollama/envconfig"
+	"github.com/ollama/ollama/internal/fsowner"
 	"github.com/ollama/ollama/types/model"
 )
+
+// xollama-hook: store-ownership
+//
+// The creating calls below go through internal/fsowner instead of os. On a
+// packaged Linux install the server runs as an unprivileged service account,
+// and anything a root-run command creates here would be unusable by it
+// afterwards -- silently, as a slow model list rather than an error. The
+// wrappers are os plus one stat when there is no service account to find.
 
 var ErrInvalidDigestFormat = errors.New("invalid digest format")
 
@@ -28,7 +37,7 @@ func ValidateDigest(digest string) error {
 
 func Path() (string, error) {
 	path := filepath.Join(envconfig.Models(), "manifests")
-	if err := os.MkdirAll(path, 0o755); err != nil {
+	if err := fsowner.MkdirAll(path, 0o755); err != nil {
 		return "", fmt.Errorf("%w: ensure path elements are traversable", err)
 	}
 
@@ -64,7 +73,7 @@ func BlobsPath(digest string) (string, error) {
 		dirPath = path
 	}
 
-	if err := os.MkdirAll(dirPath, 0o755); err != nil {
+	if err := fsowner.MkdirAll(dirPath, 0o755); err != nil {
 		return "", fmt.Errorf("%w: ensure path elements are traversable", err)
 	}
 

@@ -10,8 +10,17 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/ollama/ollama/internal/fsowner"
 	"github.com/ollama/ollama/types/model"
 )
+
+// xollama-hook: store-ownership
+//
+// The creating calls below go through internal/fsowner instead of os. On a
+// packaged Linux install the server runs as an unprivileged service account,
+// and anything a root-run command creates here would be unusable by it
+// afterwards -- silently, as a slow model list rather than an error. The
+// wrappers are os plus one stat when there is no service account to find.
 
 type Manifest struct {
 	SchemaVersion int     `json:"schemaVersion"`
@@ -182,11 +191,11 @@ func WriteManifest(name model.Name, config Layer, layers []Layer) error {
 	}
 
 	p := filepath.Join(manifests, name.Filepath())
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+	if err := fsowner.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		return err
 	}
 
-	f, err := os.Create(p)
+	f, err := fsowner.Create(p)
 	if err != nil {
 		return err
 	}

@@ -19,7 +19,17 @@ import (
 
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
+
+	"github.com/ollama/ollama/internal/fsowner"
 )
+
+// xollama-hook: store-ownership
+//
+// The creating calls below go through internal/fsowner instead of os. On a
+// packaged Linux install the server runs as an unprivileged service account,
+// and anything a root-run command creates here would be unusable by it
+// afterwards -- silently, as a slow model list rather than an error. The
+// wrappers are os plus one stat when there is no service account to find.
 
 var (
 	errStalled = errors.New("download stalled")
@@ -285,7 +295,7 @@ func (d *downloader) downloadOnce(ctx context.Context, blob Blob) (int64, error)
 func (d *downloader) save(ctx context.Context, blob Blob, r io.Reader, existingSize int64) (int64, error) {
 	dest := filepath.Join(d.destDir, digestToPath(blob.Digest))
 	tmp := dest + ".tmp"
-	os.MkdirAll(filepath.Dir(dest), 0o755)
+	fsowner.MkdirAll(filepath.Dir(dest), 0o755)
 
 	h := sha256.New()
 
@@ -294,7 +304,7 @@ func (d *downloader) save(ctx context.Context, blob Blob, r io.Reader, existingS
 
 	if existingSize > 0 {
 		// Resume — re-hash existing partial data, then append
-		f, err = os.OpenFile(tmp, os.O_RDWR, 0o644)
+		f, err = fsowner.OpenFile(tmp, os.O_RDWR, 0o644)
 		if err != nil {
 			// Can't open partial file, start fresh
 			existingSize = 0
@@ -312,7 +322,7 @@ func (d *downloader) save(ctx context.Context, blob Blob, r io.Reader, existingS
 	}
 
 	if existingSize == 0 {
-		f, err = os.Create(tmp)
+		f, err = fsowner.Create(tmp)
 		if err != nil {
 			return 0, err
 		}

@@ -23,6 +23,7 @@ import (
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/envconfig"
+	"github.com/ollama/ollama/internal/fsowner"
 	"github.com/ollama/ollama/manifest"
 	"github.com/ollama/ollama/mlx"
 	"github.com/ollama/ollama/model/parsers"
@@ -37,6 +38,14 @@ import (
 
 // Blobs newer than this may belong to another process that has not written its
 // manifest yet. They become eligible for the normal mark-and-sweep pass later.
+// xollama-hook: store-ownership
+//
+// The creating calls below go through internal/fsowner instead of os. On a
+// packaged Linux install the server runs as an unprivileged service account,
+// and anything a root-run command creates here would be unusable by it
+// afterwards -- silently, as a slow model list rather than an error. The
+// wrappers are os plus one stat when there is no service account to find.
+
 const layerPruneGracePeriod = time.Hour
 
 var (
@@ -862,7 +871,7 @@ func CopyModel(src, dst model.Name) error {
 	}
 
 	dstpath := filepath.Join(manifests, dst.Filepath())
-	if err := os.MkdirAll(filepath.Dir(dstpath), 0o755); err != nil {
+	if err := fsowner.MkdirAll(filepath.Dir(dstpath), 0o755); err != nil {
 		return err
 	}
 
@@ -873,7 +882,7 @@ func CopyModel(src, dst model.Name) error {
 	}
 	defer srcfile.Close()
 
-	dstfile, err := os.Create(dstpath)
+	dstfile, err := fsowner.Create(dstpath)
 	if err != nil {
 		return err
 	}
@@ -1146,11 +1155,11 @@ func PullModel(ctx context.Context, name string, regOpts *registryOptions, fn fu
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(fp), 0o755); err != nil {
+	if err := fsowner.MkdirAll(filepath.Dir(fp), 0o755); err != nil {
 		return err
 	}
 
-	err = os.WriteFile(fp, manifestData, 0o644)
+	err = fsowner.WriteFile(fp, manifestData, 0o644)
 	if err != nil {
 		slog.Info(fmt.Sprintf("couldn't write to %s", fp))
 		return err
@@ -1245,11 +1254,11 @@ func pullWithTransfer(ctx context.Context, n model.Name, layers []manifest.Layer
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(fp), 0o755); err != nil {
+	if err := fsowner.MkdirAll(filepath.Dir(fp), 0o755); err != nil {
 		return err
 	}
 
-	if err := os.WriteFile(fp, manifestData, 0o644); err != nil {
+	if err := fsowner.WriteFile(fp, manifestData, 0o644); err != nil {
 		return err
 	}
 
