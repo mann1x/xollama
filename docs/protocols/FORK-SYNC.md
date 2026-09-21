@@ -160,6 +160,50 @@ to avoid (measured: 155 of the 474 files upstream touched between v0.34.0 and
 v0.34.2). When xollama moves to a new upstream tag, the fork is told **before**
 the rebase, not after.
 
+## Dependent patches — the one amendment to "based on the upstream tag"
+
+Decided 2026-09-21, on the first patch that could not satisfy the rule.
+
+`up-*` branches rebase onto the upstream tag, and twelve of fourteen do. The
+exception is a patch whose changes **cannot exist** on that tag. The case that
+forced it: the reader half of the response-scope thinking budget edits
+`llama/compat/004-reasoning-budget-line-boundary.patch`, a file that does not
+exist at `v0.34.2` because `up-reasoning-budget-line-boundary` (#18212) creates
+it, and it needs `up-think-budget`'s (#17566) Go plumbing besides. Its only
+honest base is a tree carrying both.
+
+**The amendment.** Such a patch gets a stacked `up-*` branch and declares its
+dependencies:
+
+- the manifest row carries `depends_on` naming them, and a `base` that is the
+  dependency set rather than the tag;
+- the branch is built on the merge of exactly those dependencies, **at their
+  manifest shas**;
+- it comes **after** all of them in `patches[]`, which apply order already
+  guarantees once it is placed there;
+- it is `fork-only`. Not by preference — a patch that only applies on top of two
+  unmerged PRs cannot be a standalone upstream PR.
+
+**What this changes on xollama's side.** The invariant checked before merging
+was "every branch's merge-base is the upstream tag". It becomes: the merge-base
+is the tag, **or** every entry in `depends_on` is earlier in `patches[]` and the
+branch's merge-base lies within their merge. A branch that satisfies neither is
+not merged and the fork is asked, as before.
+
+**Why not the alternatives**, since both were offered and one looked cheaper:
+
+- *Fold it into `up-think-budget` and reorder so #18212 precedes it.* This does
+  not actually avoid the amendment. The branch would still have to edit a file
+  that does not exist at its base, so either it stops being tag-based anyway, or
+  it absorbs #18212's commit — which puts one open upstream PR's changes inside
+  another's. #17566 is the headline PR and the one most likely to be read; the
+  whole point of mirroring `main` was to stop fork PRs being unreadable.
+- *Leave it fork-only on `think-budget` with a note.* That is precisely the
+  state that produced the `ToolCallTags()` finding: code on the integration
+  branch with no home, which R2 forbids and which nobody notices until someone
+  greps for it. Choosing it knowingly is worse than having arrived there by
+  accident.
+
 ## What xollama does on receipt of a manifest bump
 
 1. `git fetch fork` and merge each named `up-<slug>` **at the manifest's sha**,
@@ -188,31 +232,19 @@ so no branch in `mann1x/ollama` is its home. It is tracked only by
 
 ## Open items
 
-- **First manifest published 2026-09-21** (`base: v0.34.2`,
-  `integration.sha: 3af5f361`, release `v0.34.2-1-thinkbudget` @ `645ec440`),
-  carrying twelve patches. Every branch was rebased onto `v0.34.2` and
-  force-pushed, and all twelve upstream PRs were confirmed open on their new
-  heads after the push. xollama's merges predate that rewrite, so consuming the
-  manifest is a re-merge of rewritten history, not a fast-forward.
-- **Consumed 2026-09-21**: all twelve re-merged at the manifest shas, in
-  `patches[]` order, each its own `--no-ff` merge; shas in
-  `CARRIED-PATCHES.md`. Six conflicted, none through ordering.
-- **`ToolCallTags()` has no home.** It was the reason for re-merging #17566,
-  and it did not arrive. It exists on `think-budget` and `thinkbudget-0.34.2`
-  (`model/parsers/parsers.go`, `gemma4.go`, `qwen35.go`, both test files) and on
-  **no** `up-*` branch at any manifest sha — a patch authored on the integration
-  branch, which R2 forbids. R4 says do not hand-copy it, so it stays out of this
-  tree until it has a branch and a manifest entry. The protocol found this; a
-  survey of branch names never would have.
-- Three patches needed repair to land on `v0.34.2` and the fixes live on the
-  branches, not here — `up-jinja-runner-reuse` (struct no longer comparable
-  with `!=` after `DraftModelShardPaths` was added; two upstream `runnerRef`
-  fixtures had to set the new field), `up-mlx-libdl` (0.34 moved
-  `x/mlxrunner/`; relocated to `mlx/mlx.go`, and the upstream PR title still
-  says the old path), `up-think-budget` (`go vet` only: two test files still
-  named `fs/ggml`, which 0.34.2 moved to `internal/testutil/gguf` — invisible
-  to `go build ./...`).
-- **Both rule corrections of 2026-09-21 were found by executing the rules, not
-  by reading them** — R1's cross-fork rename carve-out and R7's workflow
-  exception. Neither announced itself: the rename closed a PR and the mirror
-  deleted a workflow, and both were caught only because someone checked.
+- **Manifest `bc1448ec`** (`base: v0.34.2`, `integration.sha d57818e3`) carries
+  **fourteen**. All fourteen are merged here; shas in `CARRIED-PATCHES.md`.
+- **`status: "fork-only"` with `upstream_pr: null`** is a value the schema did
+  not have before. It matters here because the **upstream PR number is this
+  repo's identifier for a patch** — `CARRIED-PATCHES.md` keys on it. Fork-only
+  rows key on the branch slug instead and are listed apart. Rule 4 there was
+  amended in the same commit, since "no upstream PR" no longer means "not a
+  carried patch".
+- **The residue is not merged and not lost**: the reader half of the
+  response-scope thinking budget is still on `think-budget` only. Stacked
+  branch requested per the amendment above.
+- `ToolCallStartTagForParser` therefore has no caller in this tree yet. That is
+  the expected intermediate state, not dead code to remove.
+- The fork's release `v0.34.2-1-thinkbudget` (`645ec440`) was cut before patch
+  13 and carries 1–12. **Nothing here needs a re-cut** — xollama builds from
+  source and fetches nothing from the fork but `up-*` branches.

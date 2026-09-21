@@ -19,8 +19,13 @@ first if a patch looks missing or out of date.
 3. On every upstream sync, re-check the `state` column. A patch whose PR
    merged upstream is **retired the same day** — carrying it twice is how a
    silent double-apply happens.
-4. A patch with no upstream PR is an xollama feature, not a carried patch.
-   It belongs in `docs/features/`.
+4. A patch with no upstream PR **and no home in the fork** is an xollama
+   feature, not a carried patch. It belongs in `docs/features/`.
+5. A patch the fork's manifest marks `fork-only` is a third thing: authored in
+   `mann1x/ollama`, carried here, but never reported upstream. Its
+   `upstream_pr` is `null`, so the **branch slug is its identifier** — every
+   other row in this file keys on the PR number, and these cannot. They are
+   listed apart, below.
 
 **Status as of 2026-09-21: all thirteen are carried, and all thirteen are still
 OPEN against `ollama/ollama`.** The twelve that have a home in `mann1x/ollama`
@@ -49,6 +54,43 @@ set, and that set is now two entries long for most rows.
 
 Two branches carry no `up-` prefix on purpose: renaming a branch that heads an
 open cross-fork PR closes the PR. See `docs/protocols/FORK-SYNC.md` R1.
+
+## Fork-only — carried, never reported upstream
+
+Manifest `bc1448ec`, `integration.sha d57818e3`, still `base: v0.34.2`. These
+two arrived as `status: "fork-only"` with `upstream_pr: null` — a value no
+earlier row had, flagged by the fork rather than slipped in. Keyed on the
+branch slug, because there is no PR number to key on.
+
+| branch | manifest sha | our merge | what it does |
+|---|---|---|---|
+| `up-gemma4-unparsed-tool-call-content` | `cbcc5ed2` | `1b9e0ab6` | a tool call the parser cannot read comes back as content, re-wrapped in its own tags, instead of vanishing |
+| `up-toolcall-tags` | `61c78a05` | `ef7a0ad6` | `ToolCallTagger` / `ToolCallStartTagForParser`, plus the gemma4 and qwen3.5 methods |
+
+`up-gemma4-unparsed-tool-call-content` deliberately does **not** repair the
+call. The run that found it had a `new_text` argument degenerated to
+`text=text=text=` before the key was swallowed; repairing that payload writes
+the fragment into the user's file. A call the parser cannot read is a call that
+must not run — but it must not vanish either, which is what used to happen:
+`calls=0`, `content=""`, `thinking=""`, and only a server-log warning.
+
+`up-toolcall-tags` is the branch this repo asked for. `ToolCallTags()` had been
+on `think-budget` since August with no `up-*` home — an R2 violation found by
+grepping for it after the merge that was supposed to bring it. The branch is an
+extraction, not a new commit.
+
+**Its conflict has a trap, and it is worth keeping written down.** It collides
+with `up-think-budget`, which adds `ThinkingTagger` at the same three points in
+the same three files (`parsers.go`, `gemma4.go`, `qwen35.go`). Same keep-both
+shape as the others — except the conflict boundary cuts **inside a function**,
+so the closing brace on the line after `>>>>>>>` belongs to *both* halves.
+Concatenating the two sides the obvious way orphans it and yields Go that does
+not parse; the fork's own replay harness did exactly that and reported four
+syntax errors. Close the first block with its own brace. `ThinkingTagger` first.
+
+**`ToolCallStartTagForParser` has no caller here yet**, and that is expected:
+the half that *reads* the tag — response-scope thinking budget — is the residue
+still on `think-budget`. See `docs/protocols/FORK-SYNC.md`, "Dependent patches".
 
 **Six of the twelve conflicted, and none of it was an ordering mistake.** Four
 were the shape the manifest's `known_conflicts` predicts — two additive test
