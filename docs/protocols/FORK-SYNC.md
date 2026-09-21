@@ -113,20 +113,39 @@ tag and the shas that moved. Neither side polls.
 branches are rebased onto it, the manifest is republished with the new `base`,
 and the mail goes out. One event to track instead of ten branches.
 
-**R7 — `mann1x/ollama@main` is a plain mirror of upstream.** It was six weeks
-stale, which is what made every fork PR a 451-file diff burying the two files
-that mattered. Mirrored, it is never a development target and never a base
-anyone reasons about.
+**R7 — `mann1x/ollama@main` mirrors upstream, plus the release workflow.** It
+was six weeks stale, which is what made every fork PR a 451-file diff burying
+the two files that mattered. Mirrored, it is never a development target and
+never a base anyone reasons about.
 
-> **Not done as of 2026-09-21** — deferred by the repository owner; `main`
-> stays at `eef55508` (2026-08-10). Recorded here so this file is not read as
-> describing a mirror that exists. Nothing in xollama depends on it, which is
-> the next paragraph and was verified independently of this deferral.
+> **`.github/workflows/thinkbudget-release.yaml` must stay on `main`.** GitHub
+> discovers a `workflow_dispatch` workflow **only on the default branch**, so
+> mirroring it away put the workflow into state `deleted` and the fork could not
+> cut a release at all — silently, until the next release. `main`'s copy is
+> `think-budget`'s, byte for byte, which also closes the opposite trap: `main`
+> once held a four-job version against the branch's seven, so a dispatch that
+> forgot `--ref` produced a *green* run missing two release assets. Keep the two
+> copies in step; dispatch stays `--ref think-budget`.
+
+> **Done 2026-09-21.** `main` moved from `eef55508` (2026-08-10) to upstream
+> `6383a0fa` plus that one file, at `a4aed68b` — verified here against the
+> GitHub API: one changed file, parent `6383a0fa`, workflow state `active`. The
+> pre-mirror `main` is kept as `main-pre-mirror-20260921` at `eef55508`. The
+> payoff is measured: fork PR #1 (`think-budget` → `main`) went from a 451-file
+> diff to 66 files, `+6179/-311`.
+>
+> Fifteen commits were on the old `main` and not upstream; two had no `up-*`
+> home, and both were checked before the overwrite rather than after —
+> `b002feda` is obsolete (its file does not exist at v0.34.2) and `f05a6f76`
+> already lives on `think-budget`. An untracked patch that still applied would
+> have been given an `up-*` branch first. That is R1 doing its job.
 
 > **xollama fetches nothing from `mann1x/ollama@main`.** Verified 2026-09-21:
 > no build file, cmake module, pin, workflow or Go source references
 > `mann1x/ollama` at all. We touch the `fork` remote only to fetch `up-*`
-> branches for merges. Mirroring `main` costs this repo nothing.
+> branches for merges. Mirroring `main` cost this repo nothing — which is *why*
+> the mirror was safe to do, so this verification is load-bearing in both
+> directions.
 
 ## The rebase base is the upstream TAG
 
@@ -185,4 +204,7 @@ so no branch in `mann1x/ollama` is its home. It is tracked only by
   says the old path), `up-think-budget` (`go vet` only: two test files still
   named `fs/ggml`, which 0.34.2 moved to `internal/testutil/gguf` — invisible
   to `go build ./...`).
-- R7 deferred; see the note under the rule.
+- **Both rule corrections of 2026-09-21 were found by executing the rules, not
+  by reading them** — R1's cross-fork rename carve-out and R7's workflow
+  exception. Neither announced itself: the rename closed a PR and the mirror
+  deleted a workflow, and both were caught only because someone checked.
