@@ -51,6 +51,23 @@ func (p *Qwen35Parser) ThinkingTags() (string, string) {
 	return qwen35ThinkingOpenTag, qwen35ThinkingCloseTag
 }
 
+// ToolCallTags reports the delimiters of this parser's tool calls, so a
+// response-wide thinking budget can forgive what was spent getting to one.
+//
+// Naming them is opt-in: a parser that names none leaves the budget cumulative
+// across the whole response, which is safe but means a long agentic turn runs
+// out of thinking after its first few steps. gemma4 was the only parser to name
+// its tags when the response-scope budget landed, because it was the only one
+// measured; on qwen3.5 the budget was silently cumulative for the same reason.
+//
+// The tag has to be a single special token or the reset would fire on prose
+// that merely spells it, since the sampler matches a token sequence rather than
+// text. It is: `<tool_call>` is token 248058 of type USER_DEFINED in the
+// qwen3.5 vocab, the same property gemma4's `<|tool_call>` has.
+func (p *Qwen35Parser) ToolCallTags() (string, string) {
+	return toolOpenTag, toolCloseTag
+}
+
 func (p *Qwen35Parser) PreservedTokens() []string {
 	return []string{
 		qwen35ThinkingOpenTag,

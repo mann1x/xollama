@@ -67,6 +67,12 @@ func (p *Gemma4Parser) ThinkingTags() (string, string) {
 	return gemma4ThinkingOpenTag, gemma4ThinkingCloseTag
 }
 
+// ToolCallTags reports the delimiters of this parser's tool calls, so a
+// response-wide thinking budget can forgive what was spent getting to one.
+func (p *Gemma4Parser) ToolCallTags() (string, string) {
+	return gemma4ToolCallOpenTag, gemma4ToolCallCloseTag
+}
+
 func (p *Gemma4Parser) PreservedTokens() []string {
 	return []string{
 		gemma4ThinkingOpenTag,

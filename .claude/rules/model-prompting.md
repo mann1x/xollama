@@ -14,6 +14,11 @@ paths:
   name into `rendererForName`, or call `renderers.Register` for out-of-tree ones.
 - Output parsing lives in `model/parsers/parsers.go`. Renderer and parser names
   are resolved from the `Renderer` / `Parser` fields in `types/model/config.go`.
+- Optional parser interfaces in `model/parsers/parsers.go`: `ThinkingTags()`
+  (read via `ThinkingTagsForParser`) and `ToolCallTags()` (`ToolCallTagger`,
+  read via `ToolCallStartTagForParser`, implemented by `model/parsers/gemma4.go`
+  and `model/parsers/qwen35.go`). The thinking budget uses the tool-call open tag
+  so thinking that led to a tool call does not count against later thinking.
 - Declare tags as file-local consts (e.g. `qwen35ThinkOpenTag` in
   `model/renderers/qwen35.go`). Reuse `renderContentWithImageTags` from
   `model/renderers/image_tags.go` instead of re-implementing image placeholders.
