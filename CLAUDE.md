@@ -22,6 +22,11 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   a marked surgical hook, and hooks go in the Registry in the same commit.
 - `docs/protocols/CARRIED-PATCHES.md` — the open upstream PRs this fork carries.
   Each is its own `--no-ff` merge, retired the day upstream takes it.
+- `docs/protocols/FORK-SYNC.md` — how patches reach this repo from
+  `mann1x/ollama`. Consume by the sha in the fork's `PATCHES.json`, in
+  `patches[]` order, each as its own `--no-ff` merge. **Never hand-copy a hunk
+  from `think-budget`** — that is how `model/parsers/gemma4.go` ended up three
+  different things across two trees.
 - `docs/features/engine-opencoti-llamafile.md` · `docs/features/rebrand.md` ·
   `docs/features/store-ownership.md`
 - `docs/evaluations/phase0-engine-compat.md` — measured engine-compat baseline.

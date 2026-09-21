@@ -4,6 +4,11 @@ Every change xollama carries that is *also* an open PR against upstream
 ollama. This file is the contract: a patch is here because upstream has not
 taken it, and it leaves when upstream does.
 
+This file says *which* patches are carried and at which merge.
+`docs/protocols/FORK-SYNC.md` says *how* they get here — the manifest the fork
+publishes, the sha to merge at, and why nothing is ever hand-copied. Read that
+first if a patch looks missing or out of date.
+
 **Rules**
 
 1. Each carried patch is merged onto `main` as its **own `--no-ff` merge**,
