@@ -70,50 +70,110 @@ type payloadOwner struct {
 	ModTime  int64  `json:"mtime_unix_nano"`
 }
 
-// DefaultPayloadRoot returns the directory xollama gives the engine as HOME.
+// DefaultPayloadRoots returns the directories xollama will try to give the
+// engine as HOME, best first.
 //
-// It is under ollama's own directory, never the user's ~/.llamafile, which is
-// the point: the operator may run any number of opencoti builds themselves and
-// must not have to think about ours.
-func DefaultPayloadRoot(libOllamaPath, home string) string {
-	if home != "" {
-		return filepath.Join(home, ".ollama", "engines", "payload")
-	}
+// The first is ollama's own runtime directory -- the one already holding
+// llama-server and the ggml backends, which is `<install>/lib/ollama` on every
+// platform:
+//
+//	Windows  %LOCALAPPDATA%\Programs\Ollama\lib\ollama
+//	Linux    /usr/local/lib/ollama
+//	macOS    Ollama.app/Contents/Resources/lib/ollama
+//
+// That is where the engine's runtime belongs: beside the rest of the runtime,
+// installed and removed with it, and in nobody's home directory.
+//
+// It is not always writable, and that is not a fault. A packaged Linux install
+// leaves that directory root-owned while the service runs as `ollama`; a macOS
+// install puts it inside a signed app bundle, where writing would be worse than
+// unhelpful. So `~/.ollama/engines/payload` follows as a fallback -- still
+// ours, and still never the user's `~/.llamafile`, which is the directory they
+// keep their own opencoti builds in and the one this whole file exists to stay
+// out of.
+func DefaultPayloadRoots(libOllamaPath, home string) []string {
+	var roots []string
 	if libOllamaPath != "" {
-		return filepath.Join(libOllamaPath, "engines", "payload")
+		roots = append(roots, filepath.Join(libOllamaPath, "engines", "payload"))
 	}
-	return ""
+	if home != "" {
+		roots = append(roots, filepath.Join(home, ".ollama", "engines", "payload"))
+	}
+	return roots
 }
 
-// PreparePayloadHome makes root fit to be the engine's HOME and returns it.
+// ensureWritable creates root if needed and proves we can write inside it.
 //
-// If the payload in root belongs to a different artifact than the one about to
-// run, it is deleted so the engine unpacks its own. The returned path is what
-// the caller sets HOME to; "" means keep the inherited environment, which is
-// what happens when the root cannot be used at all.
+// The proof is the point. The failing case on Linux is a directory that already
+// exists and is owned by root, so MkdirAll succeeds and nothing goes wrong
+// until the first write -- which, on the path that matters, happens after
+// hashing 700 MB. Probing costs two syscalls and moves that discovery in front
+// of the work.
 //
-// An unusable root is a warning and not an error. Refusing to launch would
-// turn a cosmetic problem -- a directory we cannot write -- into a model that
-// will not load, and the behaviour without this is exactly what xollama did
-// before it existed.
-func PreparePayloadHome(artifact, root string) string {
-	if artifact == "" || root == "" {
-		return ""
-	}
-
+// It is a var because that case cannot be built from a fixture: these tests run
+// as root on the host that found the bug, and root is not stopped by a mode bit.
+var ensureWritable = func(root string) error {
 	if err := os.MkdirAll(root, 0o755); err != nil {
-		slog.Warn("cannot use a private directory for the engine payload; falling back to the inherited HOME",
-			"root", root, "error", err,
-			"consequence", "the engine shares ~/.llamafile with any other opencoti build on this machine")
+		return err
+	}
+	f, err := os.CreateTemp(root, ".xollama-probe-*")
+	if err != nil {
+		return err
+	}
+	name := f.Name()
+	f.Close()
+	return os.Remove(name)
+}
+
+// PreparePayloadHome makes the first usable root fit to be the engine's HOME
+// and returns it, trying the roots in the order given.
+//
+// If the payload in that root belongs to a different artifact than the one
+// about to run, it is deleted so the engine unpacks its own. The returned path
+// is what the caller sets HOME to; "" means keep the inherited environment,
+// which is what happens when no root can be used at all.
+//
+// An unusable root is a warning and not an error. Refusing to launch would turn
+// a cosmetic problem -- a directory we cannot write -- into a model that will
+// not load, and what happens instead is exactly what xollama did before any of
+// this existed.
+func PreparePayloadHome(artifact string, roots ...string) string {
+	if artifact == "" {
 		return ""
 	}
 
 	want, err := describeArtifact(artifact)
 	if err != nil {
+		// Nothing here is root-dependent -- the artifact is what we cannot
+		// read -- so no other candidate would do better.
 		slog.Warn("cannot identify the engine artifact; leaving the payload directory alone", "artifact", artifact, "error", err)
 		return ""
 	}
 
+	for _, root := range roots {
+		if root == "" {
+			continue
+		}
+		if err := ensureWritable(root); err != nil {
+			slog.Debug("cannot write to this engine payload directory; trying the next", "root", root, "error", err)
+			continue
+		}
+		home, err := preparePayloadRoot(artifact, root, want)
+		if err != nil {
+			slog.Warn("could not prepare the engine payload directory; trying the next", "root", root, "error", err)
+			continue
+		}
+		return home
+	}
+
+	slog.Warn("no private directory available for the engine payload; falling back to the inherited HOME",
+		"roots", roots,
+		"consequence", "the engine shares ~/.llamafile with any other opencoti build on this machine")
+	return ""
+}
+
+// preparePayloadRoot is PreparePayloadHome for one already-writable root.
+func preparePayloadRoot(artifact, root string, want payloadOwner) (string, error) {
 	markerPath := filepath.Join(root, payloadMarker)
 	have, haveErr := readPayloadOwner(markerPath)
 
@@ -121,7 +181,7 @@ func PreparePayloadHome(artifact, root string) string {
 	case haveErr == nil && have.sameFileAs(want):
 		// Same artifact, untouched since we last looked. Nothing to do, and
 		// nothing hashed.
-		return root
+		return root, nil
 	case haveErr == nil && have.SHA256 != "" && have.SHA256 == digestOf(artifact, want):
 		// Stat changed but the bytes did not -- a re-download of the same
 		// build, or a copy that moved the mtime. Keep the payload, refresh
@@ -134,8 +194,7 @@ func PreparePayloadHome(artifact, root string) string {
 		tree := filepath.Join(root, payloadDirName)
 		if _, statErr := os.Stat(tree); statErr == nil {
 			if err := os.RemoveAll(tree); err != nil {
-				slog.Warn("could not purge the previous engine payload", "path", tree, "error", err)
-				return ""
+				return "", fmt.Errorf("purging the payload left by %s: %w", have.Artifact, err)
 			}
 			slog.Info("purged the engine payload left by a different artifact",
 				"path", tree, "now_running", artifact,
@@ -149,7 +208,7 @@ func PreparePayloadHome(artifact, root string) string {
 		// payload is its own and will purge again.
 		slog.Warn("could not record which artifact owns the engine payload", "path", markerPath, "error", err)
 	}
-	return root
+	return root, nil
 }
 
 // sameFileAs reports whether nothing about the artifact has changed since the
@@ -173,7 +232,15 @@ func describeArtifact(artifact string) (payloadOwner, error) {
 
 // digestOf hashes the artifact, returning "" when it cannot. A failure here
 // costs a purge that was not needed, never a payload that should have gone.
-func digestOf(artifact string, _ payloadOwner) string {
+//
+// It is a var so a test can count the calls: whether the artifact is hashed
+// before or after a root is known to be writable is invisible in the result and
+// worth many seconds per model load, so it needs a test that can see it.
+var digestOf = func(artifact string, _ payloadOwner) string {
+	return digestArtifact(artifact)
+}
+
+func digestArtifact(artifact string) string {
 	f, err := os.Open(artifact)
 	if err != nil {
 		return ""

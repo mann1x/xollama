@@ -17,10 +17,28 @@ paths:
   host that ran r1 can keep running r1's kernels under an r2 binary. opencoti
   hit the coarser form (their bug-2272, c5/c6/c7 all in `v/0.10.3/`) and
   namespaced by cut; that cannot separate re-cuts *of* a cut.
-- `PreparePayloadHome` gives the subprocess a private `HOME` under ollama's own
-  directory holding **exactly one** payload, purging whatever a different
-  artifact left. The user's `~/.llamafile` is never read or written — they may
-  run any opencoti build by hand without interacting with ours.
+- `PreparePayloadHome` gives the subprocess a private `HOME` holding **exactly
+  one** payload, purging whatever a different artifact left. The user's
+  `~/.llamafile` is never read or written — they may run any opencoti build by
+  hand without interacting with ours.
+- **The payload belongs with the rest of the runtime**, so the preferred root is
+  `<ml.LibOllamaPath>/engines/payload` — the directory already holding
+  `llama-server` and the ggml backends, which is `<install>/lib/ollama` on all
+  three platforms (`%LOCALAPPDATA%\Programs\Ollama\lib\ollama` on Windows,
+  `/usr/local/lib/ollama` on Linux, `Contents/Resources/lib/ollama` on macOS).
+  Never the home directory of whoever started the server — on a Linux service
+  that is `root`.
+- **It is a list, not a choice** (`DefaultPayloadRoots`). The preferred root is
+  unwritable on two of the three platforms as installed: a Linux package leaves
+  it `root`-owned while the service runs as `ollama`, and macOS puts it inside a
+  signed bundle. `~/.ollama/engines/payload` follows as the fallback.
+- **Writability is probed before any work** (`ensureWritable`). The Linux case
+  is a directory that already *exists*, so `MkdirAll` succeeds and only the
+  first write fails — which without the probe is after hashing 678 MB, on every
+  model load, forever. `ensureWritable` and `digestOf` are both vars **because
+  the tests run as root**, and root ignores the mode bits that would otherwise
+  express an unwritable directory; see
+  `TestARootWeCanCreateButNotWriteIsSkippedBeforeAnyWork`.
 - **Only on the opencoti path.** Stock `llama-server` extracts nothing and is
   launched with the environment it inherited; the `engine-payload` hook in
   `llm/llama_server.go` is inside `if usedOpencoti`.

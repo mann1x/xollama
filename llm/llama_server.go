@@ -574,7 +574,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	envs := launch.extraEnvsForStart()
 	if usedOpencoti {
 		userHome, _ := os.UserHomeDir()
-		if payloadHome := engine.PreparePayloadHome(name, engine.DefaultPayloadRoot(ml.LibOllamaPath, userHome)); payloadHome != "" {
+		if payloadHome := engine.PreparePayloadHome(name, engine.DefaultPayloadRoots(ml.LibOllamaPath, userHome)...); payloadHome != "" {
 			envs = cloneStringMap(envs)
 			envs["HOME"] = payloadHome
 		}

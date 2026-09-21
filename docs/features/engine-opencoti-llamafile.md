@@ -310,13 +310,32 @@ cannot separate re-cuts of a single cut. Measured on one host: that one
 directory name held three different `ggml-cuda.so` within 36 hours, and two
 users held two different ones simultaneously.
 
-So xollama does not share it. The engine subprocess is given a `HOME` under
-ollama's own directory, holding exactly one payload — the one belonging to the
-artifact about to run — and anything another artifact left is deleted first:
+So xollama does not share it. The engine subprocess is given a `HOME` holding
+exactly one payload — the one belonging to the artifact about to run — and
+anything another artifact left is deleted first.
+
+That `HOME` goes where the rest of the engine's runtime already lives:
+ollama's own library directory, beside `llama-server` and the ggml backends.
+
+| Platform | Preferred payload root |
+|---|---|
+| Windows | `%LOCALAPPDATA%\Programs\Ollama\lib\ollama\engines\payload` |
+| Linux | `/usr/local/lib/ollama/engines/payload` |
+| macOS | `Ollama.app/Contents/Resources/lib/ollama/engines/payload` |
+
+giving, in full:
 
 ```
-<ollama dir>/engines/payload/.llamafile/v/<engine-version>/
+<lib>/ollama/engines/payload/.llamafile/v/<engine-version>/
 ```
+
+It is not always writable, and that is expected rather than an error. A packaged
+Linux install leaves that directory owned by `root` while the service runs as
+`ollama`; a macOS install puts it inside a signed application bundle. Where the
+preferred root cannot be written, xollama falls back to
+`~/.ollama/engines/payload` — still its own directory, never your `~/.llamafile`.
+Whether a root is writable is **checked before any work**, so a root that cannot
+be used is not paid for with a hash of the artifact first.
 
 Two consequences worth stating plainly. Your own `~/.llamafile` is never read or
 written, so you can run any opencoti build by hand without it interacting with
@@ -324,9 +343,9 @@ the one xollama launches. And the directory holds one payload rather than
 accumulating one per artifact, so switching pins re-unpacks instead of growing.
 
 Nothing here touches stock `llama-server`, which extracts nothing and is
-launched with the environment it inherited. If the directory cannot be created
-or purged, xollama logs a warning and falls back to the inherited `HOME` rather
-than failing the load.
+launched with the environment it inherited. If no root can be used at all,
+xollama logs a warning and falls back to the inherited `HOME` rather than
+failing the load.
 
 A **split** artifact — a bare APE with its `ggml-cuda.so` staged beside it, the
 shape the `dev` channel publishes — extracts nothing at all, so none of this

@@ -1,8 +1,11 @@
 package engine
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -168,8 +171,11 @@ func TestPayloadHomeDeclinesRatherThanBreakingTheLaunch(t *testing.T) {
 	if got := PreparePayloadHome("", filepath.Join(dir, "root")); got != "" {
 		t.Errorf("no artifact: got %q, want \"\"", got)
 	}
-	if got := PreparePayloadHome(art, ""); got != "" {
+	if got := PreparePayloadHome(art); got != "" {
 		t.Errorf("no root: got %q, want \"\"", got)
+	}
+	if got := PreparePayloadHome(art, ""); got != "" {
+		t.Errorf("empty root: got %q, want \"\"", got)
 	}
 	// A missing artifact must not be turned into a launch failure here; the
 	// launch itself will fail with a better message.
@@ -178,18 +184,127 @@ func TestPayloadHomeDeclinesRatherThanBreakingTheLaunch(t *testing.T) {
 	}
 }
 
-func TestDefaultPayloadRootPrefersOllamasOwnDirectory(t *testing.T) {
-	// Never the user's ~/.llamafile: that is the directory they use for their
-	// own opencoti builds, and staying out of it is the point.
-	got := DefaultPayloadRoot("/usr/local/lib/ollama", "/home/u")
-	if want := filepath.Join("/home/u", ".ollama", "engines", "payload"); got != want {
-		t.Errorf("DefaultPayloadRoot() = %q, want %q", got, want)
+// TestDefaultPayloadRootsPreferOllamasRuntimeDirectory: the payload is part of
+// the engine's runtime, so it belongs beside the rest of the runtime --
+// <install>/lib/ollama, next to llama-server and the ggml backends -- and not
+// in the home directory of whoever happens to have started the server, which on
+// a Linux service is root.
+func TestDefaultPayloadRootsPreferOllamasRuntimeDirectory(t *testing.T) {
+	got := DefaultPayloadRoots("/usr/local/lib/ollama", "/home/u")
+	want := []string{
+		filepath.Join("/usr/local/lib/ollama", "engines", "payload"),
+		filepath.Join("/home/u", ".ollama", "engines", "payload"),
 	}
-	if got := DefaultPayloadRoot("/usr/local/lib/ollama", ""); got != filepath.Join("/usr/local/lib/ollama", "engines", "payload") {
-		t.Errorf("no home: DefaultPayloadRoot() = %q", got)
+	if !slices.Equal(got, want) {
+		t.Errorf("DefaultPayloadRoots() = %q, want %q", got, want)
 	}
-	if got := DefaultPayloadRoot("", ""); got != "" {
-		t.Errorf("nothing to go on: DefaultPayloadRoot() = %q, want \"\"", got)
+
+	// Never the user's ~/.llamafile: that is where they keep their own
+	// opencoti builds, and staying out of it is the point.
+	for _, root := range got {
+		if strings.Contains(root, payloadDirName) {
+			t.Errorf("DefaultPayloadRoots() offered %q, which is the user's own payload directory", root)
+		}
+	}
+
+	if got := DefaultPayloadRoots("", "/home/u"); len(got) != 1 || got[0] != filepath.Join("/home/u", ".ollama", "engines", "payload") {
+		t.Errorf("no lib dir: DefaultPayloadRoots() = %q", got)
+	}
+	if got := DefaultPayloadRoots("/usr/local/lib/ollama", ""); len(got) != 1 || got[0] != filepath.Join("/usr/local/lib/ollama", "engines", "payload") {
+		t.Errorf("no home: DefaultPayloadRoots() = %q", got)
+	}
+	if got := DefaultPayloadRoots("", ""); len(got) != 0 {
+		t.Errorf("nothing to go on: DefaultPayloadRoots() = %q, want none", got)
+	}
+}
+
+// TestAnUnwritableRootFallsBackToTheNextOne is the reason the preference is a
+// list and not a choice. A packaged Linux install leaves <install>/lib/ollama
+// owned by root while the service runs as `ollama`, and a macOS install puts it
+// inside a signed app bundle. Preferring it unconditionally would mean no
+// isolation at all on two of the three platforms.
+//
+// The fixture makes the root unusable by putting a regular FILE where its
+// parent directory would be, rather than by removing write permission: these
+// tests also run as root on this host, and root is not stopped by a mode bit.
+func TestAnUnwritableRootFallsBackToTheNextOne(t *testing.T) {
+	dir := t.TempDir()
+	art := artifactFile(t, dir, "engine.llamafile", "bytes")
+
+	blocked := filepath.Join(dir, "lib")
+	if err := os.WriteFile(blocked, []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	preferred := filepath.Join(blocked, "engines", "payload")
+	fallback := filepath.Join(dir, "home", ".ollama", "engines", "payload")
+
+	got := PreparePayloadHome(art, preferred, fallback)
+	if got != fallback {
+		t.Fatalf("PreparePayloadHome() = %q, want the fallback %q", got, fallback)
+	}
+	if _, err := os.Stat(filepath.Join(fallback, payloadMarker)); err != nil {
+		t.Errorf("the fallback root was returned but not prepared: %v", err)
+	}
+}
+
+// TestTheFirstUsableRootWins: the fallback exists for when the preferred root
+// cannot be used, and must not be reached when it can.
+func TestTheFirstUsableRootWins(t *testing.T) {
+	dir := t.TempDir()
+	art := artifactFile(t, dir, "engine.llamafile", "bytes")
+	preferred := filepath.Join(dir, "lib", "engines", "payload")
+	fallback := filepath.Join(dir, "home", ".ollama", "engines", "payload")
+
+	if got := PreparePayloadHome(art, preferred, fallback); got != preferred {
+		t.Fatalf("PreparePayloadHome() = %q, want %q", got, preferred)
+	}
+	if _, err := os.Stat(fallback); !os.IsNotExist(err) {
+		t.Errorf("the fallback root was created although the preferred one worked: %v", err)
+	}
+}
+
+// TestARootWeCanCreateButNotWriteIsSkippedBeforeAnyWork is the Linux service
+// case exactly: /usr/local/lib/ollama already exists, MkdirAll succeeds on it,
+// and the first actual write is what fails -- by which point, without the
+// probe, the 678 MB artifact has been hashed for a directory about to be
+// abandoned, on every model load for the life of the installation.
+//
+// The unwritable root is injected rather than built, because these tests run as
+// root on the host this was measured on and root ignores the mode bits that
+// would otherwise express it.
+func TestARootWeCanCreateButNotWriteIsSkippedBeforeAnyWork(t *testing.T) {
+	dir := t.TempDir()
+	art := artifactFile(t, dir, "engine.llamafile", "bytes")
+	preferred := filepath.Join(dir, "lib", "engines", "payload")
+	fallback := filepath.Join(dir, "home", ".ollama", "engines", "payload")
+
+	orig := ensureWritable
+	defer func() { ensureWritable = orig }()
+	ensureWritable = func(root string) error {
+		if root == preferred {
+			if err := os.MkdirAll(root, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			return errors.New("permission denied")
+		}
+		return orig(root)
+	}
+
+	hashed := 0
+	defer func(orig func(string, payloadOwner) string) { digestOf = orig }(digestOf)
+	digestOf = func(artifact string, p payloadOwner) string {
+		hashed++
+		return digestArtifact(artifact)
+	}
+
+	if got := PreparePayloadHome(art, preferred, fallback); got != fallback {
+		t.Fatalf("PreparePayloadHome() = %q, want the fallback %q", got, fallback)
+	}
+	if _, err := os.Stat(filepath.Join(preferred, payloadMarker)); !os.IsNotExist(err) {
+		t.Errorf("wrote into a root we cannot write: %v", err)
+	}
+	if hashed != 1 {
+		t.Errorf("hashed the artifact %d times for 2 roots; an unusable root must be rejected before any work", hashed)
 	}
 }
 
