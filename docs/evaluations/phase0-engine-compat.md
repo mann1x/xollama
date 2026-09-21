@@ -229,3 +229,31 @@ control being refused is what makes the rest of the column mean anything.
 defect row — see `llm/engine_args.go`. opencoti's bug-3524 makes it lose
 retrievable content over a plain cache, silently, so nothing downstream can
 notice and the engine never says a word.
+
+### The 0320 fix, measured rather than inherited (2026-09-21)
+
+The pin moved for one patch, so the patch was checked. Both builds served the
+same qwen3 blob on the same 3090, as the `ollama` user, `--server
+--reasoning-format deepseek`, and were asked `What is 2+2?` with
+`reasoning_effort: "none"`:
+
+| build | `reasoning_content` | `content` |
+|---|---|---|
+| 18 (`a7a4e7da`) | the entire answer, as thinking | **empty** |
+| 19 (`66408c19`) | field absent | `"2 + 2 equals 4."` |
+
+On build 18 thinking-off through the API did not switch thinking off: everything
+went to the reasoning channel and a caller reading `content` got an empty
+string. `reasoning_effort: "low"` behaved the same, so it is not specific to
+`none`.
+
+That is broader than the defect as reported — opencoti described a budget-cap
+message leaking into a silenced channel — but it is the same surface, and it is
+the observable that matters to a caller. Reported back to them.
+
+One negative result worth keeping, because it nearly became a false conclusion:
+the first attempt ran the same comparison through `--cli` instead of `--server`,
+and **both** builds emitted a full `<think>` block despite `--reasoning off
+--reasoning-budget 0`. That is not a disproof of the fix; `--cli` simply does not
+apply the server-side reasoning controls. A repro that cannot reach the defect
+proves nothing about it.
