@@ -337,6 +337,24 @@ preferred root cannot be written, xollama falls back to
 Whether a root is writable is **checked before any work**, so a root that cannot
 be used is not paid for with a hash of the artifact first.
 
+### Who owns it
+
+On Linux the server is usually a system service running as `ollama`, while an
+administrator occasionally runs a command as root. Anything root creates would
+otherwise be root-owned and unusable by the service afterwards — the same
+mistake against the model store once turned a 0.06 s model list into a 9.89 s
+one, reported by clients as a timeout rather than as any kind of error.
+
+So when xollama runs as root it does not create the payload directory as root.
+It takes the owner of the model store — whoever owns that must be able to write
+it, so that identity is the service — and hands the directory over, with setgid
+and group write. A purge removes files by writing the *directory*, so the
+service can still clear a payload some earlier root invocation unpacked.
+
+A non-root server already creates files as the right user, so nothing happens at
+all. Windows has no equivalent problem: Ollama installs per user there, with no
+unprivileged service account for an elevated process to lock out.
+
 Two consequences worth stating plainly. Your own `~/.llamafile` is never read or
 written, so you can run any opencoti build by hand without it interacting with
 the one xollama launches. And the directory holds one payload rather than

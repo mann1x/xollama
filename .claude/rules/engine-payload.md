@@ -2,6 +2,7 @@
 paths:
   - llm/engine/payload.go
   - llm/engine/payload_test.go
+  - internal/fsowner/**
 ---
 
 # The engine's GPU payload directory
@@ -57,3 +58,16 @@ paths:
   at all — verified by running one with an empty `HOME`: it works and creates no
   cache. Nothing here applies to it, and it is the shape to prefer when opencoti
   publishes it for a release channel.
+- **Root must not create it as root.** On a packaged Linux install the service
+  runs as `ollama`; a one-off root command that leaves a `root:root` payload
+  directory locks the service out of its own purge. `ensureWritable` calls
+  `fsowner.Intended(envconfig.Models())` and adopts the root when it answers.
+  The model store is the evidence — whoever owns it must be able to write it,
+  so that identity is the service. A root-owned store is deliberately NOT
+  evidence: that is the state the bug leaves behind.
+- Directories get **setgid + group write**, not just a chown, because a purge
+  removes files by writing the *directory*. That is what lets the service clear
+  a payload an earlier root run unpacked. Use `os.ModeSetgid`, never a raw
+  `0o2000` bit — `os.Chmod` takes an `os.FileMode` and silently drops it.
+- Ownership is never fatal (`AdoptQuietly`): it is a correctness measure for the
+  NEXT process, not a reason to refuse this one.

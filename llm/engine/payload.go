@@ -9,6 +9,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+
+	"github.com/ollama/ollama/envconfig"
+	"github.com/ollama/ollama/internal/fsowner"
 )
 
 // Where the engine unpacks its GPU payload, and why xollama picks the place.
@@ -116,6 +119,14 @@ var ensureWritable = func(root string) error {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return err
 	}
+	// On a packaged Linux install the server runs as an unprivileged account
+	// and an administrator's one-off root command must not leave a directory
+	// that account cannot write. See internal/fsowner -- the same mistake
+	// against the model store cost this setup a 165x slowdown that never
+	// surfaced as an error.
+	if owner, ok := fsowner.Intended(envconfig.Models()); ok {
+		fsowner.AdoptQuietly(root, owner)
+	}
 	f, err := os.CreateTemp(root, ".xollama-probe-*")
 	if err != nil {
 		return err
@@ -202,6 +213,11 @@ func preparePayloadRoot(artifact, root string, want payloadOwner) (string, error
 		}
 	}
 
+	if owner, ok := fsowner.Intended(envconfig.Models()); ok {
+		// The marker is read on the next launch, possibly by the service
+		// account rather than by whoever wrote it.
+		defer fsowner.AdoptQuietly(markerPath, owner)
+	}
 	if err := writePayloadOwner(markerPath, want); err != nil {
 		// The payload is correct; only the bookkeeping failed. Using the root
 		// still isolates this launch -- the next one just cannot prove the

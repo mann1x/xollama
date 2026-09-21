@@ -90,7 +90,8 @@ local SSH keypair; `manifest/` holds the manifest/blob model (`manifest.go`,
 **Internal-only packages** under `internal/`: `internal/cloud` (cloud host
 policy), `internal/modelref` (model reference parsing), `internal/onboarding`
 (first-run app state), `internal/orderedmap` (insertion-ordered maps behind the
-tool schemas), plus `internal/testutil` and `internal/proxy`.
+tool schemas), `internal/fsowner` (hands files a root run creates to the owner
+of the model store), plus `internal/testutil` and `internal/proxy`.
 **Integration tests**: `integration/` — build-tagged end-to-end suites
 (`basic_test.go`, `tools_test.go`, `vision_test.go`, `concurrency_test.go`) with
 fixtures in `integration/testdata/`; they need a running server and pulled models.
