@@ -220,7 +220,7 @@ func TestDroidEdit(t *testing.T) {
 			}
 		}
 
-		if model["baseUrl"] != "http://127.0.0.1:11434/v1" {
+		if model["baseUrl"] != "http://127.0.0.1:22434/v1" {
 			t.Errorf("unexpected baseUrl: %s", model["baseUrl"])
 		}
 		if model["apiKey"] != "ollama" {

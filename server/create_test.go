@@ -129,25 +129,25 @@ func TestRemoteURL(t *testing.T) {
 		{
 			name:     "absolute path",
 			input:    "/foo/bar",
-			expected: "http://localhost:11434/foo/bar",
+			expected: "http://localhost:22434/foo/bar",
 			hasError: false,
 		},
 		{
 			name:     "absolute path with cleanup",
 			input:    "/foo/../bar",
-			expected: "http://localhost:11434/bar",
+			expected: "http://localhost:22434/bar",
 			hasError: false,
 		},
 		{
 			name:     "root path",
 			input:    "/",
-			expected: "http://localhost:11434/",
+			expected: "http://localhost:22434/",
 			hasError: false,
 		},
 		{
 			name:     "host without scheme",
 			input:    "example.com",
-			expected: "http://example.com:11434",
+			expected: "http://example.com:22434",
 			hasError: false,
 		},
 		{
@@ -183,13 +183,13 @@ func TestRemoteURL(t *testing.T) {
 		{
 			name:     "URL with only host",
 			input:    "http://example.com",
-			expected: "http://example.com:11434",
+			expected: "http://example.com:22434",
 			hasError: false,
 		},
 		{
 			name:     "URL with root path cleaned",
 			input:    "http://example.com/",
-			expected: "http://example.com:11434",
+			expected: "http://example.com:22434",
 			hasError: false,
 		},
 		{
@@ -201,19 +201,19 @@ func TestRemoteURL(t *testing.T) {
 		{
 			name:     "empty string",
 			input:    "",
-			expected: "http://localhost:11434",
+			expected: "http://localhost:22434",
 			hasError: false,
 		},
 		{
 			name:     "host with scheme but no port",
 			input:    "http://localhost",
-			expected: "http://localhost:11434",
+			expected: "http://localhost:22434",
 			hasError: false,
 		},
 		{
 			name:     "complex path cleanup",
 			input:    "/a/b/../../c/./d",
-			expected: "http://localhost:11434/c/d",
+			expected: "http://localhost:22434/c/d",
 			hasError: false,
 		},
 	}

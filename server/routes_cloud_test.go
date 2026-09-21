@@ -849,7 +849,7 @@ func TestCloudResponsesWebSearchUsesLocalOrchestration(t *testing.T) {
 	}
 	local := httptest.NewServer(router)
 	defer local.Close()
-	t.Setenv("OLLAMA_HOST", local.URL)
+	t.Setenv("XOLLAMA_HOST", local.URL)
 
 	reqBody := `{
 		"model":"kimi-k2.5:cloud",

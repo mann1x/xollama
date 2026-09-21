@@ -123,7 +123,7 @@ func TestWriteCodexProfileConfig(t *testing.T) {
 			fmt.Sprintf("model_catalog_json = %q", catalogPath),
 			"[model_providers.ollama-launch]",
 			`name = "Ollama"`,
-			`base_url = "http://127.0.0.1:11434/v1/"`,
+			`base_url = "http://127.0.0.1:22434/v1/"`,
 			`wire_api = "responses"`,
 		} {
 			if !strings.Contains(content, want) {
@@ -166,7 +166,7 @@ func TestWriteCodexProfileConfig(t *testing.T) {
 	})
 
 	t.Run("uses custom OLLAMA_HOST", func(t *testing.T) {
-		t.Setenv("OLLAMA_HOST", "http://myhost:9999")
+		t.Setenv("XOLLAMA_HOST", "http://myhost:9999")
 		tmpDir := t.TempDir()
 		profilePath := filepath.Join(tmpDir, "ollama-launch.config.toml")
 
@@ -183,7 +183,7 @@ func TestWriteCodexProfileConfig(t *testing.T) {
 	})
 
 	t.Run("uses connectable host for unspecified bind address", func(t *testing.T) {
-		t.Setenv("OLLAMA_HOST", "http://0.0.0.0:11434")
+		t.Setenv("XOLLAMA_HOST", "http://0.0.0.0:11434")
 		tmpDir := t.TempDir()
 		profilePath := filepath.Join(tmpDir, "ollama-launch.config.toml")
 

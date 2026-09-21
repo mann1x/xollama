@@ -376,7 +376,7 @@ func TestDeleteHandler(t *testing.T) {
 		}
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -425,7 +425,7 @@ func TestRunEmbeddingModel(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -517,7 +517,7 @@ func TestRunEmbeddingModelWithFlags(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -618,7 +618,7 @@ func TestRunEmbeddingModelPipedInput(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -693,7 +693,7 @@ func TestRunEmbeddingModelNoInput(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -744,7 +744,7 @@ func TestRunHandler_CloudAuthErrorOnShow_PrintsSigninMessage(t *testing.T) {
 		}
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -812,7 +812,7 @@ func TestRunHandler_CloudAuthErrorOnGenerate_PrintsSigninMessage(t *testing.T) {
 		}
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -896,7 +896,7 @@ func TestRunHandler_ExplicitCloudStubMissing_PullsNormalizedNameTEMP(t *testing.
 		}
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -967,7 +967,7 @@ func TestRunHandler_ExplicitCloudStubPresent_SkipsPullTEMP(t *testing.T) {
 		}
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -1034,7 +1034,7 @@ func TestRunHandler_ExplicitCloudStubPullFailure_IsBestEffortTEMP(t *testing.T) 
 		}
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -1260,7 +1260,7 @@ func TestPushHandler(t *testing.T) {
 			}))
 			defer mockServer.Close()
 
-			t.Setenv("OLLAMA_HOST", mockServer.URL)
+			t.Setenv("XOLLAMA_HOST", mockServer.URL)
 			tmpDir := t.TempDir()
 			t.Setenv("HOME", tmpDir)
 			t.Setenv("USERPROFILE", tmpDir)
@@ -1370,7 +1370,7 @@ func TestListHandler(t *testing.T) {
 			}))
 			defer mockServer.Close()
 
-			t.Setenv("OLLAMA_HOST", mockServer.URL)
+			t.Setenv("XOLLAMA_HOST", mockServer.URL)
 
 			cmd := &cobra.Command{}
 			cmd.SetContext(t.Context())
@@ -1469,7 +1469,7 @@ func TestCreateHandler(t *testing.T) {
 				}
 				handler(w, r)
 			}))
-			t.Setenv("OLLAMA_HOST", mockServer.URL)
+			t.Setenv("XOLLAMA_HOST", mockServer.URL)
 			t.Cleanup(mockServer.Close)
 			tempFile, err := os.CreateTemp(t.TempDir(), "modelfile")
 			if err != nil {
@@ -1676,7 +1676,7 @@ func TestSharedBlobStore(t *testing.T) {
 	defer separate.Close()
 
 	t.Run("shared store", func(t *testing.T) {
-		t.Setenv("OLLAMA_HOST", shared.URL)
+		t.Setenv("XOLLAMA_HOST", shared.URL)
 		client, err := api.ClientFromEnvironment()
 		if err != nil {
 			t.Fatal(err)
@@ -1688,7 +1688,7 @@ func TestSharedBlobStore(t *testing.T) {
 	})
 
 	t.Run("separate store", func(t *testing.T) {
-		t.Setenv("OLLAMA_HOST", separate.URL)
+		t.Setenv("XOLLAMA_HOST", separate.URL)
 		client, err := api.ClientFromEnvironment()
 		if err != nil {
 			t.Fatal(err)
@@ -1700,7 +1700,7 @@ func TestSharedBlobStore(t *testing.T) {
 	})
 
 	t.Run("OLLAMA_CREATE_REMOTE forces upload", func(t *testing.T) {
-		t.Setenv("OLLAMA_HOST", shared.URL)
+		t.Setenv("XOLLAMA_HOST", shared.URL)
 		t.Setenv("OLLAMA_CREATE_REMOTE", "1")
 		client, err := api.ClientFromEnvironment()
 		if err != nil {
@@ -1758,7 +1758,7 @@ func TestCreateBlob(t *testing.T) {
 		}
 		server := httptest.NewServer(bs)
 		t.Cleanup(server.Close)
-		t.Setenv("OLLAMA_HOST", server.URL)
+		t.Setenv("XOLLAMA_HOST", server.URL)
 		client, err := api.ClientFromEnvironment()
 		if err != nil {
 			t.Fatal(err)
@@ -1840,7 +1840,7 @@ func TestCreateHandlerRejectsAdaptersBeforeUpload(t *testing.T) {
 }
 
 func TestCreateHandlerRejectsTypicalPBeforeUpload(t *testing.T) {
-	t.Setenv("OLLAMA_HOST", "127.0.0.1:0")
+	t.Setenv("XOLLAMA_HOST", "127.0.0.1:0")
 	dir := t.TempDir()
 	modelfile := filepath.Join(dir, "Modelfile")
 	if err := os.WriteFile(modelfile, []byte("FROM base\nPARAMETER typical_p 0.5\n"), 0o644); err != nil {
@@ -2750,7 +2750,7 @@ func TestLoadOrUnloadModel_CloudModelAuth(t *testing.T) {
 			}))
 			defer mockServer.Close()
 
-			t.Setenv("OLLAMA_HOST", mockServer.URL)
+			t.Setenv("XOLLAMA_HOST", mockServer.URL)
 
 			cmd := &cobra.Command{}
 			cmd.SetContext(t.Context())
@@ -2815,7 +2815,7 @@ func TestIsLocalhost(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("OLLAMA_HOST", tt.host)
+			t.Setenv("XOLLAMA_HOST", tt.host)
 			got := isLocalhost()
 			if got != tt.expected {
 				t.Errorf("isLocalhost() with OLLAMA_HOST=%q = %v, want %v", tt.host, got, tt.expected)

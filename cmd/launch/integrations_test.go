@@ -1674,7 +1674,7 @@ func TestStartAccountStatePrefetch_SkipsWhoamiWhenCloudDisabled(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	prefetch := StartAccountStatePrefetch(context.Background())
 	select {

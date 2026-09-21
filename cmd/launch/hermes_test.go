@@ -127,7 +127,7 @@ func TestHermesConfigurePreservesExistingConfigAndEnablesWeb(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	h := &Hermes{}
 	if err := h.Configure("gemma4"); err != nil {
@@ -241,7 +241,7 @@ func TestHermesConfigureUpdatesMatchingCustomProviderWithoutDroppingFields(t *te
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	h := &Hermes{}
 	if err := h.Configure("gemma4"); err != nil {
@@ -321,7 +321,7 @@ func TestHermesConfigureUsesLaunchResolvedHostForModelDiscovery(t *testing.T) {
 	defer srv.Close()
 
 	withHermesOllamaURL(t, srv.URL)
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:1")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:1")
 
 	h := &Hermes{}
 	if err := h.Configure("gemma4"); err != nil {
@@ -426,7 +426,7 @@ func TestHermesConfigureMigratesLegacyManagedAliases(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	h := &Hermes{}
 	if err := h.Configure("gemma4"); err != nil {

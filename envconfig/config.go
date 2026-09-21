@@ -17,12 +17,38 @@ import (
 	"time"
 )
 
-// Host returns the scheme and host. Host can be configured via the OLLAMA_HOST environment variable.
-// Default is scheme "http" and host "127.0.0.1:11434"
-func Host() *url.URL {
-	defaultPort := "11434"
+// xollama-hook: default-port — see docs/xollama/default-port.mdx
+//
+// DefaultPort is the port xollama listens on, and the one its own CLI dials
+// when OLLAMA_HOST says nothing. Upstream uses 11434; xollama deliberately
+// does not.
+//
+// The reason is the fork's own premise. Every claim this repo makes about the
+// opencoti engine is an A/B against vanilla ollama, and an A/B needs both
+// servers up on one machine at one time. Sharing 11434 makes that impossible:
+// whichever starts second fails to bind, and the measurement becomes a
+// before-and-after across a restart instead of a comparison.
+//
+// 22434 specifically: 11434 is registered to "ollama" in the IANA service-name
+// registry, and the whole 22400-22499 block is unassigned, so this takes
+// nothing from anyone. It is also 11434 doubled, which is the only mnemonic
+// anybody needs.
+//
+// This does not weaken "off means off". That rule is about inference
+// behaviour being byte-identical with XOLLAMA_ENGINE=llamacpp -- the port a
+// server binds changes no token it produces, and being able to run the two
+// side by side is what makes the comparison honest in the first place.
+// OLLAMA_HOST overrides this exactly as it does upstream.
+const DefaultPort = "22434"
 
-	s := strings.TrimSpace(Var("OLLAMA_HOST"))
+// Host returns the scheme and host. Host can be configured via the OLLAMA_HOST environment variable.
+// Default is scheme "http" and host "127.0.0.1:22434"
+func Host() *url.URL {
+	defaultPort := DefaultPort
+
+	// The outer TrimSpace is upstream's and still matters: trimVar strips the
+	// quotes, and a value like `" 1.2.3.4 "` has spaces left inside them.
+	s := strings.TrimSpace(XollamaOnly("OLLAMA_HOST"))
 	scheme, hostport, ok := strings.Cut(s, "://")
 	switch {
 	case !ok:
@@ -442,7 +468,7 @@ func AsMap() map[string]EnvVar {
 		"OLLAMA_IGPU_ENABLE":          {"OLLAMA_IGPU_ENABLE", String("OLLAMA_IGPU_ENABLE")(), "Enable integrated GPUs"},
 		"LLAMA_ARG_FIT":               {"LLAMA_ARG_FIT", String("LLAMA_ARG_FIT")(), "Enable llama.cpp automatic fit of unset memory options (default \"on\")"},
 		"LLAMA_ARG_FIT_TARGET":        {"LLAMA_ARG_FIT_TARGET", String("LLAMA_ARG_FIT_TARGET")(), "Target free VRAM margin per device for llama.cpp fit (MiB)"},
-		"OLLAMA_HOST":                 {"OLLAMA_HOST", Host(), "IP Address for the xollama server (default 127.0.0.1:11434)"},
+		"OLLAMA_HOST":                 {"XOLLAMA_HOST", Host(), "IP Address for the xollama server (default 127.0.0.1:22434; OLLAMA_HOST is not read)"},
 		"OLLAMA_KEEP_ALIVE":           {"OLLAMA_KEEP_ALIVE", KeepAlive(), "The duration that models stay loaded in memory (default \"5m\")"},
 		"OLLAMA_LLM_LIBRARY":          {"OLLAMA_LLM_LIBRARY", LLMLibrary(), "Set LLM library to bypass autodetection"},
 		"OLLAMA_LOAD_TIMEOUT":         {"OLLAMA_LOAD_TIMEOUT", LoadTimeout(), "How long to allow model loads to stall before giving up (default \"5m\")"},
@@ -542,6 +568,27 @@ func XollamaKey(key string) string {
 		return ""
 	}
 	return Prefix + rest
+}
+
+// xollama-hook: host-namespace — see docs/xollama/default-port.mdx
+//
+// XollamaOnly returns the XOLLAMA_ spelling of key and never the OLLAMA_ one.
+//
+// It is used for exactly one variable, and the exception is the point. Every
+// other OLLAMA_ setting is something two installations can share without
+// harm -- flash attention, cache type, keep-alive, model directory. OLLAMA_HOST
+// is not a setting; it is a claim on a socket, and it is set precisely by
+// people who already run a stock ollama. Inheriting it would hand xollama the
+// one address on the machine guaranteed to be taken, which is the collision
+// the separate default exists to prevent.
+//
+// So the listen address is namespaced exclusively: XOLLAMA_HOST steers it,
+// OLLAMA_HOST does not, and with neither set it is DefaultPort on loopback.
+func XollamaOnly(key string) string {
+	if x := XollamaKey(key); x != "" {
+		return trimVar(os.Getenv(x))
+	}
+	return ""
 }
 
 // xollama-hook: env-namespace

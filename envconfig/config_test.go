@@ -12,28 +12,83 @@ import (
 	"github.com/ollama/ollama/logutil"
 )
 
+// TestTheDefaultPortIsNotUpstreams pins the number itself. Every other test
+// here now refers to DefaultPort and would follow it anywhere -- including back
+// to 11434, which is the one value it must never hold: a fork bound to the port
+// IANA registered to "ollama" cannot run beside a stock ollama, and every
+// measurement this repo publishes is a comparison that needs both up at once.
+// TestTheListenAddressIsNotInheritedFromAStockOllama is the guarantee the
+// separate default would otherwise only imply.
+//
+// OLLAMA_HOST is the variable someone running a stock ollama exports, often
+// machine-wide. If xollama read it, the default port would protect nothing:
+// the moment that variable existed, both servers would claim one socket and
+// the second to start would fail to bind. So the listen address is the one
+// setting that is namespaced exclusively.
+//
+// Deleting the XollamaOnly call in Host() and going back to Var() fails here
+// and nowhere else -- every other host test sets XOLLAMA_HOST, which Var()
+// would also honour.
+func TestTheListenAddressIsNotInheritedFromAStockOllama(t *testing.T) {
+	t.Setenv("OLLAMA_HOST", "0.0.0.0:11434")
+	t.Setenv("XOLLAMA_HOST", "")
+	if got := Host().String(); got != "http://127.0.0.1:"+DefaultPort {
+		t.Errorf("Host() = %q; a stock ollama's OLLAMA_HOST must not move xollama's listener", got)
+	}
+
+	// ...and the xollama spelling still steers it.
+	t.Setenv("XOLLAMA_HOST", "0.0.0.0:31000")
+	if got := Host().String(); got != "http://0.0.0.0:31000" {
+		t.Errorf("Host() = %q, want http://0.0.0.0:31000", got)
+	}
+}
+
+// Other settings are NOT exclusive, and must not become so: two installations
+// can share a models directory or a cache type without fighting over anything.
+func TestOnlyTheListenAddressIsExclusive(t *testing.T) {
+	t.Setenv("OLLAMA_FLASH_ATTENTION", "1")
+	t.Setenv("XOLLAMA_FLASH_ATTENTION", "")
+	if !FlashAttention(false) {
+		t.Error("OLLAMA_FLASH_ATTENTION stopped being honoured; only the listen address is exclusive")
+	}
+}
+
+func TestTheDefaultPortIsNotUpstreams(t *testing.T) {
+	if DefaultPort == "11434" {
+		t.Fatal("DefaultPort is upstream's port; xollama could not run beside a stock ollama, which is what every A/B in this repo requires")
+	}
+	if DefaultPort != "22434" {
+		t.Errorf("DefaultPort = %q, want 22434 (11434 is IANA-registered to ollama; 22400-22499 is unassigned)", DefaultPort)
+	}
+
+	t.Setenv("XOLLAMA_HOST", "")
+	if got := Host().String(); got != "http://127.0.0.1:22434" {
+		t.Errorf("Host() with nothing set = %q, want http://127.0.0.1:22434", got)
+	}
+}
+
 func TestHost(t *testing.T) {
 	cases := map[string]struct {
 		value  string
 		expect string
 	}{
-		"empty":               {"", "http://127.0.0.1:11434"},
-		"only address":        {"1.2.3.4", "http://1.2.3.4:11434"},
+		"empty":               {"", "http://127.0.0.1:" + DefaultPort},
+		"only address":        {"1.2.3.4", "http://1.2.3.4:" + DefaultPort},
 		"only port":           {":1234", "http://:1234"},
 		"address and port":    {"1.2.3.4:1234", "http://1.2.3.4:1234"},
-		"hostname":            {"example.com", "http://example.com:11434"},
+		"hostname":            {"example.com", "http://example.com:" + DefaultPort},
 		"hostname and port":   {"example.com:1234", "http://example.com:1234"},
 		"zero port":           {":0", "http://:0"},
-		"too large port":      {":66000", "http://:11434"},
-		"too small port":      {":-1", "http://:11434"},
-		"ipv6 localhost":      {"[::1]", "http://[::1]:11434"},
-		"ipv6 world open":     {"[::]", "http://[::]:11434"},
-		"ipv6 no brackets":    {"::1", "http://[::1]:11434"},
+		"too large port":      {":66000", "http://:" + DefaultPort},
+		"too small port":      {":-1", "http://:" + DefaultPort},
+		"ipv6 localhost":      {"[::1]", "http://[::1]:" + DefaultPort},
+		"ipv6 world open":     {"[::]", "http://[::]:" + DefaultPort},
+		"ipv6 no brackets":    {"::1", "http://[::1]:" + DefaultPort},
 		"ipv6 + port":         {"[::1]:1337", "http://[::1]:1337"},
-		"extra space":         {" 1.2.3.4 ", "http://1.2.3.4:11434"},
-		"extra quotes":        {"\"1.2.3.4\"", "http://1.2.3.4:11434"},
-		"extra space+quotes":  {" \" 1.2.3.4 \" ", "http://1.2.3.4:11434"},
-		"extra single quotes": {"'1.2.3.4'", "http://1.2.3.4:11434"},
+		"extra space":         {" 1.2.3.4 ", "http://1.2.3.4:" + DefaultPort},
+		"extra quotes":        {"\"1.2.3.4\"", "http://1.2.3.4:" + DefaultPort},
+		"extra space+quotes":  {" \" 1.2.3.4 \" ", "http://1.2.3.4:" + DefaultPort},
+		"extra single quotes": {"'1.2.3.4'", "http://1.2.3.4:" + DefaultPort},
 		"http":                {"http://1.2.3.4", "http://1.2.3.4:80"},
 		"http port":           {"http://1.2.3.4:4321", "http://1.2.3.4:4321"},
 		"https":               {"https://1.2.3.4", "https://1.2.3.4:443"},
@@ -44,7 +99,7 @@ func TestHost(t *testing.T) {
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
-			t.Setenv("OLLAMA_HOST", tt.value)
+			t.Setenv("XOLLAMA_HOST", tt.value)
 			if host := Host(); host.String() != tt.expect {
 				t.Errorf("%s: expected %s, got %s", name, tt.expect, host.String())
 			}
@@ -57,25 +112,25 @@ func TestConnectableHost(t *testing.T) {
 		value  string
 		expect string
 	}{
-		"empty":                    {"", "http://127.0.0.1:11434"},
-		"localhost":                {"127.0.0.1", "http://127.0.0.1:11434"},
+		"empty":                    {"", "http://127.0.0.1:" + DefaultPort},
+		"localhost":                {"127.0.0.1", "http://127.0.0.1:" + DefaultPort},
 		"localhost and port":       {"127.0.0.1:1234", "http://127.0.0.1:1234"},
-		"ipv4 unspecified":         {"0.0.0.0", "http://127.0.0.1:11434"},
+		"ipv4 unspecified":         {"0.0.0.0", "http://127.0.0.1:" + DefaultPort},
 		"ipv4 unspecified + port":  {"0.0.0.0:1234", "http://127.0.0.1:1234"},
-		"ipv6 unspecified":         {"[::]", "http://[::1]:11434"},
+		"ipv6 unspecified":         {"[::]", "http://[::1]:" + DefaultPort},
 		"ipv6 unspecified + port":  {"[::]:1234", "http://[::1]:1234"},
-		"ipv6 localhost":           {"[::1]", "http://[::1]:11434"},
+		"ipv6 localhost":           {"[::1]", "http://[::1]:" + DefaultPort},
 		"ipv6 localhost + port":    {"[::1]:1234", "http://[::1]:1234"},
-		"specific address":         {"192.168.1.5", "http://192.168.1.5:11434"},
+		"specific address":         {"192.168.1.5", "http://192.168.1.5:" + DefaultPort},
 		"specific address + port":  {"192.168.1.5:8080", "http://192.168.1.5:8080"},
-		"hostname":                 {"example.com", "http://example.com:11434"},
+		"hostname":                 {"example.com", "http://example.com:" + DefaultPort},
 		"hostname and port":        {"example.com:1234", "http://example.com:1234"},
 		"https unspecified + port": {"https://0.0.0.0:4321", "https://127.0.0.1:4321"},
 	}
 
 	for name, tt := range cases {
 		t.Run(name, func(t *testing.T) {
-			t.Setenv("OLLAMA_HOST", tt.value)
+			t.Setenv("XOLLAMA_HOST", tt.value)
 			if host := ConnectableHost(); host.String() != tt.expect {
 				t.Errorf("%s: expected %s, got %s", name, tt.expect, host.String())
 			}
@@ -471,17 +526,17 @@ func TestXollamaKey(t *testing.T) {
 
 func TestVarPrefersXollamaSpelling(t *testing.T) {
 	t.Run("xollama wins", func(t *testing.T) {
-		t.Setenv("OLLAMA_HOST", "stock")
-		t.Setenv("XOLLAMA_HOST", "fork")
-		if got := Var("OLLAMA_HOST"); got != "fork" {
+		t.Setenv("OLLAMA_MODELS", "stock")
+		t.Setenv("XOLLAMA_MODELS", "fork")
+		if got := Var("OLLAMA_MODELS"); got != "fork" {
 			t.Errorf("got %q, want %q", got, "fork")
 		}
 	})
 
 	t.Run("falls back to ollama", func(t *testing.T) {
-		t.Setenv("OLLAMA_HOST", "stock")
-		t.Setenv("XOLLAMA_HOST", "")
-		if got := Var("OLLAMA_HOST"); got != "stock" {
+		t.Setenv("OLLAMA_MODELS", "stock")
+		t.Setenv("XOLLAMA_MODELS", "")
+		if got := Var("OLLAMA_MODELS"); got != "stock" {
 			t.Errorf("got %q, want %q", got, "stock")
 		}
 	})

@@ -204,7 +204,7 @@ func startServer(t *testing.T, ctx context.Context, ollamaHost string) error {
 
 	if tmp := os.Getenv("OLLAMA_HOST"); tmp != ollamaHost {
 		slog.Info("setting env", "OLLAMA_HOST", ollamaHost)
-		t.Setenv("OLLAMA_HOST", ollamaHost)
+		t.Setenv("XOLLAMA_HOST", ollamaHost)
 	}
 
 	serverCmd = exec.Command(CLIName, "serve")

@@ -564,12 +564,15 @@ func capabilitiesFromInfo(v any) ([]string, error) {
 	}
 }
 
+// xollama-hook: default-port — a bare host or path means this server, so it
+// resolves to xollama's port and not upstream's. A remote named with an
+// explicit port is untouched.
 func remoteURL(raw string) (string, error) {
 	// Special‑case: user supplied only a path ("/foo/bar").
 	if strings.HasPrefix(raw, "/") {
 		return (&url.URL{
 			Scheme: "http",
-			Host:   net.JoinHostPort("localhost", "11434"),
+			Host:   net.JoinHostPort("localhost", envconfig.DefaultPort),
 			Path:   path.Clean(raw),
 		}).String(), nil
 	}
@@ -595,7 +598,7 @@ func remoteURL(raw string) (string, error) {
 	if err == nil {
 		u.Host = net.JoinHostPort(hostPart, portPart)
 	} else {
-		u.Host = net.JoinHostPort(u.Host, "11434")
+		u.Host = net.JoinHostPort(u.Host, envconfig.DefaultPort)
 	}
 
 	if u.Path != "" {

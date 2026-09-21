@@ -271,7 +271,7 @@ exit 0
 			http.NotFound(w, r)
 		}))
 		t.Cleanup(srv.Close)
-		t.Setenv("OLLAMA_HOST", srv.URL)
+		t.Setenv("XOLLAMA_HOST", srv.URL)
 	}
 
 	setNpmRegistryVersion := func(t *testing.T, version string) {
@@ -922,7 +922,7 @@ func TestPiEdit(t *testing.T) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	pi := &Pi{}
 	tmpDir := t.TempDir()
@@ -1408,7 +1408,7 @@ func TestPiEdit_CreatesDistinctBackupsForEachManagedFile(t *testing.T) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	pi := &Pi{}
 	tmpDir := t.TempDir()
@@ -1610,7 +1610,7 @@ func TestPiModels(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		}))
 		defer srv.Close()
-		t.Setenv("OLLAMA_HOST", srv.URL)
+		t.Setenv("XOLLAMA_HOST", srv.URL)
 
 		tmpDir := t.TempDir()
 		setTestHome(t, tmpDir)

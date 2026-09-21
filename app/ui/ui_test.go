@@ -670,7 +670,7 @@ func TestInferenceClientUsesUserAgent(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	t.Setenv("OLLAMA_HOST", ts.URL)
+	t.Setenv("XOLLAMA_HOST", ts.URL)
 
 	server := &Server{}
 	client := server.inferenceClient()

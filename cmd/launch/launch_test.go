@@ -58,7 +58,7 @@ func TestResolveRunModelsCarriesRecommendationThinkingMetadata(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	t.Setenv("OLLAMA_HOST", server.URL)
+	t.Setenv("XOLLAMA_HOST", server.URL)
 
 	client, err := newLauncherClient(defaultLaunchPolicy(false, false))
 	if err != nil {
@@ -337,7 +337,7 @@ func TestBuildLauncherState_ManagedSingleIntegrationUsesCurrentModel(t *testing.
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	runner := &launcherManagedRunner{currentModel: "gemma4"}
 	withIntegrationOverride(t, "pi", runner)
@@ -379,7 +379,7 @@ func TestBuildLauncherState_DeprecatedSavedModelIsUsable(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	state, err := BuildLauncherState(context.Background())
 	if err != nil {
@@ -422,7 +422,7 @@ func TestLoadSelectableModelsFiltersDeprecatedModels(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	client, err := newLauncherClient(defaultLaunchPolicy(true, false))
 	if err != nil {
@@ -470,7 +470,7 @@ func TestBuildLauncherState_ManagedSingleIntegrationShowsSavedModelWhenLiveConfi
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := config.SaveIntegration("pi", []string{"gemma4"}); err != nil {
 		t.Fatalf("failed to save managed integration config: %v", err)
@@ -511,7 +511,7 @@ func TestLaunchIntegration_ManagedSingleIntegrationConfiguresOnboardsAndRuns(t *
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	runner := &launcherManagedRunner{
 		paths: nil,
@@ -570,7 +570,7 @@ func TestLaunchIntegration_ManagedSingleIntegrationReOnboardsWhenSavedFlagIsStal
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	runner := &launcherManagedRunner{
 		currentModel:       "gemma4",
@@ -615,7 +615,7 @@ func TestLaunchIntegration_ManagedSingleIntegrationConfigOnlySkipsFinalRun(t *te
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	runner := &launcherManagedRunner{
 		paths: nil,
@@ -702,7 +702,7 @@ func TestLaunchIntegration_QwenConfiguresSingleModel(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	binDir := filepath.Join(tmpDir, "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
@@ -849,7 +849,7 @@ func TestLaunchIntegration_ManagedSingleIntegrationSkipsRewriteWhenSavedMatches(
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := config.SaveIntegration("stubmanaged", []string{"gemma4"}); err != nil {
 		t.Fatalf("failed to save managed integration config: %v", err)
@@ -899,7 +899,7 @@ func TestLaunchIntegration_ManagedSingleIntegrationRewritesWhenSavedMatchesButLi
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := config.SaveIntegration("stubmanaged", []string{"gemma4"}); err != nil {
 		t.Fatalf("failed to save managed integration config: %v", err)
@@ -950,7 +950,7 @@ func TestLaunchIntegration_ManagedSingleIntegrationRewritesWhenSavedDiffers(t *t
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := config.SaveIntegration("stubmanaged", []string{"old-model"}); err != nil {
 		t.Fatalf("failed to save managed integration config: %v", err)
@@ -1002,7 +1002,7 @@ func TestLaunchIntegration_ManagedSingleIntegrationRewritesWhenLiveConfigDrifts(
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := config.SaveIntegration("stubmanaged", []string{"gemma4"}); err != nil {
 		t.Fatalf("failed to save managed integration config: %v", err)
@@ -1059,7 +1059,7 @@ func TestLaunchIntegration_ManagedSingleIntegrationStopsWhenRuntimeRefreshFails(
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	runner := &launcherManagedRunner{
 		refreshErr: fmt.Errorf("boom"),
@@ -1107,7 +1107,7 @@ func TestLaunchIntegration_ManagedSingleIntegrationCanConfigureWithModelList(t *
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	runner := &launcherManagedListRunner{}
 	withIntegrationOverride(t, "stubmanaged", runner)
@@ -1150,7 +1150,7 @@ func TestLaunchIntegration_ManagedSingleIntegrationSavesCanonicalModel(t *testin
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	runner := &launcherCanonicalManagedListRunner{}
 	withIntegrationOverride(t, "stubmanaged", runner)
@@ -1421,7 +1421,7 @@ func TestLaunchIntegration_CloudAutodiscoveryUsesSignInHook(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{Name: "stubmanaged"}); err != nil {
 		t.Fatalf("LaunchIntegration returned error: %v", err)
@@ -1461,7 +1461,7 @@ func TestBuildLauncherIntegrationState_CloudAutodiscoveryDoesNotCheckSignIn(t *t
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	launchClient, err := newLauncherClient(defaultLaunchPolicy(true, false))
 	if err != nil {
@@ -1519,7 +1519,7 @@ func TestLaunchIntegration_ManagedSingleIntegrationHeadlessNeedsInteractiveOnboa
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	runner := &launcherManagedRunner{
 		paths: nil,
@@ -1560,7 +1560,7 @@ func TestLaunchIntegration_ManagedSingleIntegrationHeadlessAllowsNonInteractiveO
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	runner := &launcherHeadlessManagedRunner{}
 	withIntegrationOverride(t, "stubmanaged", runner)
@@ -1615,7 +1615,7 @@ func TestBuildLauncherState_InstalledAndCloudDisabled(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	state, err := BuildLauncherState(context.Background())
 	if err != nil {
@@ -1667,7 +1667,7 @@ func TestBuildLauncherState_MigratesLegacyOpenclawAliasConfig(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	state, err := BuildLauncherState(context.Background())
 	if err != nil {
@@ -1719,7 +1719,7 @@ func TestBuildLauncherState_ToleratesInventoryFailure(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	state, err := BuildLauncherState(context.Background())
 	if err != nil {
@@ -1763,7 +1763,7 @@ func TestBuildLauncherState_UsesTagsInventoryWithoutShow(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	state, err := BuildLauncherState(context.Background())
 	if err != nil {
@@ -1811,7 +1811,7 @@ func TestResolveRunModel_UsesSavedModelWithoutSelector(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	model, err := ResolveRunModel(context.Background(), RunModelRequest{})
 	if err != nil {
@@ -1870,7 +1870,7 @@ func TestResolveRunModel_HeadlessYesAutoPicksLastModel(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	var model string
 	stderr := captureStderr(t, func() {
@@ -1934,7 +1934,7 @@ func TestResolveRunModel_UsesRequestPolicy(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	reqPolicy := LaunchPolicy{
 		Confirm:      LaunchConfirmAutoApprove,
@@ -1983,7 +1983,7 @@ func TestResolveRunModel_ForcePickerAlwaysUsesSelector(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	model, err := ResolveRunModel(context.Background(), RunModelRequest{ForcePicker: true})
 	if err != nil {
@@ -2035,7 +2035,7 @@ func TestResolveRunModel_ForcePicker_DoesNotReorderByLastModel(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	_, err := ResolveRunModel(context.Background(), RunModelRequest{ForcePicker: true})
 	if err != nil {
@@ -2093,7 +2093,7 @@ func TestResolveRunModel_UsesSignInHookForCloudModel(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	model, err := ResolveRunModel(context.Background(), RunModelRequest{ForcePicker: true})
 	if err != nil {
@@ -2153,7 +2153,7 @@ func TestResolveRunModel_MetadataSignedOutUsesSignInHook(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	model, err := ResolveRunModel(context.Background(), RunModelRequest{ForcePicker: true})
 	if err != nil {
@@ -2231,7 +2231,7 @@ func TestResolveRunModel_SubscriptionModelUsesUpgradeHook(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	model, err := ResolveRunModel(context.Background(), RunModelRequest{ForcePicker: true})
 	if err != nil {
@@ -2287,7 +2287,7 @@ func TestResolveRunModel_UpgradeCancelledReturnsToModelSelector(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	model, err := ResolveRunModel(context.Background(), RunModelRequest{ForcePicker: true})
 	if err != nil {
@@ -2333,7 +2333,7 @@ func TestResolveRunModel_SubscriptionModelUnavailableWhoamiAllowsSelection(t *te
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	model, err := ResolveRunModel(context.Background(), RunModelRequest{ForcePicker: true})
 	if err != nil {
@@ -2381,7 +2381,7 @@ func TestLaunchIntegration_EditorForceConfigure(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
 		Name:           "droid",
@@ -2456,7 +2456,7 @@ func TestLaunchIntegration_ClineRewritesWhenLiveProviderDrifted(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
 		Name: "cline",
@@ -2535,7 +2535,7 @@ func TestLaunchIntegration_EditorForceConfigure_FloatsCheckedModelsInPicker(t *t
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
 		Name:           "droid",
@@ -2585,7 +2585,7 @@ func TestLaunchIntegration_EditorModelOverridePreservesExtras(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
 		Name:          "droid",
@@ -2647,7 +2647,7 @@ func TestLaunchIntegration_EditorCloudDisabledFallsBackToSelector(t *testing.T) 
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{Name: "droid"}); err != nil {
 		t.Fatalf("LaunchIntegration returned error: %v", err)
@@ -2708,7 +2708,7 @@ func TestLaunchIntegration_EditorConfigureMultiSkipsMissingLocalAndPersistsAccep
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	var launchErr error
 	stderr := captureStderr(t, func() {
@@ -2789,7 +2789,7 @@ func TestLaunchIntegration_EditorConfigureMultiSkipsUnauthedCloudAndPersistsAcce
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	var launchErr error
 	stderr := captureStderr(t, func() {
@@ -2878,7 +2878,7 @@ func TestLaunchIntegration_EditorConfigureUpgradeCancelledReturnsToModelSelector
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
 		Name:           "droid",
@@ -2952,7 +2952,7 @@ func TestLaunchIntegration_EditorConfigureMultiRemovesReselectedFailingModel(t *
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	var launchErr error
 	stderr := captureStderr(t, func() {
@@ -3030,7 +3030,7 @@ func TestLaunchIntegration_EditorConfigureMultiAllFailuresKeepsExistingAndSkipsL
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	var launchErr error
 	stderr := captureStderr(t, func() {
@@ -3104,7 +3104,7 @@ func TestLaunchIntegration_ConfiguredEditorLaunchValidatesPrimaryOnly(t *testing
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{Name: "droid"}); err != nil {
 		t.Fatalf("LaunchIntegration returned error: %v", err)
@@ -3163,7 +3163,7 @@ func TestLaunchIntegration_ConfiguredEditorLaunchSkipsReconfigure(t *testing.T) 
 		http.NotFound(w, r)
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{Name: "droid"}); err != nil {
 		t.Fatalf("LaunchIntegration returned error: %v", err)
@@ -3215,7 +3215,7 @@ func TestLaunchIntegration_ConfiguredEditorLaunchRewritesDriftedLiveConfig(t *te
 		http.NotFound(w, r)
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{Name: "droid"}); err != nil {
 		t.Fatalf("LaunchIntegration returned error: %v", err)
@@ -3262,7 +3262,7 @@ func TestLaunchIntegration_OpenclawPreservesExistingModelList(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{Name: "openclaw"}); err != nil {
 		t.Fatalf("LaunchIntegration returned error: %v", err)
@@ -3386,7 +3386,7 @@ func TestLaunchIntegration_ConfigureOnlyDoesNotRequireInstalledBinary(t *testing
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
 		Name:           "droid",
@@ -3436,7 +3436,7 @@ func TestLaunchIntegration_ClaudeSavesPrimaryModel(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
 		Name:          "claude",
@@ -3491,7 +3491,7 @@ func TestLaunchIntegration_ClaudeForceConfigureReprompts(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
 		Name:           "claude",
@@ -3555,7 +3555,7 @@ func TestLaunchIntegration_ClaudeForceConfigureMissingSelectionDoesNotSave(t *te
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
 		Name:           "claude",
@@ -3614,7 +3614,7 @@ func TestLaunchIntegration_ClaudeModelOverrideSkipsSelector(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
 		Name:          "claude",
@@ -3697,7 +3697,7 @@ func TestLaunchIntegration_ClaudeModelOverrideDeprecatedDeclineOpensPicker(t *te
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
 		Name:          "claude",
@@ -3784,7 +3784,7 @@ func TestLaunchIntegration_SavedDeprecatedDeclineOpensPicker(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{Name: "droid"}); err != nil {
 		t.Fatalf("LaunchIntegration returned error: %v", err)
@@ -3848,7 +3848,7 @@ func TestLaunchIntegration_ModelOverrideDeprecatedConfirmRuns(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
 		Name:          "droid",
@@ -3897,7 +3897,7 @@ func TestLaunchIntegration_ModelOverrideDeprecatedSuggestsLocalWhenCloudDisabled
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
 		Name:          "droid",
@@ -3948,7 +3948,7 @@ func TestLaunchIntegration_ConfigureOnlyPrompt(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
 		Name:           "stubsingle",
@@ -3999,7 +3999,7 @@ func TestLaunchIntegration_ModelOverrideHeadlessMissingFailsWithoutPrompt(t *tes
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
 		Name:          "droid",
@@ -4059,7 +4059,7 @@ func TestLaunchIntegration_ModelOverrideHeadlessCanOverrideMissingModelPolicy(t 
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	customPolicy := LaunchPolicy{MissingModel: LaunchMissingModelPromptToPull}
 	if err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
@@ -4117,7 +4117,7 @@ func TestLaunchIntegration_ModelOverrideInteractiveMissingPromptsAndPulls(t *tes
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
 		Name:          "droid",
@@ -4179,7 +4179,7 @@ func TestLaunchIntegration_HeadlessSelectorFlowFailsWithoutPrompt(t *testing.T) 
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
 		Name:           "droid",

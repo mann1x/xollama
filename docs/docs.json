@@ -180,6 +180,7 @@
               "/xollama/sessions",
               "/xollama/introspection",
               "/xollama/opencoti-tuning",
+              "/xollama/default-port",
               "/xollama/engine-args"
             ]
           }

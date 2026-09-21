@@ -34,7 +34,7 @@ func TestWelcomeCloudStatus(t *testing.T) {
 				}
 			}))
 			defer server.Close()
-			t.Setenv("OLLAMA_HOST", server.URL)
+			t.Setenv("XOLLAMA_HOST", server.URL)
 			account := checkWelcomeAccount(context.Background())
 			disabled := status == `{"cloud":{"disabled":true}}`
 			if account.Err != nil || account.CloudDisabled != disabled || account.SignedIn == disabled {

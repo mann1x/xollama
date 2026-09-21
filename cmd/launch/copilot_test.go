@@ -152,7 +152,7 @@ func TestCopilotEnvVars(t *testing.T) {
 	})
 
 	t.Run("uses custom OLLAMA_HOST", func(t *testing.T) {
-		t.Setenv("OLLAMA_HOST", "http://myhost:9999")
+		t.Setenv("XOLLAMA_HOST", "http://myhost:9999")
 		got := envMap(c.envVars("test"))
 		if !strings.Contains(got["COPILOT_PROVIDER_BASE_URL"], "myhost:9999") {
 			t.Errorf("COPILOT_PROVIDER_BASE_URL = %q, want custom host", got["COPILOT_PROVIDER_BASE_URL"])

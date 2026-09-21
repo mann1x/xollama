@@ -54,7 +54,7 @@ func stubMuseLoadedContext(t *testing.T, n int) {
 
 func TestMuseWriteSettings_BuildsCatalog(t *testing.T) {
 	setTestHome(t, t.TempDir())
-	t.Setenv("OLLAMA_HOST", "127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "127.0.0.1:11434")
 
 	models := []LaunchModel{
 		{Name: "gpt-oss:20b", ContextLength: 131072, MaxOutputTokens: 32768},
@@ -370,7 +370,7 @@ func TestMuseRun_PointsMuseAtLaunchConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 	setTestHome(t, tmpDir)
 	stubMuseLoadedContext(t, 0)
-	t.Setenv("OLLAMA_HOST", "127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "127.0.0.1:11434")
 
 	logPath := filepath.Join(tmpDir, "muse-invocation.log")
 	script := fmt.Sprintf(`#!/bin/sh

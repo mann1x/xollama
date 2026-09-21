@@ -176,7 +176,7 @@ func TestValidateKimiPassthroughArgs_RejectsConflicts(t *testing.T) {
 }
 
 func TestBuildKimiInlineConfig(t *testing.T) {
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 
 	cfg, err := buildKimiInlineConfig("llama3.2", 65536)
 	if err != nil {
@@ -230,7 +230,7 @@ func TestBuildKimiInlineConfig(t *testing.T) {
 }
 
 func TestBuildKimiInlineConfig_UsesConnectableHostForUnspecifiedBind(t *testing.T) {
-	t.Setenv("OLLAMA_HOST", "http://0.0.0.0:11434")
+	t.Setenv("XOLLAMA_HOST", "http://0.0.0.0:11434")
 
 	cfg, err := buildKimiInlineConfig("llama3.2", 65536)
 	if err != nil {
@@ -273,7 +273,7 @@ func TestResolveKimiMaxContextSize(t *testing.T) {
 			fmt.Fprint(w, `{"model_info":{"llama.context_length":131072}}`)
 		}))
 		defer srv.Close()
-		t.Setenv("OLLAMA_HOST", srv.URL)
+		t.Setenv("XOLLAMA_HOST", srv.URL)
 
 		got := resolveKimiMaxContextSize("llama3.2")
 		if got != 131_072 {
@@ -284,7 +284,7 @@ func TestResolveKimiMaxContextSize(t *testing.T) {
 	t.Run("falls back to default when show fails", func(t *testing.T) {
 		srv := httptest.NewServer(http.NotFoundHandler())
 		defer srv.Close()
-		t.Setenv("OLLAMA_HOST", srv.URL)
+		t.Setenv("XOLLAMA_HOST", srv.URL)
 
 		oldTimeout := kimiModelShowTimeout
 		kimiModelShowTimeout = 100 * 1000 * 1000 // 100ms
@@ -334,7 +334,7 @@ exit 0
 
 	srv := httptest.NewServer(http.NotFoundHandler())
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	k := &Kimi{}
 	if err := k.Run("llama3.2", nil, []string{"--quiet", "--print"}); err != nil {

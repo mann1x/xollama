@@ -39,7 +39,7 @@ func TestWarnMissingThinking(t *testing.T) {
 		}))
 		defer srv.Close()
 
-		t.Setenv("OLLAMA_HOST", srv.URL)
+		t.Setenv("XOLLAMA_HOST", srv.URL)
 		client, err := api.ClientFromEnvironment()
 		if err != nil {
 			t.Fatal(err)
