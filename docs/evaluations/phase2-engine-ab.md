@@ -412,3 +412,54 @@ logged as bug-008.
   Compatibility gating comes first.
 - Concurrency (−27%) is the only performance question worth carrying forward;
   single-stream parity means throughput is not the reason to pick either engine.
+
+## Re-measured on build 19 (`66408c19`), 2026-09-21
+
+opencoti stated plainly that they ran no plain-KV throughput, multi-slot or
+compat pass on these bytes and that our cells were the right re-check, so both
+axes were taken again rather than carried forward. As the `ollama` user, RTX
+3090 idle (24 GiB free, nothing loaded on the live service), DSO
+`7144a91a…` staged beside the artifact and reported as `beside-artifact`.
+
+### Multi-slot — the r2 deficit stays closed
+
+`qwen2.5:1.5b`, `-np 4`, four concurrent × 512 tokens:
+
+| engine | wall | aggregate (tok/s) | vs llama.cpp | per slot (tok/s) |
+|---|---|---|---|---|
+| llama.cpp | 3.30 s | 619.7 | — | 157.0, 156.9, 157.9, 158.0 |
+| opencoti c7 **r2** (2026-09-20) | 5.13 s | 399.2 | **−36.2%** | 106.0, 104.6, 104.6, 104.6 |
+| opencoti **build 18** (2026-09-20) | 3.25 s | 630.1 | +0.7% | 162.7, 162.5, 162.1, 162.3 |
+| opencoti **build 19** | 3.24 s | **632.6** | **+2.1%** | 163.3, 163.5, 163.9, 163.7 |
+
+Build 19 holds what build 18 won. The lockstep batching is still visible — all
+four slots within 0.6 tok/s of each other — and still costs nothing.
+
+### Single-stream — no regression, and the prompt-eval gap has closed
+
+`llama3:latest`, five iterations, unique ~5000-token prompts. Build 18 was
+re-measured **in the same session** rather than compared across days, because a
+1-point difference against a figure taken yesterday is not a finding:
+
+| engine | generation (tok/s) | spread | prompt eval (tok/s) |
+|---|---|---|---|
+| llama.cpp | **78.58** | 78.21–78.62 | 3966.8 |
+| opencoti build 18 | 76.46 | 76.35–76.96 | 3953.0 |
+| opencoti build 19 | 76.26 | 75.87–76.95 | 3987.9 |
+
+Build 18 and build 19 spreads overlap across most of their range, so **the pin
+move costs nothing on generation**. The ~3% deficit against stock is a property
+of the development line, not of this artifact.
+
+Against the c7 figures higher up this page (llama.cpp 78.38, opencoti 77.05),
+the dev line trades one for the other: generation is about a point further
+behind (−1.7% → −3.0%), and prompt eval, which was **−4.6%**, is now at parity
+(**+0.5%**). On the shape this axis actually measures — a 5000-token prompt for
+44 generated tokens — prompt eval is the larger term.
+
+### Method note
+
+The `--iters` default is 3; the figures above this section were taken at 5. The
+first build-19 pass was run at the default and showed −3.2%, which is the same
+number, but comparing a 3-iteration median against a 5-iteration one is a
+comparison of two methods. Match the method before reading a delta.

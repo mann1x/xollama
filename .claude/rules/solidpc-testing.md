@@ -45,7 +45,12 @@ paths:
   came back — the harness kills the process group and sleeps 5 s between arms.
 - **A provisional number is not a measurement.** Re-taken as `ollama` with the
   `bufferSizeRegex` fix, the multislot deficit is −36.2% on the c7 r2 pin and
-  gone on build 18. Append a re-take to `docs/evaluations/phase2-engine-ab.md`.
+  gone on builds 18 and 19. Append a re-take to `docs/evaluations/phase2-engine-ab.md`.
+- **Match the method before reading a delta.** `--iters` defaults to 3; the
+  recorded single-stream figures use 5. For a ~1-point gap, re-run the baseline
+  build in the same session instead of comparing against yesterday's figure.
+- A repro must be able to reach the defect: `--cli` does not apply the
+  server-side reasoning controls, so test thinking-off fixes through `--server`.
 - Repairing the cache if it does get broken:
 
   ```sh
