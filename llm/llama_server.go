@@ -564,6 +564,22 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 		return nil, 0, false, err
 	}
 
+	// xollama-hook: engine-payload — a self-extracting engine unpacks its GPU
+	// payload into $HOME/.llamafile/v/<compile-time version>/, which two builds
+	// carrying one tag share. Give it a HOME of our own holding exactly the
+	// payload of the artifact about to run, so the operator's own opencoti
+	// builds and ours cannot reach each other. See llm/engine/payload.go.
+	// Nothing happens on the stock path: a llama-server binary extracts
+	// nothing and is launched with the environment it inherited.
+	envs := launch.extraEnvsForStart()
+	if usedOpencoti {
+		userHome, _ := os.UserHomeDir()
+		if payloadHome := engine.PreparePayloadHome(name, engine.DefaultPayloadRoot(ml.LibOllamaPath, userHome)); payloadHome != "" {
+			envs = cloneStringMap(envs)
+			envs["HOME"] = payloadHome
+		}
+	}
+
 	// Set up library paths for GPU backend discovery
 	cmd = exec.Command(name, args...)
 
@@ -573,7 +589,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 		cmd.Stderr = out
 	}
 	cmd.SysProcAttr = LlamaServerSysProcAttr
-	SetupLlamaServerCommandEnv(cmd, exe, launch.gpuLibs, launch.extraEnvsForStart())
+	SetupLlamaServerCommandEnv(cmd, exe, launch.gpuLibs, envs)
 
 	slog.Info("starting llama-server", "cmd", cmd)
 	slog.Debug("subprocess", "", filteredEnv(cmd.Env))

@@ -293,6 +293,47 @@ fails the release at 1900 MiB so the cap is never met at upload time.
 **Anyone on a pre-Turing NVIDIA card needs the `-cuda12` asset**, on Linux and
 Windows alike. Without it that hardware falls back to CPU.
 
+## Where the GPU payload lands
+
+A **self-extracting** artifact carries its `ggml-*.so` inside itself and unpacks
+them on first run to `$HOME/.llamafile/v/<engine-version>/`. Only `$HOME` is
+ours to choose: `.llamafile` comes from llamafile's `g_app_name`, settable only
+by an in-process C call, and the version segment is compiled in.
+
+That last part is the problem. opencoti re-cuts a release **in place**, so c7 r1
+and c7 r2 are different bytes under one tag and resolve to the same directory.
+The engine unpacks only when what is already there is older, then loads what it
+found — so a machine that has run r1 can go on running r1's CUDA kernels under
+an r2 binary, silently. opencoti already hit the coarser version of this (their
+bug-2272: c5, c6 and c7 all landing in `v/0.10.3/`) and namespaced by cut, which
+cannot separate re-cuts of a single cut. Measured on one host: that one
+directory name held three different `ggml-cuda.so` within 36 hours, and two
+users held two different ones simultaneously.
+
+So xollama does not share it. The engine subprocess is given a `HOME` under
+ollama's own directory, holding exactly one payload — the one belonging to the
+artifact about to run — and anything another artifact left is deleted first:
+
+```
+<ollama dir>/engines/payload/.llamafile/v/<engine-version>/
+```
+
+Two consequences worth stating plainly. Your own `~/.llamafile` is never read or
+written, so you can run any opencoti build by hand without it interacting with
+the one xollama launches. And the directory holds one payload rather than
+accumulating one per artifact, so switching pins re-unpacks instead of growing.
+
+Nothing here touches stock `llama-server`, which extracts nothing and is
+launched with the environment it inherited. If the directory cannot be created
+or purged, xollama logs a warning and falls back to the inherited `HOME` rather
+than failing the load.
+
+A **split** artifact — a bare APE with its `ggml-cuda.so` staged beside it, the
+shape the `dev` channel publishes — extracts nothing at all, so none of this
+applies to it. That is the better arrangement, because both halves can then be
+pinned by sha256 in `llm/engine/pin.txt` and verified at fetch, where a fat
+bin's payload is unverifiable once unpacked.
+
 ## Phases
 
 - **Phase 0 — verify (no code). DONE 2026-09-18, PASS.** Full result in

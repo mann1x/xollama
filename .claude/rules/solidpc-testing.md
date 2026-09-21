@@ -23,9 +23,11 @@ paths:
 
   A model with no cache entry yet is what triggers it — a run that only touches
   already-cached models leaves no trace and proves nothing.
-- Invocation that is safe. `HOME` matters: a release cut extracts its payload to
-  `~/.llamafile/v/<version>/`, so as another user it must point somewhere
-  writable, and results must go to a directory that user owns
+- Invocation that is safe. `HOME` matters: xollama gives a release cut a
+  private `HOME` of `$HOME/.ollama/engines/payload` (`DefaultPayloadRoot` in
+  `llm/engine/payload.go`), where it extracts to `.llamafile/v/<version>/`, so as
+  another user it must point somewhere writable, and results must go to a
+  directory that user owns
   (`/srv/ml/xollama-phase2/as-ollama`, created `ollama:ollama` `2775`):
 
   ```sh
