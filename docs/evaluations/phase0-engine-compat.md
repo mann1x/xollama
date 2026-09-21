@@ -244,12 +244,40 @@ same qwen3 blob on the same 3090, as the `ollama` user, `--server
 
 On build 18 thinking-off through the API did not switch thinking off: everything
 went to the reasoning channel and a caller reading `content` got an empty
-string. `reasoning_effort: "low"` behaved the same, so it is not specific to
-`none`.
+string.
 
-That is broader than the defect as reported — opencoti described a budget-cap
-message leaking into a silenced channel — but it is the same surface, and it is
-the observable that matters to a caller. Reported back to them.
+**The inference drawn from that was wrong, and opencoti corrected it
+(2026-09-21).** We also saw `reasoning_effort: "low"` come back with an empty
+`content` and read it as the defect spanning the effort range. It is not:
+
+- The engine's thinking-off predicate is the exact string
+  `reasoning_effort == "none"`, or a request budget of 0
+  (`reasoning_budget_tokens` / `thinking_budget_tokens`), or Anthropic
+  `thinking: {type: "disabled"}`. **`low`, `medium`, `high` and `minimal` are
+  no-ops** — deliberately, since `low` asks for less thinking and not for none.
+  opencoti measured all four as byte-identical to each other. Upstream
+  llama.cpp never reads the field at all.
+- An empty `content` on a thinking-on turn is what **any** such turn returns
+  when the token cap lands inside the think block: `finish_reason: "length"`,
+  everything in `reasoning_content`. opencoti reproduced it with no effort field
+  present at all.
+
+So on build 18, `none` and `low` looked alike because `none` was broken into
+being a thinking-on turn and `low` always was one — not because one defect
+covered both. On build 19 `none` is fixed; `low` will still answer empty under a
+short cap, and that is correct behaviour.
+
+**Not yet re-verified here**: this repro was ad hoc and its `max_tokens` was not
+recorded, so the cap explanation is opencoti's measurement rather than ours. The
+source-level fact about the predicate is decisive on its own and is what
+retires the "broader than reported" claim.
+
+The consequence for anything that translates ollama's think levels: map only
+`false` / `none` to `"none"`, and never expect `low` / `medium` / `high` to
+differ. To ask for *less* thinking rather than none, send a request budget —
+`reasoning_budget_tokens: N` force-closes the block and leaves room for the
+answer. Whether xollama should map effort levels onto budgets is a
+default-behaviour decision, not something to adopt silently.
 
 One negative result worth keeping, because it nearly became a false conclusion:
 the first attempt ran the same comparison through `--cli` instead of `--server`,

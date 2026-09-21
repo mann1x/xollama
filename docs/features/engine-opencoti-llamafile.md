@@ -371,6 +371,37 @@ applies to it. That is the better arrangement, because both halves can then be
 pinned by sha256 in `llm/engine/pin.txt` and verified at fetch, where a fat
 bin's payload is unverifiable once unpacked.
 
+## Queued for the next pin (reported 2026-09-21, not published)
+
+opencoti's dev repo moves only on its owner's word, so these are recorded here
+rather than acted on. When they land, the pin moves in one commit and each row
+is retired only on a measurement (`.claude/rules/engine-pin.md`).
+
+- **0331 (bug-3535) — `--swa-seq-budget N` admitted N+1 windows.** The pool's
+  `n_ubatch` batch slack was being sold as a session, so three sessions arriving
+  under `N=2` produced a `find_slot` failure storm (3–590 failures per burst,
+  clients timing out). **This one is ours to care about**: `appendSWABudgetArgs`
+  in `llm/engine_launch.go` passes the flag whenever
+  `XOLLAMA_SWA_SEQ_BUDGET` or a model's setting sizes it, and
+  `llm/engine_estimate.go` budgets `min(SWASeqBudget, seqs)` windows of VRAM —
+  the correct number. On the bytes pinned today the engine can hold one window
+  more than the estimate paid for, silently. After the fix, expect one extra
+  429 per burst and no stalls, and size on N.
+- **0332 (bug-3538) — a second SIGTERM could deadlock the server** (upstream's
+  `exit()` inside the signal handler). Measured on old bytes: 13/40 hung when
+  the second signal followed within 0–3 ms, 12/12 when it beat the main thread's
+  cleanup; 0/40 after the fix. **Not reachable from xollama**: the engine
+  subprocess is stopped with `Process.Kill()` in `llm/llama_server.go`, a single
+  SIGKILL, never a TERM → TERM → KILL escalation. It matters only to an operator
+  driving the artifact directly.
+- **0333 — `--repeat-layers` composes with a KVarN cache** (it refused to boot
+  before).
+
+The first of these is the advisory category again — a defect that answers worse
+without saying anything — but it is *not* an `engineArgsAdvisories` row, because
+that list covers flags an operator passes through `XOLLAMA_ENGINE_ARGS` and this
+flag is one xollama emits itself. See `.claude/rules/engine-args.md`.
+
 ## Phases
 
 - **Phase 0 — verify (no code). DONE 2026-09-18, PASS.** Full result in
