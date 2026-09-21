@@ -194,8 +194,16 @@ so no branch in `mann1x/ollama` is its home. It is tracked only by
   force-pushed, and all twelve upstream PRs were confirmed open on their new
   heads after the push. xollama's merges predate that rewrite, so consuming the
   manifest is a re-merge of rewritten history, not a fast-forward.
-- Two gaps measured in this tree at `ee5331f7`: `ToolCallTags()` is absent, and
-  the stray channel-name strip is still a single `CutPrefix` over one orphan.
+- **Consumed 2026-09-21**: all twelve re-merged at the manifest shas, in
+  `patches[]` order, each its own `--no-ff` merge; shas in
+  `CARRIED-PATCHES.md`. Six conflicted, none through ordering.
+- **`ToolCallTags()` has no home.** It was the reason for re-merging #17566,
+  and it did not arrive. It exists on `think-budget` and `thinkbudget-0.34.2`
+  (`model/parsers/parsers.go`, `gemma4.go`, `qwen35.go`, both test files) and on
+  **no** `up-*` branch at any manifest sha — a patch authored on the integration
+  branch, which R2 forbids. R4 says do not hand-copy it, so it stays out of this
+  tree until it has a branch and a manifest entry. The protocol found this; a
+  survey of branch names never would have.
 - Three patches needed repair to land on `v0.34.2` and the fixes live on the
   branches, not here — `up-jinja-runner-reuse` (struct no longer comparable
   with `!=` after `DraftModelShardPaths` was added; two upstream `runnerRef`

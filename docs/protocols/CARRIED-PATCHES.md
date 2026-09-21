@@ -22,18 +22,66 @@ first if a patch looks missing or out of date.
 4. A patch with no upstream PR is an xollama feature, not a carried patch.
    It belongs in `docs/features/`.
 
-**Status as of 2026-09-18: all thirteen are carried on `main`, replayed onto
-v0.34.2, and all thirteen are still OPEN against `ollama/ollama`.**
+**Status as of 2026-09-21: all thirteen are carried, and all thirteen are still
+OPEN against `ollama/ollama`.** The twelve that have a home in `mann1x/ollama`
+are now consumed from its first `PATCHES.json` — `base: v0.34.2`,
+`integration.sha 3af5f361` — each re-merged at the manifest's sha, in
+`patches[]` order. The fork rebased every branch onto v0.34.2 and force-pushed,
+so the 2026-09-18 merges below are of commits that no longer exist there; they
+are kept because rule 1 makes retiring a patch the revert of its whole merge
+set, and that set is now two entries long for most rows.
 
-| PR | merge | PR | merge |
-|---|---|---|---|
-| #17563 | `1e384e33` | #17914 | `27e10549` |
-| #17564 | `a765e728` | #18212 | `a6dc8df3` |
-| #17565 | `5dc1d79a` | #18281 | `bb54003d` |
-| #17566 | `2fd06701`, `aa991d47`, `f830f71d` | #18288 | `5a80b98b` |
-| #17567 | `43be0f1d` | #18289 | `ddb0fec9` |
-| #17626 | `c7d7a3fb` | #18307 | `0c0db3d9` |
-| #16820 | `a4a6dd7b` | | |
+| PR | branch | 2026-09-18 merge | manifest sha | 2026-09-21 merge |
+|---|---|---|---|---|
+| #17563 | `up-repeat-guard` | `1e384e33` | `f87ae80d` | `14afe025` |
+| #17564 | `up-truncated-tool-calls` | `a765e728` | `70213554` | `9976ce1c` |
+| #17565 | `up-gemma4-object-close` | `5dc1d79a` | `64f89f3b` | `2184656c` |
+| #17566 | `up-think-budget` | `2fd06701`, `aa991d47`, `f830f71d` | `6ae1ee7c` | `ae5a9afb` |
+| #17567 | `up-mlx-libdl` | `43be0f1d` | `88108349` | `f2e943e9` |
+| #17626 | `up-gemma4-stray-channel-name` | `c7d7a3fb` | `acf95e0c` | `f843a483` |
+| #17914 | `qwen3coder-tolerate-malformed-tool-calls` | `27e10549` | `d272c4f1` | `7d5e86c2` |
+| #18212 | `up-reasoning-budget-line-boundary` | `a6dc8df3` | `3d15e71c` | `04cf5711` |
+| #18281 | `up-native-thinking-replay` | `bb54003d` | `af4825f7` | `4e2ed242` |
+| #18288 | `up-gemma4-stray-closer` | `5a80b98b` | `d54fe13e` | `f9f9fea3` |
+| #18289 | `up-jinja-runner-reuse` | `ddb0fec9` | `43a969b9` | `2cb18c10` |
+| #18307 | `gemma4-toolcall-in-thinking` | `0c0db3d9` | `16a78556` | `48f88b14` |
+| #16820 | `pull/16820/head` — **not ours** | `a4a6dd7b` | — | — |
+
+Two branches carry no `up-` prefix on purpose: renaming a branch that heads an
+open cross-fork PR closes the PR. See `docs/protocols/FORK-SYNC.md` R1.
+
+**Six of the twelve conflicted, and none of it was an ordering mistake.** Four
+were the shape the manifest's `known_conflicts` predicts — two additive test
+blocks at the same point, resolved by keeping both. One
+(`up-gemma4-stray-channel-name` on `model/parsers/gemma4.go`) was git anchoring
+a one-line addition on the wrong `p.buffer.Reset()` block, since #18307 had
+inserted a new one above it; the patch's own line was already in the right
+branch, so HEAD was kept and all four pieces of the patch were then checked
+present by name. `gemma4-toolcall-in-thinking` conflicted as a pure
+duplication — the resolution left the file byte-identical to what it already
+was, confirmed with `git diff`.
+
+**One conflict was a real choice, and the fork won it.**
+`up-jinja-runner-reuse` compares the config a runner was *launched* with
+(`runner.llamaConfig`) rather than one recomputed from its model, and uses
+`reflect.DeepEqual` because 0.34 added `DraftModelShardPaths []string` to
+`LlamaServerConfig`. Theirs was taken whole, per FORK-SYNC.md R4. It then
+failed four of this repo's own fixtures — `TestSchedNeedsReload` and the three
+`TestSchedNeedsReloadIgnoresAutomatic*` — which build a `runnerRef` by hand and
+left the new field zero, so an empty config compared against a real one and
+every request reloaded. Same defect the fork fixed in two upstream fixtures;
+fixed here for ours, since these tests are this repo's, not the patch's.
+
+Gates on the whole set: `gofmt -l .` silent, `go build ./...`, `go vet ./...`,
+`go test ./...` (59 packages ok, 0 failures — the four "not ours" failures of
+2026-09-18 did not reproduce), and `golangci-lint run` (0 issues).
+
+**`ToolCallTags()` did not arrive, and it is not in the manifest.** It exists on
+`think-budget` and on `thinkbudget-0.34.2` — `model/parsers/parsers.go`,
+`gemma4.go`, `qwen35.go` and both test files — and on **no** `up-*` branch at
+any manifest sha. That makes it a patch authored on the integration branch,
+which R2 forbids and R4 says we must not hand-copy. Raised with the fork; it
+needs a branch and a manifest entry before it can be carried here.
 
 Verified after the replay: `go build ./...` and `go vet ./...` clean, and the
 full `go test ./...` passes except four failures that are **not ours** and fail
