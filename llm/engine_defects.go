@@ -76,7 +76,10 @@ var knownEngineDefects = []knownEngineDefect{
 		// and not the artifact. Measurements in
 		// docs/evaluations/phase2-engine-ab.md.
 		//
-		// Narrowed the same day, after opencoti asked (their bug-3515): the
+		// Narrowed the same day, after opencoti asked (logged by them as
+		// bug-3515, later found to be a duplicate of their bug-3470 -- same
+		// abort, same 118128/117760, same model; 3515 had been filed without
+		// matching the error string): the
 		// failing load logs "rolling-kv POSITION_WINDOW mode ON
 		// (--kv-residency-mode auto) -- window 256 / 32768 cells", and
 		// forcing the other tactic with LLAMA_ARG_KV_RESIDENCY_MODE=head

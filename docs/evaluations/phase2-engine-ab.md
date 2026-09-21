@@ -44,6 +44,28 @@ One 1-token generation per model. `loaded` means the runner started and answered
 | `llama3.1:70b-instruct-q3_K_S` | ok | **fails** | `ggml_new_object: not enough space in the context's memory pool` → `signal: aborted` |
 | | **8 / 8** | **3 / 8** | |
 
+> **Re-taken on build 18 of the dev line, 2026-09-20 — 8 / 8.** Every model c7
+> refused now loads, on the same host, same models, same recipe. Raw:
+> `/srv/ml/xollama-phase2/as-ollama/{b18-compat,lcpp-compat}/`.
+>
+> | model | llama.cpp | opencoti **build 18** |
+> |---|---|---|
+> | `llama3:latest` | ok | ok |
+> | `qwen2.5:1.5b` | ok | ok |
+> | `tinyllama:latest` | ok | ok |
+> | `gemma4:e4b` | ok | **ok** (was `done_getting_tensors: expected 2131, got 720`) |
+> | `gemma3:27b-it-qat` | ok | **ok** (was `expected 1247, got 808`) |
+> | `mistral-small3.1:latest` | ok | **ok** (was `expected 585, got 363`) |
+> | `qwen3.5:2b` | ok | **ok** (was `rope.dimension_sections … expected 4, got 3`) |
+> | `llama3.1:70b-instruct-q3_K_S` | ok | **ok** (was the pool abort) |
+> | | **8 / 8** | **8 / 8** |
+>
+> Both causes below are fixed on that line: the compat-layer gap by opencoti's
+> patch 0307, and the 70B abort by 0308 (their bug-3470; see §5). This is the
+> finding that qualified Phase 0's verdict, and it does not survive the move to
+> the development line — which is the case for integrating towards c8 rather
+> than a reason to hold at c7.
+
 Two causes, not three, and neither is in our argv.
 
 **a. Our "stock llama.cpp" is not vanilla llama.cpp — it carries ollama's
@@ -172,6 +194,19 @@ The parsers are ours and run above the engine, so nothing suggests they would
 behave differently. But this axis cannot be closed until §1a is fixed, and
 recording it as "passed" would be a lie about what was run.
 
+> **Closed on build 18, 2026-09-20** — measured, not assumed, now that the
+> model loads. Raw: `/srv/ml/xollama-phase2/as-ollama/{b18-gemma4,lcpp-gemma4}/`.
+>
+> | engine | tool call | thinking channel |
+> |---|---|---|
+> | llama.cpp | 1 call, `get_weather({"city":"Berlin"})`, no markup leaked | separated, 781 thinking / 381 content chars, no channel markup leaked |
+> | opencoti **build 18** | 1 call, `get_weather({"city":"Berlin"})`, no markup leaked | separated, 781 thinking / 366 content chars, no channel markup leaked |
+>
+> Identical tool call and an identical 781-character thinking span; the content
+> lengths differ by 15 characters, which is sampling, not structure. The
+> expectation that the parsers sit above the engine turns out to be right — but
+> it is now a measurement rather than an argument.
+
 ## 5. VRAM overflow
 
 `llama3.1:70b-instruct-q3_K_S` — 39.2 GiB of weights on a 24 GiB card, so a
@@ -234,7 +269,10 @@ rolling-KV spill actually do something — and it does not survive contact.
 > because retiring it removed the only diagnosis a user gets for a failure that
 > still ships. Reported to opencoti.
 >
-> **Narrowed, same day**, after opencoti asked (their bug-3515). The failing
+> **Narrowed, same day**, after opencoti asked. (They logged it as bug-3515 and
+> then found it a duplicate of their **bug-3470** — same abort, same
+> 118128/117760, same model; 3515 had been filed without matching the error
+> string. The fix is their patch `0308-rolling-kv-host-layers`.) The failing
 > load says which tactic it chose:
 >
 > ```
