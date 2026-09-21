@@ -192,3 +192,63 @@ func TestEngineArgsLetsTheFlagsItExistsForThrough(t *testing.T) {
 		})
 	}
 }
+
+// TestAdvisedFlagsAreWarnedAboutButStillPassed is the line between the two
+// lists. A guarded flag is refused because it breaks xollama's model of the
+// process; an advised flag is the operator's to pass, on bytes where the vendor
+// has told us the answer will be wrong. Refusing it would stop them measuring
+// the very defect we are relaying -- which is exactly what we do to them.
+func TestAdvisedFlagsAreWarnedAboutButStillPassed(t *testing.T) {
+	got, err := appendEngineArgs([]string{"--model", "/m.gguf"}, "--sparse-attn 1")
+	if err != nil {
+		t.Fatalf("appendEngineArgs() = %v; an advised flag is passed, not refused", err)
+	}
+	if !slices.Contains(got, "--sparse-attn") {
+		t.Errorf("appendEngineArgs() = %v, want --sparse-attn passed through", got)
+	}
+	if advice := advisoriesFor([]string{"--sparse-attn", "1"}); len(advice) != 1 {
+		t.Fatalf("advisoriesFor() returned %d advisories, want 1", len(advice))
+	}
+}
+
+// Both spellings, because the engine treats them as one flag and an advisory
+// that only saw --flag value would miss half the ways to hit the defect.
+func TestAnAdvisedFlagIsRecognisedInBothForms(t *testing.T) {
+	for flag := range engineArgsAdvisories {
+		t.Run(flag, func(t *testing.T) {
+			for _, raw := range []string{flag + " 1", flag + "=1"} {
+				extra, err := splitEngineArgs(raw)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(advisoriesFor(extra)) != 1 {
+					t.Errorf("advisoriesFor(%q) said nothing; the defect is reachable in this spelling too", raw)
+				}
+			}
+		})
+	}
+}
+
+// An ordinary flag must stay silent: an advisory on everything is an advisory
+// on nothing.
+func TestOrdinaryFlagsDrawNoAdvisory(t *testing.T) {
+	for _, raw := range []string{"--override-kv a=int:1", "--cache-reuse 256", "--polykv-adm-on-error"} {
+		extra, err := splitEngineArgs(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if advice := advisoriesFor(extra); len(advice) != 0 {
+			t.Errorf("advisoriesFor(%q) = %v, want nothing", raw, advice)
+		}
+	}
+}
+
+// Every advisory must name the vendor's bug id, so the next person can check
+// whether the pinned bytes still have it instead of taking this file's word.
+func TestEveryAdvisoryCitesTheDefect(t *testing.T) {
+	for flag, why := range engineArgsAdvisories {
+		if !strings.Contains(why, "bug-") {
+			t.Errorf("the advisory for %s cites no bug id: %q", flag, why)
+		}
+	}
+}

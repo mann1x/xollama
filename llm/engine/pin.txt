@@ -90,8 +90,8 @@
 # ---------------------------------------------------------------------------
 
 repo     ManniX-ITA/opencoti-llamafile-dev
-rev      3756389a23667d00290ea2f8229b69d62a3479e5
-tag      opencoti-0.10.5-c7-2609200554001
+rev      ad6f1d224c7d6de3ebdb5405605241268e112816
+tag      opencoti-0.10.5-c7-2609210611001
 channel  dev
 
 # THIS BRANCH PINS A DEVELOPMENT SNAPSHOT. It is not a release and must not be
@@ -100,7 +100,7 @@ channel  dev
 #
 # The tag is a DEV BUILD ID, not a claim about which cut these bytes are. A dev
 # build carries the PREVIOUS release tag in its version string, so this one
-# reads c7 while its patch chain runs 0245..0315 -- past the c7 chain end at
+# reads c7 while its patch chain runs 0245..0327 -- past the c7 chain end at
 # 0244, and past 0288. That is exactly why capability is declared below rather
 # than read out of the tag: inferring it would refuse the flags this snapshot
 # was pinned to test.
@@ -108,13 +108,34 @@ channel  dev
 # Identity of a dev build is the build id AND the DSO sha256: a CUDA-only
 # iteration mints no new id. Quote both in any bug report to opencoti.
 #
-# Gates these exact bytes passed (BUILD_INFO.md in the build dir): RULER-VT
-# 256k on this DSO, Gemma-4 26B-A4B Q4_K_M -- kvarn3 + DCA record route n=50
-# score 0.988, kvarn3 DCA off n=12 score 0.983, zero faults. Patches 0245-0315
-# were each gated at capture; work for 0316 is in these bytes but uncaptured.
+# Patch chain 0245-0327, and NOTHING uncaptured this time: the vendor's dev tree
+# equals the chain. The reason for moving here from build 18 is patch 0320
+# (their bug-3514): with thinking switched off through the API -- reasoning
+# effort none, a request budget of 0, or Anthropic thinking disabled -- a
+# configured budget-cap message was still injected into the thinking channel.
+# That is the same defect the think-budget work fixes on our side, and it is the
+# only non-KVarN behavioural change past build 18. Everything else added here
+# (0317-0327) is KVarN cache coverage and cannot move a run that does not set
+# -ctk/-ctv kvarnN. 0316 additionally fixes their bugs 3505/3506, turbo/TCQ KV
+# with --dca on, which is broken in the shipped c7-r2.
+#
+# Gates the VENDOR ran on exactly these bytes (BUILD_INFO.md): the KVarN
+# sparse-attn gates, the KVarN restore / state-I/O / hybrid regression chain,
+# and RULER niah 24k/40k. They explicitly did NOT run plain-KV throughput,
+# multi-slot or engine-compat on these bytes, so no claim of ours is inherited
+# from them -- ours are re-measured here, against these bytes, or they do not
+# stand.
+#
+# KNOWN OPEN in these bytes, reported by the vendor: their bug-3524, --sparse-attn
+# on a PLAIN (non-KVarN) cache loses needles. xollama never passes --sparse-attn
+# itself, so the only way to reach it is XOLLAMA_ENGINE_ARGS; llm/engine_args.go
+# warns when it sees the flag on these bytes. It is deliberately NOT a row in
+# llm/engine_defects.go: that table matches the engine's dying words, and this
+# defect does not say anything at all -- it just answers worse.
 
-# PROBED against these bytes on 2026-09-20, not read off the patch chain:
+# PROBED against these bytes on 2026-09-21, not read off the patch chain:
 #   --cache-type-k-swa q4_0 --cache-type-v-swa q4_0  on -ctk/-ctv kvarn3  ACCEPTED
+#   --sparse-attn 1                                                       ACCEPTED
 #   --banana 1 (control)                                                  REJECTED
 # The probe also found a rule the vendor's flag table does not state: the ring
 # requires a KVarN base on BOTH -ctk and -ctv (an f16 or q8_0 base is refused),
@@ -133,7 +154,7 @@ accel    x86_64  CUDA
 # One APE serves every host; the arch label selects who may package it.
 # win-x86_64-gpu is deliberately absent: there is no Windows GPU artifact on
 # this channel, so a Windows package cannot be built from this branch, loudly.
-bin  x86_64   builds/opencoti-0.10.5-c7-2609200554001/opencoti-0.10.5-c7-2609200554001  a7a4e7dac7ae8c934ea7362704d1a3e6e399cd275a2bf32de748f2d58fd86a2b
-bin  aarch64  builds/opencoti-0.10.5-c7-2609200554001/opencoti-0.10.5-c7-2609200554001  a7a4e7dac7ae8c934ea7362704d1a3e6e399cd275a2bf32de748f2d58fd86a2b
+bin  x86_64   builds/opencoti-0.10.5-c7-2609210611001/opencoti-0.10.5-c7-2609210611001  66408c19d2a8a78cd11418e989b008c4cd9e409bbe2ba1f930bae1fb76ddb754
+bin  aarch64  builds/opencoti-0.10.5-c7-2609210611001/opencoti-0.10.5-c7-2609210611001  66408c19d2a8a78cd11418e989b008c4cd9e409bbe2ba1f930bae1fb76ddb754
 
-dso  x86_64   builds/opencoti-0.10.5-c7-2609200554001/ggml-cuda.so  bef1ab649e36b667a049299941693180b819fa4c956f8ae3422f387c985bfe0a
+dso  x86_64   builds/opencoti-0.10.5-c7-2609210611001/ggml-cuda.so  7144a91ac8d05b28a7ae6b8bae2ba62a0771889570fffa18d0812a87e6001e57

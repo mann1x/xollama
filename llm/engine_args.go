@@ -97,6 +97,41 @@ var guardedEngineFlags = map[string]string{
 // function adds nothing, logs nothing and copies nothing.
 //
 // xollama-hook: engine-args
+// engineArgsAdvisories names flags that the PINNED engine bytes are known to
+// answer badly, in a way nothing downstream can notice.
+//
+// This is not the guarded list and must not become it. A guarded flag is one
+// xollama derives itself, and passing it breaks the server's model of the
+// process; these are flags the operator is entitled to pass, on bytes where the
+// vendor has told us the result is wrong. The answer is a warning, not a
+// refusal -- they may be measuring the defect deliberately, which is exactly
+// what we do to them.
+//
+// It is also not llm/engine_defects.go. That table matches the engine's dying
+// words against the artifact digest, so it can only catch a defect that says
+// something. These say nothing at all: the run succeeds and the answer is
+// quietly worse. The only moment anyone can be told is the moment the flag is
+// accepted, here.
+//
+// Retire a row the day the pin moves to bytes that fix it, in the same commit
+// as the pin -- same rule as a defect row, and for the same reason.
+var engineArgsAdvisories = map[string]string{
+	"--sparse-attn": "opencoti bug-3524: on the pinned dev build, --sparse-attn over a plain (non-KVarN) cache drops retrievable content -- a long-context lookup can silently miss what it was asked for. Nothing fails; the answer is just worse. Use a kvarnN cache type, or leave the flag off, until a build that fixes it is pinned.",
+}
+
+// warnAboutAdvisedFlags says so when the operator passes a flag the pinned bytes
+// answer badly. Extracted so a test can drive it without a logger.
+func advisoriesFor(extra []string) []string {
+	var out []string
+	for _, a := range extra {
+		flag, _, _ := strings.Cut(a, "=")
+		if why, ok := engineArgsAdvisories[flag]; ok {
+			out = append(out, why)
+		}
+	}
+	return out
+}
+
 func appendEngineArgs(args []string, raw string) ([]string, error) {
 	if strings.TrimSpace(raw) == "" {
 		return args, nil
@@ -127,6 +162,11 @@ func appendEngineArgs(args []string, raw string) ([]string, error) {
 	// in this codebase is the first thing worth knowing when the run behaves
 	// unlike everyone else's.
 	slog.Info("appending operator-supplied engine arguments", "source", EngineArgsEnv, "args", extra, "count", len(extra))
+
+	for _, why := range advisoriesFor(extra) {
+		slog.Warn("a flag you passed is known to be answered badly by the pinned engine build",
+			"source", EngineArgsEnv, "advisory", why)
+	}
 
 	return append(append([]string(nil), args...), extra...), nil
 }

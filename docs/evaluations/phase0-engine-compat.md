@@ -199,3 +199,33 @@ form: **a flag in the vendor's source tree is not a flag in the vendor's
 published binary.** Probe the artifact the pin names. And because a flag probe
 cannot see values, probe those too — `-ctk kvarn3` against a bogus model path
 should fail on the *type*, not on the file.
+
+### Re-measured 2026-09-21 against build 19 (`66408c19`)
+
+The pin moved from build 18 to `opencoti-0.10.5-c7-2609210611001` for patch 0320.
+opencoti stated plainly that they ran no engine-compat pass on these bytes, so
+the matrix was taken again here rather than inherited — the rule above, applied
+to its own author.
+
+Probed as the `ollama` user on solidPC, `--server <flag> <value> --model
+/nonexistent.gguf`:
+
+| Flag | build 19 |
+|---|---|
+| `--gpu nvidia` | accepted |
+| `--no-mmap` | accepted |
+| `--max-parallel`, `--max-parallel-tps-floor`, `--max-parallel-vram-reserve` | accepted |
+| `--kv-unified`, `--swa-seq-budget` | accepted |
+| `--cache-type-k-swa`, `--cache-type-v-swa` | accepted |
+| `--kv-residency-mode auto` | accepted |
+| `--load-mode none` | **rejected** |
+| `--banana 1` (control) | rejected |
+
+Unchanged from build 18. `--load-mode` is still the one rejection and is still
+not a defect: opencoti spells it `--no-mmap`, and `Command` translates it. The
+control being refused is what makes the rest of the column mean anything.
+
+`--sparse-attn` is accepted, which is why it needed an advisory rather than a
+defect row — see `llm/engine_args.go`. opencoti's bug-3524 makes it lose
+retrievable content over a plain cache, silently, so nothing downstream can
+notice and the engine never says a word.
