@@ -26,7 +26,8 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   `mann1x/ollama`. Consume by the sha in the fork's `PATCHES.json`, in
   `patches[]` order, each as its own `--no-ff` merge. **Never hand-copy a hunk
   from `think-budget`** — that is how `model/parsers/gemma4.go` ended up three
-  different things across two trees.
+  different things across two trees. xollama never files upstream PRs, nor asks
+  the fork to — that is the repository owner's call; `fork-only` entries stay so.
 - `docs/features/engine-opencoti-llamafile.md` · `docs/features/rebrand.md` ·
   `docs/features/store-ownership.md`
 - `docs/evaluations/phase0-engine-compat.md` — measured engine-compat baseline.

@@ -289,8 +289,11 @@ repro here — this host has the toolchain, the 3090 and the pinned version.
   file and never sent to the fork. The sweep should have a counterpart here: any
   xollama commit touching a file that exists at `v0.34.2` and is not part of a
   marked hook is a candidate for the same treatment.
-- **Whether #15–#17 should be filed upstream** is not xollama's call to make
-  alone — filing is outward-facing and permanent. `bf047765` is the strongest
-  candidate: a live counter reading zero on every tmpfs host, caught by a test
-  already in upstream's tree. Recorded `fork-only` meanwhile, which is literally
-  true.
+- **#15–#17 do not go upstream.** Settled 2026-09-22 by the repository owner,
+  who told the fork directly. `fork-only` with `upstream_pr: null` is their
+  final state, not a placeholder, so the manifest invariant
+  `fork-only ⇔ upstream_pr: null` holds for them permanently and the `note`
+  asking for the status to be revisited can go. This also settles the general
+  question raised with them: **xollama does not file upstream PRs, and does not
+  ask the fork to file them on its behalf** — that decision belongs to the
+  repository owner in every case.
