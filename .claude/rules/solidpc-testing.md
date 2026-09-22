@@ -57,11 +57,11 @@ paths:
   and throughput uses `/api/generate`, so both stayed green on bytes that cannot
   hold a two-turn conversation. Separate our feature from the engine's
   regression by removing the input: `XOLLAMA_SESSION_AFFINITY=false` made every
-  failing cell pass, so the pin stays at build 19 (`2609210611001`). Build 21
+  failing cell pass, so the pin did not move to it. Build 21
   (`2609221142001`) fixes it — opencoti patch 0345 makes an *unstated* window
   per-request instead of booking the per-session maximum whole — and measures
   8/8 compat, inside build 19's spread, zero `REFUSED` lines across all five
-  axes; the pin still stays at build 19 only because those bytes are unpublished.
+  axes, so **the pin moved there** once the bytes were published.
 - **A probe both arms pass is not a discriminator.** The `kvleak4` probe (four
   concurrent `/api/chat`) was meant to reproduce opencoti's distinct-session
   arm, and build 20 passes it too: xollama minted **one** session id for all

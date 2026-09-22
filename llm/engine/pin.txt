@@ -90,8 +90,8 @@
 # ---------------------------------------------------------------------------
 
 repo     ManniX-ITA/opencoti-llamafile-dev
-rev      ad6f1d224c7d6de3ebdb5405605241268e112816
-tag      opencoti-0.10.5-c7-2609210611001
+rev      32ec86e8cf8f0b36ed53eab3531665b8851d91f7
+tag      opencoti-0.10.5-c7-2609221142001
 channel  dev
 
 # THIS BRANCH PINS A DEVELOPMENT SNAPSHOT. It is not a release and must not be
@@ -100,7 +100,7 @@ channel  dev
 #
 # The tag is a DEV BUILD ID, not a claim about which cut these bytes are. A dev
 # build carries the PREVIOUS release tag in its version string, so this one
-# reads c7 while its patch chain runs 0245..0327 -- past the c7 chain end at
+# reads c7 while its patch chain runs 0245..0346 -- past the c7 chain end at
 # 0244, and past 0288. That is exactly why capability is declared below rather
 # than read out of the tag: inferring it would refuse the flags this snapshot
 # was pinned to test.
@@ -108,23 +108,43 @@ channel  dev
 # Identity of a dev build is the build id AND the DSO sha256: a CUDA-only
 # iteration mints no new id. Quote both in any bug report to opencoti.
 #
-# Patch chain 0245-0327, and NOTHING uncaptured this time: the vendor's dev tree
-# equals the chain. The reason for moving here from build 18 is patch 0320
-# (their bug-3514): with thinking switched off through the API -- reasoning
-# effort none, a request budget of 0, or Anthropic thinking disabled -- a
-# configured budget-cap message was still injected into the thinking channel.
-# That is the same defect the think-budget work fixes on our side, and it is the
-# only non-KVarN behavioural change past build 18. Everything else added here
-# (0317-0327) is KVarN cache coverage and cannot move a run that does not set
-# -ctk/-ctv kvarnN. 0316 additionally fixes their bugs 3505/3506, turbo/TCQ KV
-# with --dca on, which is broken in the shipped c7-r2.
+# The rev is the "dev snapshot" commit that carries the files, not the "pin ->"
+# commit one second later that moves the repo's own pointer. Both hold the same
+# bytes; naming the snapshot is what the two pins before this one did.
 #
-# Gates the VENDOR ran on exactly these bytes (BUILD_INFO.md): the KVarN
-# sparse-attn gates, the KVarN restore / state-I/O / hybrid regression chain,
-# and RULER niah 24k/40k. They explicitly did NOT run plain-KV throughput,
-# multi-slot or engine-compat on these bytes, so no claim of ours is inherited
-# from them -- ours are re-measured here, against these bytes, or they do not
-# stand.
+# WHY THIS BUILD, and not 2609220756001 which it replaces. That one was measured
+# here and REFUSED THE SECOND /api/chat TURN of every conversation: their session
+# allocator books a session's window whole and holds it until close or TTL, by
+# design, and the defect was the size it chose when the client states no num_ctx
+# -- the per-session maximum, i.e. the entire base cache, for 300 s. Patch 0345
+# makes an unstated window per-request and negotiable with the request's own peak
+# as the floor, and leaves a STATED num_ctx on the old contract: booked whole,
+# held across turns, refused rather than silently shrunk. Measured, not read off
+# the changelog: see the build-21 section of docs/evaluations/phase2-engine-ab.md.
+# The DSO did not change across that fix -- d676a779 is byte-identical to the one
+# 2609220756001 shipped -- so this move is a host-binary swap.
+#
+# Patch chain 0245-0346, and NOTHING uncaptured: the vendor states 0343, 0344,
+# 0345 and the 0346 A/B lever are all in the chain, verified by string probe that
+# the binary carries exactly those.
+#
+# Gates the VENDOR ran on exactly these bytes (BUILD_INFO.md): their bug-3555
+# elastic-allocation gate, four arms x two binaries, paired against the published
+# 2609220756001 as the control, so a green arm cannot be confused with a no-op --
+# A (distinct session ids, num_ctx unstated) 200/429/429 -> 200/200/200; B (one
+# session, unstated) unchanged; C (two x 8192) both held; D (two x 32768) still
+# refuses the second. They did NOT re-run the RULER / KLD long cells; those carry
+# over on the unchanged DSO rather than having been re-measured.
+#
+# Gates WE ran on exactly these bytes, which is what the pin actually rests on:
+# compat 8/8, throughput and multi-slot inside build 19's spread taken back to
+# back in one session, 70B overflow 4.05 tok/s at 0.759 in VRAM, gemma-4 parsers
+# pass, and ZERO `kv-reservation: REFUSED` lines across the whole five-axis sweep.
+#
+# NOT verified by us: the vendor's arm A. Our probe for it (four concurrent
+# /api/chat) passes on the broken build too, because the ollama surface has no
+# field that maps to session_id and xollama minted ONE id for all four requests.
+# That arm rests on their measurement; do not cite it as ours.
 #
 # KNOWN OPEN in these bytes, reported by the vendor: their bug-3524, --sparse-attn
 # on a PLAIN (non-KVarN) cache loses needles. xollama never passes --sparse-attn
@@ -132,16 +152,29 @@ channel  dev
 # warns when it sees the flag on these bytes. It is deliberately NOT a row in
 # llm/engine_defects.go: that table matches the engine's dying words, and this
 # defect does not say anything at all -- it just answers worse.
+#
+# OPEN AND UNQUANTIFIED, raised by the vendor 2026-09-22 (their bug-3556): CUDA
+# output may depend on the batch shape a request lands in, so the same prompt
+# with different co-tenants could sample differently. They are measuring it at
+# server batch shapes. Nothing here assumes run-to-run reproducibility on CUDA,
+# but a future feature that does must wait for that number.
 
-# PROBED against these bytes on 2026-09-21, not read off the patch chain:
-#   --cache-type-k-swa q4_0 --cache-type-v-swa q4_0  on -ctk/-ctv kvarn3  ACCEPTED
-#   --sparse-attn 1                                                       ACCEPTED
+# PROBED against THESE bytes on 2026-09-22, not read off the patch chain, and
+# paired against build 19 so a pass cannot be a no-op. The verdict is read off
+# `error: invalid argument`, which the engine prints before it looks at a model
+# -- an earlier version of this probe scored a context that failed to build as an
+# argv rejection, and got the opposite answer:
+#   --cache-type-k-swa q4_0 --cache-type-v-swa q4_0  on -ctk/-ctv kvarn3  ACCEPTED, served
+#   --sparse-attn 1                                                       ACCEPTED, served
 #   --banana 1 (control)                                                  REJECTED
 # The probe also found a rule the vendor's flag table does not state: the ring
 # requires a KVarN base on BOTH -ctk and -ctv (an f16 or q8_0 base is refused),
 # and the two ring halves must both be KVarN or both plain. Those are enforced
 # up front in llm/engine_launch.go, because the engine enforces them by exiting
 # during startup, which reaches an operator as a model that would not load.
+# KVarN also needs 128/256/512-dimensional heads and a GPU context; on a CPU-only
+# or small-head probe it fails at context creation with "invalid KV allocation
+# group size", which is a runtime fact and not an argv one.
 feature  swa-cache-types
 
 # Linux x86_64 CUDA and nothing else. The host binary is a bare cosmocc APE:
@@ -154,7 +187,7 @@ accel    x86_64  CUDA
 # One APE serves every host; the arch label selects who may package it.
 # win-x86_64-gpu is deliberately absent: there is no Windows GPU artifact on
 # this channel, so a Windows package cannot be built from this branch, loudly.
-bin  x86_64   builds/opencoti-0.10.5-c7-2609210611001/opencoti-0.10.5-c7-2609210611001  66408c19d2a8a78cd11418e989b008c4cd9e409bbe2ba1f930bae1fb76ddb754
-bin  aarch64  builds/opencoti-0.10.5-c7-2609210611001/opencoti-0.10.5-c7-2609210611001  66408c19d2a8a78cd11418e989b008c4cd9e409bbe2ba1f930bae1fb76ddb754
+bin  x86_64   builds/opencoti-0.10.5-c7-2609221142001/opencoti-0.10.5-c7-2609221142001  e3a19b0b3f0c8d32c77b83ecb25b36aea418fe40e303fe17e4d42f070984e925
+bin  aarch64  builds/opencoti-0.10.5-c7-2609221142001/opencoti-0.10.5-c7-2609221142001  e3a19b0b3f0c8d32c77b83ecb25b36aea418fe40e303fe17e4d42f070984e925
 
-dso  x86_64   builds/opencoti-0.10.5-c7-2609210611001/ggml-cuda.so  7144a91ac8d05b28a7ae6b8bae2ba62a0771889570fffa18d0812a87e6001e57
+dso  x86_64   builds/opencoti-0.10.5-c7-2609221142001/ggml-cuda.so  d676a779f816daf7b5c63eb1363cc6c49f2b86c82fde66963ab293c8d7aa454e

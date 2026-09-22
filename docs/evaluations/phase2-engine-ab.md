@@ -676,7 +676,17 @@ concurrency-with-distinct-sessions as something this page measured.
 
 On the measurement, **build 21 is pinnable and build 19 is not preferable to
 it**: same compat, same performance inside the spread, and the defect that
-blocked build 20 is gone. The pin cannot actually move yet for a reason that has
-nothing to do with the bytes — `llm/engine/pin.txt` names an HF repo, revision
-and sha256, and these bytes are not published. That is the repository owner's
-call, not ours.
+blocked build 20 is gone. The bytes were published to the dev repo shortly
+afterwards, so **`llm/engine/pin.txt` now names `2609221142001`** at rev
+`32ec86e8…`, with `e3a19b0b…` for the binary and the unchanged `d676a779…` for
+the library. Both digests were checked against the published tree before the pin
+moved, and both URLs resolve at that revision with the byte counts measured
+here — the pin names the bytes that were measured, not a build id that happens
+to match.
+
+No `llm/engine_defects.go` row moves with it. The single live row is queued for
+c8 and accuses release bytes; a dev pin carries different bytes and the row is
+inert there, which is why `TestKnownDefectsMatchThePinnedArtifact` skips off the
+release channel. The `feature swa-cache-types` row was re-probed against these
+bytes rather than carried forward, paired against build 19 so a pass could not
+be a no-op.

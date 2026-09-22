@@ -12,7 +12,9 @@ paths:
   `TestPinFormatIsWhatCMakeParses` in `llm/engine/pin_test.go` holds them to it.
 - `rev` is a 40-character commit sha, never a branch or tag: opencoti re-cuts a
   release in place, so a moving rev fetches bytes the pinned `sha256` rows
-  reject. `ParsePin` rejects anything shorter or non-hex.
+  reject. `ParsePin` rejects anything shorter or non-hex; on the dev repo it
+  names the *snapshot* commit carrying the files, not the `pin ->` pointer
+  commit a second later.
 - `channel` is required and is `release` or `dev` (`ChannelRelease` /
   `ChannelDev` in `llm/engine/pin.go`). It is declared, never guessed from the
   repo name; `cmake/opencoti-fetch.cmake` names a dev channel in the build log.
