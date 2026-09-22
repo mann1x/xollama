@@ -195,10 +195,20 @@ owns. Both are the same rule as the listen port
 - **The `ollama://` URL protocol.** It was registered under
   `HKCU\Software\Classes\ollama` with `uninsdeletekey`, so installing xollama
   made it the handler for a stock install's links, and *uninstalling* xollama
-  deleted the key — leaving a working ollama whose links opened nothing. The
-  installer now registers `xollama://` only. `app/cmd/app/app.go` accepts both
-  schemes, so a link handed to us still works; we just do not claim the one we
-  do not own.
+  deleted the key — leaving a working ollama whose links opened nothing.
+
+  It cannot simply be dropped, which is the part worth writing down: sign-in
+  opens `https://ollama.com/connect?…&launch=true`, and **ollama.com** chooses
+  the scheme it redirects back on. That is `ollama://connect`, and we do not
+  control it. Declaring only `xollama://` would leave that redirect with no
+  handler at all on a machine with no stock ollama, and break sign-in silently.
+
+  So the installer always registers `xollama://`, and registers `ollama://`
+  **only when `OllamaSchemeUnclaimed` finds no existing registration** in
+  `HKEY_CLASSES_ROOT` (the merged HKLM + HKCU view, so a stock install in either
+  hive keeps it). The `Check` gates the recorded uninstall action too: a row
+  that was never installed is never removed, so this can no longer delete
+  somebody else's key. `app/cmd/app/app.go` accepts either scheme.
 - **`~/.ollama/models` on uninstall.** The uninstaller offers to delete it, and
   the checkbox was **pre-ticked** — six lines below a note in
   `[UninstallDelete]` saying that directory is shared and must be left alone.
@@ -222,7 +232,13 @@ owns. Both are the same rule as the listen port
 - **macOS** takes the same feed (it must — the fork must not update to upstream
   there either), but has no payload split: `CoreInstaller` is empty there, so
   every update is the full bundle.
-- **The darwin bundle still declares the `ollama` URL scheme** in
-  `app/darwin/xOllama.app/Contents/Info.plist`. macOS resolves duplicate
-  claimants differently and no uninstall deletes another app's registration, so
-  it is a lesser version of the Windows problem — but it is the same problem.
+- Nothing outstanding on the URL schemes. The darwin bundle declares
+  **both** `xollama` and `ollama`, which is right there and wrong on Windows for
+  one reason: LaunchServices arbitrates between claimants and lets the user
+  choose, and removing a bundle never removes another app's registration, so
+  declaring a shared scheme on macOS takes nothing from anyone. The Windows
+  registry key had neither property, which is why only that side is conditional.
+  `app/darwin/xOllama.app/Contents/Info.plist` also had `CFBundleDisplayName`
+  still set to `Ollama` while `CFBundleName` said `xOllama` — so Finder, the
+  Dock and the Open With list all named the app `Ollama`, which is the macOS
+  twin of the Add/Remove Programs DisplayName above.

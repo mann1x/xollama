@@ -113,8 +113,12 @@ hooked from `app/updater/updater.go` / `app/updater/updater_windows.go`;
 `app/updater/fork_payload_windows.go` picks the small `xOllamaUpdate.exe`
 (no `lib\ollama`) over the full `xOllamaSetup.exe` when the installed
 `lib\ollama\PAYLOAD_ID` matches the release's `payload-id.txt` (`payloadId` in
-`scripts/build_windows.ps1`). The installer is `app/xollama.iss` and registers
-`xollama://`, not `ollama://` — see `docs/features/windows-installer.md`.
+`scripts/build_windows.ps1`). The installer is `app/xollama.iss`; it always
+registers `xollama://` and registers `ollama://` only when nobody already owns
+it (`OllamaSchemeUnclaimed`). macOS declares both schemes and
+`app/cmd/app/app_darwin.m` handles both, because ollama.com picks the sign-in
+redirect scheme; `app/cmd/app/app.go` accepts either — see
+`docs/features/windows-installer.md`.
 Pinned natives: `LLAMA_CPP_VERSION`, `MLX_VERSION`, `MLX_C_VERSION`,
 orchestrated by `CMakeLists.txt` / `CMakePresets.json`; the opencoti engine
 artifact is pinned by `llm/engine/pin.txt` (`repo`, `rev` commit sha, `tag`,

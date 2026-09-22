@@ -214,19 +214,29 @@ SetupAppRunningError=Another xOllama installer is running.%n%nPlease cancel or f
 Root: HKCU; Subkey: "Environment"; \
     ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; \
     Check: NeedsAddPath('{app}')
-; Register the xollama:// URL protocol.
-;
-; NOT ollama://. A stock ollama install registers that key under the same hive,
-; so claiming it makes whichever product was installed last the handler for the
-; other's links -- and `uninsdeletekey` made it worse than that: uninstalling
-; xollama DELETED the key outright, leaving a stock ollama that still worked but
-; whose ollama:// links opened nothing. Same rule as the listen port in
-; .claude/rules/default-port.md: a cache type is shareable, an address is not.
-; app/cmd/app/app.go accepts both schemes, so a link handed to us still works;
-; we simply do not claim the one we do not own.
+; Our own URL protocol, unconditionally.
 Root: HKCU; Subkey: "Software\Classes\xollama"; ValueType: string; ValueName: ""; ValueData: "URL:xOllama Protocol"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\xollama"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\xollama\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Flags: uninsdeletekey
+
+; ollama://, and ONLY when nobody owns it. This used to be registered
+; unconditionally with uninsdeletekey, which was wrong in both directions: it
+; took the scheme from a stock ollama install, and uninstalling xollama then
+; DELETED the key, leaving a working ollama whose links opened nothing.
+;
+; It cannot simply be dropped either. Sign-in opens
+; https://ollama.com/connect?...&launch=true and OLLAMA.COM picks the scheme it
+; redirects to -- ollama://connect, which we do not control. On a machine with
+; no stock ollama, refusing the scheme outright would leave that redirect with
+; no handler at all and silently break sign-in.
+;
+; So: claim it only if it is unclaimed. OllamaSchemeUnclaimed checks HKCR, which
+; is the merged HKLM+HKCU view, so a stock install in either hive keeps it. The
+; Check gates the recorded uninstall action too -- a row that was never
+; installed is never removed -- so this can no longer delete somebody else's.
+Root: HKCU; Subkey: "Software\Classes\ollama"; ValueType: string; ValueName: ""; ValueData: "URL:xOllama Protocol"; Check: OllamaSchemeUnclaimed; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\ollama"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""; Check: OllamaSchemeUnclaimed; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\ollama\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Check: OllamaSchemeUnclaimed; Flags: uninsdeletekey
 
 [Code]
 
@@ -270,6 +280,16 @@ begin
   end;
 end;
 #endif
+
+// OllamaSchemeUnclaimed is true when no application has registered ollama://.
+// HKEY_CLASSES_ROOT is the merged HKLM + HKCU view, so this sees a stock
+// ollama installed for the machine or for the user, either way.
+function OllamaSchemeUnclaimed(): Boolean;
+begin
+  Result := not RegKeyExists(HKEY_CLASSES_ROOT, 'ollama');
+  if not Result then
+    Log('ollama:// is already registered; leaving it alone');
+end;
 
 function NeedsAddPath(Param: string): boolean;
 var

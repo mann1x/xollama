@@ -435,7 +435,14 @@ static NSImage *ollamaApplicationIcon(void) {
 
 - (void)application:(NSApplication *)application openURLs:(NSArray<NSURL *> *)urls {
     for (NSURL *url in urls) {
-        if ([url.scheme isEqualToString:@"ollama"]) {
+        // Both schemes. xollama:// is ours; ollama:// is declared too because
+        // sign-in opens ollama.com/connect?...&launch=true and ollama.com
+        // picks the scheme it redirects back on, which we do not control.
+        // On macOS that costs nobody anything: LaunchServices arbitrates
+        // between claimants and uninstalling a bundle never removes another
+        // app's registration. The Windows registry key is narrower, because
+        // there it would -- see OllamaSchemeUnclaimed in app/xollama.iss.
+        if ([url.scheme isEqualToString:@"xollama"] || [url.scheme isEqualToString:@"ollama"]) {
             NSString *path = url.path;
 
             if (path && ([path isEqualToString:@"/connect"] || [url.host isEqualToString:@"connect"])) {
