@@ -28,6 +28,11 @@ XOLLAMA {
 }
 ```
 
+`version` is the schema version, and you do not have to work it out: it is
+stamped with the **lowest** version that expresses what the config actually
+uses, so a model using nothing newer than v1 stays readable by an older xollama.
+Only `kv.unified` and `kv.residency_mode` require v2.
+
 It travels with the model through `push` and `pull`, and a **stock Ollama can
 still use the model** — it stores the settings and ignores them. That is
 deliberate: publishing a model from xollama must not make it unusable for
@@ -40,6 +45,21 @@ everyone else.
   do. They travel as their own layer instead, under a media type Ollama already
   knows how to carry.
 </Note>
+
+## Setting it without writing a Modelfile
+
+```sh
+xollama tweak model gemma4:e4b
+```
+
+`tweak` reads what the model states, asks about every setting with an
+explanation, drops what the model cannot act on, and rewrites the layer. A flag
+with a value sets one setting and asks nothing (`--dca=on`); the same flag with
+no value scopes the walk to that feature (`--dca`). See
+[Changing a model's settings](/xollama/tweak).
+
+The `XOLLAMA` directive above is still the way to ship a configuration **with** a
+model you are building. `tweak` is for changing one you already have.
 
 ## Everything you can set
 
@@ -59,6 +79,8 @@ everyone else.
 | `session.max_pools` | How many distinct prefixes to hold. | `XOLLAMA_POLYKV_MAX_POOLS` |
 | `dca.enabled` | Serve past the context the model was trained on. | `XOLLAMA_DCA` |
 | `dca.chunk_size` | Chunk length for that. | `XOLLAMA_DCA_CHUNK_SIZE` |
+| `kv.unified` | One shared pool of cells, or a fixed split per slot. Schema v2. | — (derived) |
+| `kv.residency_mode` | Rolling-KV tactic for a cache that does not fit in VRAM: `auto`, `head` or `window`. Schema v2. | — |
 | `draft.spec_type` | Override the speculative driver inferred from a drafter. | — |
 
 Each links to its own page: [engines](/xollama/engines),
@@ -116,8 +138,10 @@ reaching for an escape hatch.
 ## Checking it applied
 
 ```sh
-curl -s 'localhost:11434/api/engine?model=gemma4:e4b' | jq
+curl -s 'localhost:22434/api/engine?model=gemma4:e4b' | jq
 ```
 
-Settings are resolved at load time, so a change needs the model reloaded. See
+`xollama show` reports the model's stated configuration; the endpoint above
+reports what the running model was actually given, which is the same thing only
+when the model has been reloaded since. Settings are resolved at load time. See
 [Seeing what the engine did](/xollama/introspection).

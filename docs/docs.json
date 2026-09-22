@@ -174,6 +174,7 @@
             "group": "Engine tuning",
             "pages": [
               "/xollama/model-settings",
+              "/xollama/tweak",
               "/xollama/kv-cache",
               "/xollama/slots",
               "/xollama/dca",

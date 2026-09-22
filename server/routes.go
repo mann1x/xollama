@@ -1594,6 +1594,8 @@ func GetModelInfo(req api.ShowRequest) (*api.ShowResponse, error) {
 		// Several integrations crash on a nil/omitempty+empty ModelInfo, so by
 		// default we return an empty map.
 		ModelInfo: make(map[string]any),
+		// xollama-hook: model-config
+		Xollama: m.Xollama,
 	}
 
 	if m.Config.RemoteHost != "" {

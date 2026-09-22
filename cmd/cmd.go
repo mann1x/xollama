@@ -42,6 +42,7 @@ import (
 	"github.com/ollama/ollama/cmd/config"
 	"github.com/ollama/ollama/cmd/launch"
 	"github.com/ollama/ollama/cmd/tui"
+	"github.com/ollama/ollama/cmd/tweak"
 	"github.com/ollama/ollama/create"
 	"github.com/ollama/ollama/discover"
 	"github.com/ollama/ollama/envconfig"
@@ -2615,6 +2616,9 @@ func NewCLI() *cobra.Command {
 	}
 	gpuDiscoverCmd.Flags().StringArrayVar(&gpuDiscoverLibDirs, "lib-dir", nil, "xollama runtime library directory")
 
+	// xollama-hook: model-config
+	tweakCmd := tweak.Command(tweak.Options{Heartbeat: checkServerHeartbeat})
+
 	envVars := envconfig.AsMap()
 
 	envs := []envconfig.EnvVar{envVars["OLLAMA_HOST"]}
@@ -2631,6 +2635,10 @@ func NewCLI() *cobra.Command {
 		copyCmd,
 		deleteCmd,
 		serveCmd,
+		// xollama-hook: model-config — the settings `tweak` edits each fall
+		// through to one of these when the model states nothing, which is what
+		// the help has to say for "leave it unset" to mean anything.
+		tweakCmd,
 	} {
 		switch cmd {
 		case runCmd:
@@ -2662,6 +2670,8 @@ func NewCLI() *cobra.Command {
 				envVars["LLAMA_ARG_FIT_TARGET"],
 				envVars["OLLAMA_LOAD_TIMEOUT"],
 			})
+		case tweakCmd:
+			appendEnvDocs(cmd, append([]envconfig.EnvVar{envVars["OLLAMA_HOST"]}, tweak.FallbackEnvVars(envVars)...))
 		default:
 			appendEnvDocs(cmd, envs)
 		}
@@ -2686,6 +2696,9 @@ func NewCLI() *cobra.Command {
 		runnerCmd,
 		gpuDiscoverCmd,
 		launch.LaunchCmd(checkServerHeartbeat, runInteractiveTUI),
+		// xollama-hook: model-config — `tweak` edits the fork's own model
+		// settings; everything it does lives in cmd/tweak.
+		tweakCmd,
 	)
 
 	return rootCmd

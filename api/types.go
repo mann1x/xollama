@@ -888,6 +888,16 @@ type ShowResponse struct {
 	// own `num_predict` and `num_ctx`. A request that sets either will resolve
 	// to a different number, which is why the responses report their own.
 	ThinkBudgetTokens int `json:"think_budget_tokens,omitempty"`
+
+	// xollama-hook: model-config — see docs/features/model-config.md
+	//
+	// Xollama is the model's own fork configuration, the contents of its
+	// xollama.json layer. The server already reads it to build the launch;
+	// naming it here is what lets a client SEE it, which `xollama tweak model`
+	// needs before it can offer to change one setting and leave the rest.
+	// Reading it back out of the manifest client-side would only work against
+	// a local store.
+	Xollama *xollama.Config `json:"xollama,omitempty"`
 }
 
 // CopyRequest is the request passed to [Client.Copy].

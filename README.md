@@ -41,9 +41,12 @@ PR upstream, and each is **retired from this fork the day upstream takes it**.
 
 ## Drop-in
 
-Same API, same models directory, same port. Only the binary is renamed, so it
-can sit beside a stock install and every existing client keeps working
-against it. See [`docs/features/rebrand.md`](docs/features/rebrand.md).
+Same API, same models directory, same clients. The binary is renamed and the
+listen address moves to **22434** so an accidental collision with a stock
+install is not possible — which is not the same as supporting the two side by
+side: one model store with two writers and one GPU with two schedulers are
+still one of each. See [`docs/features/rebrand.md`](docs/features/rebrand.md)
+and [`docs/xollama/default-port.mdx`](docs/xollama/default-port.mdx).
 
 ## The engine
 
@@ -60,6 +63,26 @@ keeps ollama's MLX path untouched. `XOLLAMA_ENGINE=opencoti|llamacpp|auto`
 overrides it, which also makes an honest A/B possible against vanilla.
 
 Design: [`docs/features/engine-opencoti-llamafile.md`](docs/features/engine-opencoti-llamafile.md).
+
+## Settings that belong to the model
+
+Which cache type a model tolerates, whether flash attention helps or breaks it,
+how many conversations it should serve at once — none of that changes when you
+move the model to another machine, and all of it changes when you swap the
+model. ollama's settings for these are environment variables, which are
+server-wide by construction.
+
+xollama gives the model its own say, in a layer a stock ollama carries through
+`push` and `pull` and ignores, so a model configured here still runs there:
+
+```sh
+xollama tweak model qwen3.6:latest          # walk every setting
+xollama tweak model qwen3.6:latest --dca    # just this feature
+xollama tweak model qwen3.6:latest --dca=on # no questions at all
+```
+
+[`docs/xollama/model-settings.mdx`](docs/xollama/model-settings.mdx) is the
+field list, [`docs/xollama/tweak.mdx`](docs/xollama/tweak.mdx) is the command.
 
 ## Staying close to upstream
 
