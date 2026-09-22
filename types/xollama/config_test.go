@@ -69,7 +69,7 @@ func TestParseRejects(t *testing.T) {
 			// schema as if it were this one would serve the model differently
 			// from how its publisher meant, and say nothing.
 			name:    "newer schema",
-			in:      `{"version":2}`,
+			in:      `{"version":3}`,
 			wantErr: "newer than this build understands",
 		},
 		{name: "unknown engine", in: `{"version":1,"engine":"vllm"}`, wantErr: `unknown engine "vllm"`},
@@ -103,8 +103,10 @@ func TestMarshalStampsVersion(t *testing.T) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		t.Fatal(err)
 	}
-	if raw["version"] != float64(SchemaVersion) {
-		t.Fatalf("marshalled version = %v, want %d", raw["version"], SchemaVersion)
+	// The LOWEST version that expresses this config, not the newest this build
+	// knows: a config using nothing past v1 must stay readable by a v1 build.
+	if raw["version"] != float64(SchemaVersionBase) {
+		t.Fatalf("marshalled version = %v, want %d", raw["version"], SchemaVersionBase)
 	}
 	if c.Version != 0 {
 		t.Fatalf("Marshal mutated its receiver: version = %d, want 0", c.Version)
@@ -419,5 +421,102 @@ func TestValidateSWASeqBudget(t *testing.T) {
 	}
 	if (&Config{FlashAttention: "off"}).IsZero() {
 		t.Error("a config that pins flash attention is not empty")
+	}
+}
+
+// A model that uses nothing newer than v1 must keep saying v1, or every model
+// this build touches becomes unreadable to an older xollama for no reason.
+func TestTheVersionWrittenIsTheLowestThatIsTrue(t *testing.T) {
+	yes, no := true, false
+	for _, tt := range []struct {
+		name string
+		cfg  Config
+		want int
+	}{
+		{"nothing from v2", Config{Engine: EngineOpencoti, KV: &KV{K: "q8_0", V: "q8_0"}}, SchemaVersionBase},
+		{"slots are v1", Config{Slots: &Slots{Dynamic: &yes, Max: 8}}, SchemaVersionBase},
+		{"unified is v2", Config{KV: &KV{Unified: &no}}, 2},
+		{"residency mode is v2", Config{KV: &KV{ResidencyMode: ResidencyWindow}}, 2},
+		{"unified true is still v2", Config{KV: &KV{Unified: &yes}}, 2},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := tt.cfg.Marshal()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var raw map[string]any
+			if err := json.Unmarshal(data, &raw); err != nil {
+				t.Fatal(err)
+			}
+			if raw["version"] != float64(tt.want) {
+				t.Fatalf("version = %v, want %d", raw["version"], tt.want)
+			}
+		})
+	}
+}
+
+// Clearing the v2 fields must take the config back to v1, which is the reason
+// Marshal recomputes the version instead of defaulting it.
+func TestClearingAV2FieldGoesBackToV1(t *testing.T) {
+	no := false
+	c := &Config{Version: 2, KV: &KV{K: "q8_0", Unified: &no}}
+	c.KV.Unified = nil
+	data, err := c.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatal(err)
+	}
+	if raw["version"] != float64(SchemaVersionBase) {
+		t.Fatalf("version = %v, want %d after clearing the v2 field", raw["version"], SchemaVersionBase)
+	}
+}
+
+func TestV2FieldsAreValidated(t *testing.T) {
+	yes, no := true, false
+	for _, tt := range []struct {
+		name    string
+		cfg     Config
+		wantErr string
+	}{
+		{"unknown residency mode", Config{KV: &KV{ResidencyMode: "sideways"}}, "unknown kv.residency_mode"},
+		{"residency needs opencoti", Config{Engine: EngineLlamaCpp, KV: &KV{ResidencyMode: ResidencyHead}}, "needs the opencoti engine"},
+		{"dynamic slots need the unified pool", Config{KV: &KV{Unified: &no}, Slots: &Slots{Dynamic: &yes}}, "slots.dynamic needs kv.unified"},
+		{"a pool needs the unified pool", Config{KV: &KV{Unified: &no}, Session: &Session{Pool: &yes, Affinity: &yes}}, "session.pool needs kv.unified"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.cfg.Version = 2
+			err := tt.cfg.Validate()
+			if err == nil {
+				t.Fatalf("Validate() succeeded, want %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Validate() = %v, want it to contain %q", err, tt.wantErr)
+			}
+		})
+	}
+
+	// The same pairs are fine when unified is not being refused.
+	ok := Config{
+		Version: 2, KV: &KV{Unified: &yes, ResidencyMode: ResidencyWindow},
+		Slots: &Slots{Dynamic: &yes}, Session: &Session{Affinity: &yes, Pool: &yes},
+	}
+	if err := ok.Validate(); err != nil {
+		t.Fatalf("a consistent v2 config was rejected: %v", err)
+	}
+}
+
+// A config with a v2 field in it is not zero, or tweak would silently drop it.
+func TestIsZeroSeesTheV2Fields(t *testing.T) {
+	no := false
+	for _, c := range []Config{
+		{KV: &KV{Unified: &no}},
+		{KV: &KV{ResidencyMode: ResidencyAuto}},
+	} {
+		if c.IsZero() {
+			t.Fatalf("IsZero() = true for %+v", c.KV)
+		}
 	}
 }

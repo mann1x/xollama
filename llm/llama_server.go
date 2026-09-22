@@ -519,10 +519,11 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 		}
 	}
 	args = appendKVCacheRingArgs(args, kvTypes, usedOpencoti)
+	args = appendKVResidencyArgs(args, kvTypes, usedOpencoti)
 
 	// xollama-hook: launch-config — dynamic slots. See docs/xollama/slots.mdx.
 	slots := resolveSlotPlan(launch.config, launch.numParallel, launch.config.SingleSequenceOnly)
-	args = appendSlotArgs(args, slots, effectivePoolCount(launch.config, len(launch.projectors) > 0), usedOpencoti)
+	args = appendSlotArgs(args, slots, effectivePoolCount(launch.config, len(launch.projectors) > 0), kvTypes.Unified, usedOpencoti)
 	args = appendSWABudgetArgs(args, slots, usedOpencoti)
 
 	// xollama-hook: launch-config — dual chunk attention. See docs/xollama/dca.mdx.

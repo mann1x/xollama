@@ -35,6 +35,14 @@ type kvCacheTypes struct {
 	V    string
 	KSWA string
 	VSWA string
+
+	// Unified is the model's opinion on --kv-unified, or nil for "not
+	// stated", in which case the slot plan decides as it always did.
+	Unified *bool
+
+	// ResidencyMode is the rolling-KV tactic for a cache that overflows VRAM:
+	// auto, head or window. Empty leaves the engine's own default.
+	ResidencyMode string
 }
 
 // stockCacheTypes is what upstream llama.cpp's own parser accepts
@@ -75,6 +83,12 @@ func resolveKVCacheTypes(cfg LlamaServerConfig, base string) kvCacheTypes {
 		}
 		if kv.KSWA != "" {
 			out.KSWA = strings.ToLower(kv.KSWA)
+		}
+		if kv.Unified != nil {
+			out.Unified = kv.Unified
+		}
+		if kv.ResidencyMode != "" {
+			out.ResidencyMode = strings.ToLower(strings.TrimSpace(kv.ResidencyMode))
 		}
 		if kv.VSWA != "" {
 			out.VSWA = strings.ToLower(kv.VSWA)
@@ -169,6 +183,19 @@ func appendKVCacheRingArgs(args []string, kv kvCacheTypes, usedOpencoti bool) []
 		return args
 	}
 	return append(args, "--cache-type-k-swa", kv.KSWA, "--cache-type-v-swa", kv.VSWA)
+}
+
+// appendKVResidencyArgs adds the rolling-KV residency tactic once the engine is
+// known. It is an opencoti extension -- stock llama.cpp has no such flag -- and
+// types/xollama refuses a config that names one while pinning the stock engine,
+// so reaching here with a mode set and llama.cpp chosen means the operator
+// switched engines underneath the model; adding nothing is the only correct
+// answer, and the config-time refusal is where that is explained.
+func appendKVResidencyArgs(args []string, kv kvCacheTypes, usedOpencoti bool) []string {
+	if !usedOpencoti || kv.ResidencyMode == "" {
+		return args
+	}
+	return append(args, "--kv-residency-mode", kv.ResidencyMode)
 }
 
 // slotPlan is how many requests this load may serve at once, and how the engine
@@ -354,17 +381,31 @@ func resolvePoolCount(cfg LlamaServerConfig) int {
 // need it and neither may emit it twice: parked slots have nothing to be
 // admitted into when every slot owns a fixed share of the cells, and a pool's
 // reserved sequence id is a share of the same pool of cells.
-func appendSlotArgs(args []string, plan slotPlan, pools int, usedOpencoti bool) []string {
+func appendSlotArgs(args []string, plan slotPlan, pools int, unified *bool, usedOpencoti bool) []string {
 	if !usedOpencoti {
 		return args
 	}
 
 	elastic := plan.Dynamic && plan.Max > plan.Live
-	if !elastic && pools <= 0 {
-		return args
+	needsUnified := elastic || pools > 0
+
+	// A model may state it, and then it is stated rather than derived -- the
+	// two answer different questions. The derivation asks "does this load have
+	// parked slots or a pool to admit into"; the model asks "may one
+	// conversation use every cell". types/xollama refuses `unified: false`
+	// together with dynamic slots or a pool, so the two cannot disagree here.
+	switch {
+	case unified != nil && *unified:
+		args = append(args, "--kv-unified")
+	case unified != nil && !*unified:
+		args = append(args, "--no-kv-unified")
+	case needsUnified:
+		args = append(args, "--kv-unified")
 	}
 
-	args = append(args, "--kv-unified")
+	if !needsUnified {
+		return args
+	}
 
 	if elastic {
 		args = append(args, "--max-parallel", strconv.Itoa(plan.Max))
@@ -407,4 +448,39 @@ func (p slotPlan) concurrency() int {
 		return p.Max
 	}
 	return max(p.Live, 1)
+}
+
+// KnownCacheTypes lists the cache types a build can suggest to an operator who
+// is being asked to pick one. It is a SUGGESTION list, not a validation list:
+// `xollama tweak model` accepts anything typed at the prompt, because the set a
+// build accepts depends on which engine serves the load and refusing a type
+// this build has not heard of would make a model published by a newer xollama
+// unconfigurable by an older one -- the same reasoning that keeps types/xollama
+// from validating these at all.
+//
+// The deprecated turbo*/`*_tcq` tiers are deliberately absent. common/arg.cpp
+// marks them frozen and the kvarnN widths replaced them; offering one in a menu
+// is how an operator ends up on a tier nobody maintains.
+func KnownCacheTypes(opencoti bool) []string {
+	types := slices.Clone(stockCacheTypes)
+	if opencoti {
+		types = append(types, "q6_0", "kvarn2", "kvarn3", "kvarn4", "kvarn5", "kvarn6", "kvarn7", "kvarn8")
+	}
+	return types
+}
+
+// CacheShapeError reports why a stated set of cache types cannot be served, or
+// "" when it can. It is exported so a configuration tool can apply the same
+// rule at the prompt that the launch path applies at startup: these are
+// MEASURED preconditions (see ringShapeError), and an operator who only meets
+// them at load time meets them as a model that will not start.
+func CacheShapeError(k, v, kswa, vswa string) string {
+	return kvCacheTypes{K: k, V: v, KSWA: kswa, VSWA: vswa}.ringShapeError()
+}
+
+// CacheTypesNeedOpencoti names the first stated cache type that stock
+// llama.cpp cannot serve, or "" when every one of them is a stock type. Same
+// rule, and same wording, as the refusal the launch path would raise.
+func CacheTypesNeedOpencoti(k, v, kswa, vswa string) string {
+	return kvCacheTypes{K: k, V: v, KSWA: kswa, VSWA: vswa}.requiresEngineExtension()
 }

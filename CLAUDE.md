@@ -29,7 +29,8 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   different things across two trees. xollama never files upstream PRs, nor asks
   the fork to — that is the repository owner's call; `fork-only` entries stay so.
 - `docs/features/engine-opencoti-llamafile.md` · `docs/features/rebrand.md` ·
-  `docs/features/store-ownership.md` · `docs/features/windows-installer.md`
+  `docs/features/store-ownership.md` · `docs/features/windows-installer.md` ·
+  `docs/features/model-config.md`
 - `docs/evaluations/phase0-engine-compat.md` — measured engine-compat baseline.
 
 Remotes: `origin` = mann1x/xollama · `upstream` = ollama/ollama ·
@@ -105,6 +106,11 @@ of the model store; `create.go` wrappers, `preflight.go` warning — see
 fixtures in `integration/testdata/`; they need a running server and pulled models.
 **Launchers**: `cmd/launch/` (`claude.go`, `opencode.go`, `codex_app_profile.go`…)
 with the Bubble Tea menu in `cmd/tui/tui.go`.
+**Model settings**: `xollama tweak model` lives in `cmd/tweak/` (`tweak.go`,
+`fields.go`, `prompt.go`, `reconcile.go`), registered from `cmd/cmd.go` under the
+`model-config` hook. It reads the model's config layer through `/api/show`
+(`api.ShowResponse.Xollama`), validates against `types/xollama/config.go`, and
+replaces only that layer — see `docs/xollama/tweak.mdx`.
 **Desktop UI**: `app/ui/app/src/routes/` (React 19 + TanStack Router + Vite),
 sibling to the `app` workspace (`vite.config.ts`, `vitest.config.ts`).
 **Desktop updates**: `app/updater/fork.go` reads this fork's GitHub releases
