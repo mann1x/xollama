@@ -135,7 +135,9 @@ the engine refuses the pair at init.
 `llm.KnownCacheTypes` is likewise a measurement, taken by asking the pinned
 artifact's own parser (`--cache-type-k BOGUS` prints its allowed values). It has
 **no kvarn7** — the run kvarn2, 3, 4, 5, 6, 8 invites the assumption and the
-engine answers "Unsupported cache type".
+engine answers "Unsupported cache type". The vendor confirms that is structural
+(`llama_kvarn_valid_bits()` admits those six bit widths and the type table is
+built from them), not a parser omission, so the hole is not going to fill in.
 
 [docs/xollama/tweak.mdx](../xollama/tweak.mdx) is the operator-facing page.
 

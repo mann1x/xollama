@@ -468,7 +468,10 @@ func (p slotPlan) concurrency() int {
 //
 // There is **no kvarn7** and no kvarn1, which the run of numbers invites you to
 // assume: both are refused with "Unsupported cache type". Offering one in a
-// menu is how an operator configures a model that will not load.
+// menu is how an operator configures a model that will not load. The vendor
+// confirmed it is intentional and structural rather than a parser omission --
+// llama_kvarn_valid_bits() admits 2, 3, 4, 5, 6, 8 at the BIT level and the
+// type table is built from that set -- so the hole will not quietly fill in.
 //
 // The deprecated turbo*/`*_tcq` tiers are accepted but deliberately absent
 // here. common/arg.cpp marks them frozen and the kvarnN widths replaced them;

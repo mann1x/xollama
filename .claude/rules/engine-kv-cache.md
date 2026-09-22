@@ -15,11 +15,11 @@ paths:
   upstream's server-wide `OLLAMA_KV_CACHE_TYPE`, then unset. Upstream's setting
   stays the default everything else overrides — never move it.
 - `stockCacheTypes` is what stock llama.cpp's own parser accepts. Anything
-  outside it — opencoti's `kvarn2`..`kvarn6` and `kvarn8` widths (there is **no
-  `kvarn7`**), the frozen `turbo*` / `*_tcq` tiers, `q6_0` — is an engine
-  extension, and `requiresEngineExtension` refuses it by name rather than
-  letting it fail deep in the engine's argument parser. `KnownCacheTypes` lists
-  only widths measured against the pinned artifact's own parser.
+  outside it — opencoti's `kvarn2`..`kvarn6`/`kvarn8` (**no `kvarn7`**: structural,
+  per `llama_kvarn_valid_bits()`), the frozen `turbo*` / `*_tcq` tiers, `q6_0` — is
+  an engine extension, and `requiresEngineExtension` refuses it by name rather
+  than letting it fail deep in the engine's argument parser. `KnownCacheTypes`
+  lists only widths measured against the pinned artifact's own parser.
 - KVarN needs flash attention: `cacheShape` (`cmd/tweak/reconcile.go`) refuses
   `CacheNeedsFlashAttention` types with `flash_attention` `off`, never `auto`.
 - The ring (`--cache-type-k-swa` / `--cache-type-v-swa`) is written by
