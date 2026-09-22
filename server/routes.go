@@ -682,11 +682,12 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 			// head to derive an identity from, and deriving one per request
 			// would pin every unrelated prompt to a slot of its own. A caller
 			// that knows these requests belong together sends session_id.
-			SessionID:          req.SessionID,
-			ThinkBudget:        thinkBudget,
-			ThinkBudgetMessage: opts.ThinkBudgetMessage,
-			ThinkingStartTag:   thinkStartTag,
-			ThinkingEndTag:     thinkEndTag,
+			SessionID:           req.SessionID,
+			ThinkBudget:         thinkBudget,
+			ThinkBudgetMessage:  opts.ThinkBudgetMessage,
+			ThinkingStartTag:    thinkStartTag,
+			ThinkingEndTag:      thinkEndTag,
+			ThinkBudgetResetTag: thinkBudgetResetTagForCompletion(builtinParser),
 		}, func(cr llm.CompletionResponse) {
 			res := api.GenerateResponse{
 				Model:     req.Model,
@@ -2584,6 +2585,13 @@ func optionAsInt(value any) (int, bool) {
 	}
 }
 
+// thinkBudgetResetTagForCompletion reports the tag whose appearance forgives the
+// thinking spent so far, which is the tag a tool call opens with. Parsers that
+// do not name one leave the budget cumulative with nothing to forgive it.
+func thinkBudgetResetTagForCompletion(builtinParser parsers.Parser) string {
+	return parsers.ToolCallStartTagForParser(builtinParser)
+}
+
 func toolCallTagForCompletion(toolParser *tools.Parser) string {
 	if toolParser == nil {
 		return ""
@@ -3087,6 +3095,7 @@ func (s *Server) ChatHandler(c *gin.Context) {
 				ThinkBudgetMessage:         opts.ThinkBudgetMessage,
 				ThinkingStartTag:           thinkStartTag,
 				ThinkingEndTag:             thinkEndTag,
+				ThinkBudgetResetTag:        thinkBudgetResetTagForCompletion(builtinParser),
 			}, func(r llm.CompletionResponse) {
 				metrics := api.Metrics{
 					PromptEvalCount:       r.PromptEvalCount,

@@ -1749,7 +1749,13 @@ type llamaServerCompletionRequest struct {
 	// the sequence it forces from message+end_tag, and only does so when this
 	// field is present. A pointer keeps the empty string on the wire.
 	ReasoningBudgetMessage *string `json:"reasoning_budget_message,omitempty"`
-	GenerationPrompt       string  `json:"generation_prompt,omitempty"`
+	// ReasoningBudgetScope spends the budget across the whole response
+	// ("response") rather than re-arming it for every thinking block
+	// ("block", llama-server's default). ReasoningBudgetResetTag forgives what
+	// has been spent when it appears -- a tool call means progress, not a loop.
+	ReasoningBudgetScope    string `json:"reasoning_budget_scope,omitempty"`
+	ReasoningBudgetResetTag string `json:"reasoning_budget_reset_tag,omitempty"`
+	GenerationPrompt        string `json:"generation_prompt,omitempty"`
 
 	// xollama-hook: engine-session — opencoti-llamafile only. SessionID binds
 	// this request to the slot already holding that conversation's KV; PoolID
@@ -1989,6 +1995,15 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 		// the budget expires with nothing to force, the sampler logs its usual
 		// states, and the thinking block is left open.
 		lsReq.ReasoningBudgetMessage = &req.ThinkBudgetMessage
+
+		// Bound the response, not the block. Measured live on gemma4: six
+		// consecutive thinking blocks, each closed by the model just short of
+		// its 8,000-token window and each re-armed in full, consumed a 32,000
+		// token output cap without the budget ever expiring -- so the message
+		// that tells the model to wrap up was never injected and the turn
+		// ended with neither an answer nor a tool call.
+		lsReq.ReasoningBudgetScope = "response"
+		lsReq.ReasoningBudgetResetTag = req.ThinkBudgetResetTag
 
 		// The sampler only sees tokens the model generates, so a template that
 		// primes thinking by ending the prompt inside a thinking block would

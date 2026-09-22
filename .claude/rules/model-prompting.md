@@ -17,8 +17,12 @@ paths:
 - Optional parser interfaces in `model/parsers/parsers.go`: `ThinkingTags()`
   (read via `ThinkingTagsForParser`) and `ToolCallTags()` (`ToolCallTagger`,
   read via `ToolCallStartTagForParser`, implemented by `model/parsers/gemma4.go`
-  and `model/parsers/qwen35.go`). The thinking budget uses the tool-call open tag
-  so thinking that led to a tool call does not count against later thinking.
+  and `model/parsers/qwen35.go`). The thinking budget is spent across the whole
+  response (`reasoning_budget_scope: "response"` in `llm/llama_server.go`), not
+  per thinking block; the tool-call open tag rides along as
+  `ThinkBudgetResetTag` (`thinkBudgetResetTagForCompletion` in
+  `server/routes.go`) so thinking that led to a tool call does not count
+  against later thinking.
 - Declare tags as file-local consts (e.g. `qwen35ThinkOpenTag` in
   `model/renderers/qwen35.go`). Reuse `renderContentWithImageTags` from
   `model/renderers/image_tags.go` instead of re-implementing image placeholders.
