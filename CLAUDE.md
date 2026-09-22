@@ -110,7 +110,9 @@ with the Bubble Tea menu in `cmd/tui/tui.go`.
 `fields.go`, `prompt.go`, `reconcile.go`), registered from `cmd/cmd.go` under the
 `model-config` hook. It reads the model's config layer through `/api/show`
 (`api.ShowResponse.Xollama`), validates against `types/xollama/config.go`, and
-replaces only that layer — see `docs/xollama/tweak.mdx`.
+replaces only that layer — see `docs/xollama/tweak.mdx`. `xollama show` lists the
+stated settings in an `xOllama` table via `tweak.SettingRows` (same hook, in
+`showInfo`); unstated ones are omitted.
 **Desktop UI**: `app/ui/app/src/routes/` (React 19 + TanStack Router + Vite),
 sibling to the `app` workspace (`vite.config.ts`, `vitest.config.ts`).
 **Desktop updates**: `app/updater/fork.go` reads this fork's GitHub releases

@@ -715,3 +715,17 @@ func FallbackEnvVars[V any](all map[string]V) []V {
 	}
 	return out
 }
+
+// SettingRows renders a config as path/value pairs in table order, for a
+// caller that wants to DISPLAY one -- `xollama show`.
+//
+// It is here rather than in the display code so that a setting appears in
+// `show` the moment it appears in the table, in the same order and under the
+// same name the wizard and the flags use. A model states few of these, so
+// unstated settings are omitted entirely rather than listed as empty.
+func SettingRows(cfg *xollama.Config) [][2]string {
+	if cfg == nil {
+		return nil
+	}
+	return statedFields(cfg)
+}

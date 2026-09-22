@@ -25,6 +25,7 @@ import (
 	"github.com/ollama/ollama/parser"
 	"github.com/ollama/ollama/progress"
 	"github.com/ollama/ollama/types/model"
+	"github.com/ollama/ollama/types/xollama"
 )
 
 func TestShowInfo(t *testing.T) {
@@ -2538,6 +2539,50 @@ func TestShowInfoImageCapability(t *testing.T) {
 		"\n"
 	if diff := cmp.Diff(expect, b.String()); diff != "" {
 		t.Errorf("unexpected output (-want +got):\n%s", diff)
+	}
+}
+
+// xollama-hook: model-config — a model's fork settings are shown beside its
+// parameters, and only when it states some. Almost every model states none,
+// and a block of blanks on every `show` in the tree would be noise.
+func TestShowInfoXollamaConfig(t *testing.T) {
+	yes := true
+	var b bytes.Buffer
+	err := showInfo(&api.ShowResponse{
+		Details: api.ModelDetails{Family: "qwen35", ParameterSize: "27.3B", QuantizationLevel: "Q4_K_M"},
+		Xollama: &xollama.Config{
+			Version: 1,
+			KV:      &xollama.KV{K: "q8_0", V: "q8_0"},
+			DCA:     &xollama.DCA{Enabled: &yes, ChunkSize: 32768},
+		},
+	}, false, &b)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expect := "  Model\n" +
+		"    architecture    qwen35    \n" +
+		"    parameters      27.3B     \n" +
+		"    quantization    Q4_K_M    \n" +
+		"\n" +
+		"  xOllama\n" +
+		"    kv.k              q8_0     \n" +
+		"    kv.v              q8_0     \n" +
+		"    dca.enabled       on       \n" +
+		"    dca.chunk_size    32768    \n" +
+		"\n"
+	if diff := cmp.Diff(expect, b.String()); diff != "" {
+		t.Errorf("unexpected output (-want +got):\n%s", diff)
+	}
+
+	b.Reset()
+	if err := showInfo(&api.ShowResponse{
+		Details: api.ModelDetails{Family: "qwen35", ParameterSize: "27.3B"},
+	}, false, &b); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), "xOllama") {
+		t.Errorf("a model with no config printed a section:\n%s", b.String())
 	}
 }
 

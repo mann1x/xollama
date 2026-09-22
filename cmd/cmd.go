@@ -1493,6 +1493,19 @@ func showInfo(resp *api.ShowResponse, verbose bool, w io.Writer) error {
 		})
 	}
 
+	// xollama-hook: model-config — a model's fork settings are part of how it
+	// is served, so they belong beside Parameters. Unstated settings are not
+	// listed: almost every model states none of these, and a block of blanks
+	// would be noise on every `show` in the tree.
+	if rows := tweak.SettingRows(resp.Xollama); len(rows) > 0 {
+		tableRender("xOllama", func() (out [][]string) {
+			for _, r := range rows {
+				out = append(out, []string{"", r[0], r[1]})
+			}
+			return
+		})
+	}
+
 	if resp.ModelInfo != nil && verbose {
 		tableRender("Metadata", func() (rows [][]string) {
 			keys := make([]string, 0, len(resp.ModelInfo))

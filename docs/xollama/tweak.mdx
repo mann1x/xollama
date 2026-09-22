@@ -145,6 +145,15 @@ actually needs, and everything else follows the machine it lands on. See
 xollama show qwen3.6:latest
 ```
 
-Settings are resolved at load time, so a change needs the model reloaded before
-it takes effect. [Seeing what the engine did](/xollama/introspection) shows what
+```
+  xOllama
+    kv.k              q8_0
+    kv.v              q8_0
+    dca.enabled       on
+    dca.chunk_size    32768
+```
+
+The section appears only when the model states something, and lists only what
+it states. Settings are resolved at load time, so a change needs the model
+reloaded before it takes effect. [Seeing what the engine did](/xollama/introspection) shows what
 the running model was actually given.
