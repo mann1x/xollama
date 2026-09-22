@@ -169,6 +169,48 @@ Gates on the merge: `gofmt`, `go build .`, `go vet ./...`, `go test ./...`
 (58 ok, 0 fail, exit 0), `-race` on `server api openai anthropic`, and
 `golangci-lint run` (0 issues).
 
+## Fork-only, second batch — manifest 18 patches (2026-09-22)
+
+| branch | manifest sha | our merge | what |
+|---|---|---|---|
+| `up-codex-request-count-mtime` | `bf047765` | `585067e6` | the session's own rollout file is skipped on a coarse-mtime filesystem |
+| `up-fileutil-root-permission-tests` | `e153344b` | `f721ddaf` | three permission tests skip under uid 0 |
+| `up-gofmt-vision-test-data` | `09e76dda` | `42d6028c` | the one file `gofmt -l` names on v0.34.2 |
+| `up-response-scope-think-budget` | `fdf0d23c` | `6cbbe858` | **the first stacked patch** |
+
+`up-response-scope-think-budget` declares
+`depends_on: [up-think-budget, up-reasoning-budget-line-boundary, up-toolcall-tags]`
+and a base of `8f64c67d`, the merge of those three onto `v0.34.2` — not the tag.
+The widened invariant was checked before merging rather than assumed: all three
+are ancestors of the branch, all three were already on `dev`, and all three are
+earlier in `patches[]`. Note that merging a stacked patch also imports its base
+merges (`05e1dfcf`, `9b3b4766`, `8f64c67d`), which is harmless here because they
+merge shas this tree already carried. It gives `ToolCallStartTagForParser` the
+caller it was waiting for (`server/routes.go:2592`).
+
+**Two of the four were fixes xollama had already made, locally, on upstream
+files.** Both conflicted for that reason, and in both the fork's version was
+taken so the two trees converge on one identifier:
+
+- `codexAppRequestMTimeSkew` (ours, `060144ab`, 2026-09-18) vs
+  `codexAppSessionMTimeSlack` (theirs). Semantically identical —
+  `mtime < start-2s` either way — and measured independently on this host
+  before their branch existed.
+- `requirePermissionEnforcement` (ours) vs `requirePermissionsApply` (theirs).
+  Theirs is the better-scoped version: it guards only the three tests that
+  assert a refusal, leaving `_UnchangedContentIsNoOp` and `_NoOrphanTempFiles`
+  measuring something real under root.
+
+`060144ab` was authored here, on a file that exists at `v0.34.2`, and never sent
+to the fork — it is in no branch of `mann1x/ollama`. That is the same failure as
+`ToolCallTags()`, pointing the other way, and it predates the protocol that
+forbids it (`FORK-SYNC.md` R4, agreed 2026-09-21). Worth stating plainly rather
+than quietly resolving, because R4 exists for exactly this and it was us.
+
+Gates on all four: `gofmt -l .` silent, `go build ./...`, `go vet ./...`,
+`go test ./...` 59 ok / 0 fail, `go test -race` on `llm server model cmd` all
+ok, `golangci-lint run` 0 issues.
+
 ## Tier 1 — the reason this fork exists
 
 | PR | Title | Branch | Opened | Age |

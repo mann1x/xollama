@@ -230,21 +230,67 @@ never will be: it is somebody else's upstream PR, merged from `pull/16820/head`,
 so no branch in `mann1x/ollama` is its home. It is tracked only by
 `CARRIED-PATCHES.md`.
 
+## The drift on `004-reasoning-budget-line-boundary.patch`
+
+Measured here on 2026-09-22, not taken on report, because the claim that
+`up-reasoning-budget-line-boundary` (#18212) was a superset turned out to be
+true only of the residue:
+
+| | #18212 | `think-budget` | this tree |
+|---|---|---|---|
+| lines in the patch | 825 | 945 | 825 |
+| touches `common/arg.cpp` | yes | **no** | yes |
+| `reasoning-budget-scope`, `THINK_BUDGET_SCOPE` | 2, 1 | 0, 0 | 2, 1 |
+| `forced` | 33 | **62** | 33 |
+| `end_offset`, `_apply`, `reset_tokens` | 0, 0, 0 | **2, 3, 10** | 0, 0, 0 |
+
+So the two have drifted in **both** directions, and this tree has #18212's side
+of it exactly. What we do not have is `b4c58eee` — the fix for a spent response
+repeating its wrap-up message, measured by the fork at 32 identical 240-character
+copies in one turn. Its identifiers (`forced_end_pos`,
+`common_reasoning_budget_end_offset`, `common_reasoning_budget_apply`) appear
+nowhere on #18212 under any spelling, so it is genuinely absent rather than
+renamed.
+
+**Ruling: the llama.cpp half belongs on `up-response-scope-think-budget`, not
+on #18212 and not left on `think-budget`.** That branch is already the fork-only
+home of this feature's Go half, already stacked on #4+#8+#14, and already last in
+apply order. Putting the C++ there closes the drift without rewriting an open
+upstream PR's head, and leaves #18212 as what it should be: the upstream-facing
+patch, with the `--reasoning-budget-scope` CLI flag that ollama does not use
+because it sets the scope per request over the wire.
+
+Two things follow:
+
+- `ca2e2cdb` ("port to llama.cpp b10242") is almost certainly obsolete, the way
+  `b002feda` was. This tree pins **b10969** (`LLAMA_CPP_VERSION`), and #18212's
+  patch is the one that applies to it. Check it against the pin before carrying
+  it; do not port backwards.
+- Once the C++ moves, `think-budget`'s copy of the file must equal the replay of
+  #18212 plus that branch's delta. That is checkable with a diff, and it is the
+  test that says the drift is actually closed rather than moved.
+
+**This cannot be verified by the Go gates.** A `.patch` is applied by
+`cmake/apply-git-patches.cmake` through `FetchContent`'s `PATCH_COMMAND`; every
+Go check passes on a tree whose patch is mangled. The offer stands to run
+`cmake -B build . -DOLLAMA_LLAMA_BACKENDS=cuda_v13` and the repeated-message
+repro here — this host has the toolchain, the 3090 and the pinned version.
+
 ## Open items
 
-- **Manifest `bc1448ec`** (`base: v0.34.2`, `integration.sha d57818e3`) carries
-  **fourteen**. All fourteen are merged here; shas in `CARRIED-PATCHES.md`.
-- **`status: "fork-only"` with `upstream_pr: null`** is a value the schema did
-  not have before. It matters here because the **upstream PR number is this
-  repo's identifier for a patch** — `CARRIED-PATCHES.md` keys on it. Fork-only
-  rows key on the branch slug instead and are listed apart. Rule 4 there was
-  amended in the same commit, since "no upstream PR" no longer means "not a
-  carried patch".
-- **The residue is not merged and not lost**: the reader half of the
-  response-scope thinking budget is still on `think-budget` only. Stacked
-  branch requested per the amendment above.
-- `ToolCallStartTagForParser` therefore has no caller in this tree yet. That is
-  the expected intermediate state, not dead code to remove.
-- The fork's release `v0.34.2-1-thinkbudget` (`645ec440`) was cut before patch
-  13 and carries 1–12. **Nothing here needs a re-cut** — xollama builds from
-  source and fetches nothing from the fork but `up-*` branches.
+- **Manifest at 18 patches**, all merged here; shas in `CARRIED-PATCHES.md`.
+  The first stacked patch (`up-response-scope-think-budget`) exercised the
+  amendment and the widened invariant held.
+- **Three orphans found by looking at one feature**, all on `think-budget` with
+  no `up-*` home: `677f91ce`, `b4c58eee`, `ca2e2cdb`. The fork has offered to
+  sweep `think-budget` for every commit touching a file no branch carries —
+  **accepted**. R2 stops new orphans; it does not find the ones already there.
+- **Orphans point both ways.** `060144ab` was authored in xollama on an upstream
+  file and never sent to the fork. The sweep should have a counterpart here: any
+  xollama commit touching a file that exists at `v0.34.2` and is not part of a
+  marked hook is a candidate for the same treatment.
+- **Whether #15–#17 should be filed upstream** is not xollama's call to make
+  alone — filing is outward-facing and permanent. `bf047765` is the strongest
+  candidate: a live counter reading zero on every tmpfs host, caught by a test
+  already in upstream's tree. Recorded `fork-only` meanwhile, which is literally
+  true.
