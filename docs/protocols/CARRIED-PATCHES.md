@@ -303,6 +303,55 @@ reach rather than absent.
 **Nineteen before-arm runs now, across three models and both routes, all one
 copy.**
 
+### Third round — reconstructed to the described shape, 48 runs, still nothing
+
+The fork's original 08-18 input is **unrecoverable**: it was a `curl` whose body
+and server log went to a tmpfs scratchpad and did not survive a reboot. They
+declined to write a lookalike and send it as the original, and the reasoning is
+worth keeping — a fabricated "original" makes either outcome unreadable, a hit
+attributed to their August prompt and a miss to the base change, when both would
+really be about the substitute's difficulty. So what follows is **reconstructed
+to a described property, not recovered**, and must be read that way.
+
+The property: one integer answer in the low thousands, reachable by a DP the
+model narrates step by step, `think_budget: 96` against `num_predict: 768`, the
+tag's own sampler params left untouched (so the runs are deliberately *not*
+deterministic). Six problems, two repetitions, both b10969 arms.
+
+**Round 1 missed half the shape, and reading the raw output is what caught it.**
+At budget 96 the cut lands while the model is still setting up the recurrence —
+*before* it commits to anything. The 08-18 output has the opposite order: the
+answer first, then a `<reasoning>` section carrying the second copy and the
+trailing `</think>`. So the model had committed and then opened a **new** block
+to check itself, and that second opening is the guard's precondition. Round 2
+requires that order explicitly.
+
+| shape | arm | runs | copies in `content` | `</think>` in `content` | activations | resets | **re-arm on start tag** |
+|---|---|---|---|---|---|---|---|
+| derive, then answer | before | 12 | 0 | 0 | 12 | 0 | **0** |
+| derive, then answer | after | 12 | 0 | 0 | 12 | 1 | **0** |
+| answer, then reopen | before | 12 | 0 | 4 | 12 | 2 | **0** |
+| answer, then reopen | after | 12 | 0 | 3 | 12 | 1 | **0** |
+
+**The zero is a real absence, not a missing log line.** `re-activated on new
+start tag` is present in *both* arms' `libllama-common.so.0.4.1` by `strings`,
+so counting it on the before arm means something. `forcing the end sequence
+alone` is **after-only** — the fix's own new message, and therefore a clean
+discriminator the day the path is ever taken.
+
+What round 2 did buy is the sharpest datum so far: in 7 of 24 runs the model
+emitted a `</think>` into `content`, i.e. it textually opened a second block —
+**and the sampler still did not re-arm.** The `reset sequence seen, forgiving 96
+spent tokens` lines show the reset half of the machinery firing, so the state
+machine is live; it is the DONE → FORCING re-entry that never occurs.
+
+That raises a question, and it is written here as a question because the last
+two things this repo guessed about `004` were both wrong: is a start tag the
+model writes into the *content* channel matched as a start sequence at all, or
+only one inside the thinking channel? If b10434 matched it in a place b10969 no
+longer does, that is the whole difference — but it is a hypothesis for the fork
+to test against their tree, not a finding.
+
 ### The gate that does hold: the patch's own tests, on our own fetch
 
 The repro is not the gate, and this is. `test-reasoning-budget` built from
