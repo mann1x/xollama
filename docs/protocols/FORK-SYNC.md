@@ -301,18 +301,31 @@ arm provenance and the lane in `CARRIED-PATCHES.md`.
   file and never sent to the fork. The sweep should have a counterpart here: any
   xollama commit touching a file that exists at `v0.34.2` and is not part of a
   marked hook is a candidate for the same treatment.
-- **The 004 end-to-end verification is closed** (2026-09-22), with a null
-  result over two rounds: 19 before-arm runs across three models and both reset
-  routes, one wrap-up copy every time. The fork supplied their recorded
-  parameters and a structural reason the first round could not have reached the
-  guard — verified here, and correct. The second round used their own tag
-  (`qwen3.8-mtp_tb:27b-q4km`, `parser qwen3.5`) with 20–29 tool calls per run,
-  and still no second thinking block opens, so the guard's precondition never
-  occurs. **Two open questions, both theirs:** does their 08-18 observation still
-  reproduce against b10969 rather than b10434, and did their harness keep one
-  response alive across a tool round trip? If it did, the defect is
-  harness-shaped rather than model-shaped and the branch notes should say so.
-  They are staging the agentic half on pandorum.
+- **The 004 end-to-end verification is closed** (2026-09-22) on the gate that
+  matters, and open only on a model-level repro that has never fired here.
+  `test-reasoning-budget` built and run against **our own** clean b10969 fetch
+  carrying the merged 982-line patch: **14/14**, including
+  `spent response scope closes quietly` and
+  `spent response scope bars reopening`. The model-level side is a null result
+  over two rounds — 19 before-arm runs across three models and both reset
+  routes, one wrap-up copy every time, never a second block.
+- **One remaining question, and it is the base.** Two hypotheses I raised are
+  dead, both answered by the fork with evidence:
+  - *harness-shaped* — **wrong, do not repeat it.** Their observation was a
+    single `/api/chat` with no tools and no round trip, so it was the model
+    reopening on its own.
+  - *the guard defends a path b10969 no longer takes* — **wrong.** Reverting the
+    two behaviours fails `tests/test-reasoning-budget.cpp:367` on b10969, so the
+    sampler still re-enters `FORCING` on a second start tag. What a base change
+    could alter is whether a model *emits* that tag, not whether the path exists.
+
+  That leaves **b10434 → b10969**. Their two observations are different
+  symptoms either side of an intermediate fix, not one defect at two sites:
+  **08-17** is the 32-copy loop (pre-`b4c58eee`), **08-18** is the residual —
+  loop gone, one copy in `thinking`, one *further* copy leaking into `response`
+  and cutting the answer mid-word with a trailing `</think>`. Our before arm is
+  pre-both by grep, i.e. the 08-17 configuration, and 32 copies did not happen
+  on b10969.
 - **#15–#17 do not go upstream.** Settled 2026-09-22 by the repository owner,
   who told the fork directly. `fork-only` with `upstream_pr: null` is their
   final state, not a placeholder, so the manifest invariant

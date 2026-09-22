@@ -301,9 +301,45 @@ so the guard's precondition does not occur, and the defect is still out of
 reach rather than absent.
 
 **Nineteen before-arm runs now, across three models and both routes, all one
-copy.** One variable is theirs to check: their observation is on llama.cpp
-**b10434** plus the patch, this tree pins **b10969**. Same tag, same parameters,
-different base.
+copy.**
+
+### The gate that does hold: the patch's own tests, on our own fetch
+
+The repro is not the gate, and this is. `test-reasoning-budget` built from
+**our** clean b10969 fetch (`391fac1646`) carrying the merged 982-line patch,
+CPU-only:
+
+```
+Test 'spent response scope closes quietly' passed
+Test 'spent response scope bars reopening' passed
+Test 'response scope budget' passed
+Testing reasoning budget sampler... OK (14 tests passed)
+```
+
+Built standalone with the compat hooks (`001`) temporarily reverted, because
+they pull `llama/compat/*.cpp` into `libllama` and `004` lives entirely in
+`common/` and `tests/` — the two files were restored afterwards. `llama/server`
+forces `LLAMA_BUILD_TESTS OFF` (`llama/server/CMakeLists.txt:174`), so the
+ollama sub-build will never run these; a separate configure is the only way.
+
+### Two hypotheses retired, and the one that is left
+
+Both were mine and both are wrong, corrected by the fork with evidence:
+
+- **Not harness-shaped.** Their observation was a single `/api/chat`, no tools,
+  no tool round trip — the model reopened on its own.
+- **Not a dead path.** Reverting the two behaviours fails
+  `tests/test-reasoning-budget.cpp:367` on b10969, so the sampler still
+  re-enters `FORCING` on a second start tag. A base change can only alter
+  whether a model *emits* that tag.
+
+What is left is **b10434 → b10969**, and one correction that matters for reading
+any of this: their two observations are opposite sides of an intermediate fix,
+not one defect seen twice. **08-17** is the 32-copy loop, pre-`b4c58eee`.
+**08-18** is the residual after it — loop gone, one copy in `thinking`, one
+*further* copy leaking into `response`, cutting the answer mid-word with a
+trailing `</think>`. Our before arm carries neither identifier, so it is the
+08-17 configuration, and the loop did not happen on b10969 with their tag.
 
 **Lane note.** These builds ran in a detached worktree, not in this checkout:
 `build/lib/ollama` is a symlink to `/usr/local/lib/ollama` and a local
