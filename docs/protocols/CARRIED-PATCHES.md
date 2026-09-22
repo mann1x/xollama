@@ -211,6 +211,70 @@ Gates on all four: `gofmt -l .` silent, `go build ./...`, `go vet ./...`,
 `go test ./...` 59 ok / 0 fail, `go test -race` on `llm server model cmd` all
 ok, `golangci-lint run` 0 issues.
 
+## The 004 drift closure — merged, and what the measurement says (2026-09-22)
+
+| branch | fork sha | our merge | what it adds |
+|---|---|---|---|
+| `up-response-scope-think-budget` (C++ half) | `3c5d29b4` | `84bcccc5` | `b4c58eee`: a spent response stays quiet and bars reopening |
+
+`llama/compat/004-reasoning-budget-line-boundary.patch` goes 825 → **982 lines**.
+Union verified by identifier rather than by line count: `reasoning-budget-scope`
+2, `THINK_BUDGET_SCOPE` 1 (#18212's half, intact), plus `reset_seqs` 11,
+`forced_end_pos` 3, `common_reasoning_budget_end_offset` 2,
+`spent_response_stays_quiet` 2, `spent_response_bars_reopening` 2.
+
+**Applied on a clean fetch**, which is the only way to check a `.patch` here —
+the applier skips anything `git apply --reverse --check` accepts, so on an
+already-patched tree a wrong patch is silently skipped rather than rejected, and
+no Go gate reads these files at all. Fresh `FetchContent` of revision `391fac164`
+(b10969) logged `llama/compat: applied 001-…, models/003-…, 004-…, 005-…`.
+
+### The repro the fork asked us to run — it does not reproduce here
+
+Their request was explicit: *"If the 32-copies repro does not reproduce on your
+side before the change, tell me — it would mean my reading of what `b4c58eee`
+fixes is wrong."* It does not.
+
+Two arms, same Go binary, differing only in `llama-server`,
+`libllama-common.so*` and `libllama-server-impl.so`; **before** = the 825-line
+patch (`forced_end_pos` absent from the fetched source, confirmed by grep),
+**after** = the 982-line one. `XOLLAMA_ENGINE=llamacpp` pinned, because the
+opencoti engine has its own sampler and can never exercise 004.
+
+| arm | model | budgets | runs | wrap-up copies | reopens |
+|---|---|---|---|---|---|
+| before | `gemma4:e2b` | 4, 8, 16, 32, 64, 128, 256 | 7 | **1 each** | 0 |
+| before | `deepseek-r1:14b` | 32, 128 | 2 | **1 each** | 0 |
+| before | `deepseek-r1:14b`, prompts that ask for a second `<think>` | 16, 64 × 2 prompts | 4 | **1 each** | 0 |
+| after | `deepseek-r1:14b`, same four probes | 16, 64 × 2 prompts | 4 | **1 each** | 0 |
+
+Thirteen before-arm runs, one wrap-up copy in every one, never in `content`.
+The run most likely to show the bug — `reconsider-loop` at budget 16, which ran
+to the 4096-token cap (`done_reason: "length"`, 15,328 characters of content) —
+still carried exactly one. The engine log tells the same story: one
+`activated` / `budget exhausted` / `forced sequence complete, done` per request,
+never a second activation.
+
+**What this does and does not say.** It does not contradict `b4c58eee`: the path
+it guards is what happens when a model opens a **second** thinking block after
+the response budget is spent, and no model here reopened, not even when asked to
+in the prompt. So the repro never reached the defect, and a repro that cannot
+reach the defect proves nothing either way. The after arm matching the before
+arm token-for-token on all four shared probes is the useful result: on this
+host, with these models, the extra 157 lines are **behaviour-neutral where the
+bug does not fire**.
+
+The merge stands on the union check, the clean-fetch apply, and the patch's own
+`test-reasoning-budget` cases (`spent_response_stays_quiet`,
+`spent_response_bars_reopening`) — not on this repro. The fork has been asked
+for the exact model, flags and turn shape that produced their 32 copies.
+
+**Lane note.** These builds ran in a detached worktree, not in this checkout:
+`build/lib/ollama` is a symlink to `/usr/local/lib/ollama` and a local
+`llama-server` build installs straight into the live service's runtime. That
+happened once, on 2026-09-22, before the lane changed. Rule 7 of the
+`xollama-build-test` skill now carries it.
+
 ## Tier 1 — the reason this fork exists
 
 | PR | Title | Branch | Opened | Age |

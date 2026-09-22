@@ -272,9 +272,21 @@ Two things follow:
 
 **This cannot be verified by the Go gates.** A `.patch` is applied by
 `cmake/apply-git-patches.cmake` through `FetchContent`'s `PATCH_COMMAND`; every
-Go check passes on a tree whose patch is mangled. The offer stands to run
-`cmake -B build . -DOLLAMA_LLAMA_BACKENDS=cuda_v13` and the repeated-message
-repro here — this host has the toolchain, the 3090 and the pinned version.
+Go check passes on a tree whose patch is mangled. Worse, the applier is
+idempotent: it skips anything `git apply --reverse --check` accepts, so on a
+tree that already carries the old version of a patch the new one is skipped
+rather than rejected. Only a **clean fetch** verifies it.
+
+**Done, 2026-09-22.** Clean fetch of revision `391fac164` (b10969) applied
+`001`, `models/003`, `004` and `005`; the union was checked by identifier, not
+by line count. The end-to-end repro then ran on the 3090 in two arms differing
+only in `llama-server`, `libllama-common.so*` and `libllama-server-impl.so`:
+**thirteen before-arm runs across two models, seven budgets and two prompts
+written to coax a reopen, and every one produced exactly one wrap-up copy.** The
+32-copies behaviour does not reproduce here. That is not a refutation of
+`b4c58eee` — no model reopened its thinking block, so the repro never reached
+the path the fix guards — but it is what the fork asked to be told. Numbers,
+arm provenance and the lane in `CARRIED-PATCHES.md`.
 
 ## Open items
 
@@ -289,6 +301,12 @@ repro here — this host has the toolchain, the 3090 and the pinned version.
   file and never sent to the fork. The sweep should have a counterpart here: any
   xollama commit touching a file that exists at `v0.34.2` and is not part of a
   marked hook is a candidate for the same treatment.
+- **The 004 end-to-end verification is closed** (2026-09-22), with a null
+  result: the fork's 32-copies repro does not reproduce on this host before the
+  change. Waiting on their exact model, flags and turn shape — an agentic
+  multi-turn response with a tool call is the shape most likely to reach the
+  reopen path, and it is the one this host cannot stage from a single
+  `/api/chat`.
 - **#15–#17 do not go upstream.** Settled 2026-09-22 by the repository owner,
   who told the fork directly. `fork-only` with `upstream_pr: null` is their
   final state, not a placeholder, so the manifest invariant

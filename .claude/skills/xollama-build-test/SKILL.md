@@ -63,6 +63,30 @@ output. Never claim a build or test passed without the command output.
    `bug-NNN` entry after fixing. Append one line per run to `.wolf/memory.md`:
    `| HH:MM | go test ./llm/... | llm/repeat_guard.go | PASS | ~1.2k |`.
 
+7. **A verification build never runs in this checkout.** `build/lib/ollama` is a
+   **symlink to `/usr/local/lib/ollama`**, the live service's runtime. Anything
+   that installs a `llama-server`, `libllama-common.so*` or
+   `libllama-server-impl.so` writes *through* it and replaces production
+   binaries — measured 2026-09-22, three files overwritten while the service was
+   up. The two places this was already written down describe it only as a
+   *navigation* hazard (`find -L`, `pwd -P`), which is why it was missed; it is
+   a **write-through** hazard first.
+
+   So a before/after arm, a patched-source rebuild, or any build whose payload
+   you intend to compare goes in a detached worktree outside the repo, which has
+   no `build/` and therefore no symlink:
+
+   ```sh
+   git worktree add --detach ../xollama-verify <ref>
+   ls ../xollama-verify/build 2>/dev/null || echo "no build/ — symlink hazard absent"
+   ```
+
+   Stage each arm as its own `bin/xollama` + **`lib/ollama`** tree (a real
+   directory) and point the server at it. The directory name matters:
+   `ml.LibOllamaPath` looks for `<root>/lib/ollama`, and a `lib/` without the
+   `ollama/` level silently falls through to this repo's `build/lib/ollama` —
+   i.e. back to production.
+
 ## Instructions
 
 ### Step 1 — Classify the change
