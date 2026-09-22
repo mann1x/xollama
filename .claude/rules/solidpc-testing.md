@@ -39,6 +39,12 @@ paths:
 - A dev snapshot extracts nothing: it side-loads the `ggml-cuda.so` beside the
   binary. `sideloaded_dso_sha` hashes that one first and records `source`
   (`beside-artifact` / `llamafile-cache`) — a stale cache hash is a lie.
+- **A bare artifact with no `ggml-cuda.so` beside it falls through to the shared
+  app dir** `~/.llamafile/v/opencoti-0.10.5-c7/`, which dev builds overwrote 97
+  times between 2026-09-05 and 2026-09-22. The executable's own directory always
+  wins, so stage the `dso` beside the `bin` — as `cmake/opencoti-fetch.cmake`
+  does for a packaged install. `source` only records this from 2026-09-21, so
+  older cells cannot self-certify; see `docs/evaluations/phase2-engine-ab.md`.
 - **The 3090 is shared with the live service.** A 70B arm holds ~24 GB for the
   run, so the systemd `ollama` cannot load anything meanwhile. Check
   `nvidia-smi --query-compute-apps` first, keep big arms short, and confirm VRAM

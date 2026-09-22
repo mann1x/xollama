@@ -1,5 +1,35 @@
 # Phase 2 — engine A/B, measured
 
+> **Provenance caveat on the 2026-09-20 re-takes (raised 2026-09-22).** opencoti
+> reported that every dev build mirrored its CUDA library into the *release* app
+> key `~/.llamafile/v/opencoti-0.10.5-c7/ggml-cuda.so` on both hosts — first
+> logged write 2026-09-05 13:43, last 2026-09-22 09:30, 97 writes in total and
+> **29 on 2026-09-20 alone** — until they restored the pinned c7-r2 DSO at about
+> 2026-09-22 10:05 CEST. A cell is only exposed if its binary found no GPU
+> library beside itself, because the executable's directory always wins.
+>
+> Checked here rather than assumed, and it splits in two. The harness records
+> where it side-loaded from, but **that instrumentation only begins at
+> 2026-09-21 12:05**, so no 09-20 file self-certifies.
+>
+> - **b18 cells — clean.** `b18-compat` (8/8), `b18-gemma4`, `b18-overflow`,
+>   `b18-smoke` and `multislot/b18` ran from `/srv/ml/opencoti-dev/build18/`,
+>   which holds `ggml-cuda.so` (22:26) *beside* the binary (22:25), both staged
+>   before the first of those runs at 22:27. The app dir was never consulted.
+> - **c7r2 cells — open pending one fact.** `c7r2-overflow`,
+>   `c7r2-overflow-clean`, `c7r2-narrowing` and `multislot/r2` ran the fat
+>   release bin at `c7r2/artifacts/…-x86_64.llamafile`, and `artifacts/` holds no
+>   `ggml-cuda.so`. Those boots resolved through the app dir. Whether they are
+>   sound turns on whether a fat boot writes its embedded payload
+>   **unconditionally** or only when absent; opencoti has been asked. These
+>   binaries predate 0341, so there is no loaded line to read.
+> - **Every `llamacpp` cell is unaffected** — different engine, no side-load.
+>
+> A packaged xollama was never exposed: `cmake/opencoti-fetch.cmake` stages the
+> `dso` row into the same directory as the `bin` row (`_dso_dest` is
+> `${DEST_DIR}/${_dso_name}`). Only the bare-artifact harness runs could reach
+> the app dir, and that is now a reason to keep the packaging rule.
+
 > Measured 2026-09-18 on solidPC. Harness: [`scripts/phase2-engine-ab.py`](../../scripts/phase2-engine-ab.py).
 > Raw results: `/srv/ml/xollama-phase2/results-{llamacpp,opencoti}.json`.
 

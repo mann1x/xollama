@@ -345,12 +345,46 @@ emitted a `</think>` into `content`, i.e. it textually opened a second block —
 spent tokens` lines show the reset half of the machinery firing, so the state
 machine is live; it is the DONE → FORCING re-entry that never occurs.
 
-That raises a question, and it is written here as a question because the last
-two things this repo guessed about `004` were both wrong: is a start tag the
-model writes into the *content* channel matched as a start sequence at all, or
-only one inside the thinking channel? If b10434 matched it in a place b10969 no
-longer does, that is the whole difference — but it is a hypothesis for the fork
-to test against their tree, not a finding.
+That raised a question, and the answer retired it — the third hypothesis of
+ours to die on this patch. Verified here, not taken on report:
+
+- `case REASONING_BUDGET_DONE:` (`common/reasoning-budget.cpp:213`) advances
+  **only `start_matcher`**. What we saw in `content` was `</think>`, the **end**
+  sequence, which cannot re-arm anything on either arm. The 7-of-24 is a close
+  with no open in front of it, not a missed match.
+- `grep -ci channel common/reasoning-budget.cpp` → **0**. The sampler is a token
+  matcher; the channel is assigned downstream in `model/parsers/`. "Matched in
+  content but not in thinking" is not a state the code can be in, in any
+  version — so b10434 → b10969 cannot differ that way either.
+
+**The instrument is sound, and it validates itself from the runs already taken.**
+All four trace messages are `COM_TRC` from the same translation unit: `reset
+sequence seen` (112), `activated` (123), `budget exhausted` (194) and
+`re-activated on new start tag` (224). The first three fired in the very same
+requests, so the trace channel was live and `start_matcher` genuinely never
+advanced in `DONE`. Note that `test-reasoning-budget` is *not* usable as a
+control here: it never calls `common_init`, sets no verbosity threshold, and
+prints no `COM_TRC` at all, so a zero from it would mean nothing.
+
+### Verdict: no live repro on b10969
+
+Stated plainly because it is the true and weaker claim. `004`'s spent-response
+half is defended by `spent_response_stays_quiet` and
+`spent_response_bars_reopening` — which fail without it on **both** trees'
+fetches — and by the fork's b10434 observation, which can be described but not
+re-run. It is **not** defended by a current live case, and the four A/B cells
+show why that costs nothing: the after arm matched the before arm on every
+field, so a guard on an untaken path is free.
+
+The fork also corrected their own description in the same exchange: the August
+residual was *not* "the forced sequence firing again with no block open". A
+block **was** opened, textually, after the parser had closed the thinking
+channel, so the re-forced message landed in `content`. Same event, correctly
+named. There is no path into `FORCING` without a start-tag match or an already
+open block.
+
+`forcing the end sequence alone` is the marker to watch: **after-only**, so the
+day it appears in a log it identifies both the build and the path in one string.
 
 ### The gate that does hold: the patch's own tests, on our own fetch
 
