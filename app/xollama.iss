@@ -26,6 +26,26 @@ AppVersion={#MyAppVersion}
 VersionInfoVersion={#MyAppVersion}
 ;AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
+
+; The Add/Remove Programs entry is the surface an EXTERNAL updater correlates
+; on. winget matches a manifest with no ProductCode by DisplayName +
+; Publisher, which is how a stock-ollama manifest once drove the Microsoft
+; Store to "upgrade" a fork install over the top of itself -- nothing inside
+; the app could see it or stop it. So this entry must never read like Ollama's:
+; keep UninstallDisplayName and AppPublisher distinct from "Ollama" /
+; "Ollama Inc." and keep AppId a GUID of our own.
+UninstallDisplayName={#MyAppName}
+
+; Written into the setup binary's version resource, so Explorer's Properties
+; tab, SmartScreen's prompt and any future payload-identity check all name the
+; product rather than showing a blank publisher.
+VersionInfoProductName={#MyAppName}
+VersionInfoProductTextVersion={#MyAppVersion}
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription={#MyAppName} Setup
+VersionInfoCopyright={#MyAppPublisher}
+AppCopyright={#MyAppPublisher}
+
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}

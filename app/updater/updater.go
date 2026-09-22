@@ -51,6 +51,21 @@ type UpdateResponse struct {
 }
 
 func (u *Updater) checkForUpdate(ctx context.Context) (bool, UpdateResponse) {
+	// BEGIN xollama update-feed hook
+	// As long as this would ask ollama.com, ask the fork's own releases
+	// instead. That endpoint answers for the wrong product: it offers stock
+	// ollama, whose installer PASSES the "Ollama Inc." signer check below in
+	// updater_windows.go and would quietly replace xollama with upstream on an
+	// hourly timer. The condition is the upstream default rather than a
+	// separate switch so that upstream's own tests, which point
+	// UpdateCheckURLBase at a local server, keep exercising the code below
+	// unchanged. Nothing in a shipped build moves it, so nothing in a shipped
+	// build reaches ollama.com. See fork.go.
+	if forkFeedActive() {
+		return checkForkUpdate(ctx, u)
+	}
+	// END xollama update-feed hook
+
 	var updateResp UpdateResponse
 
 	requestURL, err := url.Parse(UpdateCheckURLBase)
@@ -240,6 +255,20 @@ func (u *Updater) DownloadNewRelease(ctx context.Context, updateResp UpdateRespo
 		return fmt.Errorf("close payload %s: %w", stageFilename, err)
 	}
 	slog.Info("new update downloaded " + stageFilename)
+
+	// BEGIN xollama update-digest hook
+	// The bytes must hash to what the fork's release published, before
+	// anything else looks at them. This is the check that tells OUR installer
+	// from another product's; a signature check cannot, because a stock ollama
+	// installer is genuinely signed. Same condition as the feed hook above,
+	// for the same reason. See fork.go.
+	if forkFeedActive() {
+		if err := forkDigest(stageFilename); err != nil {
+			_ = os.Remove(stageFilename)
+			return fmt.Errorf("%s - %w", resp.Request.URL.String(), err)
+		}
+	}
+	// END xollama update-digest hook
 
 	if err := VerifyDownload(); err != nil {
 		_ = os.Remove(stageFilename)

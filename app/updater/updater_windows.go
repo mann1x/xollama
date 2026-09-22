@@ -59,9 +59,16 @@ type OSVERSIONINFOEXW struct {
 
 func init() {
 	VerifyDownload = verifyDownload
-	Installer = "xOllama-darwin.zip"
+	// BEGIN xollama appdata hook
+	// %LOCALAPPDATA%\xOllama, not %LOCALAPPDATA%\Ollama. xollama is built to
+	// sit beside a stock ollama the user depends on, and this directory holds
+	// the staged installer, the upgrade log and the upgrade marker -- three
+	// files two products would both claim. The uninstaller in app/xollama.iss
+	// already removes only the xOllama one, so sharing the other leaves files
+	// behind that neither uninstaller owns.
 	localAppData := os.Getenv("LOCALAPPDATA")
-	appDataDir := filepath.Join(localAppData, "Ollama")
+	appDataDir := filepath.Join(localAppData, "xOllama")
+	// END xollama appdata hook
 
 	// Use a distinct update staging directory from the old desktop app
 	// to avoid double upgrades on the transition
@@ -100,9 +107,12 @@ func loadOSVersion() {
 }
 
 func getStagedUpdate() string {
-	// When transitioning from old to new app, cleanup the update from the old staging dir
-	// This can eventually be removed once enough time has passed since the transition
-	cleanupOldDownloads(filepath.Join(os.Getenv("LOCALAPPDATA"), "Ollama", "updates"))
+	// BEGIN xollama appdata hook
+	// Upstream cleans %LOCALAPPDATA%\Ollama\updates here, to sweep up after
+	// the old desktop app it replaced. xollama replaced nothing: that path
+	// belongs to a stock ollama install, and deleting its staged update would
+	// be this fork breaking the installation it is meant to sit beside.
+	// END xollama appdata hook
 
 	files, err := filepath.Glob(filepath.Join(UpdateStageDir, "*", "*.exe"))
 	if err != nil {
@@ -221,11 +231,26 @@ func verifyDownload() error {
 	}
 	slog.Debug("verifying update", "bundle", bundle)
 
+	// BEGIN xollama update-signer hook
+	// Upstream REQUIRES an Authenticode signature whose Organization is
+	// "Ollama Inc." That check is backwards on a fork: it rejects our own
+	// installer and it passes stock ollama's, so on its own it is the thing
+	// that would let an upstream installer overwrite xollama. The fork's
+	// integrity gate is the release's published sha256 (forkDigest, applied
+	// before this runs); a signature is reported here when one is present and
+	// valid, and its absence is not fatal because this channel is unsigned.
+	//
+	// Restore this to a hard requirement the day the fork has a certificate,
+	// with OUR organisation in the allowlist -- never Ollama's. The code that
+	// reads the signer is left in place for that.
 	if err := verifyWindowsInstallerSignature(bundle); err != nil {
-		return fmt.Errorf("signature verification failed: %w", err)
+		slog.Info("update is not signed by a recognised publisher; accepted on its published checksum",
+			"bundle", bundle, "detail", err)
 	}
 	return nil
 }
+
+// END xollama update-signer hook
 
 func verifyWindowsInstallerSignature(filename string) error {
 	filename16, err := windows.UTF16PtrFromString(filename)
@@ -327,7 +352,9 @@ func windowsInstallerSignerSubject(filename string) (string, error) {
 	}
 
 	for _, org := range parsed.Subject.Organization {
-		if org == "Ollama Inc." {
+		// xollama: our own organisation, never Ollama's. See the
+		// update-signer hook above -- this is advisory today.
+		if org == "ManniX" {
 			return parsed.Subject.String(), nil
 		}
 	}

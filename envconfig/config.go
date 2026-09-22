@@ -324,6 +324,16 @@ var (
 	// and is most of the cost on those models. They need an engine that has
 	// that flag; stock llama.cpp does not, and a load asking for one there is
 	// refused rather than started without it.
+	// UpdateFeed redirects where the desktop app looks for updates, for a
+	// private mirror or a test. Empty means the fork's own GitHub releases;
+	// see app/updater/fork.go. Never upstream's endpoint -- a fork that
+	// follows ollama.com updates itself into stock ollama.
+	UpdateFeed = String("XOLLAMA_UPDATE_FEED")
+	// UpdatePrerelease lets the app take a release marked pre-release. The
+	// release job publishes every release that way, so the default of false
+	// means "update when a build is promoted", not "update when CI finishes".
+	UpdatePrerelease = Bool("XOLLAMA_UPDATE_PRERELEASE")
+
 	KCacheTypeSWA = String("XOLLAMA_K_CACHE_TYPE_SWA")
 	VCacheTypeSWA = String("XOLLAMA_V_CACHE_TYPE_SWA")
 	// DynamicSlots lets the number of concurrent requests grow with demand
@@ -449,6 +459,8 @@ func AsMap() map[string]EnvVar {
 		"XOLLAMA_SESSION_POOL":        {"XOLLAMA_SESSION_POOL", SessionPool(), "Share one copy of a common prefix between conversations, on the opencoti engine (default false)"},
 		"XOLLAMA_K_CACHE_TYPE":        {"XOLLAMA_K_CACHE_TYPE", KCacheType(), "KV cache type for keys, overriding OLLAMA_KV_CACHE_TYPE for that half"},
 		"XOLLAMA_V_CACHE_TYPE":        {"XOLLAMA_V_CACHE_TYPE", VCacheType(), "KV cache type for values, overriding OLLAMA_KV_CACHE_TYPE for that half"},
+		"XOLLAMA_UPDATE_FEED":         {"XOLLAMA_UPDATE_FEED", UpdateFeed(), "Where the desktop app looks for updates (default: this fork's GitHub releases)"},
+		"XOLLAMA_UPDATE_PRERELEASE":   {"XOLLAMA_UPDATE_PRERELEASE", UpdatePrerelease(), "Accept a release marked pre-release (default false: update only on a promoted build)"},
 		"XOLLAMA_K_CACHE_TYPE_SWA":    {"XOLLAMA_K_CACHE_TYPE_SWA", KCacheTypeSWA(), "KV cache type for keys in a sliding-window model's short-window cache (needs an engine with a separate ring)"},
 		"XOLLAMA_V_CACHE_TYPE_SWA":    {"XOLLAMA_V_CACHE_TYPE_SWA", VCacheTypeSWA(), "KV cache type for values in a sliding-window model's short-window cache"},
 		"XOLLAMA_DYNAMIC_SLOTS":       {"XOLLAMA_DYNAMIC_SLOTS", DynamicSlots(), "Grow the number of concurrent requests with demand instead of reserving them (default true)"},

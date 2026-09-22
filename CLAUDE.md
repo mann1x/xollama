@@ -29,7 +29,7 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   different things across two trees. xollama never files upstream PRs, nor asks
   the fork to — that is the repository owner's call; `fork-only` entries stay so.
 - `docs/features/engine-opencoti-llamafile.md` · `docs/features/rebrand.md` ·
-  `docs/features/store-ownership.md`
+  `docs/features/store-ownership.md` · `docs/features/windows-installer.md`
 - `docs/evaluations/phase0-engine-compat.md` — measured engine-compat baseline.
 
 Remotes: `origin` = mann1x/xollama · `upstream` = ollama/ollama ·
@@ -107,6 +107,10 @@ fixtures in `integration/testdata/`; they need a running server and pulled model
 with the Bubble Tea menu in `cmd/tui/tui.go`.
 **Desktop UI**: `app/ui/app/src/routes/` (React 19 + TanStack Router + Vite),
 sibling to the `app` workspace (`vite.config.ts`, `vitest.config.ts`).
+**Desktop updates**: `app/updater/fork.go` reads this fork's GitHub releases
+(`XOLLAMA_UPDATE_FEED`, `XOLLAMA_UPDATE_PRERELEASE`) instead of `ollama.com`,
+hooked from `app/updater/updater.go` / `app/updater/updater_windows.go`; the
+installer is `app/xollama.iss` — see `docs/features/windows-installer.md`.
 Pinned natives: `LLAMA_CPP_VERSION`, `MLX_VERSION`, `MLX_C_VERSION`,
 orchestrated by `CMakeLists.txt` / `CMakePresets.json`; the opencoti engine
 artifact is pinned by `llm/engine/pin.txt` (`repo`, `rev` commit sha, `tag`,
