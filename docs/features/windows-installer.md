@@ -5,12 +5,13 @@
 `app/xollama.iss` is an Inno Setup script, built by
 `scripts/build_windows.ps1 installer` and produced as `dist\xOllamaSetup.exe`.
 The `windows-app` job in `.github/workflows/release.yaml` runs
-`deps sign installer zip`, and the `release` job **fails** if that file is
-missing, so the installer is not optional to a release.
+`deps sign installer installerUpdate zip`, and the `release` job **fails** if
+`xOllamaSetup.exe`, `xOllamaUpdate.exe` or `payload-id.txt` is missing — so
+neither the installer nor the delta path is optional to a release.
 
 It installs per-user into `%LOCALAPPDATA%\Programs\xOllama` with
-`PrivilegesRequired=lowest`, puts `{app}` on the user's `Path`, registers the
-`ollama://` protocol handler, and excludes `cuda_v12` from the payload — that
+`PrivilegesRequired=lowest`, puts `{app}` on the user's `Path`, registers a
+URL protocol handler, and excludes `cuda_v12` from the payload — that
 backend ships as a separate legacy zip because the installer would otherwise
 cross GitHub's 2 GiB release-asset cap now that an engine ships inside it.
 
@@ -130,18 +131,98 @@ only removes the `xOllama` one, and the sweep would delete a stock install's
 staged update. Staging, the upgrade log and the marker file now live in
 `%LOCALAPPDATA%\xOllama`, and the sweep is gone.
 
+## Delta updates
+
+An update used to cost ~1.5 GB whatever changed. Measured on this payload:
+
+| | size |
+|---|---|
+| `lib\ollama` total | ~1.5 GB |
+| — the opencoti artifact | ~700 MB |
+| — `cuda_v13` (mostly cuBLAS) | ~785 MB |
+| `xollama.exe` | ~36 MB |
+
+So a release that only moves Go code was shipping forty times the bytes it
+changed, and the part that dominates — a pinned engine and a CUDA toolkit —
+moves on its own, much slower schedule.
+
+The split follows that cadence rather than any file-type boundary. The release
+publishes **two installers built from the same `app/xollama.iss`**:
+
+- `xOllamaSetup.exe` — everything. First install, and any release whose payload
+  moved.
+- `xOllamaUpdate.exe` — the executables and nothing under `lib\ollama`, built
+  with `/DCORE=1`.
+
+There is no diff format, no patch applier and no bespoke file replacer. The
+small installer is the same Inno installer that already knows how to stop the
+tray app, rewrite `PATH`, keep the uninstall entry and hand over to the running
+process — it simply carries less. That is the point: the risky part of an
+update is the apply step, and this changes only the download.
+
+### Payload identity
+
+`payloadId` in `scripts/build_windows.ps1` hashes relative path plus content
+digest for every file, sorted, over **the set the installer actually ships** —
+`cuda_v12` and `mlx_*` are excluded there, so they must be excluded here too or
+every release would look like a payload change and the split would buy nothing.
+
+That digest goes three places:
+
+1. into the full installer, written to `{app}\lib\ollama\PAYLOAD_ID` — inside
+   the payload, so it cannot outlive it;
+2. into the release, as the `payload-id.txt` asset;
+3. into the update-only installer, as `PKG_PAYLOAD_ID`.
+
+`chooseCoreInstaller` in `app/updater/fork.go` compares (1) against (2) and
+takes the small installer only when they match. **Every way of not knowing falls
+back to the full installer**: no core asset for this platform, no marker on
+disk, no `payload-id.txt` in the release, a marker that is not a bare sha256, or
+a mismatch. Not knowing costs bytes; it never costs correctness.
+
+The update-only installer checks the same thing again in `InitializeSetup` and
+refuses with a message naming `xOllamaSetup.exe` — because it can also be run by
+hand, and an install with executables but no engine is worse than no install. It
+also must never appear in `[InstallDelete]`'s sweep of `{app}\lib\ollama`,
+which is why that entry is `#ifndef CORE`.
+
+## Things the installer must not claim
+
+Two entries in this script were quietly taking something a stock ollama install
+owns. Both are the same rule as the listen port
+(`.claude/rules/default-port.md`): a cache type is shareable, an identity is not.
+
+- **The `ollama://` URL protocol.** It was registered under
+  `HKCU\Software\Classes\ollama` with `uninsdeletekey`, so installing xollama
+  made it the handler for a stock install's links, and *uninstalling* xollama
+  deleted the key — leaving a working ollama whose links opened nothing. The
+  installer now registers `xollama://` only. `app/cmd/app/app.go` accepts both
+  schemes, so a link handed to us still works; we just do not claim the one we
+  do not own.
+- **`~/.ollama/models` on uninstall.** The uninstaller offers to delete it, and
+  the checkbox was **pre-ticked** — six lines below a note in
+  `[UninstallDelete]` saying that directory is shared and must be left alone.
+  The dialog's default action is "Uninstall", so the default path through it
+  deleted a stock install's model store. It is now unticked, and the caption
+  says the directory is shared.
+
 ## Still open
 
 - **Nothing has been released.** No tag, no release, so the feed has nothing to
   find. The first tag is what turns all of this on.
-- **The whole installer is re-downloaded for every update**, ~1.5 GB of which
-  the great majority is `lib\ollama` — the engine payloads, and the pinned
-  opencoti artifact alone is ~700 MB. Those move far less often than the Go
-  binary. A component-level update keyed on the payload's own digest is the
-  obvious next step and is not implemented.
+- **The delta is two tiers, not many.** A CUDA toolkit bump and an engine pin
+  move both read as "payload changed" and cost the full download even though
+  they are independent. Splitting `lib\ollama` into per-component archives with
+  their own digests would go further, at the cost of an apply step that is no
+  longer a single installer run.
 - **Payload identity is checked by digest only.** The installer now writes
   `VersionInfoProductName` into its version resource, so a future check can
   read it back and refuse anything that is not `xOllama` before running it.
   That belt-and-braces check is not implemented; the digest is the gate.
 - **macOS** takes the same feed (it must — the fork must not update to upstream
-  there either) but keeps its own `verifyDownload`.
+  there either), but has no payload split: `CoreInstaller` is empty there, so
+  every update is the full bundle.
+- **The darwin bundle still declares the `ollama` URL scheme** in
+  `app/darwin/xOllama.app/Contents/Info.plist`. macOS resolves duplicate
+  claimants differently and no uninstall deletes another app's registration, so
+  it is a lesser version of the Windows problem — but it is the same problem.

@@ -71,6 +71,11 @@ const (
 	// failing, instead of as the fork silently following upstream somewhere new.
 	upstreamUpdateCheckURL = "https://ollama.com/api/update"
 
+	// forkPayloadIDAsset carries the digest of the payload the release's full
+	// installer ships, so an install can tell whether it already has those
+	// bytes without downloading them to find out.
+	forkPayloadIDAsset = "payload-id.txt"
+
 	// forkChecksumAsset is written by the release job:
 	//   find . -type f -not -name 'sha256sum.txt' | xargs sha256sum
 	// so every line is "<64 hex>  ./<name>".
@@ -90,6 +95,17 @@ var (
 	// them will simply never update until someone promotes one -- which is the
 	// intended default, not an oversight.
 	AllowPrerelease = envconfig.UpdatePrerelease()
+
+	// CoreInstaller is the executables-only installer, published beside the
+	// full one and taken when the installed payload already matches the
+	// release's. Empty where there is no such split -- macOS ships one bundle.
+	// Set by fork_payload_<os>.go.
+	CoreInstaller string
+
+	// InstalledPayloadID reports the payload digest this install is running
+	// against, or "" when it cannot be told. Unknown always costs a full
+	// download and never a wrong one. Set by fork_payload_<os>.go.
+	InstalledPayloadID = func() string { return "" }
 
 	// expected is the digest the feed published for the asset the next
 	// download will fetch. It is set by checkForkUpdate and read by
@@ -139,6 +155,18 @@ func checkForkUpdate(ctx context.Context, _ *Updater) (bool, UpdateResponse) {
 	if rel == nil {
 		slog.Debug("no update available", "current", version.Version, "feed", ReleaseFeedURL)
 		return false, none
+	}
+
+	// A release that changed nothing under lib\ollama can be installed by the
+	// executables-only installer, which is the whole delta mechanism: no diffs,
+	// no patch format, no bespoke file replacer -- the same Inno installer that
+	// already knows how to stop the tray app, rewrite PATH and keep the
+	// uninstall entry, carrying two thirds less.
+	if core, ok := chooseCoreInstaller(ctx, rel); ok {
+		slog.Info("payload unchanged; taking the executables-only installer",
+			"asset", core.Name, "instead_of", asset.Name,
+			"saved_bytes", asset.Size-core.Size)
+		asset = core
 	}
 
 	digest, err := fetchForkDigest(ctx, rel, asset.Name)
@@ -256,16 +284,25 @@ func semverOf(s string) string {
 	return s
 }
 
-// fetchForkDigest reads the sha256 the release published for one asset. The
-// checksum file is taken from THE SAME release as the asset, so a release
-// cannot hand out a checksum from another one.
-func fetchForkDigest(ctx context.Context, rel *forkRelease, assetName string) (string, error) {
-	sums, ok := pickForkAsset(rel.Assets, forkChecksumAsset)
-	if !ok {
-		return "", fmt.Errorf("release %s publishes no %s", rel.TagName, forkChecksumAsset)
+// normalisePayloadID accepts only a bare sha256. Anything else reads as
+// unknown, which costs a full download and never a wrong one.
+func normalisePayloadID(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if len(s) != 64 {
+		return ""
 	}
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return ""
+		}
+	}
+	return s
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sums.URL, nil)
+// fetchForkAssetText downloads one small text asset. Release assets need the
+// octet-stream Accept or the API answers with JSON metadata instead of bytes.
+func fetchForkAssetText(ctx context.Context, asset forkAsset, limit int64) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, asset.URL, nil)
 	if err != nil {
 		return "", err
 	}
@@ -279,14 +316,29 @@ func fetchForkDigest(ctx context.Context, rel *forkRelease, assetName string) (s
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("%s returned %d", forkChecksumAsset, resp.StatusCode)
+		return "", fmt.Errorf("%s returned %d", asset.Name, resp.StatusCode)
 	}
-
-	digest, err := parseChecksums(io.LimitReader(resp.Body, 1<<20), assetName)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, limit))
 	if err != nil {
 		return "", err
 	}
-	return digest, nil
+	return string(body), nil
+}
+
+// fetchForkDigest reads the sha256 the release published for one asset. The
+// checksum file is taken from THE SAME release as the asset, so a release
+// cannot hand out a checksum from another one.
+func fetchForkDigest(ctx context.Context, rel *forkRelease, assetName string) (string, error) {
+	sums, ok := pickForkAsset(rel.Assets, forkChecksumAsset)
+	if !ok {
+		return "", fmt.Errorf("release %s publishes no %s", rel.TagName, forkChecksumAsset)
+	}
+
+	body, err := fetchForkAssetText(ctx, sums, 1<<20)
+	if err != nil {
+		return "", err
+	}
+	return parseChecksums(strings.NewReader(body), assetName)
 }
 
 // parseChecksums finds one name in `sha256sum` output. The release job runs it
@@ -317,6 +369,53 @@ func parseChecksums(r io.Reader, want string) (string, error) {
 	return "", fmt.Errorf("no checksum for %s", want)
 }
 
+// chooseCoreInstaller returns the executables-only installer when this install
+// already has the payload the release was built with. Every way of not knowing
+// -- no core installer on this platform, no marker on disk, no payload-id.txt
+// in the release, a mismatch -- falls back to the full installer, which is
+// always correct and only ever costs bytes.
+func chooseCoreInstaller(ctx context.Context, rel *forkRelease) (forkAsset, bool) {
+	if CoreInstaller == "" {
+		return forkAsset{}, false
+	}
+	core, ok := pickForkAsset(rel.Assets, CoreInstaller)
+	if !ok {
+		return forkAsset{}, false
+	}
+	installed := InstalledPayloadID()
+	if installed == "" {
+		slog.Debug("no payload marker on disk; taking the full installer")
+		return forkAsset{}, false
+	}
+	published, err := fetchForkPayloadID(ctx, rel)
+	if err != nil || published == "" {
+		slog.Debug("release publishes no payload id; taking the full installer", "error", err)
+		return forkAsset{}, false
+	}
+	if published != installed {
+		slog.Info("payload changed in this release; taking the full installer",
+			"installed", installed[:12], "release", published[:12])
+		return forkAsset{}, false
+	}
+	return core, true
+}
+
+func fetchForkPayloadID(ctx context.Context, rel *forkRelease) (string, error) {
+	asset, ok := pickForkAsset(rel.Assets, forkPayloadIDAsset)
+	if !ok {
+		return "", fmt.Errorf("release %s publishes no %s", rel.TagName, forkPayloadIDAsset)
+	}
+	body, err := fetchForkAssetText(ctx, asset, 4<<10)
+	if err != nil {
+		return "", err
+	}
+	id := normalisePayloadID(body)
+	if id == "" {
+		return "", fmt.Errorf("%s is not a sha256", forkPayloadIDAsset)
+	}
+	return id, nil
+}
+
 // forkDigest is the gate the whole feed rests on: the staged bytes must hash to
 // what the release said they would. It runs before the platform's own
 // VerifyDownload, so a payload that is not ours is rejected before anything
@@ -330,9 +429,12 @@ func forkDigest(staged string) error {
 	if wantDigest == "" {
 		return fmt.Errorf("no published checksum for %s; refusing to install it", path.Base(staged))
 	}
-	if got := path.Base(strings.ReplaceAll(staged, `\`, `/`)); got != wantName {
-		// The staged filename comes from content-disposition, so a feed could
-		// steer it away from the asset whose digest we recorded.
+	// The staged name is whatever content-disposition gave, or the platform
+	// default when the server sent none -- those are the only two DownloadNewRelease
+	// can produce, and with two installers per release the asset name is no
+	// longer always the default. Anything else means the digest on file and the
+	// bytes on disk came from different steps.
+	if got := path.Base(strings.ReplaceAll(staged, `\`, `/`)); got != wantName && got != Installer {
 		return fmt.Errorf("staged %s but the checksum on file is for %s", got, wantName)
 	}
 

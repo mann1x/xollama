@@ -109,8 +109,12 @@ with the Bubble Tea menu in `cmd/tui/tui.go`.
 sibling to the `app` workspace (`vite.config.ts`, `vitest.config.ts`).
 **Desktop updates**: `app/updater/fork.go` reads this fork's GitHub releases
 (`XOLLAMA_UPDATE_FEED`, `XOLLAMA_UPDATE_PRERELEASE`) instead of `ollama.com`,
-hooked from `app/updater/updater.go` / `app/updater/updater_windows.go`; the
-installer is `app/xollama.iss` — see `docs/features/windows-installer.md`.
+hooked from `app/updater/updater.go` / `app/updater/updater_windows.go`;
+`app/updater/fork_payload_windows.go` picks the small `xOllamaUpdate.exe`
+(no `lib\ollama`) over the full `xOllamaSetup.exe` when the installed
+`lib\ollama\PAYLOAD_ID` matches the release's `payload-id.txt` (`payloadId` in
+`scripts/build_windows.ps1`). The installer is `app/xollama.iss` and registers
+`xollama://`, not `ollama://` — see `docs/features/windows-installer.md`.
 Pinned natives: `LLAMA_CPP_VERSION`, `MLX_VERSION`, `MLX_C_VERSION`,
 orchestrated by `CMakeLists.txt` / `CMakePresets.json`; the opencoti engine
 artifact is pinned by `llm/engine/pin.txt` (`repo`, `rev` commit sha, `tag`,

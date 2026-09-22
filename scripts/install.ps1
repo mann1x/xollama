@@ -162,7 +162,7 @@ function Find-InnoSetupInstall {
 }
 
 function Update-SessionPath {
-    # Update PATH in current session so 'ollama' works immediately
+    # Update PATH in current session so 'xollama' works immediately
     if ($InstallDir) {
         $ollamaDir = $InstallDir
     } else {
@@ -353,7 +353,7 @@ function Invoke-Install {
     # Cleanup
     Remove-Item $tempInstaller -Force -ErrorAction SilentlyContinue
 
-    # Update PATH in current session so 'ollama' works immediately
+    # Update PATH in current session so 'xollama' works immediately
     Write-Step "Updating session PATH"
     Update-SessionPath
 

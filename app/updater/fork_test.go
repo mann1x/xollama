@@ -333,3 +333,151 @@ func TestAnExplicitEndpointTurnsTheForkFeedOff(t *testing.T) {
 		t.Fatal("an explicitly set endpoint must fall through to the upstream path")
 	}
 }
+
+// withPayload stands in for an install that already has a given engine payload.
+func withPayload(t *testing.T, core, id string) {
+	t.Helper()
+	oldCore, oldID := CoreInstaller, InstalledPayloadID
+	CoreInstaller, InstalledPayloadID = core, func() string { return id }
+	t.Cleanup(func() { CoreInstaller, InstalledPayloadID = oldCore, oldID })
+}
+
+const (
+	payloadA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	payloadB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+)
+
+// withUpdateInstaller adds the executables-only installer and a payload id to a
+// release the feed already serves.
+func (f *feed) withUpdateInstaller(tag, core, body, payloadID string) *feed {
+	f.t.Helper()
+	sum := sha256.Sum256([]byte(body))
+	for i := range f.releases {
+		if f.releases[i].TagName != tag {
+			continue
+		}
+		f.bodies[tag+"-"+core] = []byte(body)
+		f.bodies[tag+"-"+forkPayloadIDAsset] = []byte(payloadID + "\n")
+		f.releases[i].Assets = append(f.releases[i].Assets,
+			forkAsset{Name: core, URL: f.srv.URL + "/assets/" + tag + "-" + core, Size: int64(len(body))},
+			forkAsset{Name: forkPayloadIDAsset, URL: f.srv.URL + "/assets/" + tag + "-" + forkPayloadIDAsset, Size: 65},
+		)
+		// The checksum file has to cover the new asset too, or the release is
+		// refused for the same reason any unlisted asset is.
+		f.bodies[tag+"-"+forkChecksumAsset] = append(f.bodies[tag+"-"+forkChecksumAsset],
+			[]byte(hex.EncodeToString(sum[:])+"  ./"+core+"\n")...)
+		return f
+	}
+	f.t.Fatalf("no release tagged %s", tag)
+	return f
+}
+
+// The point of the whole exercise: a release that changed no native code is
+// installed by the small installer.
+func TestAnUnchangedPayloadTakesTheUpdateOnlyInstaller(t *testing.T) {
+	f := newFeed(t).release("v0.35.0", false, []byte("full installer, 1.5 GB of it")).
+		withUpdateInstaller("v0.35.0", "xOllamaUpdate.exe", "executables only", payloadA)
+	f.use(t)
+	atVersion(t, "0.34.2")
+	withPayload(t, "xOllamaUpdate.exe", payloadA)
+
+	available, resp := checkForkUpdate(t.Context(), &Updater{})
+	if !available {
+		t.Fatal("expected an update")
+	}
+	if !strings.HasSuffix(resp.UpdateURL, "xOllamaUpdate.exe") {
+		t.Errorf("UpdateURL = %q, want the update-only installer", resp.UpdateURL)
+	}
+
+	staged := filepath.Join(t.TempDir(), "xOllamaUpdate.exe")
+	if err := os.WriteFile(staged, []byte("executables only"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := forkDigest(staged); err != nil {
+		t.Fatalf("the update-only installer failed its own checksum: %v", err)
+	}
+}
+
+// A payload change is exactly when the small installer would leave a machine
+// with executables that do not match their engine.
+func TestAChangedPayloadTakesTheFullInstaller(t *testing.T) {
+	f := newFeed(t).release("v0.35.0", false, []byte("full")).
+		withUpdateInstaller("v0.35.0", "xOllamaUpdate.exe", "core", payloadB)
+	f.use(t)
+	atVersion(t, "0.34.2")
+	withPayload(t, "xOllamaUpdate.exe", payloadA)
+
+	available, resp := checkForkUpdate(t.Context(), &Updater{})
+	if !available {
+		t.Fatal("expected an update")
+	}
+	if !strings.HasSuffix(resp.UpdateURL, Installer) {
+		t.Errorf("UpdateURL = %q, want the full installer", resp.UpdateURL)
+	}
+}
+
+// Every way of not knowing must cost bytes, never correctness.
+func TestNotKnowingThePayloadTakesTheFullInstaller(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		core      string
+		installed string
+		published string
+		omitID    bool
+		omitCore  bool
+	}{
+		{name: "no update installer on this platform", core: "", installed: payloadA, published: payloadA},
+		{name: "no marker on disk", core: "xOllamaUpdate.exe", installed: "", published: payloadA},
+		{name: "release publishes no payload id", core: "xOllamaUpdate.exe", installed: payloadA, published: payloadA, omitID: true},
+		{name: "release has no update installer", core: "xOllamaUpdate.exe", installed: payloadA, published: payloadA, omitCore: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFeed(t).release("v0.35.0", false, []byte("full"))
+			if !tt.omitCore {
+				f.withUpdateInstaller("v0.35.0", "xOllamaUpdate.exe", "core", tt.published)
+			}
+			if tt.omitID {
+				for i := range f.releases {
+					kept := f.releases[i].Assets[:0]
+					for _, a := range f.releases[i].Assets {
+						if a.Name != forkPayloadIDAsset {
+							kept = append(kept, a)
+						}
+					}
+					f.releases[i].Assets = kept
+				}
+			}
+			f.use(t)
+			atVersion(t, "0.34.2")
+			withPayload(t, tt.core, tt.installed)
+
+			available, resp := checkForkUpdate(t.Context(), &Updater{})
+			if !available {
+				t.Fatal("expected an update")
+			}
+			if !strings.HasSuffix(resp.UpdateURL, Installer) {
+				t.Errorf("UpdateURL = %q, want the full installer", resp.UpdateURL)
+			}
+		})
+	}
+}
+
+// A marker that is not a bare sha256 reads as unknown rather than as a match.
+func TestOnlyABareSha256CountsAsAPayloadID(t *testing.T) {
+	for _, tt := range []struct {
+		in   string
+		want string
+	}{
+		{payloadA, payloadA},
+		{"  " + payloadA + "\n", payloadA},
+		{strings.ToUpper(payloadA), payloadA},
+		{"", ""},
+		{"not-a-digest", ""},
+		{payloadA + "extra", ""},
+		{strings.Repeat("z", 64), ""},
+	} {
+		if got := normalisePayloadID(tt.in); got != tt.want {
+			t.Errorf("normalisePayloadID(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}

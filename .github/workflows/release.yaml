@@ -464,7 +464,7 @@ jobs:
             cmake --build build/go-license --target ollama-go-license
           done
       - run: |
-          ./scripts/build_windows.ps1 deps sign installer zip
+          ./scripts/build_windows.ps1 deps sign installer installerUpdate zip
       - name: Log contents after build
         run: |
           gci -path .\dist -Recurse -File | ForEach-Object { get-filehash -path $_.FullName -Algorithm SHA256 } | format-list
@@ -474,7 +474,9 @@ jobs:
           path: |
             dist/*.zip
             dist/*.ps1
+            dist/payload-id.txt
             dist/xOllamaSetup.exe
+            dist/xOllamaUpdate.exe
 
   linux-depends:
     strategy:
@@ -781,6 +783,11 @@ jobs:
         run: |
           required=(
             dist/xOllamaSetup.exe
+            # The update-only installer and the payload id it is keyed on. An
+            # update that ships without them silently costs every user the full
+            # ~1.5 GB download, which is a regression nobody would notice.
+            dist/xOllamaUpdate.exe
+            dist/payload-id.txt
             dist/install.ps1
             dist/install.sh
             dist/xollama-windows-amd64.zip

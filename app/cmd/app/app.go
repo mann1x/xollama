@@ -63,8 +63,11 @@ func main() {
 	var urlSchemeRequest string
 	if len(os.Args) > 1 {
 		for _, arg := range os.Args {
-			// Handle URL scheme requests (Windows)
-			if strings.HasPrefix(arg, "ollama://") {
+			// Handle URL scheme requests (Windows). The installer registers
+			// xollama:// and deliberately does not claim ollama://, which a
+			// stock install owns -- but a link handed to us still works, so
+			// both are accepted here. parseURLScheme is scheme-agnostic.
+			if strings.HasPrefix(arg, "xollama://") || strings.HasPrefix(arg, "ollama://") {
 				urlSchemeRequest = arg
 				slog.Info("received URL scheme request", "url", arg)
 				continue
