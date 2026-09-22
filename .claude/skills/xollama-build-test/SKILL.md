@@ -87,6 +87,18 @@ output. Never claim a build or test passed without the command output.
    `ollama/` level silently falls through to this repo's `build/lib/ollama` —
    i.e. back to production.
 
+   **Read the offload line out of the log before starting anything long.** A
+   payload that is present but unusable does not raise an error: the server logs
+   `inference compute id=cpu library=cpu`, `/api/ps` reports `size_vram: 0`, and
+   `nvidia-smi` sits at ~10 MiB with a model supposedly loaded — the run then
+   completes on the CPU, slowly and plausibly. `OLLAMA_LIBRARY_PATH` is a log
+   label, not an input, so it cannot be used to point around a broken payload.
+   `mann1x/ollama` hits the same class from the opposite direction: its
+   `build/lib/ollama` is a farm of links into `dist-tb/lib/ollama`, and a
+   `llama/server` rebuild that moves the soversion leaves every link dangling
+   (`find build/lib/ollama/ -xtype l` must come back empty). Check the payload
+   resolved *and* that the model offloaded, every time.
+
 ## Instructions
 
 ### Step 1 — Classify the change

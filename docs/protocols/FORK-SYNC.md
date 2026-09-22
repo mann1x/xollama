@@ -302,11 +302,17 @@ arm provenance and the lane in `CARRIED-PATCHES.md`.
   xollama commit touching a file that exists at `v0.34.2` and is not part of a
   marked hook is a candidate for the same treatment.
 - **The 004 end-to-end verification is closed** (2026-09-22), with a null
-  result: the fork's 32-copies repro does not reproduce on this host before the
-  change. Waiting on their exact model, flags and turn shape — an agentic
-  multi-turn response with a tool call is the shape most likely to reach the
-  reopen path, and it is the one this host cannot stage from a single
-  `/api/chat`.
+  result over two rounds: 19 before-arm runs across three models and both reset
+  routes, one wrap-up copy every time. The fork supplied their recorded
+  parameters and a structural reason the first round could not have reached the
+  guard — verified here, and correct. The second round used their own tag
+  (`qwen3.8-mtp_tb:27b-q4km`, `parser qwen3.5`) with 20–29 tool calls per run,
+  and still no second thinking block opens, so the guard's precondition never
+  occurs. **Two open questions, both theirs:** does their 08-18 observation still
+  reproduce against b10969 rather than b10434, and did their harness keep one
+  response alive across a tool round trip? If it did, the defect is
+  harness-shaped rather than model-shaped and the branch notes should say so.
+  They are staging the agentic half on pandorum.
 - **#15–#17 do not go upstream.** Settled 2026-09-22 by the repository owner,
   who told the fork directly. `fork-only` with `upstream_pr: null` is their
   final state, not a placeholder, so the manifest invariant

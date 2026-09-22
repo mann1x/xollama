@@ -266,8 +266,44 @@ bug does not fire**.
 
 The merge stands on the union check, the clean-fetch apply, and the patch's own
 `test-reasoning-budget` cases (`spent_response_stays_quiet`,
-`spent_response_bars_reopening`) — not on this repro. The fork has been asked
-for the exact model, flags and turn shape that produced their 32 copies.
+`spent_response_bars_reopening`) — not on this repro.
+
+### Second round, on the fork's own tag — still one copy
+
+The fork answered with a structural reason the first round could not have
+reached the guard, and it is correct here: `ToolCallStartTagForParser`
+(`model/parsers/parsers.go:60`) returns `""` unless the parser implements
+`ToolCallTagger`, and in `model/parsers/` exactly two do — `Gemma4Parser`
+(`gemma4.go:72`) and `Qwen35Parser` (`qwen35.go:67`). `deepseek-r1` has no entry
+in `ParserForName` at all, so six of those thirteen runs got
+`ThinkBudgetResetTag: ""` and the tool-call reset could not fire in principle.
+`gemma4:e2b` has a parser but emitted no tool call, so nothing reset there
+either.
+
+Re-run on their recorded tag, which is on this host:
+`qwen3.8-mtp_tb:27b-q4km` — `renderer qwen3.8`, **`parser qwen3.5`**, 27.3B,
+whose own params carry `think_budget medium` and a 240-character budget message.
+`think_budget` 96 and 64 against `num_predict` 768 and 1024 (the ratio is the
+lever), `num_ctx` 8192, with and without a tool the prompt forces the model to
+call. `offloaded 66/66 layers to GPU` in both arms.
+
+| | runs | tool calls | budget activations | copies | in `content` | back to back |
+|---|---|---|---|---|---|---|
+| before | 6 | 0, 0, 0, 20, 21, 29 | 6 of 6 | **1 each** | 0 | 0 |
+| after | 6 | 0, 0, 0, 20, 21, 29 | 6 of 6 | **1 each** | 0 | 0 |
+
+Identical arm to arm on every field — copies, tool calls, `thinking_chars`,
+`content_chars`, `eval_count`, `done_reason`. Route 2 was genuinely exercised
+this time: the tools runs emit 20–29 calls, so the reset tag `<tool_call>` was
+in the stream. The model still never opened a **second** thinking block — it
+goes from the wrap-up message straight into the tool calls and never reopens —
+so the guard's precondition does not occur, and the defect is still out of
+reach rather than absent.
+
+**Nineteen before-arm runs now, across three models and both routes, all one
+copy.** One variable is theirs to check: their observation is on llama.cpp
+**b10434** plus the patch, this tree pins **b10969**. Same tag, same parameters,
+different base.
 
 **Lane note.** These builds ran in a detached worktree, not in this checkout:
 `build/lib/ollama` is a symlink to `/usr/local/lib/ollama` and a local
