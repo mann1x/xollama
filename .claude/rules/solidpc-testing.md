@@ -43,8 +43,21 @@ paths:
   app dir** `~/.llamafile/v/opencoti-0.10.5-c7/`, which dev builds overwrote 97
   times between 2026-09-05 and 2026-09-22. The executable's own directory always
   wins, so stage the `dso` beside the `bin` — as `cmake/opencoti-fetch.cmake`
-  does for a packaged install. `source` only records this from 2026-09-21, so
-  older cells cannot self-certify; see `docs/evaluations/phase2-engine-ab.md`.
+  does for a packaged install. A *fat release* boot is safe either way: it byte-
+  compares its embedded payload on every start and re-extracts, so it maps its
+  own bytes whatever the app dir holds (opencoti #200; the compare→`dlopen`
+  window is a residual TOCTOU). From opencoti 0341 the binary names the library
+  it mapped (`cuda: loaded … (executable directory, … bytes)`) — read that line
+  instead of inferring provenance; `source` only records it from 2026-09-21, so
+  older cells cannot self-certify. See `docs/evaluations/phase2-engine-ab.md`.
+- **Run a pin candidate on every axis, and on `/api/chat` above all.** Candidate
+  `2609220756001` (build 20) was 8/8 on compat and inside build 19's spread on
+  throughput and multi-slot, yet refused the *second* `/api/chat` turn of every
+  conversation (`kv-reservation: REFUSED`) — compat sends one request per model
+  and throughput uses `/api/generate`, so both stayed green on bytes that cannot
+  hold a two-turn conversation. Separate our feature from the engine's
+  regression by removing the input: `XOLLAMA_SESSION_AFFINITY=false` made every
+  failing cell pass, so the pin stays at build 19 (`2609210611001`).
 - **The 3090 is shared with the live service.** A 70B arm holds ~24 GB for the
   run, so the systemd `ollama` cannot load anything meanwhile. Check
   `nvidia-smi --query-compute-apps` first, keep big arms short, and confirm VRAM

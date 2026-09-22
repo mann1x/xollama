@@ -16,13 +16,22 @@
 >   `b18-smoke` and `multislot/b18` ran from `/srv/ml/opencoti-dev/build18/`,
 >   which holds `ggml-cuda.so` (22:26) *beside* the binary (22:25), both staged
 >   before the first of those runs at 22:27. The app dir was never consulted.
-> - **c7r2 cells — open pending one fact.** `c7r2-overflow`,
+> - **c7r2 cells — annotate, do not re-take.** `c7r2-overflow`,
 >   `c7r2-overflow-clean`, `c7r2-narrowing` and `multislot/r2` ran the fat
 >   release bin at `c7r2/artifacts/…-x86_64.llamafile`, and `artifacts/` holds no
->   `ggml-cuda.so`. Those boots resolved through the app dir. Whether they are
->   sound turns on whether a fat boot writes its embedded payload
->   **unconditionally** or only when absent; opencoti has been asked. These
->   binaries predate 0341, so there is no loaded line to read.
+>   `ggml-cuda.so`, so those boots resolved through the app dir. That turned on
+>   whether a fat boot writes its embedded payload unconditionally or only when
+>   absent, and opencoti answered it (#200): `llamafile_is_file_newer_than`
+>   dispatches a `/zip/…` payload to `is_file_newer_than_bytes`, which `pread`s
+>   both files in 512-byte chunks and returns at the first differing byte, and
+>   `llamafile_extract` then rewrites via `mkstemp` + `rename`. A fat boot
+>   therefore compares the whole payload every time and always ends up mapping
+>   **its own** embedded bytes, whatever a dev build left in the app dir. The
+>   cells stand. opencoti acknowledge one residual they have not closed: the
+>   window between that byte compare and the `dlopen` is a TOCTOU, so a write
+>   landing inside it would still be picked up. Nothing here ran concurrently
+>   with a dev build, and these binaries predate 0341, so there is no loaded
+>   line to read either way.
 > - **Every `llamacpp` cell is unaffected** — different engine, no side-load.
 >
 > A packaged xollama was never exposed: `cmake/opencoti-fetch.cmake` stages the
@@ -493,3 +502,113 @@ The `--iters` default is 3; the figures above this section were taken at 5. The
 first build-19 pass was run at the default and showed −3.2%, which is the same
 number, but comparing a 3-iteration median against a 5-iteration one is a
 comparison of two methods. Match the method before reading a delta.
+
+## Candidate `2609220756001` (build 20), 2026-09-22 — NOT PINNABLE
+
+opencoti published a post-0342 snapshot; this is the measurement the pin rule
+asks for before it can move (`.claude/rules/engine-pin.md`). Both digests were
+checked against the published values before anything ran — bin `138d4614…`,
+dso `d676a779…`, from `ManniX-ITA/opencoti-llamafile-dev` rev
+`12f73a6adb8e8277b80fa5bd86872f3b0761eb1e` — and staged flat with the library
+beside the binary. For the first time the artifact says so itself, because 0341
+added the line:
+
+```
+cuda: loaded /srv/ml/opencoti-dev/build20/flat/ggml-cuda.so (executable directory, 734023016 bytes)
+```
+
+That closes the provenance question at the top of this page for every cell
+below: the app dir was not consulted, and the binary said which bytes it mapped
+rather than us inferring it from where we put them.
+
+**Four axes clean, one axis broken, and the broken one is `/api/chat`.**
+
+| axis | build 19 (pinned) | candidate `…0756001` |
+|---|---|---|
+| compat | 8/8 | **8/8** |
+| throughput, gen (5 iters) | 76.56 (75.68–76.82) | 76.12 (75.53–76.58) |
+| throughput, prompt eval | 3968.5 | 3940.9 |
+| multi-slot, aggregate | 609.95 (3.36 s) | 615.03 (3.33 s) |
+| overflow, 70B at 0.76 in VRAM | — | loaded, 4.01 tok/s |
+| **gemma-4 parsers** | **pass** | **HTTP 500** |
+
+Throughput and multi-slot were re-taken **in the same session at matched
+settings**, because the first candidate pass read −3.7% on multi-slot against a
+figure from the day before and that turned out to be session noise: taken back
+to back the two builds are 609.95 against 615.03. The method note further up
+this page is there for exactly this, and it caught something this time.
+
+### The gemma-4 failure is not about gemma 4
+
+The axis sends two `/api/chat` requests. The first returned
+`get_weather{city: Berlin}` normally; the second sat for two minutes and came
+back 500:
+
+```
+the engine has had no room for this request for 2m0s; it is refusing new work
+rather than queueing it, which usually means the context or the slot ceiling is
+too large for the memory available
+```
+
+The engine's own allocator says what happened. One booking, then sixty
+refusals, and the free count never moves:
+
+```
+kv-reservation: booked  peak=327747 | base need 32768 of 32768 free | swa need 512 of 2048 free | outstanding=0
+kv-reservation: REFUSED (context allocation exhausted) peak=541 seqs=1 | base 0/32768 free need 32768 | swa 2048/2048 free need 0
+```
+
+Build 19, same model, same axis, same host:
+
+```
+kv-reservation: booked peak=327747 | base need 32768 of 32768 free | swa need 512 of 3072 free | outstanding=0
+kv-reservation: booked peak=541    | base need   541 of 32768 free | swa need 512 of 3072 free | outstanding=0
+```
+
+Four probes narrowed it, each cell a fresh server and two sequential requests
+(`/srv/ml/xollama-phase2/probes/kvleak{,2,3}.py`):
+
+- **not the tool call and not the thinking turn** — tools-then-plain,
+  plain-then-plain and think-then-plain all fail identically;
+- **not gemma 4 and not the iSWA cache** — `llama3:latest` fails the same way at
+  `base 0/8192 free`;
+- **not the context size** — it reproduces at 8192 and at 32768;
+- **`/api/generate` is unaffected**, at every size, on both models;
+- a second request carrying the *same* prompt passes, because a full prefix-cache
+  hit needs zero new cells. That is why the compat axis, which sends one request
+  per model, and the throughput axis, which sends `/api/generate`, both stayed
+  green on bytes that cannot hold a two-turn conversation.
+
+The engine's slot dump names the mechanism. The candidate replaced `session_id`
+with an **`alloc_key`**, and allocation is now keyed by it:
+
+| build | endpoint | slot dump |
+|---|---|---|
+| 19 | chat | `"session_id":"xo-036c468c45a…","shared_pool_slot":-1,"pool_id":-1` |
+| candidate | chat | `"alloc_key":"xo-036c468c45a…","alloc_worker":false` |
+| candidate | generate | `"alloc_key":"req#1"` … `"alloc_key":"req#2"` |
+
+`/api/generate` gets a per-request key and is released at the end of the
+request. `/api/chat` gets our session-affinity id, and that reservation is never
+released and never reused — the next request under the same key is refused until
+the runner dies. Confirmed by removing the input rather than by reading the
+code: **with `XOLLAMA_SESSION_AFFINITY=false` every failing cell passes on the
+candidate**, with the same bytes and the same probe.
+
+So this is the engine's regression, reached through a feature of ours that is on
+by default. It was reported to opencoti with the two reservation lines, the
+slot dumps and the affinity-off control.
+
+### What this decides
+
+**The pin stays at `2609210611001` (build 19).** The rule is that bytes move on
+a measurement; this measurement says the candidate breaks the second turn of
+every conversation on the default configuration, which is worse than anything it
+fixes. Nothing else in the run argues for moving either — compat is the same
+8/8, and throughput and multi-slot are inside each other's spread.
+
+Build 19 was also given the gemma-4 axis here, which it had never been run
+against (its section above measured only throughput and multi-slot): it passes,
+`get_weather{city: Berlin}` with thinking separated at 781 characters — the same
+result build 18 gave. That closes a hole in the pinned build's coverage rather
+than leaving it inferred.
