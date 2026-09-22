@@ -3,6 +3,7 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -20,10 +21,20 @@ const EnvPath = "XOLLAMA_ENGINE_PATH"
 // llama-server. Off by default -- see FallbackOnLoadFailure.
 const EnvFallback = "XOLLAMA_ENGINE_FALLBACK"
 
-// artifactPrefix is how a published artifact is named:
+// artifactPrefix is how a published artifact is named.
 //
-//	opencoti-llamafile-<version>-<tag>-<arch>.llamafile[.exe]
-const artifactPrefix = "opencoti-llamafile-"
+// TWO shapes, because the two channels name them differently, and a finder
+// that knows only one silently ships an engine nothing can load:
+//
+//	opencoti-llamafile-<version>-<tag>-<arch>.llamafile[.exe]   release channel
+//	opencoti-<version>-<build>                                  dev channel, bare APE
+//
+// The dev artifact carries NO extension at all, which is what caught us: the
+// build staged opencoti-0.10.5-c7-2609221142001 into the payload, Find skipped
+// it for having no .llamafile suffix, and the server fell back to stock
+// llama-server with nothing in the log about a pin having moved. The engine was
+// in the package; it was simply invisible.
+const artifactPrefix = "opencoti-"
 
 // ErrNotFound means no artifact is installed. It is never fatal: the caller
 // falls back to the stock llama-server.
@@ -72,11 +83,14 @@ func Find(explicit string, dirs []string) (string, error) {
 			continue
 		}
 		for _, e := range entries {
-			if e.IsDir() || !isArtifact(e.Name()) {
+			if e.IsDir() {
 				continue
 			}
 			info, err := e.Info()
 			if err != nil {
+				continue
+			}
+			if !isArtifact(e.Name(), info.Mode()) {
 				continue
 			}
 			found = append(found, candidate{filepath.Join(dir, e.Name()), info.ModTime().UnixNano()})
@@ -94,15 +108,35 @@ func Find(explicit string, dirs []string) (string, error) {
 	return found[0].path, nil
 }
 
-func isArtifact(name string) bool {
+// isArtifact reports whether a payload-directory entry is an engine to launch.
+//
+// The extension settles it for the release channel. It cannot settle it for the
+// dev channel, and not merely because that name has no suffix: filepath.Ext of
+// "opencoti-0.10.5-c7-2609221142001" is ".5-c7-2609221142001", because the
+// version number contains dots. A test for an empty extension looks right and
+// never fires.
+//
+// So two tests, in the order they can actually answer. A known extension
+// settles it either way -- an engine, or one of the data files that travel
+// beside one. What is left is a name the extension cannot classify, and there
+// the EXECUTABLE BIT decides: the dev channel publishes its APE 0755 and its
+// CUDA payload 0644 into the same directory, which is the difference that
+// matters and the only one either file states about itself.
+//
+// Both signals have to agree before anything is launched. Neither alone is
+// enough: a manifest named <artifact>.MANIFEST.json is executable on plenty of
+// filesystems, and an artifact restored without its mode is still an artifact.
+func isArtifact(name string, mode fs.FileMode) bool {
 	if len(name) <= len(artifactPrefix) || name[:len(artifactPrefix)] != artifactPrefix {
 		return false
 	}
 	switch filepath.Ext(name) {
 	case ".llamafile", ".exe":
 		return true
+	case ".so", ".dll", ".dylib", ".json", ".txt", ".md", ".sha256", ".sig", ".zip", ".gz", ".xz", ".log":
+		return false
 	}
-	return false
+	return mode&0o111 != 0
 }
 
 // Command turns ollama's llama-server argv into the command line that runs the

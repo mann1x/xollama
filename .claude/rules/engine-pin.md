@@ -41,6 +41,11 @@ paths:
   APE that needs one. Address them with `pin.Asset` (bin rows only) and `pin.DSO`;
   build offline with `-DLOCAL_DSO_FILE=<payload>`. One row per kind per arch and
   at least one `bin` — `TestCommittedPinParses` fails duplicates and dso-only pins.
+- `Find` in `llm/engine/opencoti.go` knows **both** artifact names: release
+  `opencoti-llamafile-<version>-<tag>-<arch>.llamafile[.exe]` and the dev bare APE
+  `opencoti-<version>-<build>` (no extension; `filepath.Ext` sees the version's
+  dots). `isArtifact` decides by a known extension first, else the executable bit
+  (APE `0755`, CUDA payload `0644`). Missing either shape falls back silently.
 - A test about policy must not also be a test of what this branch pins: stub the
   pin with `withPin` (`llm/engine/coverage_test.go`), which swaps `loadPin` and
   restores it in `t.Cleanup`. `TestSupportsDeviceHonoursTheCUDAComputeFloor` in
