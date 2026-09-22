@@ -612,3 +612,71 @@ against (its section above measured only throughput and multi-slot): it passes,
 `get_weather{city: Berlin}` with thinking separated at 781 characters — the same
 result build 18 gave. That closes a hole in the pinned build's coverage rather
 than leaving it inferred.
+
+## `2609221142001` (build 21), 2026-09-22 — the fix, measured
+
+opencoti reproduced the above on their own endpoint without an ollama layer,
+and the mechanism turned out to be one level up from "never released". Their
+`/kv` named it:
+
+```
+"key":"s-repro-1","window":32768,"requested":null,"cells":32768,"used":13
+```
+
+`requested: null` — the client never stated `num_ctx`. Their session allocator
+books a session's window **whole** and holds it until close or TTL, which is the
+guarantee working as designed; the defect was the size it chose when nobody
+asked, namely the per-session maximum. So the first turn of the first
+conversation took all 32768 cells for 300 s and everything else was refused.
+That is the "secondary observation, no action implied" at the end of our report
+— `base need 32768` for `peak=51` — which was not benign after all and was the
+whole bug in one line. Worth remembering: the thing filed as background colour
+was the cause, and the four narrowings only bounded it.
+
+Patch 0345 (`739e5f076e`) makes an **unstated** window per-request — released
+when the request completes, and negotiated down to the largest window that fits
+with the request's own peak as the floor — while a **stated** `num_ctx` keeps the
+old contract: booked whole, held across turns, refused rather than silently
+shrunk.
+
+Measured here on `e3a19b0b…`, the host binary only; the DSO is the same
+`d676a779…` already measured, staged beside it, and the artifact again said so
+itself (`executable directory, 734023016 bytes`).
+
+| axis | build 19 (pinned) | build 20 | **build 21** |
+|---|---|---|---|
+| compat | 8/8 | 8/8 | **8/8** |
+| throughput, gen (5 iters, matched) | 76.17 (75.77–76.74) | 76.12 | **76.68 (76.48–76.80)** |
+| multi-slot, aggregate (matched) | 613.76 (3.34 s) | 615.03 | **612.66 (3.34 s)** |
+| overflow, 70B | — | 4.01 tok/s | **4.05 tok/s, 0.759 in VRAM** |
+| gemma-4 parsers | pass | **HTTP 500** | **pass** |
+
+The gemma-4 cell returns exactly what build 19 returns —
+`get_weather{city: Berlin}`, thinking separated at 781 characters — and the
+`kvleak3` probe that isolated the defect now passes all three cells with the
+pool free again for the second request (`base need 32768 of 32768 free` where
+build 20 read `base 0/32768 free`). **Zero `REFUSED` lines in the entire
+five-axis sweep.** Throughput and multi-slot were taken back to back against
+build 19 in one session and are inside each other's spread.
+
+### One thing this did NOT verify
+
+opencoti's gate arm A is two *distinct* session ids with `num_ctx` unstated, and
+their arms C and D show a stated window still held and still refused rather than
+shrunk. A probe was written to reproduce arm A through our stack
+(`probes/kvleak4.py`, four concurrent `/api/chat`) and it is **not a
+discriminator**: build 20 passes it too. Two reasons, both visible in its logs —
+xollama minted **one** session id for all four requests, not four, and the
+bookings read `base need 0`, so nothing was being contended. The arm-A claim
+therefore rests on opencoti's own measurement, not on ours. Reproducing it here
+needs a probe that forces distinct session ids; until one exists, do not cite
+concurrency-with-distinct-sessions as something this page measured.
+
+### What this decides
+
+On the measurement, **build 21 is pinnable and build 19 is not preferable to
+it**: same compat, same performance inside the spread, and the defect that
+blocked build 20 is gone. The pin cannot actually move yet for a reason that has
+nothing to do with the bytes — `llm/engine/pin.txt` names an HF repo, revision
+and sha256, and these bytes are not published. That is the repository owner's
+call, not ours.
