@@ -186,6 +186,13 @@ func cacheShape(cfg *xollama.Config) string {
 	if why := llm.CacheShapeError(cfg.KV.K, cfg.KV.V, cfg.KV.KSWA, cfg.KV.VSWA); why != "" {
 		return why
 	}
+	// A KVarN cache is not servable with flash attention off -- the engine
+	// says so and exits. "auto" is left alone: it resolves against the devices
+	// at load time and is usually on, and refusing it here would refuse the
+	// configuration most models should have.
+	if llm.CacheNeedsFlashAttention(cfg.KV.K, cfg.KV.V, cfg.KV.KSWA, cfg.KV.VSWA) && cfg.FlashAttention == "off" {
+		return "a KVarN cache type needs flash attention, and flash_attention is off; the engine refuses the pair at startup"
+	}
 	// Only a model that PINS the stock engine is refused. One that states no
 	// engine may still be served by opencoti, and the operator who typed a
 	// kvarn width has said which they expect.

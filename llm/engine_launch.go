@@ -458,13 +458,25 @@ func (p slotPlan) concurrency() int {
 // unconfigurable by an older one -- the same reasoning that keeps types/xollama
 // from validating these at all.
 //
-// The deprecated turbo*/`*_tcq` tiers are deliberately absent. common/arg.cpp
-// marks them frozen and the kvarnN widths replaced them; offering one in a menu
-// is how an operator ends up on a tier nobody maintains.
+// The widths are MEASURED against the pinned artifact, by asking its own parser
+// (`--cache-type-k BOGUS` prints the allowed values). On
+// opencoti-0.10.5-c7-2609221142001:
+//
+//	f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1,
+//	q6_0, turbo2, turbo3, turbo4, turbo8, turbo3_tcq, turbo2_tcq,
+//	kvarn2, kvarn3, kvarn4, kvarn5, kvarn6, kvarn8
+//
+// There is **no kvarn7** and no kvarn1, which the run of numbers invites you to
+// assume: both are refused with "Unsupported cache type". Offering one in a
+// menu is how an operator configures a model that will not load.
+//
+// The deprecated turbo*/`*_tcq` tiers are accepted but deliberately absent
+// here. common/arg.cpp marks them frozen and the kvarnN widths replaced them;
+// offering one is how an operator ends up on a tier nobody maintains.
 func KnownCacheTypes(opencoti bool) []string {
 	types := slices.Clone(stockCacheTypes)
 	if opencoti {
-		types = append(types, "q6_0", "kvarn2", "kvarn3", "kvarn4", "kvarn5", "kvarn6", "kvarn7", "kvarn8")
+		types = append(types, "q6_0", "kvarn2", "kvarn3", "kvarn4", "kvarn5", "kvarn6", "kvarn8")
 	}
 	return types
 }
@@ -476,6 +488,27 @@ func KnownCacheTypes(opencoti bool) []string {
 // them at load time meets them as a model that will not start.
 func CacheShapeError(k, v, kswa, vswa string) string {
 	return kvCacheTypes{K: k, V: v, KSWA: kswa, VSWA: vswa}.ringShapeError()
+}
+
+// CacheNeedsFlashAttention reports whether these types can only be served with
+// flash attention on.
+//
+// MEASURED, on opencoti-0.10.5-c7-2609221142001: a load with -ctk kvarn2 and
+// flash attention off dies at init with "llama_init_from_model: KVarN requires
+// Flash Attention; enable it". It reached us the ugly way -- as a model that
+// loaded at one context length and failed at another, because the size that
+// failed took a retry path where -fa auto resolved off.
+//
+// The quantised tiers are structured formats the attention kernel has to know
+// about; the plain types are not, so this is a KVarN property and not a
+// property of quantised caches in general.
+func CacheNeedsFlashAttention(k, v, kswa, vswa string) bool {
+	for _, t := range []string{k, v, kswa, vswa} {
+		if isKVarNCacheType(t) {
+			return true
+		}
+	}
+	return false
 }
 
 // CacheTypesNeedOpencoti names the first stated cache type that stock

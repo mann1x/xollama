@@ -471,3 +471,22 @@ func TestEveryNamedFallbackIsARealEnvironmentVariable(t *testing.T) {
 		t.Fatal("no fallbacks listed at all; the help would say nothing")
 	}
 }
+
+// Measured on the pinned engine: a KVarN cache with flash attention off dies at
+// init. It is a "cannot be served" fault, so it is refused at configuration
+// time rather than discovered as a model that will not load.
+func TestAKVarNCacheWithFlashAttentionOffIsRefused(t *testing.T) {
+	_, _, err := run(t, &xollama.Config{}, []string{"--kv-k=kvarn2", "--kv-v=kvarn2", "--flash-attn=off"})
+	if err == nil {
+		t.Fatal("want a refusal")
+	}
+	if !strings.Contains(err.Error(), "needs flash attention") {
+		t.Fatalf("the refusal must name the pair: %v", err)
+	}
+
+	// auto is not refused: it resolves against the devices at load time, and is
+	// the configuration most models should have.
+	if _, _, err := run(t, &xollama.Config{}, []string{"--kv-k=kvarn2", "--kv-v=kvarn2", "--flash-attn=auto"}); err != nil {
+		t.Fatalf("auto must not be refused: %v", err)
+	}
+}

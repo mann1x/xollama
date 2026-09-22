@@ -164,3 +164,27 @@ func TestKVCacheTypesRequiringTheEngineExtension(t *testing.T) {
 		})
 	}
 }
+
+// The suggestion list is a measurement of the pinned artifact, not a pattern.
+// kvarn7 is the trap: the run 2,3,4,5,6,8 invites it, and the engine answers
+// "Unsupported cache type: kvarn7". A model configured with one does not load.
+func TestTheSuggestedCacheTypesAreOnesThePinnedEngineTakes(t *testing.T) {
+	got := KnownCacheTypes(true)
+	for _, absent := range []string{"kvarn1", "kvarn7", "turbo2", "turbo3_tcq"} {
+		if slices.Contains(got, absent) {
+			t.Errorf("%q is suggested; it is either refused by the engine or a frozen tier", absent)
+		}
+	}
+	for _, want := range []string{"kvarn2", "kvarn8", "q6_0", "f16", "q8_0"} {
+		if !slices.Contains(got, want) {
+			t.Errorf("%q is not suggested; the pinned engine accepts it", want)
+		}
+	}
+	// An engine pin of llamacpp narrows to what upstream's own parser takes.
+	stock := KnownCacheTypes(false)
+	for _, absent := range []string{"kvarn2", "q6_0"} {
+		if slices.Contains(stock, absent) {
+			t.Errorf("%q is suggested for stock llama.cpp, which has no such type", absent)
+		}
+	}
+}

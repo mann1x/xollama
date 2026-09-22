@@ -128,7 +128,14 @@ Two rules, kept apart deliberately:
 The measured cache preconditions in `llm/engine_launch.go` (`ringShapeError`)
 are applied here too, through `llm.CacheShapeError`, so a ring without a KVarN
 base is refused at configuration time rather than at startup, where it reaches
-the operator as a model that will not load.
+the operator as a model that will not load. `llm.CacheNeedsFlashAttention` adds
+the other one: a KVarN cache with `flash_attention: "off"` is refused, because
+the engine refuses the pair at init.
+
+`llm.KnownCacheTypes` is likewise a measurement, taken by asking the pinned
+artifact's own parser (`--cache-type-k BOGUS` prints its allowed values). It has
+**no kvarn7** — the run kvarn2, 3, 4, 5, 6, 8 invites the assumption and the
+engine answers "Unsupported cache type".
 
 [docs/xollama/tweak.mdx](../xollama/tweak.mdx) is the operator-facing page.
 

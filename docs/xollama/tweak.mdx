@@ -108,9 +108,13 @@ From a script the same case is an error and a non-zero exit, because there is
 nobody to ask and guessing a cache type would change the model's output.
 
 Some of these rules are **measured**, not read out of a flag table: a
-sliding-window ring needs a KVarN base on both `kv.k` and `kv.v`, and both halves
-of the ring must be set together. The engine states each of those and exits
-during startup, which reaches you as a model that will not load. Checking them
+sliding-window ring needs a KVarN base on both `kv.k` and `kv.v`; both halves of
+the ring must be set together; and a KVarN cache needs flash attention, so
+`kv.k: kvarn2` with `flash_attention: "off"` is refused here. The engine states each of those and exits
+during startup, which reaches you as a model that will not load -- and the
+flash-attention one reached us the ugly way, as a model that loaded at one
+context length and failed at another, because the size that failed took a retry
+path where `-fa auto` resolved off. Checking them
 here names the setting that has to change instead.
 
 ## Starting over
