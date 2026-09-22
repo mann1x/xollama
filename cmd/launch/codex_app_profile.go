@@ -108,21 +108,23 @@ func codexAppRegularProfileRoutingModels(configPath string) map[string]struct{} 
 	return models
 }
 
-// codexAppRequestMTimeSkew absorbs the gap between time.Now(), which reads the
-// fine-grained clock, and file mtimes, which the kernel stamps from a coarse
-// clock that only advances once per timer tick.
+// codexAppSessionMTimeSlack absorbs the gap between the clock time.Now()
+// reads and the coarser clock a filesystem stamps mtime from. tmpfs takes
+// mtime from the kernel's coarse clock, which trails by up to a tick -- 4ms at
+// CONFIG_HZ=250 -- so a rollout file written just after the session start is
+// recorded as older than it, and would be skipped for the life of the session.
+// ext3 and several network filesystems are coarser still, at a full second.
 //
-// Without it a session file written immediately after `start` is recorded can
-// carry an mtime a few hundred microseconds BEFORE it and be skipped outright,
-// so the opening prompts of a session are silently never counted. Measured on
-// solidPC: start 14:42:19.515114114Z, mtime of a file created after it
-// 14:42:19.514497780Z.
+// xollama measured the same gap independently before this branch existed
+// (start 14:42:19.515114114Z against an mtime of 14:42:19.514497780Z on a file
+// created after it) and carried its own constant for it; that fix was authored
+// here rather than on a branch, which is what R4 of docs/protocols/FORK-SYNC.md
+// forbids, so this one replaced it.
 //
-// Widening this cannot overcount. The mtime test is only a pre-filter deciding
-// which files are worth opening; whether a line counts is decided per line by
-// codexAppLineIsUserRequest, which enforces the same `start` against the
-// event's own timestamp.
-const codexAppRequestMTimeSkew = 2 * time.Second
+// Being generous here costs nothing: this check only avoids opening files that
+// are plainly older than the session. Which lines actually count is decided by
+// their own timestamps in codexAppLineIsUserRequest below, which is exact.
+const codexAppSessionMTimeSlack = 2 * time.Second
 
 func (c *codexAppRequestCursor) scan(root string, start time.Time, allowedModels map[string]struct{}) uint64 {
 	c.mu.Lock()
@@ -153,7 +155,7 @@ func (c *codexAppRequestCursor) scanLocked(root string, start time.Time, allowed
 	slices.Sort(paths)
 	for _, path := range paths {
 		info, err := os.Stat(path)
-		if err != nil || info.ModTime().Before(start.Add(-codexAppRequestMTimeSkew)) {
+		if err != nil || info.ModTime().Add(codexAppSessionMTimeSlack).Before(start) {
 			continue
 		}
 		offset := c.files[path]
