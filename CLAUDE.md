@@ -30,7 +30,8 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   the fork to — that is the repository owner's call; `fork-only` entries stay so.
 - `docs/features/engine-opencoti-llamafile.md` · `docs/features/rebrand.md` ·
   `docs/features/store-ownership.md` · `docs/features/windows-installer.md` ·
-  `docs/features/model-config.md` · `docs/features/modelfile-roundtrip.md`
+  `docs/features/model-config.md` · `docs/features/modelfile-roundtrip.md` ·
+  `docs/features/docker-release.md`
 - `docs/evaluations/phase0-engine-compat.md` — measured engine-compat baseline.
 
 Remotes: `origin` = mann1x/xollama · `upstream` = ollama/ollama ·
@@ -133,6 +134,10 @@ it (`OllamaSchemeUnclaimed`). macOS declares both schemes and
 `app/cmd/app/app_darwin.m` handles both, because ollama.com picks the sign-in
 redirect scheme; `app/cmd/app/app.go` accepts either — see
 `docs/features/windows-installer.md`.
+**Container image**: `.github/workflows/docker-release.yaml` publishes to Docker
+Hub and GHCR on a `v*` tag, on the self-hosted `xollama-build` runner (bs2, set
+up by `scripts/setup-bs2-runner.sh`; label declared in `.github/actionlint.yaml`)
+— separate from upstream's `release.yaml`, see `docs/features/docker-release.md`.
 Pinned natives: `LLAMA_CPP_VERSION`, `MLX_VERSION`, `MLX_C_VERSION`,
 orchestrated by `CMakeLists.txt` / `CMakePresets.json`; the opencoti engine
 artifact is pinned by `llm/engine/pin.txt` (`repo`, `rev` commit sha, `tag`,
