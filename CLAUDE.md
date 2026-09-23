@@ -89,7 +89,8 @@ the listen address is `envconfig.DefaultPort` (22434), read from `XOLLAMA_HOST`
 only — see `.claude/rules/default-port.md`. Where the CLI *connects* with no host
 set is `api/xollama_host.go` (`ResolveHost`), run once from `cmd/xollama_host.go`;
 it tells the fork apart via `/api/xollama` (`api/xollama_identity.go`,
-`server/identity.go`).
+`server/identity.go`), then the fork's name in `/api/version`, and refuses a
+stock ollama found on the 11434 fallback rather than driving it.
 **Discovery** `discover/` · **Transfers** `x/transfer/` · **GGUF** `fs/gguf/`,
 `fs/safetensors/` · **Types** `types/model/`.
 **CLI support packages**: Modelfile parsing in `parser/` (`parser.go`,

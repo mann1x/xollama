@@ -15,7 +15,12 @@
   run once from `checkServerHeartbeat` via `cmd/xollama_host.go` (never from
   `api.ClientFromEnvironment`, which must stay a pure function of the env). It
   tells the fork apart by `/api/xollama` (`api/xollama_identity.go`,
-  `server/identity.go`); a stock ollama answers 404 there.
+  `server/identity.go`), then by the fork's name in `/api/version` — required,
+  because every xollama built before the route 404s it exactly as a stock
+  ollama does.
+- **A stock ollama on the fallback port is a refusal naming `XOLLAMA_HOST`,
+  never a silent connection.** `pull`, `rm` and `tweak model` write, and would
+  write into *that* server's store.
 - **Side-by-side is not supported.** The port and the variable remove an
   accidental collision, nothing more. One model store with two writers, cache
   entries owned by two users, one GPU with two schedulers, one

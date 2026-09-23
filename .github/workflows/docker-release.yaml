@@ -1,0 +1,281 @@
+# Publish the xollama container image on every release.
+#
+# ADDITIVE and fork-only. Upstream's release.yaml already carries a complete
+# Docker pipeline (docker-build-push + docker-merge-push), and this file
+# deliberately does not edit it: those jobs target upstream's own self-hosted
+# runners (`linux`, `linux-arm64`), require an `environment: release` this fork
+# does not define, and are documented as "cache-hit-only" against
+# `ollama/release:cache-*` -- a registry nobody but upstream can push to.
+# Editing a 37k-line upstream workflow to change four of those things would
+# conflict on every `git merge upstream/main`; a separate file never does.
+#
+# Inherited from upstream: the SHAPE -- build each architecture on its own and
+# merge the results into one multi-arch manifest, so a slow or failing arch
+# cannot take the other one down with it.
+#
+# Inherited from the fork's acproxycam workflow: only the PUBLISHING half --
+# the two-registry login, the tag derivation, and pushing one image to both
+# Docker Hub and GHCR.
+#
+# THIS DOES NOT BUILD OPENCOTI, and must not be confused with the opencoti
+# build images (`opencoti/dso-build:cuda13.3-glibc2.28` and its siblings under
+# opencoti's vendors/docker/). Those produce the ENGINE -- the CUDA DSO, the
+# Vulkan build, the Windows DLL -- and run from opencoti's own BUILD_CYCLE
+# protocol on bs2. The xollama image consumes a published engine instead: the
+# `opencoti-engine` stage in Dockerfile downloads the artifact named by
+# llm/engine/pin.txt through cmake/opencoti-fetch.cmake and ships it inside the
+# image, which is the whole reason xollama never fetches an engine at runtime.
+# A pin move, not a CI change, is how this image gets new engine bytes.
+#
+# The glibc floor that forces opencoti's DSO lane onto a Rocky-8 container does
+# not need solving again here either: upstream's Dockerfile already builds its
+# llama-server stages on almalinux:8 (glibc 2.28).
+
+name: docker-release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      push:
+        description: 'Push the images (off = build only, to test the workflow)'
+        required: true
+        default: true
+        type: boolean
+      version:
+        description: 'Version to tag, without the leading v (defaults to the git tag)'
+        required: false
+        type: string
+      ignore_busy_host:
+        description: 'Build even if bs2 looks busy (overrides the BUILD_CYCLE preflight)'
+        required: false
+        default: false
+        type: boolean
+
+# bs2 is a shared build AND gate host. Two releases building at once would put
+# 64 threads on 32 cores and make both slow; they are serialised rather than
+# cancelled, because a half-pushed manifest is worse than a queued one.
+concurrency:
+  group: docker-release
+  cancel-in-progress: false
+
+env:
+  # ghcr.io/mann1x/xollama -- github.repository is already <owner>/<repo>.
+  GHCR_IMAGE: ghcr.io/${{ github.repository }}
+  # The Docker Hub namespace is the account's, not the repository's.
+  DOCKERHUB_IMAGE: docker.io/mannixita/xollama
+
+jobs:
+  # opencoti's BUILD_CYCLE.md makes this preflight mandatory before any
+  # 32-thread job on bs2: a build must not run while a CPU-bound eval is live,
+  # because host contention depresses that eval's decode rate by 15-30% and
+  # silently corrupts whatever it was measuring. CI fires on a tag push with no
+  # idea what the box is doing, so it has to ask.
+  preflight:
+    runs-on: [self-hosted, linux, X64, xollama-build]
+    outputs:
+      busy: ${{ steps.check.outputs.busy }}
+    steps:
+      - id: check
+        shell: bash
+        run: |
+          set -uo pipefail
+          busy=no
+          # Named processes only -- never a bare pattern match that could catch
+          # this very job's own command line.
+          if pgrep -x nvcc >/dev/null 2>&1 || pgrep -x cicc >/dev/null 2>&1 || pgrep -x ptxas >/dev/null 2>&1; then
+            echo "::warning::an opencoti compile is running on this host"
+            busy=yes
+          fi
+          load=$(cut -d' ' -f1 /proc/loadavg)
+          cores=$(nproc)
+          echo "load ${load} over ${cores} cores"
+          # "well under 32" from BUILD_CYCLE.md, taken as half the core count.
+          if awk -v l="$load" -v c="$cores" 'BEGIN{exit !(l > c/2)}'; then
+            echo "::warning::load ${load} is high for ${cores} cores"
+            busy=yes
+          fi
+          echo "busy=${busy}" >>"$GITHUB_OUTPUT"
+          if [ "$busy" = yes ] && [ "${{ inputs.ignore_busy_host }}" != "true" ]; then
+            echo "::error::bs2 is busy; refusing to start a 32-thread build. Re-run with ignore_busy_host=true to override."
+            exit 1
+          fi
+
+  # One job per architecture. fail-fast is off on purpose: the emulated arm64
+  # leg is the slow and fragile one and must not cancel a finished amd64 build.
+  build:
+    needs: preflight
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            emulated: false
+          - arch: arm64
+            platform: linux/arm64
+            # bs2 is x86_64, so this leg runs under QEMU. It is worth
+            # publishing -- opencoti ships an aarch64 artifact and the fork
+            # targets DGX Spark and Raspberry Pi -- but note that the CURRENT
+            # dev pin declares `accel x86_64 CUDA` and carries no aarch64 dso
+            # row, so today's arm64 image gets the portable engine binary with
+            # NO CUDA payload beside it. The release channel does publish
+            # dso/<ver>/ggml-cuda-sbsa-aarch64.so; when a dev pin carries it,
+            # add the `dso aarch64` row to llm/engine/pin.txt and this image
+            # gains arm64 acceleration with no change here.
+            emulated: true
+          # The `-rocm` flavour upstream also publishes is DELIBERATELY ABSENT
+          # until a ROCm build has been developed and validated for this fork.
+          # llm/engine/pin.txt declares no ROCm acceleration for the pinned
+          # engine, so an image advertising it would be untested. Re-add a
+          # `{ arch: amd64, suffix: '-rocm', build-args: FLAVOR=rocm }` entry
+          # here, and its suffix in `merge`, once it is measured.
+    runs-on: [self-hosted, linux, X64, xollama-build]
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve the version
+        id: version
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            v="${{ inputs.version }}"
+          else
+            v="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=${v}" >>"$GITHUB_OUTPUT"
+          echo "publishing version ${v}"
+
+      # Only the emulated leg needs binfmt handlers registered, which is a
+      # host-level change; the native leg skips it entirely.
+      - name: Set up QEMU
+        if: matrix.emulated
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: inputs.push != false
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        if: inputs.push != false
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Per-architecture tags. The multi-arch manifest users actually pull is
+      # assembled from these by `merge`; these stay published because they are
+      # what makes a broken architecture diagnosable afterwards.
+      - name: Derive tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.GHCR_IMAGE }}
+            ${{ env.DOCKERHUB_IMAGE }}
+          flavor: |
+            latest=false
+            suffix=-${{ matrix.arch }}
+          tags: |
+            type=raw,value=${{ steps.version.outputs.version }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: ${{ inputs.push != false }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false
+          sbom: false
+          build-args: |
+            CGO_CFLAGS=-O3
+            CGO_CXXFLAGS=-O3
+          # Upstream caches against `ollama/release:cache-*`, which this fork
+          # cannot write to. Cache in our own GHCR repository instead, one
+          # entry per architecture so the legs never evict each other.
+          cache-from: type=registry,ref=${{ env.GHCR_IMAGE }}:cache-${{ matrix.arch }}
+          cache-to: type=registry,ref=${{ env.GHCR_IMAGE }}:cache-${{ matrix.arch }},mode=max
+
+  # Assemble one multi-arch manifest per registry from the per-arch tags.
+  # imagetools copies within a registry, so each registry is merged from its own
+  # architecture tags rather than across the two.
+  merge:
+    needs: build
+    if: inputs.push != false
+    runs-on: [self-hosted, linux, X64, xollama-build]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        registry: [ghcr, dockerhub]
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: matrix.registry == 'ghcr'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        if: matrix.registry == 'dockerhub'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Create the multi-arch manifest
+        shell: bash
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.registry }}" = "ghcr" ]; then
+            image="${{ env.GHCR_IMAGE }}"
+          else
+            image="${{ env.DOCKERHUB_IMAGE }}"
+          fi
+
+          # Merge only the architectures that actually produced a tag. A failed
+          # arm64 leg degrades to an amd64-only manifest rather than failing the
+          # release: an image that exists for one architecture beats no image.
+          sources=()
+          for arch in amd64 arm64; do
+            if docker buildx imagetools inspect "${image}:${VERSION}-${arch}" >/dev/null 2>&1; then
+              sources+=("${image}:${VERSION}-${arch}")
+            else
+              echo "::warning::${image}:${VERSION}-${arch} is missing; excluding ${arch} from the manifest"
+            fi
+          done
+          if [ ${#sources[@]} -eq 0 ]; then
+            echo "::error::no architecture images were published for ${VERSION}"
+            exit 1
+          fi
+
+          docker buildx imagetools create \
+            -t "${image}:${VERSION}" \
+            -t "${image}:latest" \
+            "${sources[@]}"
+
+          docker buildx imagetools inspect "${image}:${VERSION}"
