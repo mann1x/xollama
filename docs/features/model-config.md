@@ -158,6 +158,34 @@ drafter: it carries `masked_embd_*` tensors that upstream's loader rejects with 
 `draft-mtp` — that engine's spelling for the same driver — rather than a value it
 would reject.
 
+It is consulted wherever the drafter came from. `resolveDraftType` takes the
+inferred type and the pin, and the guard is the inferred type, not whether a
+drafter file was attached: a head that ships *inside* the target — Qwen's
+`nextn_predict_layers`, or qwen35's `mtp.*` tensors — is just as much a drafter
+to pin. Reading the pin only on the attached-file path was a silent no-op
+(measured 2026-09-23 on `omnimerge-v4-mtp_tb:27b-q4km-128k`: the layer said
+`draft-simple`, `xollama show` printed `draft-simple`, and the engine was handed
+`--spec-type draft-mtp`). A model with no drafter at all still states nothing,
+because a `--spec-type` with no drafter behind it is a broken command line, not
+a preference.
+
+Attaching a drafter is a `DRAFT` line in the Modelfile and is not part of this
+layer — the layer says which *driver* to use, never which file. The two together
+on the worked gemma-4 vehicle:
+
+```
+FROM  gemma-4-A4B-98e-v9-agentic-it-Q4_K_M.gguf
+DRAFT gemma-4-26B-A4B-it-assistant-Q8_0.gguf
+PARAMETER draft_num_predict 3
+```
+
+The drafter declares `requires_target_arch = gemma4`, so `externalDraftType`
+resolves `draft-assistant` with no pin at all, and the launch carries
+`--spec-type draft-assistant --spec-draft-n-max 3 --spec-draft-model <blob>`.
+Pinning `draft-mtp` over that is accepted and reaches the engine, which then
+refuses the load with `Gemma4Assistant requires ctx_other to be set` — the pin
+is an override, so it is able to be wrong.
+
 **`kv.unified`** (v2) says whether the cells are one pool shared across
 sequences or a fixed per-slot split. Until v2 this was *derived*: the server
 passed `--kv-unified` exactly when it had parked slots or a shared prefix pool

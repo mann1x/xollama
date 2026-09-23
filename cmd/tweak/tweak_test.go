@@ -490,3 +490,89 @@ func TestAKVarNCacheWithFlashAttentionOffIsRefused(t *testing.T) {
 		t.Fatalf("auto must not be refused: %v", err)
 	}
 }
+
+// The drafter row is the reason this whole config layer exists -- a gemma-4
+// assistant drafter is the model that cannot be served without one -- and it
+// was the one row with no test of its own.
+func TestTheDrafterSpecTypeIsSettableFromAFlag(t *testing.T) {
+	cfg, out, err := run(t, &xollama.Config{}, []string{"--spec-type=draft-assistant"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Draft == nil || cfg.Draft.SpecType != "draft-assistant" {
+		t.Fatalf("draft.spec_type = %+v, want draft-assistant", cfg.Draft)
+	}
+	if strings.Contains(out, "> ") {
+		t.Fatalf("a valued flag prompted for something:\n%s", out)
+	}
+}
+
+// Every value opencoti names, and nothing else. A typo here reaches the engine
+// command line, where it is a failed load rather than a message.
+func TestTheDrafterSpecTypeTakesOnlyKnownDrivers(t *testing.T) {
+	for _, want := range xollama.ValidSpecTypes() {
+		cfg, _, err := run(t, &xollama.Config{}, []string{"--spec-type=" + want})
+		if err != nil {
+			t.Fatalf("--spec-type=%s: %v", want, err)
+		}
+		if cfg.Draft.SpecType != want {
+			t.Fatalf("draft.spec_type = %q, want %q", cfg.Draft.SpecType, want)
+		}
+	}
+	if _, _, err := run(t, &xollama.Config{}, []string{"--spec-type=draft-nonsense"}); err == nil {
+		t.Fatal("an unknown driver was accepted")
+	}
+}
+
+// Scoping works on this row like any other: a bare flag asks the drafter
+// question and leaves an unrelated setting alone.
+func TestAskingAboutTheDrafterLeavesTheRestAlone(t *testing.T) {
+	current := &xollama.Config{
+		Draft: &xollama.Draft{SpecType: "draft-assistant"},
+		DCA:   &xollama.DCA{Enabled: boolp(true)},
+	}
+	cfg, out, err := run(t, current, []string{"--spec-type", "--yes"}, "draft-mtp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "\nspec-type [draft-assistant]> ") {
+		t.Fatalf("want a prompt carrying the current driver\n%s", out)
+	}
+	if strings.Contains(out, "\ndca ") {
+		t.Fatalf("a scoped walk asked about dca:\n%s", out)
+	}
+	if cfg.Draft.SpecType != "draft-mtp" {
+		t.Fatalf("draft.spec_type = %q, want draft-mtp", cfg.Draft.SpecType)
+	}
+	if cfg.DCA == nil || !*cfg.DCA.Enabled {
+		t.Fatalf("a scoped walk dropped dca: %+v", cfg.DCA)
+	}
+}
+
+// Unset means infer, and inference is what almost every model should do. The
+// field has to be able to go back to saying nothing.
+func TestTheDrafterSpecTypeCanBeUnset(t *testing.T) {
+	current := &xollama.Config{Draft: &xollama.Draft{SpecType: "draft-assistant"}}
+	cfg, _, err := run(t, current, []string{"--spec-type=unset"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.IsZero() {
+		t.Fatalf("clearing the only stated field left %+v, want a zero config", cfg)
+	}
+}
+
+// Which driver a drafter needs is a property of that drafter, not of the
+// machine, so this is the one row that deliberately has no server-wide
+// fallback. A future edit adding one would be wrong.
+func TestTheDrafterSpecTypeHasNoEnvironmentFallback(t *testing.T) {
+	for _, f := range fields {
+		if f.name == "spec-type" {
+			if f.env != "" {
+				t.Fatalf("spec-type gained a fallback %q; the drafter's own metadata decides this, not the host", f.env)
+			}
+			return
+		}
+	}
+	t.Fatal("no spec-type field")
+}

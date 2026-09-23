@@ -898,6 +898,41 @@ type ShowResponse struct {
 	// Reading it back out of the manifest client-side would only work against
 	// a local store.
 	Xollama *xollama.Config `json:"xollama,omitempty"`
+
+	// xollama-hook: model-config — see docs/features/model-config.md
+	//
+	// Drafter describes the speculative drafter this model would launch with,
+	// and is nil when it has none. A drafter is a DRAFT layer in the manifest
+	// or a head inside the weights; neither shows up anywhere else in this
+	// response, so a model could carry a 440 MiB drafter with no sign of it.
+	Drafter *DrafterInfo `json:"drafter,omitempty"`
+}
+
+// xollama-hook: model-config — see docs/features/model-config.md
+//
+// DrafterInfo is what `xollama show` prints about a model's drafter. SpecType
+// is the driver the next load will actually pass, pin included, so it answers
+// the question an operator has -- not "what does the layer say" but "what will
+// this do".
+type DrafterInfo struct {
+	// Source is "attached" for a DRAFT layer beside the weights, or
+	// "built-in" for a head inside them.
+	Source string `json:"source"`
+
+	// SpecType is the resolved --spec-type, in upstream's spelling. The
+	// engine's own spelling may differ: opencoti calls the assistant driver
+	// draft-assistant where llama.cpp reaches it through draft-mtp.
+	SpecType string `json:"spec_type,omitempty"`
+
+	// Pinned is true when SpecType came from the model's xollama.json rather
+	// than from the drafter's own metadata.
+	Pinned bool `json:"pinned,omitempty"`
+
+	// Architecture, ParameterSize and QuantizationLevel describe an attached
+	// drafter's own file, and are empty for a built-in head.
+	Architecture      string `json:"architecture,omitempty"`
+	ParameterSize     string `json:"parameter_size,omitempty"`
+	QuantizationLevel string `json:"quantization_level,omitempty"`
 }
 
 // CopyRequest is the request passed to [Client.Copy].

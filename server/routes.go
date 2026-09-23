@@ -1734,6 +1734,9 @@ func GetModelInfo(req api.ShowRequest) (*api.ShowResponse, error) {
 		resp.ProjectorInfo = projectorInfo
 	}
 
+	// xollama-hook: model-config — see docs/features/model-config.md
+	resp.Drafter = drafterShowInfo(m, kvData, tensors, drafterSpecTypePin(m))
+
 	return resp, nil
 }
 

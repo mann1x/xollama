@@ -2947,3 +2947,66 @@ func TestParseThinkFlag(t *testing.T) {
 		})
 	}
 }
+
+// A drafter appears nowhere else in a show response, so the block has to carry
+// enough to identify it -- and has to say whether the driver was chosen or
+// inferred, which is the whole point of draft.spec_type.
+func TestShowInfoDrafter(t *testing.T) {
+	var b bytes.Buffer
+	err := showInfo(&api.ShowResponse{
+		Details: api.ModelDetails{Family: "gemma4", ParameterSize: "19.9B", QuantizationLevel: "Q4_K_M"},
+		Drafter: &api.DrafterInfo{
+			Source:            "attached",
+			Architecture:      "gemma4-assistant",
+			ParameterSize:     "419.71M",
+			QuantizationLevel: "Q8_0",
+			SpecType:          "draft-assistant",
+		},
+	}, false, &b)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expect := "  Model\n" +
+		"    architecture    gemma4    \n" +
+		"    parameters      19.9B     \n" +
+		"    quantization    Q4_K_M    \n" +
+		"\n" +
+		"  Drafter\n" +
+		"    source          attached                      \n" +
+		"    architecture    gemma4-assistant              \n" +
+		"    parameters      419.71M                       \n" +
+		"    quantization    Q8_0                          \n" +
+		"    spec type       draft-assistant (inferred)    \n" +
+		"\n"
+	if diff := cmp.Diff(expect, b.String()); diff != "" {
+		t.Errorf("unexpected output (-want +got):\n%s", diff)
+	}
+
+	// A built-in head has no file of its own to describe, and a pinned driver
+	// must not read as an inferred one.
+	b.Reset()
+	if err := showInfo(&api.ShowResponse{
+		Details: api.ModelDetails{Family: "qwen35"},
+		Drafter: &api.DrafterInfo{Source: "built-in", SpecType: "draft-simple", Pinned: true},
+	}, false, &b); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), "draft-simple (pinned)") {
+		t.Errorf("a pinned driver did not say so:\n%s", b.String())
+	}
+	if strings.Contains(b.String(), "architecture    \n") {
+		t.Errorf("a built-in head printed an empty architecture row:\n%s", b.String())
+	}
+
+	// A model with no drafter prints no section at all.
+	b.Reset()
+	if err := showInfo(&api.ShowResponse{
+		Details: api.ModelDetails{Family: "gemma4"},
+	}, false, &b); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), "Drafter") {
+		t.Errorf("a model with no drafter printed a section:\n%s", b.String())
+	}
+}

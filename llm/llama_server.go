@@ -1034,6 +1034,25 @@ func appendDraftArgs(params []string, draftType, draftModelPath string, opts api
 	return params
 }
 
+// resolveDraftType settles the --spec-type for this load: what the model
+// explicitly pins, falling back to what the drafter's own metadata implies.
+//
+// The guard is the inferred type and not the presence of an attached drafter
+// file, which is the distinction this function exists to hold. A pin is
+// equally meaningful on a built-in head -- nextn_predict_layers, or qwen35's
+// mtp.* tensors -- and consulting it only on the external path was a silent
+// no-op: `tweak model --spec-type=...` wrote the layer and `xollama show`
+// printed it while the launch went on passing the inferred value. A model with
+// no drafter at all still states nothing, because a --spec-type with no
+// drafter behind it is not a preference, it is a broken command line.
+
+func resolveDraftType(inferred, override string) string {
+	if inferred == "" || override == "" {
+		return inferred
+	}
+	return override
+}
+
 // externalDraftType picks the --spec-type for an attached draft model.
 //
 // A drafter that declares <arch>.requires_target_arch is a head rather than a
@@ -1045,24 +1064,21 @@ func externalDraftType(path, targetArch string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("load draft model metadata: %w", err)
 	}
-	if f.KV().Architecture() == "dflash" {
-		return draftTypeDFlash, nil
-	}
 	// xollama-hook: draft-assistant — see docs/features/gemma4-drafter.md
-	if want := f.KV().String("requires_target_arch"); want != "" {
-		if targetArch != "" && want != targetArch {
-			return "", fmt.Errorf("draft model %s requires a %q target, but this model is %q", path, want, targetArch)
-		}
-		return draftTypeAssistant, nil
+	//
+	// The rule itself lives in DraftTypeFor so that `xollama show` reaches the
+	// same answer as the launch without restating it.
+	draftType, err := DraftTypeFor(f.KV().Architecture(), f.KV().String("requires_target_arch"), targetArch)
+	if err != nil {
+		return "", fmt.Errorf("draft model %s: %w", path, err)
 	}
-	return draftTypeMTP, nil
+	return draftType, nil
 }
 
 func hasMTPDraft(f *gguf.Model) bool {
-	if f.KV().Uint("nextn_predict_layers") > 0 {
-		return true
-	}
-	return hasLegacyQwenMTPDraft(f.KV().Architecture(), f.Tensors().Items("mtp."))
+	// xollama-hook: model-config — BuiltInDrafter holds the rule so `show` can
+	// ask the same question without a second reading of it.
+	return BuiltInDrafter(f.KV().Architecture(), f.KV().Uint("nextn_predict_layers"), f.Tensors().Items("mtp."))
 }
 
 func hasLegacyQwenMTPDraft(arch string, tensors []gguf.TensorInfo) bool {
@@ -1135,14 +1151,9 @@ func NewLlamaServerRunner(
 		if err != nil {
 			return nil, err
 		}
-		// xollama-hook: model-config — an explicit pin beats inference. It
-		// still goes through retargetSpecType, so pinning draft-assistant on
-		// llama.cpp resolves to that engine's spelling rather than a value it
-		// would reject.
-		if override := config.draftSpecTypeOverride(); override != "" {
-			draftType = override
-		}
 	}
+	// xollama-hook: model-config — see docs/features/model-config.md
+	draftType = resolveDraftType(draftType, config.draftSpecTypeOverride())
 	splitModel, err := materializeSplitModels(f.Files(), projectors, config)
 	if err != nil {
 		return nil, err

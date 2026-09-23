@@ -4512,3 +4512,38 @@ func TestLlamaServerConfigXollamaAccessorsTolerateNil(t *testing.T) {
 		t.Fatalf("draftSpecTypeOverride = %q, want %q", got, draftTypeAssistant)
 	}
 }
+
+// A pin beats inference wherever the drafter came from. The external path was
+// covered; the built-in-head path was not, and it silently ignored the setting
+// that `tweak model` writes and `xollama show` prints.
+func TestASpecTypePinIsHonouredForABuiltInHeadToo(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		inferred string
+		override string
+		want     string
+	}{
+		{"built-in MTP head, no pin", draftTypeMTP, "", draftTypeMTP},
+		{"built-in MTP head, pinned", draftTypeMTP, draftTypeAssistant, draftTypeAssistant},
+		{"attached drafter, no pin", draftTypeAssistant, "", draftTypeAssistant},
+		{"attached drafter, pinned", draftTypeAssistant, draftTypeMTP, draftTypeMTP},
+		{"no drafter, no pin", "", "", ""},
+		{"no drafter, a pin states nothing", "", draftTypeAssistant, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := resolveDraftType(tt.inferred, tt.override); got != tt.want {
+				t.Fatalf("resolveDraftType(%q, %q) = %q, want %q", tt.inferred, tt.override, got, tt.want)
+			}
+		})
+	}
+}
+
+// A pin on a model with no drafter must not reach the command line: a
+// --spec-type with nothing behind it is a broken launch, not a preference.
+func TestAPinOnAModelWithNoDrafterWritesNoSpecType(t *testing.T) {
+	draftType := resolveDraftType("", draftTypeAssistant)
+	args := appendDraftArgs(nil, draftType, "", api.Options{Runner: api.Runner{DraftNumPredict: 3}})
+	if len(args) != 0 {
+		t.Fatalf("appendDraftArgs = %v, want nothing", args)
+	}
+}

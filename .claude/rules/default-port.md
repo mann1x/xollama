@@ -9,6 +9,13 @@
   the separate port worthless. This is the **only** exclusively-namespaced
   setting; every other `OLLAMA_*` var keeps its fallback, because a cache type
   is shareable and an address is not.
+- **Binding and connecting are different questions.** `serve` binds
+  `envconfig.Host()` and nothing else. Only the CLI's *connect* side, when no
+  host is named, may fall back to 11434: `ResolveHost` in `api/xollama_host.go`,
+  run once from `checkServerHeartbeat` via `cmd/xollama_host.go` (never from
+  `api.ClientFromEnvironment`, which must stay a pure function of the env). It
+  tells the fork apart by `/api/xollama` (`api/xollama_identity.go`,
+  `server/identity.go`); a stock ollama answers 404 there.
 - **Side-by-side is not supported.** The port and the variable remove an
   accidental collision, nothing more. One model store with two writers, cache
   entries owned by two users, one GPU with two schedulers, one

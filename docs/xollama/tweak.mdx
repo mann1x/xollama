@@ -50,6 +50,54 @@ layer.
   list and cannot fall behind.
 </Note>
 
+## Pinning a drafter's driver
+
+A drafter is attached at build time with a `DRAFT` line, and its driver is
+normally inferred from the drafter's own metadata — a gemma-4 assistant head
+declares `requires_target_arch`, which resolves to `draft-assistant` without
+anyone saying so:
+
+```
+FROM  gemma-4-A4B-98e-v9-agentic-it-Q4_K_M.gguf
+DRAFT gemma-4-26B-A4B-it-assistant-Q8_0.gguf
+PARAMETER draft_num_predict 3
+```
+
+`--spec-type` overrides that inference, for a head built into the target as much
+as for an attached file:
+
+```sh
+xollama tweak model gemma4-98e-v9-agentic:q4km-drafter --spec-type=draft-assistant
+xollama tweak model gemma4-98e-v9-agentic:q4km-drafter --spec-type=unset   # back to inferring
+```
+
+<Warning>
+  A pin is an override, so it is able to be wrong. Pinning `draft-mtp` on a
+  gemma-4 assistant drafter reaches the engine and the load then fails with
+  `Gemma4Assistant requires ctx_other to be set`. Leave it unset unless you know
+  the inference is wrong for your drafter.
+</Warning>
+
+`draft_num_predict` is deliberately **not** here — it is an ordinary
+`PARAMETER`, settable per request like any other.
+
+`xollama show` prints what the next load will actually use, and says where the
+answer came from:
+
+```
+  Drafter
+    source          attached
+    architecture    gemma4-assistant
+    parameters      419.71M
+    quantization    Q8_0
+    spec type       draft-assistant (inferred)
+```
+
+`(pinned)` in place of `(inferred)` means the driver came from
+`draft.spec_type` rather than from the drafter's own metadata. A head built
+into the weights shows `source built-in` and no file details. A model with no
+drafter prints no block at all.
+
 ## Driving it from a script
 
 The prompts are plain lines, each ending in a token that names the setting:

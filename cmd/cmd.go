@@ -1506,6 +1506,39 @@ func showInfo(resp *api.ShowResponse, verbose bool, w io.Writer) error {
 		})
 	}
 
+	// xollama-hook: model-config — a drafter is a manifest layer or a handful
+	// of tensors, so it appears nowhere else in this output. Without this, a
+	// model could carry a 440 MiB drafter with no sign of it, and the
+	// draft.spec_type row above would name an override with nothing visible to
+	// override.
+	if d := resp.Drafter; d != nil {
+		tableRender("Drafter", func() (out [][]string) {
+			out = append(out, []string{"", "source", d.Source})
+			if d.Architecture != "" {
+				out = append(out, []string{"", "architecture", d.Architecture})
+			}
+			if d.ParameterSize != "" {
+				out = append(out, []string{"", "parameters", d.ParameterSize})
+			}
+			if d.QuantizationLevel != "" {
+				out = append(out, []string{"", "quantization", d.QuantizationLevel})
+			}
+			// Say where the answer came from, not just what it is: "pinned"
+			// is the difference between a setting someone chose and one the
+			// drafter's own metadata implied, and that is the whole reason
+			// draft.spec_type exists.
+			switch {
+			case d.SpecType == "":
+				out = append(out, []string{"", "spec type", "unresolved"})
+			case d.Pinned:
+				out = append(out, []string{"", "spec type", d.SpecType + " (pinned)"})
+			default:
+				out = append(out, []string{"", "spec type", d.SpecType + " (inferred)"})
+			}
+			return
+		})
+	}
+
 	if resp.ModelInfo != nil && verbose {
 		tableRender("Metadata", func() (rows [][]string) {
 			keys := make([]string, 0, len(resp.ModelInfo))

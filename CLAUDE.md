@@ -78,13 +78,18 @@ scheduling `server/sched.go`, model IO `server/images.go` `server/create.go`
 `llm/llama_server.go`, built from `llama/server/CMakePresets.json`; MLX via
 `mlxrunner/` (`runner.go`, `pipeline.go`, `prefix_cache.go`, `cache/`, `model/`,
 `tokenizer/`, `xgrammar/`). `llm/engine_args.go` appends the operator's
-`XOLLAMA_ENGINE_ARGS` last on the engine command line.
+`XOLLAMA_ENGINE_ARGS` last on the engine command line. `llm/drafter.go` holds
+the drafter rules (built-in vs attached head, `--spec-type`) as pure functions
+shared by the launch and `show` (`server/drafter_show.go`), so the two cannot drift.
 **Prompting**: `model/renderers/` (per-model `Render`) ↔ `model/parsers/`
 (streaming output), plus `template/`, `thinking/`, `harmony/`.
 **API shims**: `api/types.go`, `openai/openai.go`, `anthropic/anthropic.go`,
 `middleware/`. **Config**: `envconfig/config.go` holds every `OLLAMA_*` var;
 the listen address is `envconfig.DefaultPort` (22434), read from `XOLLAMA_HOST`
-only — see `.claude/rules/default-port.md`.
+only — see `.claude/rules/default-port.md`. Where the CLI *connects* with no host
+set is `api/xollama_host.go` (`ResolveHost`), run once from `cmd/xollama_host.go`;
+it tells the fork apart via `/api/xollama` (`api/xollama_identity.go`,
+`server/identity.go`).
 **Discovery** `discover/` · **Transfers** `x/transfer/` · **GGUF** `fs/gguf/`,
 `fs/safetensors/` · **Types** `types/model/`.
 **CLI support packages**: Modelfile parsing in `parser/` (`parser.go`,
