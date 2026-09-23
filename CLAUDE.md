@@ -30,7 +30,7 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   the fork to — that is the repository owner's call; `fork-only` entries stay so.
 - `docs/features/engine-opencoti-llamafile.md` · `docs/features/rebrand.md` ·
   `docs/features/store-ownership.md` · `docs/features/windows-installer.md` ·
-  `docs/features/model-config.md`
+  `docs/features/model-config.md` · `docs/features/modelfile-roundtrip.md`
 - `docs/evaluations/phase0-engine-compat.md` — measured engine-compat baseline.
 
 Remotes: `origin` = mann1x/xollama · `upstream` = ollama/ollama ·

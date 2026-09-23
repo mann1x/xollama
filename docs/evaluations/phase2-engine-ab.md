@@ -690,3 +690,201 @@ inert there, which is why `TestKnownDefectsMatchThePinnedArtifact` skips off the
 release channel. The `feature swa-cache-types` row was re-probed against these
 bytes rather than carried forward, paired against build 19 so a pass could not
 be a no-op.
+
+## Build 24 — `2609230556001`, the DCA abort fixed
+
+The reason for this move is [the DCA abort](#) that build 21 carried: on every
+qwen35 vehicle, `--dca on` aborted at the first post-load 2-token decode with
+`ggml-backend.cpp:201: GGML_ASSERT(buffer) failed`. Bisected here to four flags
+with no ollama in the picture —
+`<artifact> --server --model <blob> -ngl 99 -c 32768 --dca on` — and independent
+of KV type, quantization, MTP, `--no-warmup`, the resolved chunk and
+`OPENCOTI_GRAPH_LANES=0`. opencoti's bug-3566 / patch 0347: where every
+attention layer is DCA-routed the standard `attn_inp_kq_mask` is consumed by no
+node, galloc correctly does not allocate it, and the unguarded setter asserts on
+the NULL. Two fill sites, the KVarN cache having its own.
+
+Measured on `dc6dbb89…`, host binary only; the DSO is the same `d676a779…`
+already measured, so this is a host swap.
+
+### The DCA gate, run directly against the artifact
+
+Same cells that produced the bug, plus the controls, at `--log-verbosity 5`:
+
+| cell | build 21 | **build 24** | `dca:` line (new, patch 0349) |
+|---|---|---|---|
+| qwen35 Q4_K_M `-c 32768 --dca on` f16 | **abort** | **serves** | `INERT — chunk 262144 (auto: n_ctx_orig_yarn) >= n_ctx` |
+| qwen35 Q4_K_M `--dca on` kvarn2 | **abort** | **serves** | `INERT` |
+| qwen35 Q4_K_M `--dca on --dca-chunk-size 4096` kvarn2 | **abort** | **serves** | `ENGAGED` |
+| qwen35 Q4_K_M `--dca off` f16 / kvarn2 | serves | serves | *(no line)* |
+| qwen35 IQ2_M `-c 32768 --dca on` (the minimal repro) | **abort** | **serves** | `INERT` |
+
+The orphan-mask guard logs once per process on the qwen35 arms with DCA on and
+is silent with DCA off, which is the guard doing its job rather than masking the
+normal path.
+
+**Patch 0349 settles something this page got close to and could not state.** Our
+own crash repro at `-c 32768` was `INERT`: the auto chunk resolves to
+`n_ctx_orig_yarn` = 262144, so there was never an inter-chunk distance to clamp.
+`--dca on` was breaking graph construction *without doing any chunking at all*.
+That was inferred here on 2026-09-22 from the vendor's arithmetic; the engine
+now says it, so no future cell has to infer it.
+
+### VRAM overflow — the axis the live defect row is about
+
+`llama3.1:70b-instruct-q3_K_S`, 24 GiB card, the Phase 2 recipe exactly
+(`axis_overflow`: no `num_ctx` stated, 64 tokens). `POSITION_WINDOW mode ON
+(--kv-residency-mode auto)` confirmed in every log, so this is the path the row
+accuses and not a neighbouring one.
+
+| arm | result |
+|---|---|
+| llama.cpp | loads, 0.568 in VRAM |
+| opencoti c7 **r2 release** (what `main` pins) | **aborts**, `not enough space in the context's memory pool (needed 118128, available 117760)` |
+| opencoti dev build 21 | **loads**, 0.759 in VRAM |
+| opencoti dev build 24 | **loads**, 0.759 in VRAM |
+| opencoti dev build 29 | **loads**, 0.759 in VRAM |
+
+What follows is the binary outcome and only that: the POSITION_WINDOW path
+aborts on the release bytes and loads on every dev build measured. That is the
+claim the defect row makes, and it holds.
+
+<Warning>
+**The throughput figures this table used to carry are withdrawn.** It read
+`build 24, auto` at **7.70 tok/s** against build 21's 4.05, called the axis
+"nearly doubled", and concluded the `head` workaround had *inverted*. opencoti
+attributed the numbers on 2026-09-23 and none of it survives:
+
+- **7.70 came from a two-token generation** (`"Say ok"` → `"OK"`, 130 ms/tok).
+  At that length the first-token and graph-warm-up cost is the measurement. The
+  4.05 it was compared against came from 64 tokens — so the "doubling" compared
+  two different measurements, not two builds.
+- **The inversion rested on those same two-token runs**, and disappears.
+- **The recipe never ran at the context it names.** The 32k load fails with
+  `failed to allocate CUDA0 buffer of size 8187281408` and the harness silently
+  retries at `-c 4096`, giving 62/81 layers on the GPU and a host tail. Every
+  row above was really measured on that fallback.
+
+Re-run on the same argv with `n_predict 256` and `ignore_eos` on a quiet card:
+**b21 3.54, b24 3.47, b29 3.43 tok/s**, and `head` 3.19 against `auto`. Within
+about 3% — no regression, no improvement, no inversion, nothing to fix
+engine-side.
+
+Three harness rules come out of this, and they apply to every axis on this page:
+fail or flag a cell when the requested `-c` falls back, and log the effective
+`n_ctx`; **every probe, smoke and A/B cell generates at least 256 tokens, 512
+where practical**, always with `ignore_eos` so the model cannot end the run
+early; keep the GPU exclusive for the whole of a cell. Where the model has
+thinking and it is enabled, size `n_predict` and `num_ctx` for prompt + the
+*full* thinking block + a 512-token answer, and set the engine's reasoning
+budget explicitly — thinking length varies from a few hundred tokens to tens of
+thousands by model and by question, and a budget sized for the answer alone
+truncates inside the thinking and measures nothing. This page violated
+all three at once, which is how a warm-up artefact reached a defect-row comment
+and a user-facing Warning in `docs/xollama/slots.mdx`.
+</Warning>
+
+### One new observation, not a regression, reported to opencoti
+
+Stating `num_ctx: 32768` explicitly on this overflow model fails where leaving it
+unstated succeeds — same 32768 `n_ctx`, same `offloaded 62/81 layers`, same
+`POSITION_WINDOW mode ON`:
+
+```
+alloc_tensor_range: failed to allocate CUDA0 buffer of size 8187281408
+llama_init_from_model: failed to initialize the context: failed to allocate buffer for kv cache
+```
+
+The planner's two-pass re-size flips the tactic table from `POSITION_WINDOW=61`
+to `GPU_RESIDENT=80` and then cannot fit the result. This is a clean error, not
+an abort, and it is not the defect above. It is recorded here because it is the
+stated-versus-unstated `num_ctx` distinction their session allocator already
+draws elsewhere (their bug-3555 / patch 0345), and because a reader comparing
+this table to their own run needs to know the recipe states no window.
+
+### What this decides
+
+**Build 24 is pinnable and build 21 is not preferable to it.** It fixes an abort
+that made `--dca on` unusable on every qwen35 vehicle, it loads the overflow
+model the release bytes abort on, and it adds the one line (`dca: ENGAGED|INERT`) that makes every
+future DCA cell self-describing instead of requiring the reader to recompute the
+chunk. `llm/engine/pin.txt` now names `2609230556001` at rev `7a9d43c1…`, with
+`dc6dbb89…` for the binary, the unchanged `d676a779…` for the Linux library, and
+a new `ggml-cuda-win-x86_64.dll` row at `8664167e…`. All three digests were
+downloaded and hashed here before the pin moved, not copied from the vendor's
+mail.
+
+**No `llm/engine_defects.go` row moves with it, and the reason is worth being
+exact about.** The single live row accuses `4f4102d6…` — the c7 **r2 release**
+x86_64 binary that `main` pins and ships. Build 24 is a *dev* snapshot of the
+same cut; measuring the defect gone in it says the fix exists on the dev line,
+which was already known from build 18, and says nothing about the release bytes
+the row names. Retiring it here would delete a true accusation about the artifact
+users actually get from `main`, and the row is inert on this branch anyway
+because a row can only speak when its sha256 matches the artifact that failed.
+The retirement condition is unchanged in substance and narrower in detail: it
+needs a **release** artifact carrying patch 0308, re-measured by this recipe.
+
+## Build 29 — `2609230917001`, the first pin where the DSO moved
+
+Three patches over build 24. **0350** (opencoti bug-3570) is a Nemotron-H
+`libcuda` segfault and is the reason `ggml-cuda.so` was rebuilt. **0351**
+(their bug-3572) is the crash [this page reported from build 21 and
+re-confirmed on build 24](#one-new-observation-not-a-regression-reported-to-opencoti):
+`--spec-type draft-simple` against a target carrying a built-in NextN head
+segfaulted in `llama_n_batch(NULL)`. **0352** is PolyKV/elastic, from
+Cerebriline, and is not exercised here.
+
+**Nothing measured on build 24 carries forward.** The DSO changed —
+`7ae729af…` replaces `d676a779…`, which had been byte-identical since build 20 —
+so this is the first pin move in this campaign that is *not* a host swap. Every
+GPU-behaviour cell below was re-run against these bytes rather than inherited,
+and the artifact each cell loaded was read back out of its own log
+(`build 2609230917001`) rather than assumed from the path.
+
+### Argv acceptance — unchanged
+
+Re-run with `--model /nonexistent.gguf`, so this probe says nothing about GPU
+behaviour and everything about what the parser takes. Verdicts are identical to
+build 24 and to build 21: `kvarn2/3/4/5/6/8` and `q6_0` accepted, `kvarn7`
+refused (the structural gap `KnownCacheTypes` omits), the SWA ring accepted on a
+KVarN base, `--sparse-attn` accepted, `--banana` refused as a control.
+
+The two ring refusals still answer with the rule in their own words —
+`--cache-type-k/v-swa overrides require KVarN --cache-type-k` and `a plain SWA
+cache type requires both` — rather than `invalid argument`. A probe that scores
+only on that phrase reads them as neither accepted nor refused; the message *is*
+the refusal, and `llm/engine_launch.go` enforces both rules up front so an
+operator never meets them as a model that will not load.
+
+### Patch 0351 — the `draft-simple` crash this campaign reported, closed
+
+Build 21 and build 24 both segfaulted when `--spec-type draft-simple` was
+pinned onto a target carrying its own NextN head (`segfault at 10`, `ip
+0x13c5766`; build 24's log showed `ctx_tgt=no, ctx_dft=no`). On build 29 the
+same argv refuses to boot and names the fix:
+
+```
+E srv load_model: failed to initialize speculative decoding context:
+  'draft-simple' needs a separate draft model (-md <draft.gguf>) and none was
+  given; this target carries a built-in NextN/MTP head, so use
+  --spec-type draft-mtp instead
+E srv load_model: speculation was requested EXPLICITLY but could not be
+  initialized -- refusing to boot rather than serve silently-unspeculated.
+```
+
+Refusing beats serving unspeculated: an operator who pinned a driver asked for
+speculation on purpose, and the target context has already reserved the
+recurrent rollback ring for that config.
+
+**This cell was run at `-ngl 0`, deliberately.** An out-of-memory load also
+exits 1, and a first attempt at this cell OOM'd on a card another run had taken
+and looked exactly like a pass. Moving it to the CPU removes VRAM from the
+question entirely, and the verdict is read off the refusal text rather than the
+exit code. The check is metadata-driven — `qwen35.nextn_predict_layers = 1` plus
+the `blk.64.nextn.*` tensors — so nothing about it needs a GPU.
+
+This is the last open item from [the observation reported to
+opencoti](#one-new-observation-not-a-regression-reported-to-opencoti); it needs
+no workaround in this tree, because `resolveDraftType` only lets a pin override
+an inferred driver and `xollama show` now prints the resolved one.

@@ -460,7 +460,8 @@ func (p slotPlan) concurrency() int {
 //
 // The widths are MEASURED against the pinned artifact, by asking its own parser
 // (`--cache-type-k BOGUS` prints the allowed values). On
-// opencoti-0.10.5-c7-2609221142001:
+// opencoti-0.10.5-c7-2609221142001, re-probed unchanged on
+// opencoti-0.10.5-c7-2609230556001 (2026-09-23, when the pin moved there):
 //
 //	f32, f16, bf16, q8_0, q4_0, q4_1, iq4_nl, q5_0, q5_1,
 //	q6_0, turbo2, turbo3, turbo4, turbo8, turbo3_tcq, turbo2_tcq,
@@ -496,7 +497,8 @@ func CacheShapeError(k, v, kswa, vswa string) string {
 // CacheNeedsFlashAttention reports whether these types can only be served with
 // flash attention on.
 //
-// MEASURED, on opencoti-0.10.5-c7-2609221142001: a load with -ctk kvarn2 and
+// MEASURED, on opencoti-0.10.5-c7-2609221142001 and re-probed unchanged on
+// 2609230556001: a load with -ctk kvarn2 and
 // flash attention off dies at init with "llama_init_from_model: KVarN requires
 // Flash Attention; enable it". It reached us the ugly way -- as a model that
 // loaded at one context length and failed at another, because the size that

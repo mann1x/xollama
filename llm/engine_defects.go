@@ -90,11 +90,53 @@ var knownEngineDefects = []knownEngineDefect{
 		// It also explains why opencoti could not reproduce it on a roomy
 		// card: auto only picks the window under real VRAM pressure.
 		//
-		// RETIREMENT CONDITION, agreed with the user 2026-09-20. opencoti is
-		// fixing this properly in c8 rather than patching c7 again; it is
-		// queued there behind the KVarN position-ops work. The day the pin
-		// moves to a c8 artifact, RE-RUN the recipe -- 70B q3_K_S on a 24 GiB
-		// card, confirming "POSITION_WINDOW mode ON" appears in the log -- and
+		// RE-MEASURED 2026-09-23 against dev build 24 (2609230556001), when
+		// the pin moved there, and again against build 29 (2609230917001).
+		// "POSITION_WINDOW mode ON (--kv-residency-mode auto)" is in the log,
+		// so it is this path, and on both dev builds the load SUCCEEDS where
+		// the release bytes this row names abort. That binary outcome --
+		// loads / does not load -- is the whole claim, and it holds.
+		//
+		// THE RATES FIRST WRITTEN HERE WERE WRONG AND ARE WITHDRAWN. This
+		// comment said "auto 7.70 tok/s, head 5.04" and concluded the head
+		// workaround had INVERTED on the dev line. opencoti attributed both
+		// on 2026-09-23 and neither survives:
+		//   - 7.70 was derived from a TWO-token generation ("Say ok" -> "OK").
+		//     At that length the first-token and graph-warmup cost dominates;
+		//     it is not a decode rate. The b21 figure it was compared against
+		//     came from 64 tokens, so the "nearly doubled" was a comparison
+		//     between two different measurements, not two builds.
+		//   - The inversion rested on the same two-token runs.
+		//   - The recipe never ran at the context it claimed: the 32k load
+		//     fails with "failed to allocate CUDA0 buffer of size 8187281408"
+		//     and the harness silently retries at -c 4096, so the axis
+		//     measured a 62/81-layer fallback under a 32k name.
+		// Re-run on the same argv with n_predict 256 and ignore_eos on a quiet
+		// card: b21 3.54, b24 3.47, b29 3.43 tok/s, and head 3.19 against
+		// auto. Within about 3% -- no regression, no improvement, no
+		// inversion, nothing to fix engine-side.
+		//
+		// A decode rate needs at least 256 generated tokens (512 where
+		// practical) with ignore_eos, and a GPU nothing else is touching. Do
+		// not take one from a short answer again. On a model whose thinking is
+		// enabled, size n_predict and num_ctx for the full thinking block as
+		// well -- it can run to tens of thousands of tokens, and a budget
+		// sized for the answer truncates inside it.
+		//
+		// None of that is a reason to retire this row: it accuses the RELEASE
+		// bytes, and the distinction is the whole point of the sha256 half of
+		// the table -- see the retirement condition below.
+		//
+		// RETIREMENT CONDITION, agreed with the user 2026-09-20, narrowed by
+		// the build-24 measurement. This row accuses 4f4102d6... , the c7 r2
+		// RELEASE x86_64 binary that `main` pins and ships. A dev snapshot of
+		// the same cut carrying the fix says the fix exists on the dev line --
+		// which build 18 already said -- and says nothing about the bytes this
+		// row names. So the condition is not "a c8 artifact" as first written;
+		// it is a RELEASE artifact carrying opencoti patch 0308, whatever cut
+		// that turns out to be. The day the pin on `main` moves to one,
+		// RE-RUN the recipe -- 70B q3_K_S on a 24 GiB card, confirming
+		// "POSITION_WINDOW mode ON" appears in the log -- and
 		// if it loads under --kv-residency-mode auto, remove three things
 		// together in one commit:
 		//   1. this row;
@@ -108,10 +150,12 @@ var knownEngineDefects = []knownEngineDefect{
 		//
 		// The expectation is good, though, and it is measured rather than
 		// promised: build 18 of the c7 DEV line already loads the same model
-		// on the same card, through the same POSITION_WINDOW tactic, at 4.25
-		// tok/s. So patch 0308 is the fix and c8 should carry it. That is a
-		// reason to expect the retirement to succeed -- not a reason to skip
-		// re-running it against the c8 bytes that actually ship.
+		// on the same card, through the same POSITION_WINDOW tactic, where
+		// the release bytes abort outright. It is the LOAD that carries the
+		// claim, not a rate -- see the withdrawn figures above. So patch 0308
+		// is the fix and the next release should carry it. That is a reason to
+		// expect the retirement to succeed -- not a reason to skip re-running
+		// it against the release bytes that actually ship.
 		//
 		// So they are two defects, not one. bug-3369's own signature is gone
 		// from r2 and is deliberately NOT listed below -- accusing bytes of a

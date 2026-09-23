@@ -71,6 +71,31 @@ paths:
   run, so the systemd `ollama` cannot load anything meanwhile. Check
   `nvidia-smi --query-compute-apps` first, keep big arms short, and confirm VRAM
   came back — the harness kills the process group and sleeps 5 s between arms.
+- **Every probe, smoke and A/B cell generates at least 256 tokens, 512 where
+  practical, always with `ignore_eos`.** Never derive a tok/s from a short
+  generation. A 2-token run ("Say ok" -> "OK") was recorded as 7.70 tok/s,
+  compared against a 64-token 4.05, and produced two false claims -- "the
+  overflow axis nearly doubled" and "the `head` workaround has inverted" -- that
+  reached `llm/engine_defects.go` and a user-facing Warning in
+  `docs/xollama/slots.mdx`. At that length the number is first-token latency
+  plus graph warm-up. Re-measured at 256 tokens the three builds are within 3%.
+- **A thinking model needs its budget sized for the thinking, not the answer.**
+  Where the model has reasoning and it is enabled, allocate `n_predict` /
+  `max_gen_toks` / `num_ctx` generously -- prompt + the *full* thinking block +
+  512 answer tokens -- and set the engine's reasoning budget explicitly rather
+  than trusting the model to stop. Thinking runs from a few hundred tokens to
+  tens of thousands depending on the model and the question; a budget sized for
+  the answer truncates inside it and the cell measures nothing. Measured
+  precedent: Gemma 4 on GPQA without `--reasoning-budget` loops and exhausts the
+  whole context without answering.
+- **Verify the EFFECTIVE context, never the requested one.** The overflow axis
+  asked for `-c 32768`, the allocation failed (`failed to allocate CUDA0 buffer
+  of size 8187281408`), the harness silently retried at `-c 4096`, and every row
+  was measured on a 62/81-layer fallback under a 32k name. Log the effective
+  `n_ctx` and fail or flag the cell when it falls back.
+- **An exit code is not a verdict.** An OOM and a deliberate refusal both exit 1.
+  Read the message: a `draft-simple` cell OOM'd on a contended card and looked
+  exactly like the patch-0351 refusal it was meant to prove.
 - **A provisional number is not a measurement.** Re-taken as `ollama` with the
   `bufferSizeRegex` fix, the multislot deficit is −36.2% on the c7 r2 pin and
   gone on builds 18 and 19. Append a re-take to `docs/evaluations/phase2-engine-ab.md`.

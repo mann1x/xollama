@@ -90,8 +90,8 @@
 # ---------------------------------------------------------------------------
 
 repo     ManniX-ITA/opencoti-llamafile-dev
-rev      32ec86e8cf8f0b36ed53eab3531665b8851d91f7
-tag      opencoti-0.10.5-c7-2609221142001
+rev      b9dfd1c646103c3e9f08999ca70e6e7e0971766e
+tag      opencoti-0.10.5-c7-2609230917001
 channel  dev
 
 # THIS BRANCH PINS A DEVELOPMENT SNAPSHOT. It is not a release and must not be
@@ -100,7 +100,7 @@ channel  dev
 #
 # The tag is a DEV BUILD ID, not a claim about which cut these bytes are. A dev
 # build carries the PREVIOUS release tag in its version string, so this one
-# reads c7 while its patch chain runs 0245..0346 -- past the c7 chain end at
+# reads c7 while its patch chain runs 0245..0352 -- past the c7 chain end at
 # 0244, and past 0288. That is exactly why capability is declared below rather
 # than read out of the tag: inferring it would refuse the flags this snapshot
 # was pinned to test.
@@ -112,54 +112,85 @@ channel  dev
 # commit one second later that moves the repo's own pointer. Both hold the same
 # bytes; naming the snapshot is what the two pins before this one did.
 #
-# WHY THIS BUILD, and not 2609220756001 which it replaces. That one was measured
-# here and REFUSED THE SECOND /api/chat TURN of every conversation: their session
-# allocator books a session's window whole and holds it until close or TTL, by
-# design, and the defect was the size it chose when the client states no num_ctx
-# -- the per-session maximum, i.e. the entire base cache, for 300 s. Patch 0345
-# makes an unstated window per-request and negotiable with the request's own peak
-# as the floor, and leaves a STATED num_ctx on the old contract: booked whole,
-# held across turns, refused rather than silently shrunk. Measured, not read off
-# the changelog: see the build-21 section of docs/evaluations/phase2-engine-ab.md.
-# The DSO did not change across that fix -- d676a779 is byte-identical to the one
-# 2609220756001 shipped -- so this move is a host-binary swap.
+# WHY THIS BUILD. Two moves in one day, and the second one changes the DSO, so
+# read the b24 paragraph below as history and this one as the reason to be here.
 #
-# Patch chain 0245-0346, and NOTHING uncaptured: the vendor states 0343, 0344,
-# 0345 and the 0346 A/B lever are all in the chain, verified by string probe that
-# the binary carries exactly those.
+# 2609230917001 (b29) adds three things over 2609230556001 (b24):
 #
-# Gates the VENDOR ran on exactly these bytes (BUILD_INFO.md): their bug-3555
-# elastic-allocation gate, four arms x two binaries, paired against the published
-# 2609220756001 as the control, so a green arm cannot be confused with a no-op --
-# A (distinct session ids, num_ctx unstated) 200/429/429 -> 200/200/200; B (one
-# session, unstated) unchanged; C (two x 8192) both held; D (two x 32768) still
-# refuses the second. They did NOT re-run the RULER / KLD long cells; those carry
-# over on the unchanged DSO rather than having been re-measured.
+#   0350  Nemotron-H with no drafter segfaulted inside libcuda on driver 580.
+#         This is a DSO change -- 7ae729af replaces d676a779, which had been
+#         byte-stable since build 20 -- so EVERY measurement that rests on GPU
+#         behaviour was re-taken here rather than carried forward. The Windows
+#         DLL was rebuilt with it too.
+#   0351  `--spec-type draft-simple` with no `-md` segfaulted at
+#         `llama_n_batch(NULL)` (llama-context.cpp:2599). We found this on b21
+#         and confirmed it on b24: a model whose draft head is built into the
+#         target has no separate drafter, so common_speculative_init built the
+#         implementation with `ctx_tgt=no, ctx_dft=no` and then dereferenced it.
+#         It now THROWS, and because the type was asked for explicitly the
+#         server refuses to boot rather than serving unspeculated -- naming the
+#         built-in head and pointing at `--spec-type draft-mtp`. Reachable from
+#         xollama only since our own bug-086 made a pinned draft.spec_type
+#         actually reach the engine on a built-in head.
+#   0352  the PolyKV / elastic-allocation fixes from the Cerebriline line.
 #
-# Gates WE ran on exactly these bytes, which is what the pin actually rests on:
-# compat 8/8, throughput and multi-slot inside build 19's spread taken back to
-# back in one session, 70B overflow 4.05 tok/s at 0.759 in VRAM, gemma-4 parsers
-# pass, and ZERO `kv-reservation: REFUSED` lines across the whole five-axis sweep.
+# WHY b24, which this replaces, and not 2609221142001 before it. b21 ABORTED at
+# the first post-load 2-token decode on every qwen35 vehicle with `--dca on`:
+# `ggml-backend.cpp:201: GGML_ASSERT(buffer) failed`, after
+# `ggml_backend_sched_alloc_splits: failed to allocate graph, reserving`. Bisected
+# here to four flags with no ollama involved --
+# `<artifact> --server --model <blob> -ngl 99 -c 32768 --dca on` -- and independent
+# of KV type (f16 == kvarn2), quantization (IQ2_M, Q4_K_M, v6 Q4_K_M), MTP, the
+# resolved chunk, --no-warmup, and OPENCOTI_GRAPH_LANES=0. Not an OOM: 23854 MiB
+# free of 24576 at the abort, and no gallocr "buffer of size N" line at verbosity 5.
 #
-# NOT verified by us: the vendor's arm A. Our probe for it (four concurrent
-# /api/chat) passes on the broken build too, because the ollama surface has no
-# field that maps to session_id and xollama minted ONE id for all four requests.
-# That arm rests on their measurement; do not cite it as ours.
+# The root cause (opencoti bug-3566, patch 0347) is the one their architecture
+# split predicted: on archs where EVERY attention layer is DCA-routed -- qwen2,
+# qwen3, qwen3moe, and qwen35/qwen35moe whose SSM layers are positionless -- the
+# standard `attn_inp_kq_mask` is consumed by no node, galloc correctly does not
+# allocate a tensor nothing reads, and the unguarded setter asserts on the NULL
+# buffer. gemma4-iSWA was never reachable because its SWA layers still consume
+# that mask, which is why it served DCA to 2,097,152 context on the broken bytes.
+# Two fill sites, not one: the KVarN cache has its own mask fill, and their first
+# fix left it.
 #
-# KNOWN OPEN in these bytes, reported by the vendor: their bug-3524, --sparse-attn
-# on a PLAIN (non-KVarN) cache loses needles. xollama never passes --sparse-attn
-# itself, so the only way to reach it is XOLLAMA_ENGINE_ARGS; llm/engine_args.go
-# warns when it sees the flag on these bytes. It is deliberately NOT a row in
-# llm/engine_defects.go: that table matches the engine's dying words, and this
-# defect does not say anything at all -- it just answers worse.
+# b24 also brought 0348 (the build id baked into `--version` and the boot line,
+# so a cell can be attributed to bytes) and 0349, the DCA observability line we
+# asked for: with `--dca on` the engine prints `dca: ENGAGED -- chunk C (source),
+# n_ctx_seq N = x chunks` or `dca: INERT -- chunk C (source) >= n_ctx_seq N` at
+# init. That line retroactively settled a question that cost two sessions a day:
+# our own -c 32768 crash repro was INERT. `--dca on` was breaking graph
+# construction without clamping anything.
 #
-# OPEN AND UNQUANTIFIED, raised by the vendor 2026-09-22 (their bug-3556): CUDA
-# output may depend on the batch shape a request lands in, so the same prompt
-# with different co-tenants could sample differently. They are measuring it at
-# server batch shapes. Nothing here assumes run-to-run reproducibility on CUDA,
-# but a future feature that does must wait for that number.
+# The overflow axis nearly doubled between b21 and b24 (4.05 -> 7.70 tok/s on the
+# 70B recipe). The vendor CANNOT ATTRIBUTE that to a patch yet and has asked that
+# it be cited as "b21 -> b24, unattributed" until they measure it. Do not credit
+# 0347/0348/0349 with it; none of them should touch KV residency.
+#
+# The win-x86_64 dso row is the Windows CUDA DLL, with KVarN built in. It does
+# NOT make this branch packageable for Windows -- there is still no win-x86_64-gpu
+# bin -- but it is the first time the accel rows could honestly claim anything
+# beyond Linux x86_64, and it is pinned so the row can be verified.
 
-# PROBED against THESE bytes on 2026-09-22, not read off the patch chain, and
+# RE-PROBED against THESE bytes on 2026-09-23, not read off the patch chain.
+# Every row below was re-run against 2609230917001 and is unchanged from both
+# the 2609230556001 and 2609221142001 probes: kvarn2/3/4/5/6/8 and q6_0
+# ACCEPTED, kvarn7 REFUSED (the structural gap KnownCacheTypes omits), the ring
+# ACCEPTED on a KVarN base and REFUSED on a plain one, --sparse-attn ACCEPTED,
+# --banana REFUSED as a control.
+# The two ring refusals name the rule in their own message
+# ("--cache-type-k/v-swa overrides require KVarN --cache-type-k", "a plain SWA
+# cache type requires both") rather than "invalid argument", which is why a
+# probe that scores only on that phrase reads them as neither -- the message is
+# the refusal. Unchanged from 2609230556001; it does not change the verdicts.
+#
+# The argv probe never loads a model (--model /nonexistent.gguf), so it says
+# nothing about GPU behaviour. The DSO changed in this pin (7ae729af replaces
+# d676a779, which had been byte-stable since build 20), so no measured GPU
+# result carries forward from 2609230556001 and each was re-run separately.
+#
+# The original probe notes, from 2026-09-22, still describe the method:
+# PROBED against THOSE bytes on 2026-09-22, not read off the patch chain, and
 # paired against build 19 so a pass cannot be a no-op. The verdict is read off
 # `error: invalid argument`, which the engine prints before it looks at a model
 # -- an earlier version of this probe scored a context that failed to build as an
@@ -187,7 +218,8 @@ accel    x86_64  CUDA
 # One APE serves every host; the arch label selects who may package it.
 # win-x86_64-gpu is deliberately absent: there is no Windows GPU artifact on
 # this channel, so a Windows package cannot be built from this branch, loudly.
-bin  x86_64   builds/opencoti-0.10.5-c7-2609221142001/opencoti-0.10.5-c7-2609221142001  e3a19b0b3f0c8d32c77b83ecb25b36aea418fe40e303fe17e4d42f070984e925
-bin  aarch64  builds/opencoti-0.10.5-c7-2609221142001/opencoti-0.10.5-c7-2609221142001  e3a19b0b3f0c8d32c77b83ecb25b36aea418fe40e303fe17e4d42f070984e925
+bin  x86_64   builds/opencoti-0.10.5-c7-2609230917001/opencoti-0.10.5-c7-2609230917001  8e4686a4eb097e430dff81eb4c2c4489fb6ab89f12d966bb8d46aac30c492a74
+bin  aarch64  builds/opencoti-0.10.5-c7-2609230917001/opencoti-0.10.5-c7-2609230917001  8e4686a4eb097e430dff81eb4c2c4489fb6ab89f12d966bb8d46aac30c492a74
 
-dso  x86_64   builds/opencoti-0.10.5-c7-2609221142001/ggml-cuda.so  d676a779f816daf7b5c63eb1363cc6c49f2b86c82fde66963ab293c8d7aa454e
+dso  x86_64      builds/opencoti-0.10.5-c7-2609230917001/ggml-cuda.so                7ae729af14847bbdd8a123665f9cf50716945e2a2126bcb28cca7fedd95348ff
+dso  win-x86_64  builds/opencoti-0.10.5-c7-2609230917001/ggml-cuda-win-x86_64.dll    eb01f61c309437831aeb3f8240179c848bf0899ba64cfe29ad2e7bae9ce605e0

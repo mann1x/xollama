@@ -187,8 +187,24 @@ Ollama's own, unchanged.
   ```
 
   That loaded the same 39.2 GiB model on the same 24 GiB card at 2.85 tok/s —
-  faster than stock llama.cpp managed on the same arm. Failing that, keep the
-  load resident: a smaller model or quantisation, a lower `num_ctx`, or a
+  faster than stock llama.cpp managed on the same arm.
+
+  **This applies to the released engine. On the development line the abort is
+  gone, so there is nothing to work around.** Re-measured 2026-09-23 on dev
+  builds `2609230556001` and `2609230917001`, with `POSITION_WINDOW mode ON`
+  confirmed in the log: both load the model that the released engine aborts on.
+  If you are running a build from the development channel, you do not need this
+  setting.
+
+  An earlier version of this page claimed `head` had *inverted* into the slower
+  arm on those bytes, at 5.04 tok/s against 7.70. That was wrong and is
+  withdrawn: the figures came from two-token generations, where warm-up cost
+  dominates and no decode rate can be read at all. Measured properly — 256
+  tokens, `ignore_eos`, quiet card — `auto` and `head` are within a few percent
+  of each other on the dev line, as are builds 21, 24 and 29. Neither arm is
+  meaningfully faster, so pick on whether the model loads, not on throughput.
+
+  Failing that, keep the load resident: a smaller model or quantisation, a lower `num_ctx`, or a
   compressed [KV cache type](/xollama/kv-cache); `XOLLAMA_ENGINE=llamacpp`
   serves it too. xollama recognises this abort and says all of this rather than
   leaving you the raw message.
