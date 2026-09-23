@@ -353,6 +353,13 @@ jobs:
             build-steps: vulkan
             install: https://sdk.lunarg.com/sdk/download/1.4.321.1/windows/vulkansdk-windows-X64-1.4.321.1.exe
     runs-on: ${{ matrix.arch == 'arm64' && format('{0}-{1}', matrix.os, matrix.arch) || matrix.os }}
+    # `windows` is a self-hosted runner LABEL, not a GitHub-hosted image, so
+    # nothing can infer the OS from it and every run: step below was being
+    # read as bash. Every one of them is PowerShell; saying so is a no-op at
+    # run time and is what the steps already rely on.
+    defaults:
+      run:
+        shell: pwsh
     env:
       GOFLAGS: ${{ needs.setup-environment.outputs.GOFLAGS }}
       VERSION: ${{ needs.setup-environment.outputs.VERSION }}
@@ -478,6 +485,13 @@ jobs:
 
   windows-build:
     runs-on: windows
+    # `windows` is a self-hosted runner LABEL, not a GitHub-hosted image, so
+    # nothing can infer the OS from it and every run: step below was being
+    # read as bash. Every one of them is PowerShell; saying so is a no-op at
+    # run time and is what the steps already rely on.
+    defaults:
+      run:
+        shell: pwsh
     needs: setup-environment
     env:
       GOFLAGS: ${{ needs.setup-environment.outputs.GOFLAGS }}
@@ -541,6 +555,13 @@ jobs:
 
   windows-package:
     runs-on: windows
+    # `windows` is a self-hosted runner LABEL, not a GitHub-hosted image, so
+    # nothing can infer the OS from it and every run: step below was being
+    # read as bash. Every one of them is PowerShell; saying so is a no-op at
+    # run time and is what the steps already rely on.
+    defaults:
+      run:
+        shell: pwsh
     needs: [setup-environment, windows-build, windows-depends]
     env:
       GOFLAGS: ${{ needs.setup-environment.outputs.GOFLAGS }}

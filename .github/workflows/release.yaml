@@ -181,6 +181,13 @@ jobs:
               - '"nvptxcompiler"'
             cuda-version: '13.0'
     runs-on: ${{ matrix.arch == 'arm64' && format('{0}-{1}', matrix.os, matrix.arch) || matrix.os }}
+    # `windows` is a self-hosted runner LABEL, not a GitHub-hosted image, so
+    # nothing can infer the OS from it and every run: step below was being
+    # read as bash. Every one of them is PowerShell; saying so is a no-op at
+    # run time and is what the steps already rely on.
+    defaults:
+      run:
+        shell: pwsh
     environment: release
     env:
       GOFLAGS: ${{ needs.setup-environment.outputs.GOFLAGS }}
@@ -334,6 +341,13 @@ jobs:
 
   windows-build:
     runs-on: windows
+    # `windows` is a self-hosted runner LABEL, not a GitHub-hosted image, so
+    # nothing can infer the OS from it and every run: step below was being
+    # read as bash. Every one of them is PowerShell; saying so is a no-op at
+    # run time and is what the steps already rely on.
+    defaults:
+      run:
+        shell: pwsh
     environment: release
     needs: [setup-environment]
     env:
@@ -398,6 +412,13 @@ jobs:
 
   windows-app:
     runs-on: windows
+    # `windows` is a self-hosted runner LABEL, not a GitHub-hosted image, so
+    # nothing can infer the OS from it and every run: step below was being
+    # read as bash. Every one of them is PowerShell; saying so is a no-op at
+    # run time and is what the steps already rely on.
+    defaults:
+      run:
+        shell: pwsh
     environment: release
     needs: [setup-environment, windows-build, windows-depends]
     env:
@@ -737,7 +758,7 @@ jobs:
           username: ${{ vars.DOCKER_USER }}
           password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
       - id: metadata
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         with:
           flavor: |
             latest=false
@@ -821,7 +842,7 @@ jobs:
           done
           exit $status
       - name: Generate checksum file
-        run: find . -type f -not -name 'sha256sum.txt' | xargs sha256sum | tee sha256sum.txt
+        run: find . -type f -not -name 'sha256sum.txt' -print0 | xargs -0 sha256sum | tee sha256sum.txt
         working-directory: dist
       - name: Create or update Release for tag
         run: |

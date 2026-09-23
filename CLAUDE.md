@@ -138,6 +138,8 @@ redirect scheme; `app/cmd/app/app.go` accepts either — see
 Hub and GHCR on a `v*` tag, on the self-hosted `xollama-build` runner (bs2, set
 up by `scripts/setup-bs2-runner.sh`; label declared in `.github/actionlint.yaml`)
 — separate from upstream's `release.yaml`, see `docs/features/docker-release.md`.
+Upstream's `.github/workflows/latest.yaml` job is guarded to `ollama/ollama`
+(`docker-release` hook), since `docker-release.yaml` already pushes `:latest`.
 Pinned natives: `LLAMA_CPP_VERSION`, `MLX_VERSION`, `MLX_C_VERSION`,
 orchestrated by `CMakeLists.txt` / `CMakePresets.json`; the opencoti engine
 artifact is pinned by `llm/engine/pin.txt` (`repo`, `rev` commit sha, `tag`,

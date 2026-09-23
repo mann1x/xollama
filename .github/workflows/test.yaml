@@ -7,7 +7,7 @@ concurrency:
   # For non-PR pushes, concurrency.group needs to be unique for every distinct
   # CI run we want to have happen. Use run_id, which in practice means all
   # non-PR CI runs will be allowed to run without preempting each other.
-  group: ${{ github.workflow }}-$${{ github.pull_request.number || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 on:
@@ -240,6 +240,13 @@ jobs:
               - '"nvptxcompiler"'
             cuda-version: '13.0'
     runs-on: windows
+    # `windows` is a self-hosted runner LABEL, not a GitHub-hosted image, so
+    # nothing can infer the OS from it and every run: step below was being
+    # read as bash. Every one of them is PowerShell; saying so is a no-op at
+    # run time and is what the steps already rely on.
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - run: |
           choco install -y --no-progress ccache ninja
