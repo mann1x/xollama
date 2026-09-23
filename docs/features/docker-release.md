@@ -8,8 +8,27 @@ container image on every `v*` tag, to two registries:
 | Docker Hub | `docker.io/mannixita/xollama` |
 | GHCR | `ghcr.io/mann1x/xollama` |
 
-Each release publishes `:<version>` and `:latest` as a multi-arch manifest over
-`linux/amd64` and `linux/arm64`, plus the per-architecture `:<version>-amd64`
+## Two channels
+
+The repository has two GitHub environments, and the tag decides which one a
+build uses:
+
+| tag | environment | tags published |
+|---|---|---|
+| `v1.2.3` | `release` | `:1.2.3` and `:latest` |
+| `v1.2.3-rc1`, `v1.2.3-dev.4` | `dev` | `:1.2.3-rc1` and `:dev` |
+
+Anything after the first hyphen makes it a pre-release, as semver defines it. A
+pre-release moves `:dev` and **never** `:latest`, so `docker pull <image>` can
+never hand someone a dev build. A manual run can override the decision with the
+`channel` input.
+
+The environments are where release-only protection belongs — required
+reviewers, or a secret that only the release channel may use — without having to
+duplicate the workflow.
+
+Each release publishes `:<version>` and its moving tag as a multi-arch manifest
+over `linux/amd64` and `linux/arm64`, plus the per-architecture `:<version>-amd64`
 and `:<version>-arm64` tags the manifest is assembled from. Those stay published
 deliberately — they are what makes a broken architecture diagnosable afterwards.
 
@@ -17,10 +36,9 @@ deliberately — they are what makes a broken architecture diagnosable afterward
 
 Upstream's `release.yaml` already carries a complete Docker pipeline. It cannot
 run here: seven of its jobs target upstream's own self-hosted runners (`linux`,
-`linux-arm64`, `windows`, `macos-26-xlarge`), nine reference an
-`environment: release` this repository does not define, and its Docker jobs are
-documented as cache-hit-only against `ollama/release:cache-*`, a registry only
-upstream can push to. Changing those inside a 37 000-line upstream workflow
+`linux-arm64`, `windows`, `macos-26-xlarge`) that this repository does not have,
+and its Docker jobs are documented as cache-hit-only against
+`ollama/release:cache-*`, a registry only upstream can push to. Changing those inside a 37 000-line upstream workflow
 would conflict on every `git merge upstream/main`; a separate file never does.
 
 What is inherited is the *shape* — build each architecture separately, then
@@ -84,6 +102,17 @@ build is developed and validated for this fork — the pinned engine declares no
 ROCm acceleration, so an image advertising it would be untested. Re-add it to
 the `build` matrix and to `merge` once it is measured.
 
+## macOS is not built here
+
+`release.yaml`'s `darwin-build` job is guarded off on the fork. It builds and
+signs the macOS app, which needs a Metal toolchain and an Apple signing identity
+the fork has neither of, on a per-minute `macos-26-xlarge` runner — it would
+fail on the first release rather than produce anything. It is guarded rather
+than deleted so it keeps merging from upstream, and it was removed from the
+`release` job's `needs` so a skipped job cannot skip the release itself. Nothing
+in that job's `required=` artifact list is a darwin artifact, so verification is
+unchanged.
+
 ## One-time setup
 
 1. **Register the runner.** `scripts/setup-bs2-runner.sh`, run once on bs2 as
@@ -101,15 +130,47 @@ the `build` matrix and to `merge` once it is measured.
 
    The labels must include `self-hosted`, `linux`, `X64`, `xollama-build`.
 
-2. **Secrets.** `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (a Docker Hub access
+2. **Environments.** `release` and `dev` exist on the repository. Add required
+   reviewers or environment secrets to `release` if publishing should need an
+   approval step.
+
+3. **Secrets.** `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (a Docker Hub access
    token with write permission) as repository secrets. GHCR needs no secret — the
    workflow authenticates with the job's `GITHUB_TOKEN` and `packages: write`.
 
-3. **First publish.** `docker.io/mannixita/xollama` does not exist until the
-   first push creates it; check its visibility afterwards, and note that a GHCR
-   package created by `GITHUB_TOKEN` starts **private** and linked to the
-   repository — make it public from the package settings if the image is meant
-   to be pullable anonymously.
+4. **First publish.** Neither image exists until the first push creates it.
+
+   `docker.io/mannixita/xollama` is created by the push itself. Docker Hub
+   applies the account's *default repository privacy* setting, so check it
+   afterwards under the repository's **Settings → Visibility**.
+
+   A GHCR package created by `GITHUB_TOKEN` starts **private**, and there is no
+   way to pre-create it public — the package has to exist before it can be made
+   public. So publish once, then make it public and link it to the repository:
+
+   **In the UI** — the package page
+   (`https://github.com/users/mann1x/packages/container/xollama/settings`) →
+   *Danger Zone* → **Change visibility** → Public. On the same page,
+   *Manage Actions access* → add the `xollama` repository with **Write**, which
+   is what lets later runs push to an existing package.
+
+   **Or with the API**, which is scriptable but needs a PAT with
+   `write:packages` (the workflow's `GITHUB_TOKEN` cannot change visibility):
+
+   ```shell
+   gh api -X PATCH user/packages/container/xollama \
+     -f visibility=public
+   ```
+
+   Verify anonymously — this must succeed with no credentials at all:
+
+   ```shell
+   docker logout ghcr.io
+   docker pull ghcr.io/mann1x/xollama:latest
+   ```
+
+   It is a one-time step. Once the package is public it stays public across
+   every later push.
 
 ## Testing it without cutting a release
 

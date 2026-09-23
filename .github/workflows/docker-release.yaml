@@ -48,6 +48,12 @@ on:
         description: 'Version to tag, without the leading v (defaults to the git tag)'
         required: false
         type: string
+      channel:
+        description: 'Which channel to publish to (auto = decide from the tag)'
+        required: false
+        default: auto
+        type: choice
+        options: [auto, release, dev]
       ignore_busy_host:
         description: 'Build even if bs2 looks busy (overrides the BUILD_CYCLE preflight)'
         required: false
@@ -68,6 +74,61 @@ env:
   DOCKERHUB_IMAGE: docker.io/mannixita/xollama
 
 jobs:
+  # Decide the version and the channel before anything touches bs2. This runs on
+  # a GitHub-hosted runner on purpose: it is pure metadata, and it must still
+  # report what WOULD be published when the build host is busy.
+  #
+  # A tag carrying a pre-release suffix -- v1.2.3-rc1, v1.2.3-dev.4 -- is a dev
+  # build and is kept away from the tags people pull by default. It publishes
+  # :<version> and moves :dev; only a plain v1.2.3 moves :latest. Separating the
+  # two is the whole point of having the two environments.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+      environment: ${{ steps.plan.outputs.environment }}
+      moving_tag: ${{ steps.plan.outputs.moving_tag }}
+    steps:
+      - id: plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.version }}" ]; then
+            version="${{ inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+
+          # Semver calls anything after the first hyphen a pre-release.
+          case "$version" in
+            *-*) prerelease=true ;;
+            *)   prerelease=false ;;
+          esac
+
+          channel="${{ inputs.channel }}"
+          case "${channel:-auto}" in
+            release) prerelease=false ;;
+            dev)     prerelease=true ;;
+          esac
+
+          if [ "$prerelease" = true ]; then
+            environment=dev
+            moving_tag=dev
+          else
+            environment=release
+            moving_tag=latest
+          fi
+
+          {
+            echo "version=${version}"
+            echo "prerelease=${prerelease}"
+            echo "environment=${environment}"
+            echo "moving_tag=${moving_tag}"
+          } >>"$GITHUB_OUTPUT"
+
+          echo "publishing ${version} to the ${environment} channel (moving tag :${moving_tag})"
+
   # opencoti's BUILD_CYCLE.md makes this preflight mandatory before any
   # 32-thread job on bs2: a build must not run while a CPU-bound eval is live,
   # because host contention depresses that eval's decode rate by 15-30% and
@@ -106,7 +167,8 @@ jobs:
   # One job per architecture. fail-fast is off on purpose: the emulated arm64
   # leg is the slow and fragile one and must not cancel a finished amd64 build.
   build:
-    needs: preflight
+    needs: [plan, preflight]
+    environment: ${{ needs.plan.outputs.environment }}
     strategy:
       fail-fast: false
       matrix:
@@ -136,22 +198,8 @@ jobs:
     permissions:
       contents: read
       packages: write
-    outputs:
-      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Resolve the version
-        id: version
-        shell: bash
-        run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            v="${{ inputs.version }}"
-          else
-            v="${GITHUB_REF_NAME#v}"
-          fi
-          echo "version=${v}" >>"$GITHUB_OUTPUT"
-          echo "publishing version ${v}"
 
       # Only the emulated leg needs binfmt handlers registered, which is a
       # host-level change; the native leg skips it entirely.
@@ -192,7 +240,7 @@ jobs:
             latest=false
             suffix=-${{ matrix.arch }}
           tags: |
-            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=${{ needs.plan.outputs.version }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -217,9 +265,10 @@ jobs:
   # imagetools copies within a registry, so each registry is merged from its own
   # architecture tags rather than across the two.
   merge:
-    needs: build
+    needs: [plan, build]
     if: inputs.push != false
     runs-on: [self-hosted, linux, X64, xollama-build]
+    environment: ${{ needs.plan.outputs.environment }}
     permissions:
       contents: read
       packages: write
@@ -248,7 +297,8 @@ jobs:
       - name: Create the multi-arch manifest
         shell: bash
         env:
-          VERSION: ${{ needs.build.outputs.version }}
+          VERSION: ${{ needs.plan.outputs.version }}
+          MOVING_TAG: ${{ needs.plan.outputs.moving_tag }}
         run: |
           set -euo pipefail
           if [ "${{ matrix.registry }}" = "ghcr" ]; then
@@ -273,9 +323,11 @@ jobs:
             exit 1
           fi
 
+          # :latest on a release, :dev on a pre-release -- never both, so a
+          # pre-release can never become what `docker pull <image>` returns.
           docker buildx imagetools create \
             -t "${image}:${VERSION}" \
-            -t "${image}:latest" \
+            -t "${image}:${MOVING_TAG}" \
             "${sources[@]}"
 
           docker buildx imagetools inspect "${image}:${VERSION}"

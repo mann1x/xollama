@@ -27,6 +27,18 @@ jobs:
           echo vendorsha=$(cat LLAMA_CPP_VERSION)-$(cat MLX_VERSION)-$(cat MLX_C_VERSION) | tee -a $GITHUB_OUTPUT
 
   darwin-build:
+    # xollama-hook: docker-release -- see docs/features/docker-release.md
+    #
+    # Disabled on the fork. This builds and signs the macOS app, which needs a
+    # Metal toolchain and an Apple signing identity the fork has neither of, on
+    # a macos-26-xlarge runner that is billed per minute. It would fail on the
+    # first release rather than produce anything.
+    #
+    # Guarded rather than deleted so the job keeps merging from upstream, and
+    # removed from the `release` job's `needs` so a skipped job here does not
+    # skip the release itself. Nothing in that job's `required=` list is a
+    # darwin artifact, so it verifies exactly as before.
+    if: github.repository == 'ollama/ollama'
     runs-on: macos-26-xlarge
     environment: release
     needs: setup-environment
@@ -782,7 +794,8 @@ jobs:
   release:
     runs-on: ubuntu-latest
     environment: release
-    needs: [darwin-build, windows-app, docker-build-push]
+    # darwin-build is guarded off on the fork; see the note on that job.
+    needs: [windows-app, docker-build-push]
     permissions:
       contents: write
     env:
