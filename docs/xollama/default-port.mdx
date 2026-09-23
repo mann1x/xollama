@@ -78,6 +78,39 @@ A client that hardcodes 11434 will not find xollama. Point it at 22434, or bind
 xollama to 11434 explicitly as above — having first stopped the Ollama that
 owns it.
 
+## What the `xollama` command itself connects to
+
+The port moved for the server. The **client** does not make you know that: when
+`XOLLAMA_HOST` is unset, `xollama` looks for a server on `127.0.0.1:22434`
+first, and then on `127.0.0.1:11434`.
+
+The second step is for the ordinary single-server install — you moved an
+existing xollama onto 11434, or you upgraded one that was already there — and it
+comes with one hard rule:
+
+<Warning>
+  **If what answers on 11434 is a stock Ollama, `xollama` refuses to use it.** It
+  does not connect and print a confusing error later; it stops and says so.
+
+  This is not fussiness about branding. `xollama pull`, `rm` and `tweak model`
+  all write, and they would write into the *other* server's model store —
+  fetching gigabytes into the wrong place, deleting from it, or failing on a
+  `xollama.json` layer that server has never heard of.
+
+  If you meant it, say so and the refusal goes away:
+
+  ```shell
+  XOLLAMA_HOST=127.0.0.1:11434 xollama list
+  ```
+</Warning>
+
+An explicit `XOLLAMA_HOST` is an instruction, not a hint: it is never probed and
+never overridden, so a command fails against the host you named rather than
+quietly succeeding against a different one.
+
+xollama identifies itself through `GET /api/xollama`, and, for builds older than
+that route, by its own name inside `/api/version`. A stock Ollama has neither.
+
 <Note>
   This does not weaken **off means off**. That rule is about inference being
   byte-identical under `XOLLAMA_ENGINE=llamacpp` — the port a server binds

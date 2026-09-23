@@ -2230,6 +2230,10 @@ func initializeKeypair() error {
 }
 
 func checkServerHeartbeat(cmd *cobra.Command, _ []string) error {
+	// xollama-hook: host-namespace — see docs/xollama/default-port.mdx
+	if err := resolveServerHost(cmd.Context()); err != nil {
+		return err
+	}
 	client, err := api.ClientFromEnvironment()
 	if err != nil {
 		return err
@@ -2246,6 +2250,10 @@ func checkServerHeartbeat(cmd *cobra.Command, _ []string) error {
 }
 
 func versionHandler(cmd *cobra.Command, _ []string) {
+	// xollama-hook: host-namespace — see docs/xollama/default-port.mdx
+	// A refusal is not reported here: `--version` prints a warning when it
+	// cannot reach a server, and that is the right outcome either way.
+	_ = resolveServerHost(cmd.Context())
 	client, err := api.ClientFromEnvironment()
 	if err != nil {
 		return
