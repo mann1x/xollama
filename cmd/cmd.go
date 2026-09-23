@@ -279,6 +279,16 @@ func safetensorsCreateOptions(modelfile *parser.Modelfile, filename, modelName s
 	if modelCount != 1 {
 		return createOptions{}, false, errors.New("safetensors imports require exactly one FROM source")
 	}
+	// xollama-hook: model-config — see docs/features/model-config.md
+	//
+	// Refused here rather than dropped. The safetensors import builds its
+	// layers through create.PipelineOptions, which carries no config layer, so
+	// an XOLLAMA line on this path would be silently discarded and the model
+	// served the default way -- the failure mode the layer exists to prevent.
+	// Say so instead, and name the way round.
+	if mfConfig.XollamaArgs != "" {
+		return createOptions{}, false, errors.New("XOLLAMA is not supported on a safetensors import; create the model first, then set its configuration with `xollama tweak model`")
+	}
 	if draftCount > 1 {
 		return createOptions{}, false, errors.New("safetensors imports support at most one DRAFT source")
 	}

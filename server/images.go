@@ -618,7 +618,19 @@ func (m *Model) String() string {
 		})
 	}
 
-	if m.Template != nil {
+	// xollama-hook: modelfile-roundtrip — see docs/features/modelfile-roundtrip.md
+	//
+	// HasGoTemplate, not m.Template. GetModel seeds m.Template with
+	// template.DefaultTemplate so the serving path always has something to
+	// render with, which means m.Template is never nil and this emitted
+	// `TEMPLATE {{ .Prompt }}` for every model that defines no template at
+	// all. That is not a cosmetic difference: `show --modelfile` is how people
+	// derive a new Modelfile from an existing model, so the fabricated line
+	// gets fed back to `create` and bakes a real template layer into a model
+	// that had none -- permanently, and invisibly, changing how it is served.
+	// HasGoTemplate is true only where an actual template/prompt layer was
+	// read, so it is exactly "the model defines one".
+	if m.HasGoTemplate && m.Template != nil {
 		modelfile.Commands = append(modelfile.Commands, parser.Command{
 			Name: "template",
 			Args: m.Template.String(),
@@ -675,6 +687,29 @@ func (m *Model) String() string {
 			Name: "message",
 			Args: fmt.Sprintf("%s: %s", msg.Role, msg.Content),
 		})
+	}
+
+	// xollama-hook: model-config — see docs/features/model-config.md
+	//
+	// Without this the config layer is the one part of a model that
+	// `show --modelfile` silently drops, so deriving a Modelfile from a model
+	// and rebuilding it produced a model served differently from the one it
+	// was copied from -- a wrong engine, a wrong cache type, DCA off -- with
+	// nothing in the output to say so. Rendered last, and as compact JSON on
+	// one line, because it round-trips through the parser's inline-JSON form.
+	//
+	// Through Config.Marshal rather than json.Marshal, so the JSON printed
+	// here states the same schema version the rebuilt layer would carry:
+	// Marshal recomputes it from the fields actually used, and printing a
+	// stored v2 for a config whose v2 fields are gone would make the rebuild
+	// look like a version bump that never happened.
+	if m.Xollama != nil && !m.Xollama.IsZero() {
+		if bts, err := m.Xollama.Marshal(); err == nil {
+			modelfile.Commands = append(modelfile.Commands, parser.Command{
+				Name: "xollama",
+				Args: string(bts),
+			})
+		}
 	}
 
 	return modelfile.String()

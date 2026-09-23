@@ -617,3 +617,23 @@ func TestCreateModelFromBaseReplacesDraftLayers(t *testing.T) {
 		t.Errorf("non-draft layers were not preserved")
 	}
 }
+
+// This function runs on every create, only to decide whether the Modelfile is
+// a safetensors import. Its default branch treats an unrecognised command as a
+// PARAMETER, so before it knew this one, an XOLLAMA line failed every create
+// with "unknown parameter 'xollama'" -- including the GGUF creates that handle
+// it perfectly well.
+func TestXollamaIsNotMistakenForAParameter(t *testing.T) {
+	modelfile, err := parser.ParseFile(strings.NewReader(
+		"FROM /models/foo.gguf\nXOLLAMA {\"version\":1,\"engine\":\"opencoti\"}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, cfg, err := configFromModelfile(modelfile)
+	if err != nil {
+		t.Fatalf("configFromModelfile() = %v, want the XOLLAMA line to be recognised", err)
+	}
+	if cfg.XollamaArgs == "" {
+		t.Fatal("the XOLLAMA argument was dropped rather than carried")
+	}
+}
