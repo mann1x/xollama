@@ -89,9 +89,25 @@ runner and the cost disappears with no change to the workflow.
   `ggml-cuda-sbsa-aarch64.so` beside it, so opencoti runs CPU-only there and
   `pinUncoveredIn` routes acceleration to llama.cpp.
 
-  The **release** channel does publish `dso/<ver>/ggml-cuda-sbsa-aarch64.so`.
-  When a dev pin carries it, add the `dso aarch64` row to `llm/engine/pin.txt`
-  and the image gains arm64 acceleration with no change here.
+  This was a gap in opencoti's publish script, not a property of the build:
+  `hf-dev-publish.sh` only ever took the x86_64 DSO while still pinning the bare
+  portable binary for aarch64. Fixed upstream of us in opencoti `648abd9251`.
+
+  From the next dev snapshot onward, GPU payloads are **per-snapshot and
+  optional**, published under `builds/<id>/` with the same basenames the release
+  channel uses — `ggml-cuda.so`, `ggml-cuda-win-x86_64.dll`,
+  `ggml-cuda-sbsa-aarch64.so`, `ggml-vulkan-x86_64.so`,
+  `ggml-vulkan-win-x86_64.dll`. Each snapshot states what it carries and what it
+  lacks, in two comment lines in the pin header and again in its `BUILD_INFO.md`.
+  **An absent `dso` row is a stated property of that snapshot, not an omission**,
+  which is already how `pinUncoveredIn` reads it.
+
+  A full set costs hours per lane on bs2, so most dev snapshots will keep
+  carrying x86_64 (and often Windows) only. Existing snapshots are rev-pinned and
+  immutable, so the current pin will never gain one. When a snapshot does list
+  it, add the `dso aarch64` row to `llm/engine/pin.txt` and the image gains arm64
+  acceleration with no change here; until then, arm64 acceleration lives on the
+  release channel.
 </Warning>
 
 A failed arm64 leg degrades to an amd64-only manifest rather than failing the
