@@ -90,8 +90,8 @@
 # ---------------------------------------------------------------------------
 
 repo     ManniX-ITA/opencoti-llamafile-dev
-rev      b9dfd1c646103c3e9f08999ca70e6e7e0971766e
-tag      opencoti-0.10.5-c7-2609230917001
+rev      7b3b0fe0cecbaf4573a43a0ea4df13392596eb2f
+tag      opencoti-0.10.5-c7-2609242056001
 channel  dev
 
 # THIS BRANCH PINS A DEVELOPMENT SNAPSHOT. It is not a release and must not be
@@ -112,10 +112,48 @@ channel  dev
 # commit one second later that moves the repo's own pointer. Both hold the same
 # bytes; naming the snapshot is what the two pins before this one did.
 #
-# WHY THIS BUILD. Two moves in one day, and the second one changes the DSO, so
-# read the b24 paragraph below as history and this one as the reason to be here.
+# WHY THIS BUILD. 2609242056001 was published on request (mail #253/#254) for
+# exactly one reason: it is the FIRST dev snapshot to carry a Linux x86_64
+# VULKAN payload, ggml-vulkan-x86_64.so. The fork makes opencoti the engine for
+# Vulkan as well as CUDA, so a Vulkan load had nowhere to go until these bytes
+# existed -- pinUncovered routed it to llama.cpp, which is correct but is not
+# the engine we want serving it.
 #
-# 2609230917001 (b29) adds three things over 2609230556001 (b24):
+# The motivating case is an integrated GPU: a small agentic model served on
+# solidPC's AMD RADV RENOIR iGPU at idle power, without waking the 3090.
+#
+# WHAT IT COSTS. The Windows CUDA DLL row is GONE: these bytes do not carry it
+# (the snapshot states "NOT in this build: Windows CUDA, aarch64 sbsa CUDA,
+# Windows Vulkan"). Nothing regresses in practice -- this branch never had a
+# win-x86_64-gpu bin and so was never packageable for Windows -- but the row
+# that could be verified on 2609230917001 cannot be verified here, and a
+# Windows GPU claim must not be made from this branch until a snapshot carries
+# the DLL again.
+#
+# PROBED against THESE bytes on 2026-09-24, not carried forward. Every verdict
+# is unchanged from 2609230917001: --cache-type-k-swa/--cache-type-v-swa on a
+# kvarn3 base ACCEPTED, the same pair on a plain f16 base REFUSED naming its own
+# rule ("--cache-type-k/v-swa overrides require KVarN --cache-type-k and
+# --cache-type-v"), --sparse-attn ACCEPTED, --banana REJECTED as the control.
+# `--gpu vulkan` is ACCEPTED, which the previous pin could not have told us.
+# The binary self-reports `llamafile v0.10.5 (opencoti-0.10.5-c7) build
+# 2609242056001`, so a cell can be attributed to these bytes.
+#
+# NOT MEASURED HERE, and not to be assumed: opencoti did NOT run this build on
+# the Renoir iGPU (#254). Their Vulkan smoke was bs2 GPU0 -- omnimerge v6 Q6_K
+# hybrid + draft-mtp, 512 tokens coherent, ~95 tok/s, MTP accept 75%. The
+# sidecar case on RADV is ours to measure.
+#
+# IGNORE the published notes' "Known issue" advising OPENCOTI_RS_TYPE_R=f32 and
+# OPENCOTI_RS_TYPE_S=f32 on Vulkan for hybrid models. opencoti withdrew it in
+# #254: it came from a run overlapping another gate on the same GPU. A clean A/B
+# on an idle GPU shows bf16 state == f32 on Vulkan (decode 95.1/96.4 vs
+# 96.5/95.7 tok/s) with prompt slightly FASTER on bf16. Keep the default.
+#
+# ---------------------------------------------------------------------------
+# HISTORY. The snapshot this replaces, and the one before it.
+#
+# 2609230917001 (b29) added three things over 2609230556001 (b24):
 #
 #   0350  Nemotron-H with no drafter segfaulted inside libcuda on driver 580.
 #         This is a DSO change -- 7ae729af replaces d676a779, which had been
@@ -167,10 +205,9 @@ channel  dev
 # it be cited as "b21 -> b24, unattributed" until they measure it. Do not credit
 # 0347/0348/0349 with it; none of them should touch KV residency.
 #
-# The win-x86_64 dso row is the Windows CUDA DLL, with KVarN built in. It does
-# NOT make this branch packageable for Windows -- there is still no win-x86_64-gpu
-# bin -- but it is the first time the accel rows could honestly claim anything
-# beyond Linux x86_64, and it is pinned so the row can be verified.
+# (b29 also carried a win-x86_64 dso, the Windows CUDA DLL with KVarN built in.
+# 2609242056001 does not, so that row is retired above rather than carried
+# forward against bytes that do not contain it.)
 
 # RE-PROBED against THESE bytes on 2026-09-23, not read off the patch chain.
 # Every row below was re-run against 2609230917001 and is unchanged from both
@@ -208,18 +245,32 @@ channel  dev
 # group size", which is a runtime fact and not an argv one.
 feature  swa-cache-types
 
-# Linux x86_64 CUDA and nothing else. The host binary is a bare cosmocc APE:
-# unlike a release bin it embeds no GPU payload, and dev snapshots publish no
-# Windows, aarch64 or Vulkan DSO at all. Every other accelerator therefore
-# routes to llama.cpp instead of being served on the CPU without saying so.
-# The DSO needs glibc >= 2.27 and only libcuda.so.1; sm_75/80/86/89/90/120.
+# Linux x86_64 CUDA **and Vulkan**. The host binary is a bare cosmocc APE:
+# unlike a release bin it embeds no GPU payload and accelerates only what its
+# dso rows provide. This is the first dev snapshot to carry a Vulkan payload,
+# which is why the fork is on it -- see WHY THIS BUILD above. aarch64 sbsa CUDA,
+# Windows CUDA and Windows Vulkan are all absent from these bytes, so those
+# route to llama.cpp instead of being served on the CPU without saying so.
+# Both DSOs need glibc >= 2.27 (measured: GLIBC_2.27 floor on each).
+#
+# THE PUBLISHED PIN STATES NO accel ROWS. Snapshot 2609242056001 lists its
+# payload set in a header comment instead, and pin.go now DERIVES coverage from
+# the dso rows themselves -- `dso x86_64` is CUDA, `dso <arch>-vulkan` is Vulkan
+# -- which is what opencoti's dev publisher assumed we already did (#242: "key
+# off the dso rows actually present"). Keyed on accel rows alone this pin would
+# accelerate NOTHING and every GPU load would route to llama.cpp while the
+# pinned engine sat there holding a working Vulkan payload. The rows below are
+# therefore a restatement, kept because a reader should not have to know the
+# derivation rule to see what these bytes do; they are validated against the
+# dso rows, never instead of them.
 accel    x86_64  CUDA
+accel    x86_64  Vulkan
 
 # One APE serves every host; the arch label selects who may package it.
 # win-x86_64-gpu is deliberately absent: there is no Windows GPU artifact on
 # this channel, so a Windows package cannot be built from this branch, loudly.
-bin  x86_64   builds/opencoti-0.10.5-c7-2609230917001/opencoti-0.10.5-c7-2609230917001  8e4686a4eb097e430dff81eb4c2c4489fb6ab89f12d966bb8d46aac30c492a74
-bin  aarch64  builds/opencoti-0.10.5-c7-2609230917001/opencoti-0.10.5-c7-2609230917001  8e4686a4eb097e430dff81eb4c2c4489fb6ab89f12d966bb8d46aac30c492a74
+bin  x86_64   builds/opencoti-0.10.5-c7-2609242056001/opencoti-0.10.5-c7-2609242056001  6296bbc4c15d904cf641daafaf17084087d65185f6e608e97fc49a84b1a4d2de
+bin  aarch64  builds/opencoti-0.10.5-c7-2609242056001/opencoti-0.10.5-c7-2609242056001  6296bbc4c15d904cf641daafaf17084087d65185f6e608e97fc49a84b1a4d2de
 
-dso  x86_64      builds/opencoti-0.10.5-c7-2609230917001/ggml-cuda.so                7ae729af14847bbdd8a123665f9cf50716945e2a2126bcb28cca7fedd95348ff
-dso  win-x86_64  builds/opencoti-0.10.5-c7-2609230917001/ggml-cuda-win-x86_64.dll    eb01f61c309437831aeb3f8240179c848bf0899ba64cfe29ad2e7bae9ce605e0
+dso  x86_64         builds/opencoti-0.10.5-c7-2609242056001/ggml-cuda.so             241bd3821f6b25f33767b4cb1380b2a658c9fbef574bd143ae1a18a613db71f1
+dso  x86_64-vulkan  builds/opencoti-0.10.5-c7-2609242056001/ggml-vulkan-x86_64.so    5a85ce93572f8bb0615401b51a0f60fafde070d628ca73f72ed9f1add2e8902b

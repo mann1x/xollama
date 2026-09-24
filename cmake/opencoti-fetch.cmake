@@ -40,8 +40,9 @@ set(_channel "")
 set(_tag "")
 set(_asset_path "")
 set(_asset_sha "")
-set(_dso_path "")
-set(_dso_sha "")
+set(_dso_paths "")
+set(_dso_shas "")
+set(_dso_labels "")
 
 file(STRINGS "${PIN_FILE}" _lines)
 foreach(_line IN LISTS _lines)
@@ -88,10 +89,19 @@ foreach(_line IN LISTS _lines)
         # no dso row; a dev snapshot is a bare APE and this is the only way it
         # reaches a GPU. It is staged beside the binary because the
         # executable's own directory wins the engine's DSO search.
+        #
+        # ONE ARCH CAN HAVE SEVERAL. The label is <arch>[-<backend>]: the bare
+        # form is CUDA, and a suffixed one names another backend for the same
+        # arch (x86_64-vulkan). Matching only the bare label silently dropped
+        # the Vulkan payload of snapshot 2609242056001 -- the build succeeded,
+        # the engine shipped, and Vulkan loads ran on the CPU.
         list(GET _fields 1 _row_arch)
-        if(_row_arch STREQUAL "${ARCH}")
-            list(GET _fields 2 _dso_path)
-            list(GET _fields 3 _dso_sha)
+        if(_row_arch STREQUAL "${ARCH}" OR _row_arch MATCHES "^${ARCH}-")
+            list(GET _fields 2 _row_path)
+            list(GET _fields 3 _row_sha)
+            list(APPEND _dso_paths "${_row_path}")
+            list(APPEND _dso_shas "${_row_sha}")
+            list(APPEND _dso_labels "${_row_arch}")
         endif()
     else()
         message(FATAL_ERROR "opencoti-fetch: cannot parse pin line: ${_line}")
@@ -197,7 +207,14 @@ file(CHMOD "${_dest}" PERMISSIONS
 # Stage the side-loadable GPU payload, when the pin carries one for this arch.
 # Without it a dev snapshot still runs -- on the CPU, saying nothing -- which is
 # why the Go side refuses to route accelerators to a pin with no accel rows.
-if(NOT _dso_path STREQUAL "")
+list(LENGTH _dso_paths _dso_count)
+set(_dso_index 0)
+while(_dso_index LESS _dso_count)
+    list(GET _dso_paths ${_dso_index} _dso_path)
+    list(GET _dso_shas ${_dso_index} _dso_sha)
+    list(GET _dso_labels ${_dso_index} _dso_label)
+    math(EXPR _dso_index "${_dso_index} + 1")
+
     get_filename_component(_dso_name "${_dso_path}" NAME)
     set(_dso_dest "${DEST_DIR}/${_dso_name}")
 
@@ -205,7 +222,11 @@ if(NOT _dso_path STREQUAL "")
     if(EXISTS "${_dso_dest}")
         _opencoti_verify("${_dso_dest}" "${_dso_sha}" _dso_have)
     endif()
-    if(NOT _dso_have AND DEFINED LOCAL_DSO_FILE AND NOT "${LOCAL_DSO_FILE}" STREQUAL "")
+    # LOCAL_DSO_FILE names a single file, so it can only stand in for the
+    # arch's primary (bare-label, CUDA) payload. Any other backend's payload is
+    # still fetched, rather than being silently satisfied by the wrong bytes.
+    if(NOT _dso_have AND DEFINED LOCAL_DSO_FILE AND NOT "${LOCAL_DSO_FILE}" STREQUAL ""
+       AND _dso_label STREQUAL "${ARCH}")
         if(NOT EXISTS "${LOCAL_DSO_FILE}")
             message(FATAL_ERROR "opencoti-fetch: LOCAL_DSO_FILE=${LOCAL_DSO_FILE} does not exist")
         endif()
@@ -239,7 +260,7 @@ if(NOT _dso_path STREQUAL "")
         endif()
         file(RENAME "${_dso_dest}.part" "${_dso_dest}")
     endif()
-    message(STATUS "opencoti-llamafile ${_tag} (${ARCH}) GPU payload staged at ${_dso_dest}")
-endif()
+    message(STATUS "opencoti-llamafile ${_tag} (${_dso_label}) GPU payload staged at ${_dso_dest}")
+endwhile()
 
 message(STATUS "opencoti-llamafile ${_tag}${_chan_note} (${ARCH}) staged at ${_dest}")
