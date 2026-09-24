@@ -328,3 +328,16 @@ func Launch(stockExe string, params []string, devices []Device, libOllamaPath st
 func FallbackOnLoadFailure() bool {
 	return envconfig.Bool(EnvFallback)()
 }
+
+// ArtifactOf returns the engine artifact a launch built by Command runs.
+//
+// Off Windows the artifact is an APE run through sh, so the program is "sh"
+// and the artifact is its first argument. Anything that needs the artifact
+// itself -- hashing it, finding its payload -- must ask here rather than use
+// the program name, which on Linux names the shell.
+func ArtifactOf(name string, args []string) string {
+	if name == "sh" && len(args) > 0 {
+		return args[0]
+	}
+	return name
+}
