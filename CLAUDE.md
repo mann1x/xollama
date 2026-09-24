@@ -114,12 +114,21 @@ fixtures in `integration/testdata/`; they need a running server and pulled model
 **Launchers**: `cmd/launch/` (`claude.go`, `opencode.go`, `codex_app_profile.go`…)
 with the Bubble Tea menu in `cmd/tui/tui.go`.
 **Model settings**: `xollama tweak model` lives in `cmd/tweak/` (`tweak.go`,
-`fields.go`, `prompt.go`, `reconcile.go`), registered from `cmd/cmd.go` under the
+`fields.go`, `prompt.go`, `reconcile.go`, `devices.go`), registered from `cmd/cmd.go` under the
 `model-config` hook. It reads the model's config layer through `/api/show`
 (`api.ShowResponse.Xollama`), validates against `types/xollama/config.go`, and
 replaces only that layer — see `docs/xollama/tweak.mdx`. `xollama show` lists the
 stated settings in an `xOllama` table via `tweak.SettingRows` (same hook, in
 `showInfo`); unstated ones are omitted.
+**Device selection**: a model's device pin (`types/xollama/devices.go`) is
+applied by `selectModelDevices` in `server/device_select.go`, hooked from
+`server/sched.go` — a missing pinned device refuses the load, never falls back,
+and unpinned models are kept off an integrated Vulkan GPU when a discrete GPU
+exists. `/api/xollama/devices` (`api/xollama_devices.go`, `XollamaDevicesHandler`
+in `server/identity.go`) feeds the `tweak` device menu (`cmd/tweak/devices.go`)
+with the server's view. Where opencoti serves a backend, discovery takes the
+engine's own device list (`discover/opencoti.go`, `llm/engine/enumerate.go`) —
+see `docs/features/device-selection.md`.
 **Desktop UI**: `app/ui/app/src/routes/` (React 19 + TanStack Router + Vite),
 sibling to the `app` workspace (`vite.config.ts`, `vitest.config.ts`).
 **Desktop updates**: `app/updater/fork.go` reads this fork's GitHub releases

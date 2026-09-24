@@ -43,6 +43,10 @@ paths:
 - **Only on the opencoti path.** Stock `llama-server` extracts nothing and is
   launched with the environment it inherited; the `engine-payload` hook in
   `llm/llama_server.go` is inside `if usedOpencoti`.
+- **Hand it the artifact, not the program.** Off Windows the APE runs through
+  `sh`, so the hook passes `engine.ArtifactOf(name, args)` (`llm/engine/opencoti.go`),
+  never `name` — which once hashed `/usr/bin/sh` on every Linux load.
+  `TestTheArtifactOfALaunchIsTheEngineNotTheShell` holds it.
 - **Never fatal.** An unusable root logs a warning and returns `""`, which keeps
   the inherited `HOME` — the behaviour before this existed. Turning a directory
   we cannot write into a model that will not load would be a worse trade.

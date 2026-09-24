@@ -33,10 +33,10 @@ const MediaTypeImageJSON = "application/vnd.ollama.image.json"
 
 // SchemaVersion is the newest schema this build can read. It is NOT
 // necessarily what it writes: see requiredVersion.
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 // SchemaVersionBase is the version that expresses everything except the fields
-// added in v2 (kv.unified, kv.residency_mode).
+// added in v2 (kv.unified, kv.residency_mode) and v3 (devices).
 const SchemaVersionBase = 1
 
 // Config is the contents of the xollama.json layer.
@@ -94,6 +94,9 @@ type Config struct {
 	// wants affinity; a model answering unrelated one-shot prompts does not,
 	// and pinning those to one slot would make it worse.
 	Session *Session `json:"session,omitempty"`
+
+	// Devices pins the backend and devices this model runs on. See Devices.
+	Devices *Devices `json:"devices,omitempty"`
 }
 
 // Slots holds this model's serving-capacity settings.
@@ -306,6 +309,11 @@ func (c *Config) Validate() error {
 	if c.Version > SchemaVersion {
 		return fmt.Errorf("xollama config: schema version %d is newer than this build understands (%d); upgrade xollama", c.Version, SchemaVersion)
 	}
+	if c.Devices != nil {
+		if err := c.Devices.validate(); err != nil {
+			return err
+		}
+	}
 	if c.Engine != "" && !slices.Contains(validEngines, c.Engine) {
 		return fmt.Errorf("xollama config: unknown engine %q (want one of %v)", c.Engine, validEngines)
 	}
@@ -412,6 +420,7 @@ func Parse(data []byte) (*Config, error) {
 	if err := json.Unmarshal(data, &c); err != nil {
 		return nil, fmt.Errorf("xollama config: %w", err)
 	}
+	c.Devices.normalize()
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
@@ -430,6 +439,12 @@ func Parse(data []byte) (*Config, error) {
 // version that is true of it, and only a model that actually uses a v2 field
 // pays the v2 floor.
 func (c *Config) requiredVersion() int {
+	// An older build would read a device pin as an unknown field and serve
+	// the model wherever it pleased -- on the discrete card the pin exists to
+	// keep it off. Refusing is the honest answer, so the pin raises the floor.
+	if !c.Devices.IsZero() {
+		return 3
+	}
 	if c.KV != nil && (c.KV.Unified != nil || c.KV.ResidencyMode != "") {
 		return 2
 	}
@@ -441,6 +456,12 @@ func (c *Config) Marshal() ([]byte, error) {
 	// Recomputed, not defaulted: a config that was v2 and has since had its v2
 	// fields cleared becomes readable by an older build again, which is the
 	// whole point of stating the lowest true version.
+	if out.Devices != nil {
+		d := *out.Devices
+		d.IDs = slices.Clone(d.IDs)
+		d.normalize()
+		out.Devices = &d
+	}
 	out.Version = out.requiredVersion()
 	if err := out.Validate(); err != nil {
 		return nil, err
@@ -462,7 +483,8 @@ func (c *Config) IsZero() bool {
 		(c.Slots == nil || (c.Slots.Dynamic == nil && c.Slots.Max == 0 && c.Slots.TPSFloor == 0 &&
 			c.Slots.VRAMReserveMiB == 0 && c.Slots.SWASeqBudget == 0)) &&
 		(c.DCA == nil || (c.DCA.Enabled == nil && c.DCA.ChunkSize == 0)) &&
-		(c.Session == nil || (c.Session.Affinity == nil && c.Session.Pool == nil && c.Session.MaxPools == 0))
+		(c.Session == nil || (c.Session.Affinity == nil && c.Session.Pool == nil && c.Session.MaxPools == 0)) &&
+		c.Devices.IsZero()
 }
 
 // The closed sets, exported so a tool that ASKS for one of these values offers

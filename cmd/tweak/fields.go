@@ -38,6 +38,9 @@ const (
 	kindOpenChoice
 	kindInt
 	kindFloat
+	// kindDevices is a multi-select over the server's live devices, with any
+	// typed selector accepted too.
+	kindDevices
 )
 
 // field is one setting in the xollama.json layer.
@@ -56,6 +59,9 @@ type field struct {
 
 	kind    kind
 	choices func(*xollama.Config) []string
+	// describe, when set, prints lines under the help that depend on the
+	// config or the server -- the device list under the backend question.
+	describe func(*xollama.Config) []string
 	// unit is shown with numeric prompts ("tokens", "MiB").
 	unit string
 	// env is the environment variable this setting falls through to when the
@@ -257,6 +263,9 @@ func prune(c *xollama.Config) {
 	}
 	if c.Draft != nil && c.Draft.SpecType == "" {
 		c.Draft = nil
+	}
+	if c.Devices.IsZero() {
+		c.Devices = nil
 	}
 }
 

@@ -216,6 +216,11 @@ while(_dso_index LESS _dso_count)
     math(EXPR _dso_index "${_dso_index} + 1")
 
     get_filename_component(_dso_name "${_dso_path}" NAME)
+    # The engine's loader looks for ggml-<backend>.<ext> beside itself; the
+    # published names carry the arch as well (ggml-vulkan-x86_64.so), which it
+    # never finds -- measured: `--gpu vulkan` reports "no pre-built GPU library
+    # found" until the file is renamed. Stage under the loader's name.
+    string(REGEX REPLACE "-${ARCH}(\\.[A-Za-z]+)$" "\\1" _dso_name "${_dso_name}")
     set(_dso_dest "${DEST_DIR}/${_dso_name}")
 
     set(_dso_have FALSE)

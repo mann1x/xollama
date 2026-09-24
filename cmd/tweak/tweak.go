@@ -121,6 +121,8 @@ func flagUsage(f field) string {
 		values = strings.Join(append(vals, "unset"), "|")
 	case kindInt, kindFloat:
 		values = "N|unset"
+	case kindDevices:
+		values = "PCI-ID|index|integrated|discrete[,...]|all"
 	}
 	return fmt.Sprintf("%s (%s); bare asks", f.path, values)
 }
@@ -145,6 +147,7 @@ func runModel(cmd *cobra.Command, args []string, opts Options) error {
 	if err != nil {
 		return err
 	}
+	useServerDevices(cmd.Context(), client)
 
 	out := cmd.OutOrStdout()
 	in := cmd.InOrStdin()

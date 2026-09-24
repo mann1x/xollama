@@ -17,6 +17,7 @@ import (
 	"github.com/ollama/ollama/envconfig"
 	"github.com/ollama/ollama/format"
 	"github.com/ollama/ollama/llm"
+	"github.com/ollama/ollama/llm/engine"
 	"github.com/ollama/ollama/logutil"
 	"github.com/ollama/ollama/ml"
 )
@@ -250,6 +251,9 @@ func GPUDevices(ctx context.Context, runners []ml.FilteredRunnerDiscovery) []ml.
 			}
 		}
 
+		// xollama-hook: opencoti-discover — see docs/features/device-selection.md
+		devices = filterIntegratedGPUs(overlayOpencotiDevices(ctx, devices))
+
 		// Reset the libDirs to what we actually wind up using for future refreshes
 		libDirs = make(map[string]struct{})
 		for _, dev := range devices {
@@ -440,8 +444,10 @@ func integratedGPUAllowedByDefault(device ml.DeviceInfo) bool {
 	// Measured on solidPC before the change, against the AMD RADV RENOIR
 	// (ACO) iGPU (PCI 0000:18:00.0) on the host Mesa stack: qwen3.5:2b served
 	// 512 coherent tokens at 19.51 tok/s with 2.47 GB resident on Vulkan0.
+	//
+	// Not under XOLLAMA_ENGINE=llamacpp: off means off, and upstream hides it.
 	case "Vulkan":
-		return true
+		return !strings.EqualFold(strings.TrimSpace(envconfig.Var(engine.EnvSelector)), string(engine.KindLlamaCpp))
 	case "ROCm":
 		_, ok := defaultIntegratedROCmGFXTargets[device.GFXTarget]
 		return ok

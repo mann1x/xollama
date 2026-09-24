@@ -2000,6 +2000,8 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	// xollama-hook: host-fallback — see docs/xollama/default-port.mdx
 	r.HEAD(api.XollamaIdentityPath, XollamaIdentityHandler)
 	r.GET(api.XollamaIdentityPath, XollamaIdentityHandler)
+	// xollama-hook: device-select — see docs/features/device-selection.md
+	r.GET(api.XollamaDevicesPath, XollamaDevicesHandler)
 	r.GET("/api/status", s.StatusHandler)
 	// Codex uses this existing Ollama listener for both native and Ollama
 	// models. The proxy selects the upstream per request.
@@ -2182,6 +2184,11 @@ func Serve(ln net.Listener) error {
 
 	var totalVRAM uint64
 	for _, gpu := range gpus {
+		// xollama-hook: igpu-vulkan — an integrated Vulkan GPU reports host
+		// RAM; counting it as VRAM would lift every model's default context.
+		if gpu.Integrated && gpu.Library == "Vulkan" {
+			continue
+		}
 		totalVRAM += gpu.TotalMemory - envconfig.GpuOverhead()
 	}
 

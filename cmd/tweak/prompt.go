@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/ollama/ollama/types/xollama"
@@ -89,7 +90,9 @@ func (a *asker) ask(cfg *xollama.Config, f field) error {
 
 		// A bare number picks from the menu, where there is one. Values are
 		// accepted by name too, so a human need not count lines.
-		if n, ok := menuIndex(raw, len(options)); ok {
+		if f.kind == kindDevices {
+			raw = resolveDeviceMenu(raw, options)
+		} else if n, ok := menuIndex(raw, len(options)); ok {
 			raw = options[n]
 		}
 
@@ -123,6 +126,12 @@ func (a *asker) render(cfg *xollama.Config, f field, current string) []string {
 			shown += ", so " + f.env + " decides"
 		}
 	}
+	if f.describe != nil {
+		a.printf("\n")
+		for _, line := range f.describe(cfg) {
+			a.printf("   %s\n", line)
+		}
+	}
 	a.printf("\n   current: %s\n", shown)
 
 	var options []string
@@ -133,6 +142,18 @@ func (a *asker) render(cfg *xollama.Config, f field, current string) []string {
 		options = append(f.choices(cfg), "unset")
 	case kindOpenChoice:
 		options = append(f.choices(cfg), "unset")
+	case kindDevices:
+		// describe already numbered the devices 1..N; the aliases continue
+		// that numbering, so every number the operator can see picks
+		// something.
+		options = f.choices(cfg)
+		for i, o := range options {
+			if o == xollama.DeviceIntegrated || o == xollama.DeviceDiscrete {
+				a.printf("   %d) %s\n", i+1, o)
+			}
+		}
+		a.printf("   several by commas (1,2), or `all` for every device of the backend\n")
+		return options
 	case kindInt, kindFloat:
 		unit := f.unit
 		if unit != "" {
@@ -288,6 +309,11 @@ func clone(c *xollama.Config) *xollama.Config {
 	if c.Draft != nil {
 		d := *c.Draft
 		out.Draft = &d
+	}
+	if c.Devices != nil {
+		d := *c.Devices
+		d.IDs = slices.Clone(c.Devices.IDs)
+		out.Devices = &d
 	}
 	return &out
 }

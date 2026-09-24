@@ -47,12 +47,15 @@ fork uses it.
 | `version` | Required, and **computed rather than declared** — see below. A version newer than the build is an error, not a warning: these fields change how the model is served, so reading a v2 config as a v1 would serve it differently from how its publisher meant, silently. |
 | `engine` | `opencoti` or `llamacpp`. Empty means the model does not care and `XOLLAMA_ENGINE` decides, which is the normal case. Note `auto` is **not** valid: a model saying "auto" is a model saying nothing. |
 | `draft.spec_type` | Overrides the `--spec-type` otherwise inferred from the drafter's metadata. |
+| `devices.backend` / `devices.ids` | Pins the backend (`CUDA`, `Vulkan`, `ROCm`, `CPU`) and optionally the devices a model runs on, by PCI ID, device index, `integrated` or `discrete`. A missing device refuses the load. See [device-selection.md](device-selection.md). |
 
 ### The version written is the lowest that is true
 
 `Marshal` recomputes `version` from the fields the config actually uses, and
-never from what the build knows. `SchemaVersion` is 2; `SchemaVersionBase` is 1;
-only `kv.unified` and `kv.residency_mode` force the 2.
+never from what the build knows. `SchemaVersion` is 3; `SchemaVersionBase` is 1;
+only `kv.unified` and `kv.residency_mode` force the 2, and a `devices` pin forces
+the 3 — an older build would read the pin as an unknown key and serve the model
+on whatever hardware it chose, which is exactly what the pin exists to prevent.
 
 Stamping the newest version unconditionally would have made every model this
 build touched unreadable to an older xollama, including models using nothing

@@ -69,7 +69,7 @@ func TestParseRejects(t *testing.T) {
 			// schema as if it were this one would serve the model differently
 			// from how its publisher meant, and say nothing.
 			name:    "newer schema",
-			in:      `{"version":3}`,
+			in:      `{"version":4}`,
 			wantErr: "newer than this build understands",
 		},
 		{name: "unknown engine", in: `{"version":1,"engine":"vllm"}`, wantErr: `unknown engine "vllm"`},
@@ -438,6 +438,8 @@ func TestTheVersionWrittenIsTheLowestThatIsTrue(t *testing.T) {
 		{"unified is v2", Config{KV: &KV{Unified: &no}}, 2},
 		{"residency mode is v2", Config{KV: &KV{ResidencyMode: ResidencyWindow}}, 2},
 		{"unified true is still v2", Config{KV: &KV{Unified: &yes}}, 2},
+		{"a device pin is v3", Config{Devices: &Devices{Backend: "Vulkan", IDs: []string{"0000:18:00.0"}}}, 3},
+		{"a backend alone is v3", Config{Devices: &Devices{Backend: "CPU"}}, 3},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			data, err := tt.cfg.Marshal()

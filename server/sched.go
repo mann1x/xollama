@@ -309,6 +309,17 @@ func (s *Scheduler) processPending(ctx context.Context) {
 					logutil.Trace("updating free space", "gpu_count", len(gpus), "model", pending.model.ModelPath)
 					s.updateFreeSpace(gpus)
 
+					// xollama-hook: device-select — see docs/features/device-selection.md
+					if pending.opts.NumGPU != 0 {
+						selected, err := selectModelDevices(pending.model.Xollama, gpus)
+						if err != nil {
+							slog.Info("refusing load: device pin not satisfied", "model", pending.model.ModelPath, "error", err)
+							pending.errCh <- err
+							break
+						}
+						gpus = selected
+					}
+
 					if loadedCount == 0 {
 						// No models loaded. Load the model but prefer the best fit.
 						slog.Debug("loading first model", "model", pending.model.ModelPath)

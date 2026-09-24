@@ -50,6 +50,44 @@ layer.
   list and cannot fall behind.
 </Note>
 
+## Choosing the GPU a model runs on
+
+`--device-backend` asks where the model runs, and lists every device the
+**server** found — backend, name, PCI ID, whether it is integrated, its memory,
+and which engine serves it:
+
+```
+   devices on this server:
+     CUDA NVIDIA GeForce RTX 3090 (0000:01:00.0, #0, 24.0 GiB total, 23.0 GiB free, served by opencoti)
+     Vulkan AMD RADV RENOIR (ACO) (0000:18:00.0, #1, integrated, 63.0 GiB total, 60.0 GiB free, served by opencoti)
+
+   1) CUDA
+   2) Vulkan
+   3) CPU
+   4) unset
+device-backend [unset]>
+```
+
+Only backends with a device present are offered, plus `CPU`. The next question
+lists that backend's devices; pick one, or several by commas (`1,2`) to spread
+the model across them. A pick is written as the device's PCI ID, the one
+identity that survives a reboot or a card being added.
+
+From a script, name the values directly — a number here is a device index, not
+a menu line:
+
+```sh
+xollama tweak model qwen3.5:2b --device-backend=vulkan --devices=0000:18:00.0
+xollama tweak model qwen3.6:27b --device-backend=cuda --devices=discrete
+xollama tweak model nomic-embed-text --device-backend=cpu
+```
+
+A model pinned to a device that is not there is **refused**, naming what it
+asked for, the backends the installation carries and the devices present. It is
+never served on other hardware instead. An unpinned model is never placed on an
+integrated Vulkan GPU while a discrete one is present — see
+[device selection](/features/device-selection).
+
 ## Pinning a drafter's driver
 
 A drafter is attached at build time with a `DRAFT` line, and its driver is
