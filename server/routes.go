@@ -1997,7 +1997,7 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.GET("/", func(c *gin.Context) { c.String(http.StatusOK, "Ollama is running") })
 	r.HEAD("/api/version", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"version": version.Version}) })
 	r.GET("/api/version", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"version": version.Version}) })
-	// xollama-hook: host-namespace — see docs/xollama/default-port.mdx
+	// xollama-hook: host-fallback — see docs/xollama/default-port.mdx
 	r.HEAD(api.XollamaIdentityPath, XollamaIdentityHandler)
 	r.GET(api.XollamaIdentityPath, XollamaIdentityHandler)
 	r.GET("/api/status", s.StatusHandler)

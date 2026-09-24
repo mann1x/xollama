@@ -61,6 +61,7 @@ func (u *Updater) checkForUpdate(ctx context.Context) (bool, UpdateResponse) {
 	// UpdateCheckURLBase at a local server, keep exercising the code below
 	// unchanged. Nothing in a shipped build moves it, so nothing in a shipped
 	// build reaches ollama.com. See fork.go.
+	// xollama-hook: update-feed — see docs/features/windows-installer.md
 	if forkFeedActive() {
 		return checkForkUpdate(ctx, u)
 	}
@@ -262,6 +263,7 @@ func (u *Updater) DownloadNewRelease(ctx context.Context, updateResp UpdateRespo
 	// from another product's; a signature check cannot, because a stock ollama
 	// installer is genuinely signed. Same condition as the feed hook above,
 	// for the same reason. See fork.go.
+	// xollama-hook: update-feed — see docs/features/windows-installer.md
 	if forkFeedActive() {
 		if err := forkDigest(stageFilename); err != nil {
 			_ = os.Remove(stageFilename)
