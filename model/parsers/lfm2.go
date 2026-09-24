@@ -38,8 +38,14 @@ type LFM2Parser struct {
 	hasThinkingSupport       bool
 	needsThinkingLeadingTrim bool // trim leading whitespace after <think> tag
 	needsContentLeadingTrim  bool // trim leading whitespace after </think> tag
-	toolNames                map[string]struct{}
-	hasTools                 bool
+	// discardThinking drops a reasoning block instead of reporting it. It is set
+	// when the request turns thinking off for a model that reasons anyway:
+	// LFM2.5-8B-A1B is reasoning-tuned and its chat template has no switch to
+	// stop it, so "think": false cannot prevent the <think> block -- only keep
+	// it out of the answer. Without this it arrived verbatim in content.
+	discardThinking bool
+	toolNames       map[string]struct{}
+	hasTools        bool
 }
 
 func (p *LFM2Parser) HasToolSupport() bool {
@@ -71,13 +77,22 @@ func (p *LFM2Parser) setInitialState(lastMessage *api.Message, thinkValue *api.T
 	// Check both model capability AND request preference
 	thinkingEnabled := p.HasThinkingSupport() && (thinkValue != nil && thinkValue.Bool())
 
-	if !thinkingEnabled {
+	p.discardThinking = false
+
+	if prefill && lastMessage.Content != "" {
 		p.state = LFM2CollectingContent
 		return
 	}
 
-	if prefill && lastMessage.Content != "" {
-		p.state = LFM2CollectingContent
+	if !thinkingEnabled {
+		if !p.HasThinkingSupport() {
+			p.state = LFM2CollectingContent
+			return
+		}
+		// Thinking is off but the model may reason regardless: recognise a
+		// leading <think> block exactly as when it is on, and drop it.
+		p.discardThinking = true
+		p.state = LFM2LookingForThinking
 		return
 	}
 
@@ -144,7 +159,9 @@ func (p *LFM2Parser) Add(s string, done bool) (content string, thinking string, 
 		case lfm2EventToolCall:
 			toolCalls = append(toolCalls, event.toolCall)
 		case lfm2EventThinkingContent:
-			thinkingSb.WriteString(event.content)
+			if !p.discardThinking {
+				thinkingSb.WriteString(event.content)
+			}
 		case lfm2EventContent:
 			contentSb.WriteString(event.content)
 		}
