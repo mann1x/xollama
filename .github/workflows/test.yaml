@@ -82,6 +82,9 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.changed == 'True'
     strategy:
+      # xollama-hook: hosted-ci -- every leg reports on the fork: they are
+      # independent builds, and hosted minutes are free for a public repo.
+      fail-fast: ${{ github.repository == 'ollama/ollama' }}
       matrix:
         include:
           - preset: CPU
@@ -182,6 +185,9 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.changed == 'True'
     strategy:
+      # xollama-hook: hosted-ci -- every leg reports on the fork: they are
+      # independent builds, and hosted minutes are free for a public repo.
+      fail-fast: ${{ github.repository == 'ollama/ollama' }}
       matrix:
         include:
           - preset: CPU
@@ -351,8 +357,13 @@ jobs:
         if: matrix.superbuild_target
         run: |
           $ErrorActionPreference = "Stop"
-          Import-Module 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Microsoft.VisualStudio.DevShell.dll'
-          Enter-VsDevShell -VsInstallPath 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise' -SkipAutomaticLocation  -DevCmdArguments '-arch=x64 -no_logo'
+          # xollama-hook: hosted-ci -- upstream's runner path when it exists, else
+          # wherever vswhere finds Visual Studio (the hosted image is not 2022 Enterprise).
+          $vsPath = 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise'
+          if (-not (Test-Path $vsPath)) { $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath }
+          Write-Host "Visual Studio: $vsPath"
+          Import-Module "$vsPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation  -DevCmdArguments '-arch=x64 -no_logo'
           cmake -S . -B "${{ matrix.superbuild_dir }}" ${{ matrix.superbuild_args }}
           $env:CMAKE_BUILD_PARALLEL_LEVEL = [Environment]::ProcessorCount
           cmake --build "${{ matrix.superbuild_dir }}" --target "${{ matrix.superbuild_target }}" -- -l $([Environment]::ProcessorCount)
