@@ -5,6 +5,28 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-25 — Council Chat Phase 1: the in-house `errgroup` runner wins
+> the library bake-off.** The same council was built in eino, langgraphgo,
+> trpc-agent-go and on `errgroup`, all over one shared core and one suite, in
+> `plans/council-eval/` (its own module). All four pass 11 tests under
+> `-race`, but every library needed sibling cancellation and error ordering
+> added by hand. Per request the baseline costs 56 µs per council and 3.2 µs
+> per direct turn; langgraphgo costs 69/17 µs, eino 130–180/60 µs, and
+> trpc-agent-go 0.9 ms/278 µs, rising to 22.5 ms and 33 MB at 1 MB of state.
+> The libraries would bump sonic, protobuf, go-sqlite3 and testify in
+> xollama's go.mod. Against b65 with omnimerge v4 IQ2_M, all four run a
+> council in 65–70 s, which is noise. Also found:
+> - On the hybrid qwen35 model the pools share on exact matches: 33–77
+>   tokens prefilled per member, and 54 s pooled against 65–69 s unpooled.
+> - Members must state `num_ctx`. Without it the second parallel member is
+>   refused with a 429.
+> - The planner's calls must share a session: the direct path takes 3.3 s
+>   that way, against 6.1 s.
+> - The IQ2_M omnimerge tag has no MTP head.
+> - One unexplained session leak in 18 runs; the TTL reclaimed it.
+>
+> Next: Phase 2, the `Council` config in `types/xollama` and `tweak`.
+
 > **2026-09-25 — Council Chat Phase 0 measured on b65.** On b65 with
 > llama3.1:8b, the council's pool tree shares as designed. Researchers,
 > critics and the synthesizer each prefilled 29–73 tokens of 2.5k–3.4k-token
@@ -56,9 +78,9 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 ## Where we are
 
 `v0.34.2-xollama.1` is the latest release. No product code is in flight.
-The Agentic Council Chat has Phase 0 measured on the pinned b65, and the same
-probes run again on b111 once it is on the HF dev repo. Phase 1, the library
-bake-off, is next.
+The Agentic Council Chat has finished Phase 0 (on b65) and Phase 1: the
+runner will be in-house on `errgroup`. Phase 2, the `Council` config and
+`tweak`, is next. Phase 0 runs again on b111 once it is on the HF dev repo.
 
 ## What exists today
 
@@ -89,17 +111,16 @@ bake-off, is next.
 
 ## Immediate next steps (in order)
 
-1. Council Chat Phase 0 on b111 when it is on HF (b65 done 2026-09-25): rerun `plans/council-eval/probe/`, measuring `/props.features`,
-   the per-request window, the pool tree probe and the direct-path latency.
-2. Council Chat Phase 1: build the council in eino, langgraphgo,
-   trpc-agent-go and the `errgroup` baseline in `plans/council-eval/`
-   (its own module), then benchmark them and choose one.
+1. Council Chat Phase 2: `Council` in `types/xollama/config.go`, validation,
+   `tweak` fields, `show` rows, and the Modelfile round-trip.
+2. When b111 is on HF: rerun `plans/council-eval/probe/` and
+   `cmd/council-run` on it (Phase 0 re-measure), then move the pin on a
+   measurement.
 3. When b111 is on HF: unpark the Docker image and pin the fork's existing
    runtime tgz (`33ac42c1…`).
 
 ## Open decisions
 
-- Which orchestration library the council uses. Phase 1 decides.
 - Whether the desktop UI gets a council toggle (Phase 5).
 
 ## Maintenance protocol

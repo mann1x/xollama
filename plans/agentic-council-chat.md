@@ -1,6 +1,6 @@
 # Agentic Council Chat
 
-**Status:** ACTIVE · **Phase:** 0 — measure on b65, re-measure on b111 · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
+**Status:** ACTIVE · **Phase:** 2 — config and tweak (Phase 0 re-measure on b111 pending) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
 
 In this chat mode, one model name is a *council*. A client connects to xollama
 the usual way: `/api/chat`, the OpenAI or Anthropic API, the CLI, or the
@@ -14,7 +14,7 @@ KV cache and prefills only its own role and turn.
 
 - [x] Phase 0 on b65 (2026-09-25; results below)
 - [ ] Phase 0 re-measured on b111 (when on HF)
-- [ ] Phase 1 — the council flow in each candidate library; choose one
+- [x] Phase 1 — the council flow in each candidate library; **in-house errgroup chosen** (2026-09-25; results below)
 - [ ] Phase 2 — config and tweak
 - [ ] Phase 3 — the runner, llama.cpp path
 - [ ] Phase 4 — PolyKV path
@@ -290,6 +290,125 @@ answer, streamed as `content` on the same session, or the plan-and-briefs
 call, which is the first council step. Routing accuracy per model is a
 measured property, recorded when a model is made a council.
 
+## Phase 1 results — the library bake-off (2026-09-25)
+
+The harness is `plans/council-eval/`, its own module `councileval`; its
+README describes the layout. One shared core (`council/`) holds the prompts,
+the draws and the steps, and every runner reaches the model only through it.
+One suite (`suite/`) tests and benchmarks every runner. Each library runner
+was written idiomatically by its own agent: branch or conditional edge for
+the route, the library's parallel construct for the fan-out, and a real
+graph cycle for the loop. Each has a `NOTES.md` with file:line evidence.
+
+**Correctness.** All four runners pass the 11-test suite under
+`-race -count=3`: routes, call counts, event tagging, researcher order,
+hidden deliberation, seeds and jitter, widths 3 and 8, the bounded loop,
+cancel with goleak, sibling cancel on failure, and a slow consumer. **No
+library does sibling cancellation on its own.** eino, langgraphgo and
+trpc-agent-go each wait out every task of a step after one fails. Each needed
+a `WithCancelCause` wrapper and its own recorded error, or it returned a
+sibling's `context.Canceled` in place of the real failure. The suite was
+checked against planted bugs in the baseline (serial researchers, findings
+in completion order), and each was caught.
+
+**Orchestration cost over the stub** (`-benchtime 2s`, same host, µs rows ±30 %):
+
+| runner | council (1 KB state) | council (1 MB) | direct path | fan-out ×ideal w3 / w8 | binary (stub prog) | deps |
+|---|---|---|---|---|---|---|
+| **baseline (errgroup)** | **56 µs, 159 allocs** | **57 µs, 14 KB** | **3.2 µs, 28 allocs** | 1.01 / 1.02 | 2.2 MB | 85 |
+| langgraphgo v0.8.5 | 69 µs, 223 allocs | 107 µs | 16.6 µs, 59 allocs | 1.01 / 1.04 | 4.3 MB | 215 |
+| eino v0.9.21 | 130–180 µs, 686 allocs | 154 µs | 56–63 µs, 301 allocs | 1.02 / 1.04 | 14.7 MB | 270 |
+| trpc-agent-go v1.11.2 | 892 µs, 2,262 allocs | **22.5 ms, 33 MB** | 278 µs, 608 allocs | 1.08 / 1.07 | 13.4 MB | 432 |
+
+**Against a real engine** (b65, omnimerge v4 27B IQ2_M, thinking off,
+`-c 65536 --parallel 6 --kv-unified`, no pools; one council and one
+"Hello!" per runner):
+
+| runner | council wall | first thinking | first answer token | direct path |
+|---|---|---|---|---|
+| baseline | 64.9–67.2 s | 3.2–3.4 s | 48.8–51.0 s | 3.4–3.8 s |
+| eino / eino-native | 68.0 / 69.7 s | 3.4 s | 51.6 / 53.3 s | 3.4 s |
+| langgraphgo | 65.0–66.2 s | 3.4–3.5 s | 48.7–49.9 s | 3.6–3.7 s |
+| trpc-agent-go / native | 68.3 / 66.3 s | 3.6 / 3.4 s | 52.0 / 50.0 s | 3.4–3.8 s |
+
+At model speed the orchestration does not show; the spread is sampling
+noise. What a library costs is CPU, allocations and dependencies on every
+request, plus the guards it needs added.
+
+**Inside xollama** (blank-imported into a scratch worktree, then
+`go mod tidy`):
+- eino bumps `bytedance/sonic` 1.11.6 → 1.15.0, which is gin's JSON, along
+  with its loader, cpuid, base64x and x/arch (+16/−6 go.mod lines).
+- langgraphgo bumps protobuf, go-sqlite3, testify and json-iterator (to a
+  pseudo-version), and pulls langchaingo into `graph` (+15/−9).
+- trpc-agent-go bumps protobuf, go-sqlite3, testify, easyjson and
+  goccy/go-json, and links grpc, otel and the OTLP exporters even with
+  tracing off (+25/−6).
+
+Every one of these moves modules upstream owns, which is a merge conflict on
+every sync (`docs/protocols/UPSTREAM-SYNC.md`).
+
+**Library-specific findings** (details in each `NOTES.md`):
+- **langgraphgo:** its native streaming is unusable.
+  - `StreamModeMessages` is a stub.
+  - Events drop under load (1,120 of 5,000 lost).
+  - Listeners on a shared compiled graph leak events between concurrent
+    requests.
+  - It adds a fixed 10 ms sleep per request.
+  - It has a close race, confirmed by `-race` (`graph/streaming.go:101`
+    against `:218`).
+  - There is no ctx check between steps, and fan-out order is random.
+- **eino:**
+  - The width has to be faked with pre-declared slots.
+  - Every Invoke rebuilds one channel per node.
+  - Its merge registries are process-global and unlocked.
+  - Native streaming needed two goroutines per member and a drain barrier. The
+    suite passed without the barrier, yet under a slow consumer 3,940 thinking
+    events arrived after the answer had started.
+- **trpc-agent-go:**
+  - It JSON-marshals the whole state per node for tracing, with no switch
+    (`executor.go:2873`).
+  - The deep copy nils funcs and chans and zeroes unexported fields.
+  - Errors reach the caller only as strings.
+
+**Engine client findings** (for Phases 3 and 4):
+1. **A member must state `num_ctx`.** Without it, every member books
+   the full 65,536-cell `session_ctx_max`, and the second parallel researcher
+   was refused with a 429. That 429 is also why the client must wait out
+   `Retry-After`.
+2. **The planner's calls share one session**, closed at the end. With the
+   decision in a separate session that closed at once, the direct answer
+   re-prefilled all 2.3k tokens: 6.1 s against 3.3 s.
+3. **One leak, not reproduced.** One planner session in 18 runs was never
+   released and was not in the engine log. It did not reproduce in 8 runs
+   instrumented to record every close answer. The 300 s TTL reclaimed it.
+   Phase 3's close path must record and check every close answer, as
+   `cmd/council-run` now does.
+
+**Pool sharing on a hybrid model (Phase 0 addendum, b65, omnimerge v4
+IQ2_M).** qwen35 is GDN-hybrid, so a pool shares only on an exact full-state
+match. The sentinel-cut layers match exactly:
+- researchers prefilled 76–77 tokens of 2.6k;
+- critics 41 of 3.4k;
+- the synthesizer 33 of 3.9k;
+- the owner held 3,858 cells;
+- the engine logged 0 `needs exact full-state share` warnings.
+
+The council took 54 s pooled, against 65–69 s unpooled above. The IQ2_M tag
+`omnimerge-v4-mtp_tb:27b-iq2m-128k` has **no MTP head** (851 tensors,
+`nextn_predict_layers` unset; the Q4_K_M has 866 and `1`), so it ran without
+drafting.
+
+**Decision: the in-house `errgroup` runner.** It is the fastest by 1.2–16×
+on the direct path, 5×+ against eino and trpc, and flat in state size. It
+adds no dependency (`x/sync` is already in `go.mod`), it is ~70 lines, and
+it was correct on its first run. No library gave the council anything it
+needed. Each needed the same guards added, and each would move modules
+upstream owns. Ideas worth borrowing:
+- index-slot reducers (trpc, langgraphgo), which the baseline already does
+  with preallocated slices;
+- a checkpoint/interrupt model (eino), if human-in-the-loop is ever wanted.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).
@@ -309,3 +428,13 @@ measured property, recorded when a model is made a council.
   messages direct, 60/60 hard messages to the council, no malformed output,
   and +0.13 s to the first token on the direct path. The full-JSON decision
   got 70/100 and could not stream its answer.
+- 2026-09-25 — Phase 1 chose the in-house `errgroup` runner. It is the
+  cheapest (56 µs per council and 3.2 µs per direct turn), adds no
+  dependency, and is correct as written. eino, langgraphgo and trpc-agent-go
+  all pass the suite, but only after sibling cancellation and error ordering
+  were added by hand. They cost 1.2–16× more per request and would move
+  modules upstream owns (sonic, protobuf, go-sqlite3, testify). At model
+  speed on b65 all four are within noise of each other (65–70 s per council).
+- 2026-09-25 — Every council member states its own `num_ctx`. The planner's
+  decision, direct answer and plan share one engine session, closed when the
+  run ends.
