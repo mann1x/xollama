@@ -20,7 +20,17 @@
 # is not semver, so app/updater/fork.go never offers it to anyone.
 name: xollama runtime
 
+# A push to dev that touches the runtime's inputs builds it, so the pin can be
+# moved in the same PR. (It also registers the workflow: GitHub cannot dispatch
+# one that exists only off the default branch until it has run once.)
 on:
+  push:
+    branches: [dev]
+    paths:
+      - LLAMA_CPP_VERSION
+      - 'llama/server/**'
+      - 'llama/compat/**'
+      - .github/workflows/xollama-runtime.yaml
   workflow_dispatch:
     inputs:
       ref:
@@ -45,7 +55,7 @@ jobs:
     steps:
       - name: clone
         env:
-          REF: ${{ inputs.ref }}
+          REF: ${{ inputs.ref || github.sha }}
         run: |
           # LF, not CRLF: llama/compat/*.patch are LF and `git apply` will not
           # match them against a CRLF checkout.
@@ -68,12 +78,15 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           if gh release view "$tag" > /dev/null 2>&1; then
-            echo "::error::$tag is already published; these inputs are pinned already (see llama/runtime-pin.txt)"
-            exit 1
+            echo "::notice::$tag is already published for these inputs; nothing to build"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "building $tag"
 
       - name: install the clang64 toolchain
+        if: steps.name.outputs.skip != 'true'
         shell: pwsh
         run: |
           # The shipped CPU DLLs are MSYS2 clang64 builds (libc++.dll and
@@ -82,6 +95,7 @@ jobs:
           & C:\msys64\clang64\bin\clang.exe --version | Select-Object -First 1 | Tee-Object -FilePath clang-version.txt
 
       - name: build the CPU runtime
+        if: steps.name.outputs.skip != 'true'
         shell: pwsh
         working-directory: repo
         run: |
@@ -109,6 +123,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "llama-server.exe does not run" }
 
       - name: package
+        if: steps.name.outputs.skip != 'true'
         shell: pwsh
         working-directory: repo
         run: |
@@ -118,6 +133,7 @@ jobs:
           Compress-Archive -Path dist/lib/ollama/* -DestinationPath xollama-runtime-windows-amd64.zip -Force
 
       - name: publish
+        if: steps.name.outputs.skip != 'true'
         working-directory: repo
         env:
           TAG: ${{ steps.name.outputs.tag }}

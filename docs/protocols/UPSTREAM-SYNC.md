@@ -125,6 +125,7 @@ outside its table. After a sync, check them by hand:
 | Workflow hook | File | Feature |
 |---|---|---|
 | `docker-release` | `release.yaml` `darwin-build` and `latest.yaml`: guarded to `ollama/ollama`; `darwin-build` dropped from `release`'s `needs` | [features/docker-release.md](../features/docker-release.md) |
+| `hosted-ci` | `test.yaml` `linux` and `windows` jobs: `runs-on` is upstream's self-hosted label on `ollama/ollama` and `ubuntu-latest` / `windows-latest` elsewhere. The fork has no runners, and these legs compile the native presets and check the payload. They need no GPU. Upstream ran them on `ubuntu-latest` until `92b1a21f` (2024-02-06) | [protocols/RELEASE.md](RELEASE.md) |
 | `fork-release` | `release.yaml` `setup-environment`: guarded to `ollama/ollama`, which skips every job chained from it. A stray `v*` tag on the fork must not queue jobs on runners it does not have | [protocols/RELEASE.md](RELEASE.md) |
 
 ## Registry — known surgical hooks

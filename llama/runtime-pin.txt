@@ -1,0 +1,22 @@
+# llama/runtime-pin.txt
+#
+# The Windows CPU runtime (llama-server.exe and the CPU ggml DLLs) that xOllama
+# releases ship, pinned as a published artifact instead of rebuilt per release.
+# Built by .github/workflows/xollama-runtime.yaml; consumed by
+# .github/workflows/xollama-release.yaml. Procedure: docs/protocols/RELEASE.md,
+# "Moving the runtime pin".
+#
+# Why pinned: the build is not byte-reproducible, and the delta update
+# (xOllamaUpdate.exe) is chosen only when a release's payload id equals the one
+# installed. Rebuilt per release, it never did.
+#
+#   tag     GitHub release on mann1x/xollama that carries the asset
+#   asset   archive name; its root is lib\ollama's contents
+#   sha256  of the asset, checked before it is unpacked
+#   inputs  sha256 of `git ls-tree -r <commit> -- LLAMA_CPP_VERSION llama/server
+#           llama/compat`. The release refuses to ship when the release
+#           commit's digest differs: move this pin in the same PR that changes
+#           any of those paths.
+#
+# This file is outside the digested paths on purpose, so committing it does not
+# invalidate itself.

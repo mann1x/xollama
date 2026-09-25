@@ -21,8 +21,8 @@ it an update, stop. That is the procedure this replaces.**
    GitHub-hosted runners in `.github/workflows/xollama-release.yaml`. No local
    host and no self-hosted runner is involved, because every native input
    already exists as a published, pinned artifact (see *Where the bytes come
-   from*). The runners only compile the Go binary, the tray app, the CPU
-   runtime and the installer.
+   from*). The runners only compile the Go binaries, the tray app and the
+   installers.
 3. **Never push a `v*` tag.** The workflow creates the tag when it publishes, on
    the merge commit. A hand-pushed tag names a commit no release was built from.
    It also wakes upstream's `release.yaml`, which the `fork-release` hook now
@@ -92,13 +92,14 @@ installed. When the two match, the updater downloads the small installer.
 
 ## Where the bytes come from
 
-Nothing native is compiled beyond the CPU runtime. Each GPU input is a pinned,
-published artifact, and each has a check that fails the run when the pin no
-longer fits.
+A release compiles nothing native. Every part of the payload is a pinned,
+published artifact, and each pin has a check that fails the run when it no
+longer fits. So the payload, and the payload id the delta update keys on, only
+changes when one of these three pins moves.
 
 | payload part | source | the check |
 |---|---|---|
-| `llama-server.exe` + CPU `ggml-*.dll` | built in CI with MSYS2 clang64, `llama/server` preset `cpu_windows`, the same toolchain the shipped DLLs were built with | `LLAMA_CPP_VERSION`, and the `llama/compat` patches must be present in the fetched source before compiling (`WAITING_BOUNDARY`, `REASONING_BUDGET_SCOPE_RESPONSE`, `forced_end_pos`) |
+| `llama-server.exe` + CPU `ggml-*.dll` | `llama/runtime-pin.txt`: a `runtime-windows-amd64-<llama>-<digest>` release built once by `xollama-runtime.yaml` (MSYS2 clang64, `llama/server` preset `cpu_windows`) | the asset's sha256, and the pin's `inputs` digest must equal the release commit's digest of `LLAMA_CPP_VERSION`, `llama/server` and `llama/compat`. When the runtime was built, the compat patches had to be present in the fetched source (`WAITING_BOUNDARY`, `REASONING_BUDGET_SCOPE_RESPONSE`, `forced_end_pos`) |
 | `cuda_v13\`, `vulkan\` | upstream's `ollama-windows-amd64.zip` from ollama/ollama release `v<upstream>` | upstream's `LLAMA_CPP_VERSION` at that tag must equal ours, or the run fails |
 | opencoti-llamafile | `llm/engine/pin.txt` through `cmake/opencoti-fetch.cmake`, SHA-256 enforced | added only when the pin has a `bin win-x86_64-gpu` row |
 
@@ -110,12 +111,35 @@ they do not change that ABI. The version guard is what makes this safe. When
 `dev` moves `LLAMA_CPP_VERSION` ahead of the upstream release it is based on,
 the release fails loudly. It must not ship a mismatched pair.
 
-Why the CPU runtime is built here and not taken from the fork's release: the
-fork's `ollama-windows-amd64-runtime.zip` is built from `think-budget` at its
-own point in time. It can lag the `llama/compat` patches that `dev` carries, and
-it did: the `v0.34.2-1-thinkbudget` runtime predates the 004 reasoning-budget
-fix. Building it from the release commit makes the runtime match the Go code
-that drives it.
+Why the CPU runtime is pinned and not rebuilt per release: the build is not
+byte-reproducible. Two dry runs of `v0.34.2-xollama.1`, whose second commit
+changed only Go code, produced payload ids `213e5a…` and `cd3148…`. So every
+release would carry a new `payload-id.txt`, and the updater would always
+download the full installer. Why it is ours and not the fork's
+`ollama-windows-amd64-runtime.zip`: that one is built from `think-budget` at
+its own point in time and can lag the `llama/compat` patches `dev` carries. It
+did: the `v0.34.2-1-thinkbudget` runtime predates the 004 reasoning-budget fix.
+The inputs digest ties our pin to the exact `llama/` tree it was built from.
+
+### Moving the runtime pin
+
+Move it in the **same PR** that changes `LLAMA_CPP_VERSION`, `llama/server` or
+`llama/compat`. The release check names the mismatch if you forget.
+
+A push to `dev` that touches any of those paths runs `xollama-runtime.yaml` by
+itself. It skips when a runtime for the same inputs is already published. To
+build by hand:
+
+```sh
+gh workflow run xollama-runtime.yaml --repo mann1x/xollama --ref dev -f ref=dev
+```
+
+The run's summary prints four lines (`tag`, `asset`, `sha256`, `inputs`).
+Replace the directives in `llama/runtime-pin.txt` with them and commit. That
+release carries a pre-release flag and a non-semver tag, so the updater never
+offers it to anyone. Never delete a runtime release that a published xOllama
+release was built from. Moving this pin changes the payload, so the first
+update after it downloads the full installer, which is the correct behaviour.
 
 **opencoti on Windows depends on the pin.** When `llm/engine/pin.txt` has no
 Windows row, the installer carries llama.cpp only, and `pinUncovered` routes
@@ -320,16 +344,6 @@ installed release passes step 7, never before. They are the fallback until then.
   `VersionInfoVersion` must be numeric. Every `xollama.<n>` on one base shows
   the same version in Add/Remove Programs. Upgrades still work. Use
   `xollama --version` to tell them apart.
-- **The payload is not reproducible, so the delta update never fires.** The
-  CPU runtime is rebuilt on every run, and the DLLs are not byte-identical from
-  one run to the next. Two dry runs of `v0.34.2-xollama.1` whose second commit
-  changed only Go code produced payload ids `213e5a…` and `cd3148…`. So every
-  release has a new `payload-id.txt`, the installed `PAYLOAD_ID` never matches
-  it, and the updater always downloads the full `xOllamaSetup.exe` (about
-  500 MB) instead of `xOllamaUpdate.exe` (about 14 MB). There are two ways out:
-  publish the CPU runtime once as a pinned artifact the way the GPU backends
-  are, or make the build reproducible (`-Wl,--no-insert-timestamp`,
-  `-ffile-prefix-map`) and prove it with two runs that yield one id.
 - **No macOS, no Windows arm64, no Linux runtime archive.** Linux hosts
   (solidPC) are still deployed from a local build with the full deployment
   script.
