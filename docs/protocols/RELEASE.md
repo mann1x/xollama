@@ -227,6 +227,15 @@ the release, not what the job had on disk.
 The test host is **eleven2go** (Windows, RTX 3090; `ssh eleven2go` lands in
 `cmd`, so send PowerShell on stdin:
 `ssh eleven2go 'powershell -NoProfile -ExecutionPolicy Bypass -Command -' < script.ps1`).
+Keep every statement in such a script on **one line**. `-Command -` runs stdin
+line by line, and a statement that continues onto the next line runs nothing
+and prints nothing, so a failure looks exactly like success.
+
+Run the installer through a one-time **interactive scheduled task**
+(`New-ScheduledTaskPrincipal -UserId <user> -LogonType Interactive`), not
+straight from SSH. The installer starts the tray app when it finishes. Started
+from SSH, the app lands in the SSH session and is killed when that session
+ends, so the install looks fine but nothing is left running.
 
 Copy the installer across with its full destination path, then run it:
 
@@ -311,6 +320,16 @@ installed release passes step 7, never before. They are the fallback until then.
   `VersionInfoVersion` must be numeric. Every `xollama.<n>` on one base shows
   the same version in Add/Remove Programs. Upgrades still work. Use
   `xollama --version` to tell them apart.
+- **The payload is not reproducible, so the delta update never fires.** The
+  CPU runtime is rebuilt on every run, and the DLLs are not byte-identical from
+  one run to the next. Two dry runs of `v0.34.2-xollama.1` whose second commit
+  changed only Go code produced payload ids `213e5a…` and `cd3148…`. So every
+  release has a new `payload-id.txt`, the installed `PAYLOAD_ID` never matches
+  it, and the updater always downloads the full `xOllamaSetup.exe` (about
+  500 MB) instead of `xOllamaUpdate.exe` (about 14 MB). There are two ways out:
+  publish the CPU runtime once as a pinned artifact the way the GPU backends
+  are, or make the build reproducible (`-Wl,--no-insert-timestamp`,
+  `-ffile-prefix-map`) and prove it with two runs that yield one id.
 - **No macOS, no Windows arm64, no Linux runtime archive.** Linux hosts
   (solidPC) are still deployed from a local build with the full deployment
   script.
