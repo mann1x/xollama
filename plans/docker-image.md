@@ -1,6 +1,6 @@
 # Docker image
 
-**Status:** PARKED, waiting for opencoti b109 on HF · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
+**Status:** PARKED, waiting for opencoti b111 on HF · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
 
 The owner wants a container image so users can test xollama and so the image
 path gets exercised. Publishing mechanics (registries, channels, environments)
@@ -31,9 +31,9 @@ self-hosted bs2 runner is not needed, and it was never registered.
 
 ## Unpark when
 
-opencoti publishes b109 to HF and it is measured. Then:
+opencoti publishes b111 to HF and it is measured. Then:
 
-1. Move the engine pin to b109. This goes through `llm/engine/pin.txt` and a
+1. Move the engine pin to b111. This goes through `llm/engine/pin.txt` and a
    measured `scripts/phase2-engine-ab.py` run as the `ollama` user.
 2. Pin the runtime tgz above.
 3. Trigger the workflow as a pre-release (`:dev`) for user testing.
@@ -41,6 +41,6 @@ opencoti publishes b109 to HF and it is measured. Then:
 ## Progress
 
 - [x] Design agreed (2026-09-25)
-- [ ] b109 on HF and measured
+- [ ] b111 on HF and measured
 - [ ] Runtime pin + assembly workflow
 - [ ] First `:dev` image, user testing

@@ -28,8 +28,8 @@ what happened is [`../STATE_SUMMARY.md`](../STATE_SUMMARY.md).
 
 | Plan | Status | Phase | Owner | Summary |
 |---|---|---|---|---|
-| [Agentic Council Chat](agentic-council-chat.md) | ACTIVE | 0 — measure on b109 | xollama | A model configured as a council (planner, researchers, critics, synthesizer) answers through the normal chat APIs, sharing KV through PolyKV |
-| [Docker image](docker-image.md) | PARKED | — | xollama | Assemble the image on hosted runners from prebuilt artifacts; waits for opencoti b109 on HF |
+| [Agentic Council Chat](agentic-council-chat.md) | ACTIVE | 0 — b65 measured; b111 pending, Phase 1 next | xollama | A model configured as a council (planner, researchers, critics, synthesizer) answers through the normal chat APIs, sharing KV through PolyKV |
+| [Docker image](docker-image.md) | PARKED | — | xollama | Assemble the image on hosted runners from prebuilt artifacts; waits for opencoti b111 on HF |
 
 ## How to use this document
 

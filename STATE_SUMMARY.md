@@ -5,11 +5,24 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-25 — Council Chat Phase 0 measured on b65.** On b65 with
+> llama3.1:8b, the council's pool tree shares as designed. Researchers,
+> critics and the synthesizer each prefilled 29–73 tokens of 2.5k–3.4k-token
+> prompts, and the owner held 3,343 cells for the whole tree against ~16k
+> unpooled. The council's wall time was 13–17 s. Close released everything.
+> Confirmed: a request with a `session_id` and no `num_ctx` books the full
+> 65,536-cell `session_ctx_max` per request. Routing is the weak link, so the
+> planner's decision becomes route-only: 86/100 trivial messages direct,
+> 60/60 hard messages to the council, +0.13 s to the first token. Probes are
+> in `plans/council-eval/probe/`. Next: the same probes on b111 when it is on
+> HF, and Phase 1 over a stub model.
+
 > **2026-09-25 — Project record started; Agentic Council Chat planned.**
 > `STATE_SUMMARY.md` and `plans/` created, with a standing rule in `CLAUDE.md`
 > to keep them current. New plan
 > [`plans/agentic-council-chat.md`](plans/agentic-council-chat.md), now at
-> Phase 0. Development targets opencoti **b109**. The library research
+> Phase 0. The target is opencoti **b111**; development and smoke tests run on
+> the pinned b65 until b111 is on the HF dev repo. The library research
 > shortlisted cloudwego/eino, smallnest/langgraphgo and trpc-agent-go, plus an
 > in-house `errgroup` baseline, for the Phase 1 bake-off. The Docker image
 > design is written down as [`plans/docker-image.md`](plans/docker-image.md)
@@ -42,9 +55,10 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
 ## Where we are
 
-`v0.34.2-xollama.1` is the latest release. `dev` is at `ad5842ce` plus the
-tracking docs. There is no feature code in flight. The next feature is the
-Agentic Council Chat, currently at Phase 0 (measure on opencoti b109).
+`v0.34.2-xollama.1` is the latest release. No product code is in flight.
+The Agentic Council Chat has Phase 0 measured on the pinned b65, and the same
+probes run again on b111 once it is on the HF dev repo. Phase 1, the library
+bake-off, is next.
 
 ## What exists today
 
@@ -60,8 +74,8 @@ Agentic Council Chat, currently at Phase 0 (measure on opencoti b109).
 
 ## In flight / waiting on others
 
-- **opencoti:** publishing b109 to HF. This unparks the Docker image and moves
-  the pin once b109 is measured. Also waiting on the spent-response port,
+- **opencoti:** publishing b111 to HF. This unparks the Docker image and moves
+  the pin once b111 is measured. Also waiting on the spent-response port,
   queued behind row K, and the E2B/E4B gate, which needs an HF repo@rev.
 - **mann1x/ollama (fork):** the static `llama/compat/README.md` commit. When
   it lands, xollama takes it by sha.
@@ -75,12 +89,12 @@ Agentic Council Chat, currently at Phase 0 (measure on opencoti b109).
 
 ## Immediate next steps (in order)
 
-1. Council Chat Phase 0: run b109 on solidPC and measure `/props.features`,
+1. Council Chat Phase 0 on b111 when it is on HF (b65 done 2026-09-25): rerun `plans/council-eval/probe/`, measuring `/props.features`,
    the per-request window, the pool tree probe and the direct-path latency.
 2. Council Chat Phase 1: build the council in eino, langgraphgo,
    trpc-agent-go and the `errgroup` baseline in `plans/council-eval/`
    (its own module), then benchmark them and choose one.
-3. When b109 is on HF: unpark the Docker image and pin the fork's existing
+3. When b111 is on HF: unpark the Docker image and pin the fork's existing
    runtime tgz (`33ac42c1…`).
 
 ## Open decisions
