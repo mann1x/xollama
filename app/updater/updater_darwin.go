@@ -110,7 +110,7 @@ func DoUpgrade(interactive bool) error {
 	// time to drain connections and stop allowing new connections while we perform the
 	// actual upgrade to reduce the overall time to complete
 	contentsName := filepath.Join(BundlePath, "Contents")
-	appBackup := filepath.Join(appBackupDir, "Ollama.app")
+	appBackup := filepath.Join(appBackupDir, updateArchiveRoot)
 	contentsOldName := filepath.Join(appBackup, "Contents")
 
 	// Verify old doesn't exist yet
@@ -338,7 +338,7 @@ func verifyDownload() error {
 		}
 	}
 
-	if err := verifyExtractedBundle(filepath.Join(dir, "Ollama.app")); err != nil {
+	if err := verifyExtractedBundle(filepath.Join(dir, updateArchiveRoot)); err != nil {
 		return fmt.Errorf("signature verification failed: %s", err)
 	}
 	return nil

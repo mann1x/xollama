@@ -2,6 +2,7 @@ package discover
 
 import (
 	"context"
+	"runtime"
 	"testing"
 
 	"github.com/ollama/ollama/llm/engine"
@@ -164,6 +165,11 @@ func TestParseOpencotiDevicesReadsTheVerboseMetadata(t *testing.T) {
 }
 
 func TestOffMeansTheIntegratedVulkanGPUIsHiddenAsUpstreamHidesIt(t *testing.T) {
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
+		// filterIntegratedGPUs keeps every device on Apple Silicon, upstream and
+		// fork alike: there the integrated GPU is the only GPU.
+		t.Skip("integrated GPUs are never filtered on darwin/arm64")
+	}
 	igpu := ml.DeviceInfo{DeviceID: ml.DeviceID{Library: "Vulkan", ID: "0"}, Description: "AMD RADV RENOIR (ACO)", Integrated: true}
 	t.Setenv("XOLLAMA_ENGINE", "llamacpp")
 	if got := filterIntegratedGPUs([]ml.DeviceInfo{igpu}); len(got) != 0 {

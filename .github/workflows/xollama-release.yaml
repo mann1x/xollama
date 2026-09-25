@@ -137,7 +137,7 @@ jobs:
           fi
           # Newer than everything published, by the order the updater uses.
           newest=$(gh release list --limit 100 --json tagName,isDraft --jq '.[] | select(.isDraft | not) | .tagName' \
-            | sed 's/^v//' | { cat; echo "$version"; } | sort -V | tail -1)
+            | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-xollama\.[0-9]+$' || true; } | sed 's/^v//' | { cat; echo "$version"; } | sort -V | tail -1)
           [ "$newest" = "$version" ] || fail "$version is not newer than the published $newest"
 
           # The CUDA and Vulkan backends are borrowed from upstream's release of
