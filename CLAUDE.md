@@ -6,7 +6,7 @@ Soft fork of ollama. `main` = upstream release v0.34.2 + fork changes, carrying 
 full upstream history so every `git merge upstream/main` has a real merge-base.
 Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING.md
 
-## Two standing rules
+## Standing rules
 
 1. **Never rename the Go module path.** It stays upstream's, exactly as declared
    on the first line of `go.mod`. Renaming costs a ~33% conflict rate per sync
@@ -15,9 +15,16 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
 2. **Off means off.** With `XOLLAMA_ENGINE=llamacpp` and no xollama flags,
    behaviour must be byte-identical to upstream. That is what keeps an A/B
    against vanilla honest.
+3. **Keep the record current.** Every session that changes code, releases,
+   pins or plans adds a dated entry to `STATE_SUMMARY.md` and, when a plan's
+   status or phase moves, updates its row in `plans/MASTER_PLAN.md` and the
+   plan itself, in the same commit as the change.
 
 ## Read before touching the upstream tree
 
+- `STATE_SUMMARY.md` — where the work stands, newest entry first.
+- `plans/MASTER_PLAN.md` — the index of every plan in `plans/`, with status and
+  phase.
 - `docs/protocols/UPSTREAM-SYNC.md` — every change is either an additive file or
   a marked surgical hook, and hooks go in the Registry in the same commit.
 - `docs/protocols/CARRIED-PATCHES.md` — the open upstream PRs this fork carries.
