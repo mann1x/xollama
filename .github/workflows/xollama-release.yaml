@@ -47,13 +47,17 @@ concurrency:
 env:
   GH_TOKEN: ${{ github.token }}
   GH_REPO: ${{ github.repository }}
-  GOTOOLCHAIN: auto
+  # No GOTOOLCHAIN here: `plan` names one exact toolchain and both build jobs
+  # use it (see "the Go toolchain" below). `auto` let each runner decide, and
+  # v0.34.2-xollama.1 shipped go1.26.0 on Windows and go1.27.1 on Linux.
 
 jobs:
   plan:
     runs-on: ubuntu-latest
     outputs:
       go: ${{ steps.plan.outputs.go }}
+      gotoolchain: ${{ steps.plan.outputs.gotoolchain }}
+      gomod: ${{ steps.plan.outputs.gomod }}
       mode: ${{ steps.plan.outputs.mode }}
       pr: ${{ steps.plan.outputs.pr }}
       sha: ${{ steps.plan.outputs.sha }}
@@ -170,6 +174,19 @@ jobs:
           out runtime_tag "$rtag"; out runtime_asset "$rasset"; out runtime_sha256 "$rsum"
           echo "CPU runtime: $rtag (inputs match)"
 
+          # The Go toolchain: upstream's LINE, the newest PATCH. go.mod stays
+          # upstream's (`go 1.26.0`, what upstream builds its releases with);
+          # the build takes the newest go<major.minor>.N, because 1.26.0 carries
+          # standard-library fixes that shipped in 1.26.1-1.26.6. When upstream
+          # moves go.mod to a new minor, this follows it with no edit here.
+          gomod=$(git show "$sha:go.mod" | awk '$1=="go" {print $2; exit}')
+          line=$(cut -d. -f1,2 <<< "$gomod")
+          toolchain=$(curl -fsSL 'https://go.dev/dl/?mode=json&include=all' \
+            | jq -r --arg l "go$line" '[.[] | select(.stable) | .version | select(. == $l or startswith($l + "."))] | first // empty')
+          [ -n "$toolchain" ] || fail "no stable Go release found on the go$line line (go.mod says go $gomod)"
+          out gotoolchain "$toolchain"; out gomod "$gomod"
+          echo "Go: $toolchain (go.mod: go $gomod)"
+
           if git show "$sha:llm/engine/pin.txt" | grep -Eq '^[[:space:]]*bin[[:space:]]+win-x86_64-gpu[[:space:]]'; then
             out engine yes; echo "opencoti: the pin carries a Windows artifact"
           else
@@ -269,6 +286,7 @@ jobs:
         working-directory: repo
         env:
           CGO_ENABLED: "1"
+          GOTOOLCHAIN: ${{ needs.plan.outputs.gotoolchain }}
         run: |
           go build -trimpath \
             -ldflags "-s -w -extldflags=-static -X=github.com/ollama/ollama/version.Version=$VERSION -X=github.com/ollama/ollama/server.mode=release" \
@@ -288,10 +306,23 @@ jobs:
         working-directory: repo
         env:
           CGO_ENABLED: "1"
+          GOTOOLCHAIN: ${{ needs.plan.outputs.gotoolchain }}
         run: |
           go build -trimpath \
             -ldflags "-s -w -H windowsgui -extldflags=-static -X=github.com/ollama/ollama/app/version.Version=$VERSION" \
             -o dist/windows-xollama-app-amd64.exe ./app/cmd/app/
+
+      - name: built with the planned Go toolchain
+        working-directory: repo
+        env:
+          WANT: ${{ needs.plan.outputs.gotoolchain }}
+          GOTOOLCHAIN: ${{ needs.plan.outputs.gotoolchain }}
+        run: |
+          for exe in dist/windows-amd64/xollama.exe dist/windows-xollama-app-amd64.exe; do
+            got=$(go version "$exe" | awk '{print $NF}')
+            echo "$exe: $got"
+            [ "$got" = "$WANT" ] || { echo "::error::$exe was built with $got, not $WANT"; exit 1; }
+          done
 
       - name: no third-party DLL imports
         working-directory: repo
@@ -348,6 +379,7 @@ jobs:
       SHA: ${{ needs.plan.outputs.sha }}
       TAG: ${{ needs.plan.outputs.tag }}
       VERSION: ${{ needs.plan.outputs.version }}
+      GO_TOOLCHAIN: ${{ needs.plan.outputs.gotoolchain }}
     steps:
       - name: clone
         run: |
@@ -360,18 +392,19 @@ jobs:
         working-directory: repo
         run: |
           docker run --rm -v "$PWD:/src" -w /src -e VERSION \
-            -e CGO_ENABLED=1 -e CGO_LDFLAGS=-ldl -e GOTOOLCHAIN=auto \
+            -e CGO_ENABLED=1 -e CGO_LDFLAGS=-ldl -e GOTOOLCHAIN=local -e WANT="$GO_TOOLCHAIN" \
             almalinux:8 bash -euo pipefail -c '
               dnf install -y -q gcc gcc-c++ tar gzip findutils > /dev/null
-              ver=$(curl -fsSL "https://go.dev/VERSION?m=text" | head -1)
-              curl -fsSL "https://go.dev/dl/${ver}.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+              curl -fsSL "https://go.dev/dl/${WANT}.linux-amd64.tar.gz" -o /tmp/go.tar.gz
               tar -C /usr/local -xzf /tmp/go.tar.gz
               export PATH=/usr/local/go/bin:$PATH
-              go build -trimpath \
-                -ldflags "-s -w -X=github.com/ollama/ollama/version.Version=$VERSION -X=github.com/ollama/ollama/server.mode=release" \
-                -o xollama-linux-amd64 .
+              ldflags="-s -w -X=github.com/ollama/ollama/version.Version=$VERSION -X=github.com/ollama/ollama/server.mode=release"
+              go build -trimpath -ldflags "$ldflags" -o xollama-linux-amd64 .
             '
           sudo chown "$(id -u):$(id -g)" xollama-linux-amd64
+          got=$(GOTOOLCHAIN=local go version xollama-linux-amd64 | awk '{print $NF}')
+          echo "built with $got"
+          [ "$got" = "$GO_TOOLCHAIN" ] || { echo "::error::built with $got, not $GO_TOOLCHAIN"; exit 1; }
           ./xollama-linux-amd64 --version 2>&1 | tee version.txt
           grep -q "$VERSION" version.txt || { echo "::error::the binary does not report $VERSION"; exit 1; }
           objdump -T xollama-linux-amd64 | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
@@ -391,6 +424,8 @@ jobs:
       UPSTREAM: ${{ needs.plan.outputs.upstream }}
       ENGINE: ${{ needs.plan.outputs.engine }}
       RUNTIME_TAG: ${{ needs.plan.outputs.runtime_tag }}
+      GO_TOOLCHAIN: ${{ needs.plan.outputs.gotoolchain }}
+      GO_MOD: ${{ needs.plan.outputs.gomod }}
     steps:
       - name: verify the asset set
         run: |
@@ -398,12 +433,12 @@ jobs:
           mkdir assets && cd assets
           gh release download "$TAG" --clobber
           rm -f sha256sum.txt
-          want="payload-id.txt xOllamaSetup.exe xOllamaUpdate.exe xollama-linux-amd64 xollama-windows-amd64.exe"
-          have=$(ls | sort | xargs)
-          [ "$have" = "$want" ] || { echo "::error::assets are '$have', expected '$want'"; exit 1; }
+          want=(payload-id.txt xOllamaSetup.exe xOllamaUpdate.exe xollama-linux-amd64 xollama-windows-amd64.exe)
+          have=$(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort | xargs)
+          [ "$have" = "${want[*]}" ] || { echo "::error::assets are '$have', expected '${want[*]}'"; exit 1; }
           grep -Eqx '[0-9a-f]{64}' payload-id.txt || { echo "::error::payload-id.txt is not a sha256"; exit 1; }
           # The format app/updater/fork.go parses.
-          sha256sum $want > sha256sum.txt
+          sha256sum "${want[@]}" > sha256sum.txt
           cat sha256sum.txt
           gh release upload "$TAG" sha256sum.txt --clobber
 
@@ -436,6 +471,7 @@ jobs:
             echo "|---|---|"
             echo "| commit | \`$SHA\` |"
             echo "| upstream base | ollama v$UPSTREAM |"
+            echo "| Go | \`$GO_TOOLCHAIN\` (go.mod: \`go $GO_MOD\`, upstream's line with its newest patch release) |"
             echo "| llama.cpp | \`$llama\`: CPU runtime \`$RUNTIME_TAG\`, CUDA 13 and Vulkan backends from upstream v$UPSTREAM |"
             echo "| engine | $engine |"
             echo "| payload id | \`$id\` |"

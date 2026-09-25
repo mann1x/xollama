@@ -103,6 +103,18 @@ changes when one of these three pins moves.
 | `cuda_v13\`, `vulkan\` | upstream's `ollama-windows-amd64.zip` from ollama/ollama release `v<upstream>` | upstream's `LLAMA_CPP_VERSION` at that tag must equal ours, or the run fails |
 | opencoti-llamafile | `llm/engine/pin.txt` through `cmake/opencoti-fetch.cmake`, SHA-256 enforced | added only when the pin has a `bin win-x86_64-gpu` row |
 
+The Go binaries (`xollama.exe`, the tray app, `xollama-linux-amd64`) are
+compiled, and they get one pinned toolchain too. `plan` reads the `go` line of
+`go.mod` (upstream's, `go 1.26.0`) and takes the **newest patch release on that
+line** from go.dev (`go1.26.8` on 2026-09-25). Both build jobs use exactly that,
+each checks `go version` on what it built, and the notes record it. Upstream
+builds its own releases with the bare `go.mod` version; we keep its line but
+not its patch level, because go1.26.0 carries 20 standard-library fixes that
+govulncheck finds reachable from this code. Before this, `GOTOOLCHAIN: auto`
+let each runner decide, and `v0.34.2-xollama.1` shipped go1.26.0 on Windows and
+go1.27.1 on Linux. A new patch release changes the Go binaries only; it does
+not touch the payload or its id.
+
 Why the GPU backends can come from upstream: they are loaded by ggml's
 backend loader through ggml's C ABI. When both sides are built from the same
 llama.cpp revision, upstream's `ggml-cuda.dll` works with our `ggml-base.dll`.

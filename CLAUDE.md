@@ -39,8 +39,9 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   from pinned artifacts only — the Windows CPU runtime comes from
   `llama/runtime-pin.txt`, built once by `.github/workflows/xollama-runtime.yaml`
   and moved in the same PR that changes `LLAMA_CPP_VERSION`, `llama/server` or
-  `llama/compat`; promote after the eleven2go install check. Never push a `v*`
-  tag, never copy exes onto a host as an "update".
+  `llama/compat`; the Go binaries build with the newest patch release on the
+  `go` line of `go.mod`, never `GOTOOLCHAIN: auto`; promote after the eleven2go
+  install check. Never push a `v*` tag, never copy exes onto a host as an "update".
 - `docs/features/engine-opencoti-llamafile.md` · `docs/features/rebrand.md` ·
   `docs/features/store-ownership.md` · `docs/features/windows-installer.md` ·
   `docs/features/model-config.md` · `docs/features/modelfile-roundtrip.md` ·
