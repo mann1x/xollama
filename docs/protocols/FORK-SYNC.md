@@ -147,6 +147,33 @@ never a base anyone reasons about.
 > the mirror was safe to do, so this verification is load-bearing in both
 > directions.
 
+## llama.cpp comes from the fork — enforced
+
+Ruled 2026-09-25 by the repository owner: the fork **supplies** llama.cpp.
+`LLAMA_CPP_VERSION`, `llama/server` and `llama/compat` here must be identical to
+the fork's, and a change to any of them lands in the fork first and arrives by
+sha, like every other carried patch. That includes `llama/compat/README.md`: a
+README-only difference still moves the inputs digest the release workflow
+compares, and it happened (`faabb1ca`, alongside `a836824b`, which wrote 005
+here; both were measured as the whole gap between the fork's runtime at
+`597db4f78d5b` and ours at `73387c282b7f`).
+
+`.github/workflows/compat-origin.yaml` runs `scripts/check-compat-origin.sh` on
+every PR and every push to `dev` and `main`. A commit that changes those paths
+must be reachable from a `mann1x/ollama` branch or `ollama/ollama` `main`; a
+merge passes only when every file it leaves under them is byte-identical to
+that file in one of its parents, so resolving a conflict to either side is
+fine and resolving it into new text is not. Run it locally after `git fetch
+fork` and `git fetch upstream`:
+
+```sh
+scripts/check-compat-origin.sh origin/main..HEAD
+```
+
+Measured against history: it flags exactly `a836824b` and `faabb1ca` and passes
+every fork merge, including `84bcccc5`, which combines the fork's 004 with this
+tree's 005.
+
 ## The rebase base is the upstream TAG
 
 `up-*` branches are rebased onto **the upstream release tag xollama builds**,

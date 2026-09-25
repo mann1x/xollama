@@ -28,6 +28,11 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   from `think-budget`** — that is how `model/parsers/gemma4.go` ended up three
   different things across two trees. xollama never files upstream PRs, nor asks
   the fork to — that is the repository owner's call; `fork-only` entries stay so.
+  The fork **supplies** llama.cpp: `LLAMA_CPP_VERSION`, `llama/server` and
+  `llama/compat` (README included) change in the fork first, never here —
+  enforced by `.github/workflows/compat-origin.yaml` running
+  `scripts/check-compat-origin.sh origin/main..HEAD` (needs `git fetch fork`
+  and `git fetch upstream` locally).
 - `docs/protocols/RELEASE.md` — how a release is cut: a PR `dev`→`main` titled
   `release: v<upstream>-xollama.<n>` whose body is the notes; hosted CI
   (`.github/workflows/xollama-release.yaml`) builds and publishes a pre-release
