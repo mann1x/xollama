@@ -205,7 +205,7 @@ var defaultDBPath = onboarding.AppDatabasePath()
 var legacyConfigPath = func() string {
 	switch runtime.GOOS {
 	case "windows":
-		return filepath.Join(os.Getenv("LOCALAPPDATA"), "Ollama", "config.json")
+		return filepath.Join(os.Getenv("LOCALAPPDATA"), "xOllama", "config.json") // xollama-hook: app-state
 	case "darwin":
 		return filepath.Join(os.Getenv("HOME"), "Library", "Application Support", "Ollama", "config.json")
 	default:

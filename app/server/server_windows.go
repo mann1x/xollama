@@ -14,9 +14,12 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// xollama-hook: app-state -- in the stock directory, a stock server holding
+// server.log open kept this one from ever starting, and cleanup() would stop
+// whatever process a stock app had written into ollama.pid.
 var (
-	pidFile       = filepath.Join(os.Getenv("LOCALAPPDATA"), "Ollama", "ollama.pid")
-	serverLogPath = filepath.Join(os.Getenv("LOCALAPPDATA"), "Ollama", "server.log")
+	pidFile       = filepath.Join(os.Getenv("LOCALAPPDATA"), "xOllama", "ollama.pid")
+	serverLogPath = filepath.Join(os.Getenv("LOCALAPPDATA"), "xOllama", "server.log")
 )
 
 func commandContext(ctx context.Context, name string, arg ...string) *exec.Cmd {

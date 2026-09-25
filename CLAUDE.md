@@ -109,7 +109,9 @@ local SSH keypair; `manifest/` holds the manifest/blob model (`manifest.go`,
 **Logging**: `logutil/logutil.go` — the shared `slog` handler and `LevelTrace`.
 **Internal-only packages** under `internal/`: `internal/cloud` (cloud host
 policy), `internal/modelref` (model reference parsing), `internal/onboarding`
-(first-run app state), `internal/orderedmap` (insertion-ordered maps behind the
+(first-run app state; on Windows it lives under `%LOCALAPPDATA%\xOllama`, not
+upstream's `Ollama` — `app-state` hook, also in `app/store/store.go` and
+`app/wintray/menus.go`), `internal/orderedmap` (insertion-ordered maps behind the
 tool schemas), `internal/fsowner` (hands files a root run creates to the owner
 of the model store; `create.go` wrappers, `preflight.go` warning — see
 `.claude/rules/store-ownership.md`), plus `internal/testutil` and `internal/proxy`.

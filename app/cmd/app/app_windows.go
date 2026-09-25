@@ -35,9 +35,12 @@ var (
 	pSetActiveWindow     = u32.NewProc("SetActiveWindow")
 	pIsIconic            = u32.NewProc("IsIconic")
 
-	appPath         = filepath.Join(os.Getenv("LOCALAPPDATA"), "Programs", "Ollama")
-	appLogPath      = filepath.Join(os.Getenv("LOCALAPPDATA"), "Ollama", "app.log")
-	startupShortcut = filepath.Join(os.Getenv("APPDATA"), "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "Ollama.lnk")
+	// xollama-hook: app-state -- xOllama's own directories and login shortcut,
+	// never a stock ollama's, which may be installed beside it. See
+	// docs/features/windows-installer.md.
+	appPath         = filepath.Join(os.Getenv("LOCALAPPDATA"), "Programs", "xOllama")
+	appLogPath      = filepath.Join(os.Getenv("LOCALAPPDATA"), "xOllama", "app.log")
+	startupShortcut = filepath.Join(os.Getenv("APPDATA"), "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "xOllama.lnk")
 	ollamaPath      string
 	DesktopAppName  = "xOllama app.exe"
 )
@@ -241,7 +244,8 @@ func osRun(shutdown func(), hasCompletedFirstRun, startHidden, showOnboarding bo
 func createLoginShortcut() error {
 	// The installer lays down a shortcut for us so we can copy it without
 	// having to resort to calling COM APIs to establish the shortcut
-	shortcutOrigin := filepath.Join(appPath, "lib", "Ollama.lnk")
+	// xollama-hook: app-state -- app/xollama.iss lays it down as xOllama.lnk.
+	shortcutOrigin := filepath.Join(appPath, "lib", "xOllama.lnk")
 
 	_, err := os.Stat(startupShortcut)
 	if err != nil {

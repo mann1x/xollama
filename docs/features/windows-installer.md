@@ -131,6 +131,23 @@ only removes the `xOllama` one, and the sweep would delete a stock install's
 staged update. Staging, the upgrade log and the marker file now live in
 `%LOCALAPPDATA%\xOllama`, and the sweep is gone.
 
+The rest of the app's state followed on 2026-09-25 (`app-state` hook). That
+includes `app.log`, `server.log`, `ollama.pid` and the settings database
+`db.sqlite`. The updater had moved, but these had not, and the first real
+install found out why they must. On eleven2go a think-budget ollama was
+running beside it and held `Ollama\server.log` open, so the app could not open
+its server log. `Run` returned that error to a channel nobody logs, and the
+xOllama server never started. `cleanup()` would also have stopped whatever
+process a stock app had written into the shared `ollama.pid`. Settings are
+**not** migrated from `%LOCALAPPDATA%\Ollama`, because they belong to the stock
+app.
+
+The login shortcut is `Startup\xOllama.lnk`, copied from the
+`{app}\lib\xOllama.lnk` the installer creates. Until then the app looked for
+`lib\Ollama.lnk`, which the installer never created. It also treated a stock
+install's `Startup\Ollama.lnk` as its own, so xOllama never registered itself
+to start at login.
+
 ## Delta updates
 
 An update used to cost ~1.5 GB whatever changed. Measured on this payload:
