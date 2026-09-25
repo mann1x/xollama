@@ -28,6 +28,11 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   from `think-budget`** — that is how `model/parsers/gemma4.go` ended up three
   different things across two trees. xollama never files upstream PRs, nor asks
   the fork to — that is the repository owner's call; `fork-only` entries stay so.
+- `docs/protocols/RELEASE.md` — how a release is cut: a PR `dev`→`main` titled
+  `release: v<upstream>-xollama.<n>` whose body is the notes; hosted CI
+  (`.github/workflows/xollama-release.yaml`) builds and publishes a pre-release;
+  promote after the eleven2go install check. Never push a `v*` tag, never copy
+  exes onto a host as an "update".
 - `docs/features/engine-opencoti-llamafile.md` · `docs/features/rebrand.md` ·
   `docs/features/store-ownership.md` · `docs/features/windows-installer.md` ·
   `docs/features/model-config.md` · `docs/features/modelfile-roundtrip.md` ·

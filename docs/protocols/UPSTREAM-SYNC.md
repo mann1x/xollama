@@ -115,6 +115,18 @@ Merge with `--no-ff` so the sync is one identifiable commit range.
   upstream rewrote and a parser fix we wrote touch the same lines for
   unrelated reasons, and git will happily keep one of them.
 
+## Workflow hooks
+
+Hooks in `.github/workflows/*.yaml` carry a `# xollama-hook: <id>` comment, but
+`scripts/check-hooks.sh` scans Go and TypeScript only, so they are listed here,
+outside its table. After a sync, check them by hand:
+`grep -rn 'xollama-hook' .github/`.
+
+| Workflow hook | File | Feature |
+|---|---|---|
+| `docker-release` | `release.yaml` `darwin-build` and `latest.yaml`: guarded to `ollama/ollama`; `darwin-build` dropped from `release`'s `needs` | [features/docker-release.md](../features/docker-release.md) |
+| `fork-release` | `release.yaml` `setup-environment`: guarded to `ollama/ollama`, which skips every job chained from it. A stray `v*` tag on the fork must not queue jobs on runners it does not have | [protocols/RELEASE.md](RELEASE.md) |
+
 ## Registry — known surgical hooks
 
 Add the row in the same commit as the hook.

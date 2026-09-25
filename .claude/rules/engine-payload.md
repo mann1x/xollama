@@ -2,6 +2,9 @@
 paths:
   - llm/engine/payload.go
   - llm/engine/payload_test.go
+  - llm/engine/opencoti.go
+  - llm/engine/artifact_of_test.go
+  - llm/llama_server.go
   - internal/fsowner/**
 ---
 

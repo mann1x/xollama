@@ -11,6 +11,13 @@ env:
 
 jobs:
   setup-environment:
+    # xollama-hook: fork-release -- see docs/protocols/RELEASE.md
+    #
+    # Off on the fork, and with it every job below, since they all chain from
+    # this one. They target upstream's self-hosted runners and signing keys;
+    # a hand-pushed v* tag would leave them queued for a day. The fork
+    # releases through xollama-release.yaml instead.
+    if: github.repository == 'ollama/ollama'
     runs-on: ubuntu-latest
     environment: release
     outputs:

@@ -23,6 +23,14 @@ pre-release moves `:dev` and **never** `:latest`, so `docker pull <image>` can
 never hand someone a dev build. A manual run can override the decision with the
 `channel` input.
 
+<Note>
+  This rule predates the release protocol (`docs/protocols/RELEASE.md`), whose
+  tags are `v<upstream>-xollama.<n>`: every tag has a hyphen, so under `auto`
+  every release would land on `:dev`. The channel there is the GitHub
+  pre-release flag. Align this workflow with it before the image joins the
+  release cycle.
+</Note>
+
 The environments are where release-only protection belongs — required
 reviewers, or a secret that only the release channel may use — without having to
 duplicate the workflow.
