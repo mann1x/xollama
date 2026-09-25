@@ -10,9 +10,8 @@ paths:
   parsed GGUF metadata under `$OLLAMA_MODELS/metadata/`. A command run as root
   creates entries there `root:root` mode `0600`; the systemd `ollama` service
   runs as `User=ollama` and can then neither read nor write them, so every
-  `/api/tags` re-parses all ~123 GGUF headers. Measured cost when it happened:
-  **9.89 s vs 0.06 s** — a 165x stall that clients report as a timeout or a
-  bogus 404, never as an error.
+  `/api/tags` re-parses all ~123 GGUF headers. Measured: **9.89 s vs 0.06 s** —
+  a 165x stall clients report as a timeout or a bogus 404, never as an error.
 - The store is
   `/srv/dev-disk-by-uuid-92295e2c-12bd-4d15-a50c-1d80e1a33ee8/spool/ollama_models`.
   Healthy state: `metadata/` is `ollama:ollama`, dir `0755`, files `0644`.
@@ -24,9 +23,12 @@ paths:
 
   A model with no cache entry yet is what triggers it — a run that only touches
   already-cached models leaves no trace and proves nothing.
-- Invocation that is safe. `HOME` matters: the engine extracts its payload to
-  `~/.llamafile/v/<version>/`, so as another user it must point somewhere
-  writable, and results must go to a directory that user owns
+- Invocation that is safe. `HOME` matters: xollama gives a release cut a
+  private `HOME` from `DefaultPayloadRoots` in `llm/engine/payload.go` —
+  `<lib/ollama>/engines/payload` if writable, else `$HOME/.ollama/engines/payload`
+  — where it extracts to `.llamafile/v/<version>/`, so as
+  another user it must point somewhere writable, and results must go to a
+  directory that user owns
   (`/srv/ml/xollama-phase2/as-ollama`, created `ollama:ollama` `2775`):
 
   ```sh
@@ -34,11 +36,74 @@ paths:
       python3 scripts/phase2-engine-ab.py --engine opencoti --axis overflow \
       --models "$OLLAMA_MODELS" --out /srv/ml/xollama-phase2/as-ollama
   ```
+- A dev snapshot extracts nothing: it side-loads the `ggml-cuda.so` beside the
+  binary. `sideloaded_dso_sha` hashes that one first and records `source`
+  (`beside-artifact` / `llamafile-cache`) — a stale cache hash is a lie.
+- **A bare artifact with no `ggml-cuda.so` beside it falls through to the shared
+  app dir** `~/.llamafile/v/opencoti-0.10.5-c7/`, which dev builds overwrote 97
+  times between 2026-09-05 and 2026-09-22. The executable's own directory always
+  wins, so stage the `dso` beside the `bin` — as `cmake/opencoti-fetch.cmake`
+  does for a packaged install. A *fat release* boot is safe either way: it byte-
+  compares its embedded payload on every start and re-extracts, so it maps its
+  own bytes whatever the app dir holds (opencoti #200; the compare→`dlopen`
+  window is a residual TOCTOU). From opencoti 0341 the binary names the library
+  it mapped (`cuda: loaded … (executable directory, … bytes)`) — read that line
+  instead of inferring provenance; `source` only records it from 2026-09-21, so
+  older cells cannot self-certify. See `docs/evaluations/phase2-engine-ab.md`.
+- **Run a pin candidate on every axis, and on `/api/chat` above all.** Candidate
+  `2609220756001` (build 20) was 8/8 on compat and inside build 19's spread on
+  throughput and multi-slot, yet refused the *second* `/api/chat` turn of every
+  conversation (`kv-reservation: REFUSED`) — compat sends one request per model
+  and throughput uses `/api/generate`, so both stayed green on bytes that cannot
+  hold a two-turn conversation. Separate our feature from the engine's
+  regression by removing the input: `XOLLAMA_SESSION_AFFINITY=false` made every
+  failing cell pass, so the pin did not move to it. Build 21
+  (`2609221142001`) fixes it — opencoti patch 0345 makes an *unstated* window
+  per-request instead of booking the per-session maximum whole — and measures
+  8/8 compat, inside build 19's spread, zero `REFUSED` lines across all five
+  axes, so **the pin moved there** once the bytes were published.
+- **A probe both arms pass is not a discriminator.** The `kvleak4` probe (four
+  concurrent `/api/chat`) was meant to reproduce opencoti's distinct-session
+  arm, and build 20 passes it too: xollama minted **one** session id for all
+  four requests and the bookings read `base need 0`. Read a probe's own logs
+  before citing it as coverage.
 - **The 3090 is shared with the live service.** A 70B arm holds ~24 GB for the
-  length of the run, so the systemd `ollama` cannot load anything while it
-  lasts. Check `nvidia-smi --query-compute-apps` first, keep big arms short, and
-  confirm VRAM came back afterwards — the harness already kills the whole
-  process group and sleeps 5 s between arms for this reason.
+  run, so the systemd `ollama` cannot load anything meanwhile. Check
+  `nvidia-smi --query-compute-apps` first, keep big arms short, and confirm VRAM
+  came back — the harness kills the process group and sleeps 5 s between arms.
+- **Every probe, smoke and A/B cell generates at least 256 tokens, 512 where
+  practical, always with `ignore_eos`.** Never derive a tok/s from a short
+  generation. A 2-token run ("Say ok" -> "OK") was recorded as 7.70 tok/s,
+  compared against a 64-token 4.05, and produced two false claims -- "the
+  overflow axis nearly doubled" and "the `head` workaround has inverted" -- that
+  reached `llm/engine_defects.go` and a user-facing Warning in
+  `docs/xollama/slots.mdx`. At that length the number is first-token latency
+  plus graph warm-up. Re-measured at 256 tokens the three builds are within 3%.
+- **A thinking model needs its budget sized for the thinking, not the answer.**
+  Where the model has reasoning and it is enabled, allocate `n_predict` /
+  `max_gen_toks` / `num_ctx` generously -- prompt + the *full* thinking block +
+  512 answer tokens -- and set the engine's reasoning budget explicitly rather
+  than trusting the model to stop. Thinking runs from a few hundred tokens to
+  tens of thousands depending on the model and the question; a budget sized for
+  the answer truncates inside it and the cell measures nothing. Measured
+  precedent: Gemma 4 on GPQA without `--reasoning-budget` loops and exhausts the
+  whole context without answering.
+- **Verify the EFFECTIVE context, never the requested one.** The overflow axis
+  asked for `-c 32768`, the allocation failed (`failed to allocate CUDA0 buffer
+  of size 8187281408`), the harness silently retried at `-c 4096`, and every row
+  was measured on a 62/81-layer fallback under a 32k name. Log the effective
+  `n_ctx` and fail or flag the cell when it falls back.
+- **An exit code is not a verdict.** An OOM and a deliberate refusal both exit 1.
+  Read the message: a `draft-simple` cell OOM'd on a contended card and looked
+  exactly like the patch-0351 refusal it was meant to prove.
+- **A provisional number is not a measurement.** Re-taken as `ollama` with the
+  `bufferSizeRegex` fix, the multislot deficit is −36.2% on the c7 r2 pin and
+  gone on builds 18 and 19. Append a re-take to `docs/evaluations/phase2-engine-ab.md`.
+- **Match the method before reading a delta.** `--iters` defaults to 3; the
+  recorded single-stream figures use 5. For a ~1-point gap, re-run the baseline
+  build in the same session instead of comparing against yesterday's figure.
+- A repro must be able to reach the defect: `--cli` does not apply the
+  server-side reasoning controls, so test thinking-off fixes through `--server`.
 - Repairing the cache if it does get broken:
 
   ```sh

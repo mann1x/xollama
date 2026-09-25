@@ -41,6 +41,19 @@ func TestLiveAppUpdate(t *testing.T) {
 
 	version.Version = spoofedVersion
 
+	// xollama-hook: update-feed -- production here is this fork's GitHub
+	// releases, not ollama.com. Every release starts as a pre-release, and
+	// before the first one there is nothing to update to: say so rather than
+	// fail, and let the test run for real from then on.
+	oldAllowPrerelease := AllowPrerelease
+	defer func() { AllowPrerelease = oldAllowPrerelease }()
+	AllowPrerelease = true
+	if releases, err := fetchForkReleases(ctx); err == nil {
+		if rel, _ := pickForkRelease(releases, Installer, true); rel == nil {
+			t.Skip("xollama: the fork has published no release with an installer yet")
+		}
+	}
+
 	expectedFilename := ""
 	switch runtime.GOOS {
 	case "windows":

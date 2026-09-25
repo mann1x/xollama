@@ -7,7 +7,7 @@ concurrency:
   # For non-PR pushes, concurrency.group needs to be unique for every distinct
   # CI run we want to have happen. Use run_id, which in practice means all
   # non-PR CI runs will be allowed to run without preempting each other.
-  group: ${{ github.workflow }}-$${{ github.pull_request.number || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 on:
@@ -82,6 +82,9 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.changed == 'True'
     strategy:
+      # xollama-hook: hosted-ci -- every leg reports on the fork: they are
+      # independent builds, and hosted minutes are free for a public repo.
+      fail-fast: ${{ github.repository == 'ollama/ollama' }}
       matrix:
         include:
           - preset: CPU
@@ -121,7 +124,11 @@ jobs:
             superbuild_args: '-DOLLAMA_MLX_BACKENDS=cuda_v13 -DCMAKE_CUDA_ARCHITECTURES=87 -DMLX_CUDA_ARCHITECTURES=80-virtual -DBLAS_INCLUDE_DIRS=/usr/include/x86_64-linux-gnu -DLAPACK_INCLUDE_DIRS=/usr/include/x86_64-linux-gnu'
             expected_payload: lib/ollama/mlx_cuda_v13/libmlx.so lib/ollama/mlx_cuda_v13/libollama_xgrammar.so
             install-go: true
-    runs-on: linux
+    # xollama-hook: hosted-ci -- upstream's self-hosted `linux` fleet on
+    # ollama/ollama, GitHub-hosted everywhere else. The fork has no runners;
+    # the job compiles and checks the payload, it needs no GPU. Upstream ran it
+    # on ubuntu-latest itself until 92b1a21f (2024-02-06).
+    runs-on: ${{ github.repository == 'ollama/ollama' && 'linux' || 'ubuntu-latest' }}
     container: ${{ matrix.container }}
     steps:
       - uses: actions/checkout@v4
@@ -167,7 +174,7 @@ jobs:
       - name: Verify local superbuild install
         if: matrix.superbuild_target == 'ollama-local'
         run: |
-          ./ollama --version
+          ./xollama --version # the superbuild names it xollama (cmake/local.cmake)
           "${{ matrix.superbuild_dir }}/lib/ollama/llama-server" --version
           test -x "${{ matrix.superbuild_dir }}/lib/ollama/llama-quantize"
           cmake --install "${{ matrix.superbuild_dir }}" --component ollama-local --prefix "$RUNNER_TEMP/ollama-local"
@@ -178,6 +185,9 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.changed == 'True'
     strategy:
+      # xollama-hook: hosted-ci -- every leg reports on the fork: they are
+      # independent builds, and hosted minutes are free for a public repo.
+      fail-fast: ${{ github.repository == 'ollama/ollama' }}
       matrix:
         include:
           - preset: CPU
@@ -239,7 +249,19 @@ jobs:
               - '"nvvm"'
               - '"nvptxcompiler"'
             cuda-version: '13.0'
-    runs-on: windows
+    # xollama-hook: hosted-ci -- see the linux job. windows-2022, because the
+    # windows-latest and windows-2025 labels both resolve to the
+    # windows-2025-vs2026 image (measured 2026-09-25): CUDA 13.0 refuses its
+    # MSVC 14.51 (host_config.h "unsupported Microsoft Visual Studio version")
+    # and ROCm 7.1's clang cannot compile its STL. windows-2022 ships VS 2022.
+    runs-on: ${{ github.repository == 'ollama/ollama' && 'windows' || 'windows-2022' }}
+    # `windows` is a self-hosted runner LABEL, not a GitHub-hosted image, so
+    # nothing can infer the OS from it and every run: step below was being
+    # read as bash. Every one of them is PowerShell; saying so is a no-op at
+    # run time and is what the steps already rely on.
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - run: |
           choco install -y --no-progress ccache ninja
@@ -339,8 +361,13 @@ jobs:
         if: matrix.superbuild_target
         run: |
           $ErrorActionPreference = "Stop"
-          Import-Module 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\Microsoft.VisualStudio.DevShell.dll'
-          Enter-VsDevShell -VsInstallPath 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise' -SkipAutomaticLocation  -DevCmdArguments '-arch=x64 -no_logo'
+          # xollama-hook: hosted-ci -- upstream's runner path when it exists, else
+          # the Visual Studio 2022 vswhere finds -- 17.x only, never 2026 (see runs-on).
+          $vsPath = 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise'
+          if (-not (Test-Path $vsPath)) { $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -version '[17.0,18.0)' -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath }
+          Write-Host "Visual Studio: $vsPath"
+          Import-Module "$vsPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation  -DevCmdArguments '-arch=x64 -no_logo'
           cmake -S . -B "${{ matrix.superbuild_dir }}" ${{ matrix.superbuild_args }}
           $env:CMAKE_BUILD_PARALLEL_LEVEL = [Environment]::ProcessorCount
           cmake --build "${{ matrix.superbuild_dir }}" --target "${{ matrix.superbuild_target }}" -- -l $([Environment]::ProcessorCount)
@@ -355,14 +382,14 @@ jobs:
         if: matrix.superbuild_target == 'ollama-local'
         run: |
           $ErrorActionPreference = "Stop"
-          & ".\ollama.exe" --version
+          & ".\xollama.exe" --version
           & "${{ matrix.superbuild_dir }}\lib\ollama\llama-server.exe" --version
           if (!(Test-Path "${{ matrix.superbuild_dir }}\lib\ollama\llama-quantize.exe")) {
             throw "missing llama-quantize.exe"
           }
           $installPrefix = Join-Path $env:RUNNER_TEMP "ollama-local"
           cmake --install "${{ matrix.superbuild_dir }}" --component ollama-local --prefix "$installPrefix"
-          & "$installPrefix\bin\ollama.exe" --version
+          & "$installPrefix\bin\xollama.exe" --version # the superbuild names it xollama (cmake/local.cmake)
           & "$installPrefix\lib\ollama\llama-server.exe" --version
           if (!(Test-Path "$installPrefix\lib\ollama\llama-quantize.exe")) {
             throw "missing installed llama-quantize.exe"

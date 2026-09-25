@@ -30,7 +30,7 @@ func AppDatabasePath() string {
 	case runtime.GOOS == "darwin" && home != "":
 		return filepath.Join(home, "Library", "Application Support", "Ollama", "db.sqlite")
 	case runtime.GOOS == "windows" && localAppData != "":
-		return filepath.Join(localAppData, "Ollama", "db.sqlite")
+		return filepath.Join(localAppData, "xOllama", "db.sqlite") // xollama-hook: app-state
 	default:
 		return ""
 	}

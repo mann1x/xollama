@@ -17,12 +17,38 @@ import (
 	"time"
 )
 
-// Host returns the scheme and host. Host can be configured via the OLLAMA_HOST environment variable.
-// Default is scheme "http" and host "127.0.0.1:11434"
-func Host() *url.URL {
-	defaultPort := "11434"
+// xollama-hook: default-port — see docs/xollama/default-port.mdx
+//
+// DefaultPort is the port xollama listens on, and the one its own CLI dials
+// when OLLAMA_HOST says nothing. Upstream uses 11434; xollama deliberately
+// does not.
+//
+// The reason is the fork's own premise. Every claim this repo makes about the
+// opencoti engine is an A/B against vanilla ollama, and an A/B needs both
+// servers up on one machine at one time. Sharing 11434 makes that impossible:
+// whichever starts second fails to bind, and the measurement becomes a
+// before-and-after across a restart instead of a comparison.
+//
+// 22434 specifically: 11434 is registered to "ollama" in the IANA service-name
+// registry, and the whole 22400-22499 block is unassigned, so this takes
+// nothing from anyone. It is also 11434 doubled, which is the only mnemonic
+// anybody needs.
+//
+// This does not weaken "off means off". That rule is about inference
+// behaviour being byte-identical with XOLLAMA_ENGINE=llamacpp -- the port a
+// server binds changes no token it produces, and being able to run the two
+// side by side is what makes the comparison honest in the first place.
+// OLLAMA_HOST overrides this exactly as it does upstream.
+const DefaultPort = "22434"
 
-	s := strings.TrimSpace(Var("OLLAMA_HOST"))
+// Host returns the scheme and host. Host can be configured via the OLLAMA_HOST environment variable.
+// Default is scheme "http" and host "127.0.0.1:22434"
+func Host() *url.URL {
+	defaultPort := DefaultPort
+
+	// The outer TrimSpace is upstream's and still matters: trimVar strips the
+	// quotes, and a value like `" 1.2.3.4 "` has spaces left inside them.
+	s := strings.TrimSpace(XollamaOnly("OLLAMA_HOST"))
 	scheme, hostport, ok := strings.Cut(s, "://")
 	switch {
 	case !ok:
@@ -298,6 +324,16 @@ var (
 	// and is most of the cost on those models. They need an engine that has
 	// that flag; stock llama.cpp does not, and a load asking for one there is
 	// refused rather than started without it.
+	// UpdateFeed redirects where the desktop app looks for updates, for a
+	// private mirror or a test. Empty means the fork's own GitHub releases;
+	// see app/updater/fork.go. Never upstream's endpoint -- a fork that
+	// follows ollama.com updates itself into stock ollama.
+	UpdateFeed = String("XOLLAMA_UPDATE_FEED")
+	// UpdatePrerelease lets the app take a release marked pre-release. The
+	// release job publishes every release that way, so the default of false
+	// means "update when a build is promoted", not "update when CI finishes".
+	UpdatePrerelease = Bool("XOLLAMA_UPDATE_PRERELEASE")
+
 	KCacheTypeSWA = String("XOLLAMA_K_CACHE_TYPE_SWA")
 	VCacheTypeSWA = String("XOLLAMA_V_CACHE_TYPE_SWA")
 	// DynamicSlots lets the number of concurrent requests grow with demand
@@ -423,6 +459,8 @@ func AsMap() map[string]EnvVar {
 		"XOLLAMA_SESSION_POOL":        {"XOLLAMA_SESSION_POOL", SessionPool(), "Share one copy of a common prefix between conversations, on the opencoti engine (default false)"},
 		"XOLLAMA_K_CACHE_TYPE":        {"XOLLAMA_K_CACHE_TYPE", KCacheType(), "KV cache type for keys, overriding OLLAMA_KV_CACHE_TYPE for that half"},
 		"XOLLAMA_V_CACHE_TYPE":        {"XOLLAMA_V_CACHE_TYPE", VCacheType(), "KV cache type for values, overriding OLLAMA_KV_CACHE_TYPE for that half"},
+		"XOLLAMA_UPDATE_FEED":         {"XOLLAMA_UPDATE_FEED", UpdateFeed(), "Where the desktop app looks for updates (default: this fork's GitHub releases)"},
+		"XOLLAMA_UPDATE_PRERELEASE":   {"XOLLAMA_UPDATE_PRERELEASE", UpdatePrerelease(), "Accept a release marked pre-release (default false: update only on a promoted build)"},
 		"XOLLAMA_K_CACHE_TYPE_SWA":    {"XOLLAMA_K_CACHE_TYPE_SWA", KCacheTypeSWA(), "KV cache type for keys in a sliding-window model's short-window cache (needs an engine with a separate ring)"},
 		"XOLLAMA_V_CACHE_TYPE_SWA":    {"XOLLAMA_V_CACHE_TYPE_SWA", VCacheTypeSWA(), "KV cache type for values in a sliding-window model's short-window cache"},
 		"XOLLAMA_DYNAMIC_SLOTS":       {"XOLLAMA_DYNAMIC_SLOTS", DynamicSlots(), "Grow the number of concurrent requests with demand instead of reserving them (default true)"},
@@ -442,7 +480,7 @@ func AsMap() map[string]EnvVar {
 		"OLLAMA_IGPU_ENABLE":          {"OLLAMA_IGPU_ENABLE", String("OLLAMA_IGPU_ENABLE")(), "Enable integrated GPUs"},
 		"LLAMA_ARG_FIT":               {"LLAMA_ARG_FIT", String("LLAMA_ARG_FIT")(), "Enable llama.cpp automatic fit of unset memory options (default \"on\")"},
 		"LLAMA_ARG_FIT_TARGET":        {"LLAMA_ARG_FIT_TARGET", String("LLAMA_ARG_FIT_TARGET")(), "Target free VRAM margin per device for llama.cpp fit (MiB)"},
-		"OLLAMA_HOST":                 {"OLLAMA_HOST", Host(), "IP Address for the xollama server (default 127.0.0.1:11434)"},
+		"OLLAMA_HOST":                 {"XOLLAMA_HOST", Host(), "IP Address for the xollama server (default 127.0.0.1:22434; OLLAMA_HOST is not read)"},
 		"OLLAMA_KEEP_ALIVE":           {"OLLAMA_KEEP_ALIVE", KeepAlive(), "The duration that models stay loaded in memory (default \"5m\")"},
 		"OLLAMA_LLM_LIBRARY":          {"OLLAMA_LLM_LIBRARY", LLMLibrary(), "Set LLM library to bypass autodetection"},
 		"OLLAMA_LOAD_TIMEOUT":         {"OLLAMA_LOAD_TIMEOUT", LoadTimeout(), "How long to allow model loads to stall before giving up (default \"5m\")"},
@@ -542,6 +580,27 @@ func XollamaKey(key string) string {
 		return ""
 	}
 	return Prefix + rest
+}
+
+// xollama-hook: host-namespace — see docs/xollama/default-port.mdx
+//
+// XollamaOnly returns the XOLLAMA_ spelling of key and never the OLLAMA_ one.
+//
+// It is used for exactly one variable, and the exception is the point. Every
+// other OLLAMA_ setting is something two installations can share without
+// harm -- flash attention, cache type, keep-alive, model directory. OLLAMA_HOST
+// is not a setting; it is a claim on a socket, and it is set precisely by
+// people who already run a stock ollama. Inheriting it would hand xollama the
+// one address on the machine guaranteed to be taken, which is the collision
+// the separate default exists to prevent.
+//
+// So the listen address is namespaced exclusively: XOLLAMA_HOST steers it,
+// OLLAMA_HOST does not, and with neither set it is DefaultPort on loopback.
+func XollamaOnly(key string) string {
+	if x := XollamaKey(key); x != "" {
+		return trimVar(os.Getenv(x))
+	}
+	return ""
 }
 
 // xollama-hook: env-namespace

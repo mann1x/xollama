@@ -103,7 +103,7 @@ func TestResolveSlotPlan(t *testing.T) {
 func TestSlotArgs(t *testing.T) {
 	plan := slotPlan{Dynamic: true, Live: 1, Max: 4, TPSFloor: 12.5, VRAMReserveMiB: 1024}
 
-	got := appendSlotArgs(nil, plan, 0, true)
+	got := appendSlotArgs(nil, plan, 0, nil, true)
 	want := []string{
 		"--kv-unified", "--max-parallel", "4",
 		"--max-parallel-tps-floor", "12.5",
@@ -115,14 +115,14 @@ func TestSlotArgs(t *testing.T) {
 
 	// --max-parallel is opencoti's own, and --kv-unified changes what -c means,
 	// so a stock load must look exactly as it did before.
-	if got := appendSlotArgs(nil, plan, 0, false); len(got) != 0 {
+	if got := appendSlotArgs(nil, plan, 0, nil, false); len(got) != 0 {
 		t.Errorf("stock llama.cpp must get no slot flags, got %v", got)
 	}
-	if got := appendSlotArgs(nil, slotPlan{Live: 2}, 0, true); len(got) != 0 {
+	if got := appendSlotArgs(nil, slotPlan{Live: 2}, 0, nil, true); len(got) != 0 {
 		t.Errorf("a plan that is not dynamic must add nothing, got %v", got)
 	}
 	// Room to grow is what makes the flags worth passing.
-	if got := appendSlotArgs(nil, slotPlan{Dynamic: true, Live: 4, Max: 4}, 0, true); len(got) != 0 {
+	if got := appendSlotArgs(nil, slotPlan{Dynamic: true, Live: 4, Max: 4}, 0, nil, true); len(got) != 0 {
 		t.Errorf("a ceiling equal to the starting point must add nothing, got %v", got)
 	}
 }
@@ -133,7 +133,7 @@ func TestSlotArgs(t *testing.T) {
 // features want it.
 func TestSlotArgsWithPools(t *testing.T) {
 	t.Run("pooling alone still needs the shared cache", func(t *testing.T) {
-		got := appendSlotArgs(nil, slotPlan{Live: 1}, 2, true)
+		got := appendSlotArgs(nil, slotPlan{Live: 1}, 2, nil, true)
 		want := []string{"--kv-unified", "--polykv-max-pools", "2"}
 		if !slices.Equal(got, want) {
 			t.Errorf("args = %v, want %v", got, want)
@@ -141,7 +141,7 @@ func TestSlotArgsWithPools(t *testing.T) {
 	})
 
 	t.Run("both features, one --kv-unified", func(t *testing.T) {
-		got := appendSlotArgs(nil, slotPlan{Dynamic: true, Live: 1, Max: 4}, 2, true)
+		got := appendSlotArgs(nil, slotPlan{Dynamic: true, Live: 1, Max: 4}, 2, nil, true)
 		want := []string{"--kv-unified", "--max-parallel", "4", "--polykv-max-pools", "2"}
 		if !slices.Equal(got, want) {
 			t.Errorf("args = %v, want %v", got, want)
@@ -152,7 +152,7 @@ func TestSlotArgsWithPools(t *testing.T) {
 	})
 
 	t.Run("stock llama.cpp gets no pool flags", func(t *testing.T) {
-		if got := appendSlotArgs(nil, slotPlan{Live: 1}, 2, false); len(got) != 0 {
+		if got := appendSlotArgs(nil, slotPlan{Live: 1}, 2, nil, false); len(got) != 0 {
 			t.Errorf("stock llama.cpp must get nothing, got %v", got)
 		}
 	})
@@ -360,5 +360,72 @@ func TestAdmissionWaitIsOpencotiOnly(t *testing.T) {
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusTooManyRequests {
 		t.Errorf("status = %d, want the 429 passed through untouched", res.StatusCode)
+	}
+}
+
+// A model may state the unified pool rather than inherit the derivation, and
+// the two answer different questions: the derivation asks whether this load has
+// parked slots or a pool to admit into, the model asks whether one conversation
+// may use every cell.
+func TestTheModelMayStateTheUnifiedPool(t *testing.T) {
+	yes, no := true, false
+	for _, tt := range []struct {
+		name    string
+		plan    slotPlan
+		pools   int
+		unified *bool
+		want    []string
+	}{
+		{
+			name: "stated on, with nothing else to admit into",
+			plan: slotPlan{Dynamic: false, Live: 1, Max: 1}, unified: &yes,
+			want: []string{"--kv-unified"},
+		},
+		{
+			name: "stated off, with nothing else to admit into",
+			plan: slotPlan{Dynamic: false, Live: 1, Max: 1}, unified: &no,
+			want: []string{"--no-kv-unified"},
+		},
+		{
+			name: "not stated adds nothing when nothing needs it",
+			plan: slotPlan{Dynamic: false, Live: 1, Max: 1}, unified: nil,
+			want: nil,
+		},
+		{
+			// types/xollama refuses `unified: false` with dynamic slots, so the
+			// only way here is an operator changing one without the other; the
+			// flag is still written once, not twice.
+			name: "stated on beside dynamic slots is still one flag",
+			plan: slotPlan{Dynamic: true, Live: 1, Max: 4}, unified: &yes,
+			want: []string{"--kv-unified", "--max-parallel", "4"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := appendSlotArgs(nil, tt.plan, tt.pools, tt.unified, true)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("appendSlotArgs = %v, want %v", got, tt.want)
+			}
+			if n := slices.Index(got, "--kv-unified"); n >= 0 && slices.Index(got[n+1:], "--kv-unified") >= 0 {
+				t.Errorf("--kv-unified written twice: %v", got)
+			}
+		})
+	}
+
+	// Off means off: a stock load gets upstream's argv whatever the model says.
+	if got := appendSlotArgs(nil, slotPlan{Dynamic: true, Live: 1, Max: 4}, 2, &no, false); len(got) != 0 {
+		t.Errorf("a llama.cpp load must take no slot flags, got %v", got)
+	}
+}
+
+func TestTheResidencyTacticIsOpencotiOnly(t *testing.T) {
+	kv := kvCacheTypes{ResidencyMode: "window"}
+	if got := appendKVResidencyArgs(nil, kv, true); !slices.Equal(got, []string{"--kv-residency-mode", "window"}) {
+		t.Errorf("opencoti: got %v", got)
+	}
+	if got := appendKVResidencyArgs(nil, kv, false); len(got) != 0 {
+		t.Errorf("llama.cpp must take no residency flag, got %v", got)
+	}
+	if got := appendKVResidencyArgs(nil, kvCacheTypes{}, true); len(got) != 0 {
+		t.Errorf("an unstated tactic must add nothing, got %v", got)
 	}
 }

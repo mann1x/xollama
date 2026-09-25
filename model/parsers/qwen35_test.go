@@ -1,6 +1,7 @@
 package parsers
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/ollama/ollama/api"
@@ -511,5 +512,32 @@ func TestQwen35ParserThinkingTruncatedWithoutCloseTag(t *testing.T) {
 	}
 	if len(calls) != 0 {
 		t.Fatalf("expected no tool calls, got %d", len(calls))
+	}
+}
+
+func TestQwen35ToolCallTags(t *testing.T) {
+	p := &Qwen35Parser{}
+	start, end := p.ToolCallTags()
+	if start != "<tool_call>" || end != "</tool_call>" {
+		t.Fatalf("tool call tags = %q, %q", start, end)
+	}
+
+	// A response-wide thinking budget reads the opening tag through the generic
+	// helper, which must find it without knowing the parser's type. Until this
+	// parser named its tags the helper returned "", and the budget stayed
+	// cumulative across a whole agentic turn with nothing to forgive it.
+	if got := ToolCallStartTagForParser(p); got != "<tool_call>" {
+		t.Fatalf("ToolCallStartTagForParser = %q, want %q", got, "<tool_call>")
+	}
+}
+
+func TestQwen35ToolCallTagsArePreserved(t *testing.T) {
+	// The sampler matches the reset tag as a token sequence, so the tag has to
+	// survive detokenization intact rather than being split into text pieces.
+	// PreservedTokens is what keeps llama-server emitting it whole.
+	preserved := (&Qwen35Parser{}).PreservedTokens()
+	start, _ := (&Qwen35Parser{}).ToolCallTags()
+	if !slices.Contains(preserved, start) {
+		t.Fatalf("PreservedTokens = %q, missing the tool call open tag %q", preserved, start)
 	}
 }

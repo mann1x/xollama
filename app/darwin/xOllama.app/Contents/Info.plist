@@ -3,7 +3,7 @@
 <plist version="1.0">
   <dict>
     <key>CFBundleDisplayName</key>
-    <string>Ollama</string>
+    <string>xOllama</string>
     <key>CFBundleExecutable</key>
     <string>xOllama</string>
     <key>CFBundleIconFile</key>
@@ -40,9 +40,20 @@
     <array>
       <dict>
         <key>CFBundleURLName</key>
-        <string>Ollama URL</string>
+        <string>xOllama URL</string>
         <key>CFBundleURLSchemes</key>
         <array>
+          <string>xollama</string>
+          <!-- ollama:// as well, and deliberately. Sign-in opens
+               https://ollama.com/connect?...&amp;launch=true and ollama.com
+               picks the scheme it redirects to; declaring only xollama would
+               leave that redirect with no handler on a Mac that has no stock
+               Ollama.app, and break sign-in silently. Unlike the Windows
+               registry key this claims nothing from anyone: LaunchServices
+               arbitrates between claimants and the user can choose, and
+               removing this bundle never removes another app's registration.
+               The Windows side is narrower for exactly that reason; see
+               OllamaSchemeUnclaimed in app/xollama.iss. -->
           <string>ollama</string>
         </array>
       </dict>

@@ -4,6 +4,11 @@ Every change xollama carries that is *also* an open PR against upstream
 ollama. This file is the contract: a patch is here because upstream has not
 taken it, and it leaves when upstream does.
 
+This file says *which* patches are carried and at which merge.
+`docs/protocols/FORK-SYNC.md` says *how* they get here — the manifest the fork
+publishes, the sha to merge at, and why nothing is ever hand-copied. Read that
+first if a patch looks missing or out of date.
+
 **Rules**
 
 1. Each carried patch is merged onto `main` as its **own `--no-ff` merge**,
@@ -14,21 +19,111 @@ taken it, and it leaves when upstream does.
 3. On every upstream sync, re-check the `state` column. A patch whose PR
    merged upstream is **retired the same day** — carrying it twice is how a
    silent double-apply happens.
-4. A patch with no upstream PR is an xollama feature, not a carried patch.
-   It belongs in `docs/features/`.
+4. A patch with no upstream PR **and no home in the fork** is an xollama
+   feature, not a carried patch. It belongs in `docs/features/`.
+5. A patch the fork's manifest marks `fork-only` is a third thing: authored in
+   `mann1x/ollama`, carried here, but never reported upstream. Its
+   `upstream_pr` is `null`, so the **branch slug is its identifier** — every
+   other row in this file keys on the PR number, and these cannot. They are
+   listed apart, below.
 
-**Status as of 2026-09-18: all thirteen are carried on `main`, replayed onto
-v0.34.2, and all thirteen are still OPEN against `ollama/ollama`.**
+**Status as of 2026-09-21: all thirteen are carried, and all thirteen are still
+OPEN against `ollama/ollama`.** The twelve that have a home in `mann1x/ollama`
+are now consumed from its first `PATCHES.json` — `base: v0.34.2`,
+`integration.sha 3af5f361` — each re-merged at the manifest's sha, in
+`patches[]` order. The fork rebased every branch onto v0.34.2 and force-pushed,
+so the 2026-09-18 merges below are of commits that no longer exist there; they
+are kept because rule 1 makes retiring a patch the revert of its whole merge
+set, and that set is now two entries long for most rows.
 
-| PR | merge | PR | merge |
+| PR | branch | 2026-09-18 merge | manifest sha | 2026-09-21 merge |
+|---|---|---|---|---|
+| #17563 | `up-repeat-guard` | `1e384e33` | `f87ae80d` | `14afe025` |
+| #17564 | `up-truncated-tool-calls` | `a765e728` | `70213554` | `9976ce1c` |
+| #17565 | `up-gemma4-object-close` | `5dc1d79a` | `64f89f3b` | `2184656c` |
+| #17566 | `up-think-budget` | `2fd06701`, `aa991d47`, `f830f71d` | `6ae1ee7c` | `ae5a9afb` |
+| #17567 | `up-mlx-libdl` | `43be0f1d` | `88108349` | `f2e943e9` |
+| #17626 | `up-gemma4-stray-channel-name` | `c7d7a3fb` | `acf95e0c` | `f843a483` |
+| #17914 | `qwen3coder-tolerate-malformed-tool-calls` | `27e10549` | `d272c4f1` | `7d5e86c2` |
+| #18212 | `up-reasoning-budget-line-boundary` | `a6dc8df3` | `3d15e71c` | `04cf5711` |
+| #18281 | `up-native-thinking-replay` | `bb54003d` | `af4825f7` | `4e2ed242` |
+| #18288 | `up-gemma4-stray-closer` | `5a80b98b` | `d54fe13e` | `f9f9fea3` |
+| #18289 | `up-jinja-runner-reuse` | `ddb0fec9` | `43a969b9` | `2cb18c10` |
+| #18307 | `gemma4-toolcall-in-thinking` | `0c0db3d9` | `16a78556` | `48f88b14` |
+| #16820 | `pull/16820/head` — **not ours** | `a4a6dd7b` | — | — |
+
+Two branches carry no `up-` prefix on purpose: renaming a branch that heads an
+open cross-fork PR closes the PR. See `docs/protocols/FORK-SYNC.md` R1.
+
+## Fork-only — carried, never reported upstream
+
+Manifest `bc1448ec`, `integration.sha d57818e3`, still `base: v0.34.2`. These
+two arrived as `status: "fork-only"` with `upstream_pr: null` — a value no
+earlier row had, flagged by the fork rather than slipped in. Keyed on the
+branch slug, because there is no PR number to key on.
+
+| branch | manifest sha | our merge | what it does |
 |---|---|---|---|
-| #17563 | `1e384e33` | #17914 | `27e10549` |
-| #17564 | `a765e728` | #18212 | `a6dc8df3` |
-| #17565 | `5dc1d79a` | #18281 | `bb54003d` |
-| #17566 | `2fd06701`, `aa991d47`, `f830f71d` | #18288 | `5a80b98b` |
-| #17567 | `43be0f1d` | #18289 | `ddb0fec9` |
-| #17626 | `c7d7a3fb` | #18307 | `0c0db3d9` |
-| #16820 | `a4a6dd7b` | | |
+| `up-gemma4-unparsed-tool-call-content` | `cbcc5ed2` | `1b9e0ab6` | a tool call the parser cannot read comes back as content, re-wrapped in its own tags, instead of vanishing |
+| `up-toolcall-tags` | `61c78a05` | `ef7a0ad6` | `ToolCallTagger` / `ToolCallStartTagForParser`, plus the gemma4 and qwen3.5 methods |
+
+`up-gemma4-unparsed-tool-call-content` deliberately does **not** repair the
+call. The run that found it had a `new_text` argument degenerated to
+`text=text=text=` before the key was swallowed; repairing that payload writes
+the fragment into the user's file. A call the parser cannot read is a call that
+must not run — but it must not vanish either, which is what used to happen:
+`calls=0`, `content=""`, `thinking=""`, and only a server-log warning.
+
+`up-toolcall-tags` is the branch this repo asked for. `ToolCallTags()` had been
+on `think-budget` since August with no `up-*` home — an R2 violation found by
+grepping for it after the merge that was supposed to bring it. The branch is an
+extraction, not a new commit.
+
+**Its conflict has a trap, and it is worth keeping written down.** It collides
+with `up-think-budget`, which adds `ThinkingTagger` at the same three points in
+the same three files (`parsers.go`, `gemma4.go`, `qwen35.go`). Same keep-both
+shape as the others — except the conflict boundary cuts **inside a function**,
+so the closing brace on the line after `>>>>>>>` belongs to *both* halves.
+Concatenating the two sides the obvious way orphans it and yields Go that does
+not parse; the fork's own replay harness did exactly that and reported four
+syntax errors. Close the first block with its own brace. `ThinkingTagger` first.
+
+**`ToolCallStartTagForParser` has no caller here yet**, and that is expected:
+the half that *reads* the tag — response-scope thinking budget — is the residue
+still on `think-budget`. See `docs/protocols/FORK-SYNC.md`, "Dependent patches".
+
+**Six of the twelve conflicted, and none of it was an ordering mistake.** Four
+were the shape the manifest's `known_conflicts` predicts — two additive test
+blocks at the same point, resolved by keeping both. One
+(`up-gemma4-stray-channel-name` on `model/parsers/gemma4.go`) was git anchoring
+a one-line addition on the wrong `p.buffer.Reset()` block, since #18307 had
+inserted a new one above it; the patch's own line was already in the right
+branch, so HEAD was kept and all four pieces of the patch were then checked
+present by name. `gemma4-toolcall-in-thinking` conflicted as a pure
+duplication — the resolution left the file byte-identical to what it already
+was, confirmed with `git diff`.
+
+**One conflict was a real choice, and the fork won it.**
+`up-jinja-runner-reuse` compares the config a runner was *launched* with
+(`runner.llamaConfig`) rather than one recomputed from its model, and uses
+`reflect.DeepEqual` because 0.34 added `DraftModelShardPaths []string` to
+`LlamaServerConfig`. Theirs was taken whole, per FORK-SYNC.md R4. It then
+failed four of this repo's own fixtures — `TestSchedNeedsReload` and the three
+`TestSchedNeedsReloadIgnoresAutomatic*` — which build a `runnerRef` by hand and
+left the new field zero, so an empty config compared against a real one and
+every request reloaded. Same defect the fork fixed in two upstream fixtures;
+fixed here for ours, since these tests are this repo's, not the patch's.
+
+Gates on the whole set: `gofmt -l .` silent, `go build ./...`, `go vet ./...`,
+`go test ./...` (59 packages ok, 0 failures — the four "not ours" failures of
+2026-09-18 did not reproduce), and `golangci-lint run` (0 issues).
+
+**`ToolCallTags()` did not arrive, and it is not in the manifest.** It exists on
+`think-budget` and on `thinkbudget-0.34.2` — `model/parsers/parsers.go`,
+`gemma4.go`, `qwen35.go` and both test files — and on **no** `up-*` branch at
+any manifest sha. That makes it a patch authored on the integration branch,
+which R2 forbids and R4 says we must not hand-copy. Raised with the fork; it
+needs a branch and a manifest entry before it can be carried here.
 
 Verified after the replay: `go build ./...` and `go vet ./...` clean, and the
 full `go test ./...` passes except four failures that are **not ours** and fail
@@ -73,6 +168,267 @@ cache-key field fails `TestModelShowCacheKeysOnTheThinkValue`, and dropping the
 Gates on the merge: `gofmt`, `go build .`, `go vet ./...`, `go test ./...`
 (58 ok, 0 fail, exit 0), `-race` on `server api openai anthropic`, and
 `golangci-lint run` (0 issues).
+
+## Fork-only, second batch — manifest 18 patches (2026-09-22)
+
+| branch | manifest sha | our merge | what |
+|---|---|---|---|
+| `up-codex-request-count-mtime` | `bf047765` | `585067e6` | the session's own rollout file is skipped on a coarse-mtime filesystem |
+| `up-fileutil-root-permission-tests` | `e153344b` | `f721ddaf` | three permission tests skip under uid 0 |
+| `up-gofmt-vision-test-data` | `09e76dda` | `42d6028c` | the one file `gofmt -l` names on v0.34.2 |
+| `up-response-scope-think-budget` | `fdf0d23c` | `6cbbe858` | **the first stacked patch** |
+
+`up-response-scope-think-budget` declares
+`depends_on: [up-think-budget, up-reasoning-budget-line-boundary, up-toolcall-tags]`
+and a base of `8f64c67d`, the merge of those three onto `v0.34.2` — not the tag.
+The widened invariant was checked before merging rather than assumed: all three
+are ancestors of the branch, all three were already on `dev`, and all three are
+earlier in `patches[]`. Note that merging a stacked patch also imports its base
+merges (`05e1dfcf`, `9b3b4766`, `8f64c67d`), which is harmless here because they
+merge shas this tree already carried. It gives `ToolCallStartTagForParser` the
+caller it was waiting for (`server/routes.go:2592`).
+
+**Two of the four were fixes xollama had already made, locally, on upstream
+files.** Both conflicted for that reason, and in both the fork's version was
+taken so the two trees converge on one identifier:
+
+- `codexAppRequestMTimeSkew` (ours, `060144ab`, 2026-09-18) vs
+  `codexAppSessionMTimeSlack` (theirs). Semantically identical —
+  `mtime < start-2s` either way — and measured independently on this host
+  before their branch existed.
+- `requirePermissionEnforcement` (ours) vs `requirePermissionsApply` (theirs).
+  Theirs is the better-scoped version: it guards only the three tests that
+  assert a refusal, leaving `_UnchangedContentIsNoOp` and `_NoOrphanTempFiles`
+  measuring something real under root.
+
+`060144ab` was authored here, on a file that exists at `v0.34.2`, and never sent
+to the fork — it is in no branch of `mann1x/ollama`. That is the same failure as
+`ToolCallTags()`, pointing the other way, and it predates the protocol that
+forbids it (`FORK-SYNC.md` R4, agreed 2026-09-21). Worth stating plainly rather
+than quietly resolving, because R4 exists for exactly this and it was us.
+
+Gates on all four: `gofmt -l .` silent, `go build ./...`, `go vet ./...`,
+`go test ./...` 59 ok / 0 fail, `go test -race` on `llm server model cmd` all
+ok, `golangci-lint run` 0 issues.
+
+## The 004 drift closure — merged, and what the measurement says (2026-09-22)
+
+| branch | fork sha | our merge | what it adds |
+|---|---|---|---|
+| `up-response-scope-think-budget` (C++ half) | `3c5d29b4` | `84bcccc5` | `b4c58eee`: a spent response stays quiet and bars reopening |
+
+`llama/compat/004-reasoning-budget-line-boundary.patch` goes 825 → **982 lines**.
+Union verified by identifier rather than by line count: `reasoning-budget-scope`
+2, `THINK_BUDGET_SCOPE` 1 (#18212's half, intact), plus `reset_seqs` 11,
+`forced_end_pos` 3, `common_reasoning_budget_end_offset` 2,
+`spent_response_stays_quiet` 2, `spent_response_bars_reopening` 2.
+
+**Applied on a clean fetch**, which is the only way to check a `.patch` here —
+the applier skips anything `git apply --reverse --check` accepts, so on an
+already-patched tree a wrong patch is silently skipped rather than rejected, and
+no Go gate reads these files at all. Fresh `FetchContent` of revision `391fac164`
+(b10969) logged `llama/compat: applied 001-…, models/003-…, 004-…, 005-…`.
+
+### The repro the fork asked us to run — it does not reproduce here
+
+Their request was explicit: *"If the 32-copies repro does not reproduce on your
+side before the change, tell me — it would mean my reading of what `b4c58eee`
+fixes is wrong."* It does not.
+
+Two arms, same Go binary, differing only in `llama-server`,
+`libllama-common.so*` and `libllama-server-impl.so`; **before** = the 825-line
+patch (`forced_end_pos` absent from the fetched source, confirmed by grep),
+**after** = the 982-line one. `XOLLAMA_ENGINE=llamacpp` pinned, because the
+opencoti engine has its own sampler and can never exercise 004.
+
+| arm | model | budgets | runs | wrap-up copies | reopens |
+|---|---|---|---|---|---|
+| before | `gemma4:e2b` | 4, 8, 16, 32, 64, 128, 256 | 7 | **1 each** | 0 |
+| before | `deepseek-r1:14b` | 32, 128 | 2 | **1 each** | 0 |
+| before | `deepseek-r1:14b`, prompts that ask for a second `<think>` | 16, 64 × 2 prompts | 4 | **1 each** | 0 |
+| after | `deepseek-r1:14b`, same four probes | 16, 64 × 2 prompts | 4 | **1 each** | 0 |
+
+Thirteen before-arm runs, one wrap-up copy in every one, never in `content`.
+The run most likely to show the bug — `reconsider-loop` at budget 16, which ran
+to the 4096-token cap (`done_reason: "length"`, 15,328 characters of content) —
+still carried exactly one. The engine log tells the same story: one
+`activated` / `budget exhausted` / `forced sequence complete, done` per request,
+never a second activation.
+
+**What this does and does not say.** It does not contradict `b4c58eee`: the path
+it guards is what happens when a model opens a **second** thinking block after
+the response budget is spent, and no model here reopened, not even when asked to
+in the prompt. So the repro never reached the defect, and a repro that cannot
+reach the defect proves nothing either way. The after arm matching the before
+arm token-for-token on all four shared probes is the useful result: on this
+host, with these models, the extra 157 lines are **behaviour-neutral where the
+bug does not fire**.
+
+The merge stands on the union check, the clean-fetch apply, and the patch's own
+`test-reasoning-budget` cases (`spent_response_stays_quiet`,
+`spent_response_bars_reopening`) — not on this repro.
+
+### Second round, on the fork's own tag — still one copy
+
+The fork answered with a structural reason the first round could not have
+reached the guard, and it is correct here: `ToolCallStartTagForParser`
+(`model/parsers/parsers.go:60`) returns `""` unless the parser implements
+`ToolCallTagger`, and in `model/parsers/` exactly two do — `Gemma4Parser`
+(`gemma4.go:72`) and `Qwen35Parser` (`qwen35.go:67`). `deepseek-r1` has no entry
+in `ParserForName` at all, so six of those thirteen runs got
+`ThinkBudgetResetTag: ""` and the tool-call reset could not fire in principle.
+`gemma4:e2b` has a parser but emitted no tool call, so nothing reset there
+either.
+
+Re-run on their recorded tag, which is on this host:
+`qwen3.8-mtp_tb:27b-q4km` — `renderer qwen3.8`, **`parser qwen3.5`**, 27.3B,
+whose own params carry `think_budget medium` and a 240-character budget message.
+`think_budget` 96 and 64 against `num_predict` 768 and 1024 (the ratio is the
+lever), `num_ctx` 8192, with and without a tool the prompt forces the model to
+call. `offloaded 66/66 layers to GPU` in both arms.
+
+| | runs | tool calls | budget activations | copies | in `content` | back to back |
+|---|---|---|---|---|---|---|
+| before | 6 | 0, 0, 0, 20, 21, 29 | 6 of 6 | **1 each** | 0 | 0 |
+| after | 6 | 0, 0, 0, 20, 21, 29 | 6 of 6 | **1 each** | 0 | 0 |
+
+Identical arm to arm on every field — copies, tool calls, `thinking_chars`,
+`content_chars`, `eval_count`, `done_reason`. Route 2 was genuinely exercised
+this time: the tools runs emit 20–29 calls, so the reset tag `<tool_call>` was
+in the stream. The model still never opened a **second** thinking block — it
+goes from the wrap-up message straight into the tool calls and never reopens —
+so the guard's precondition does not occur, and the defect is still out of
+reach rather than absent.
+
+**Nineteen before-arm runs now, across three models and both routes, all one
+copy.**
+
+### Third round — reconstructed to the described shape, 48 runs, still nothing
+
+The fork's original 08-18 input is **unrecoverable**: it was a `curl` whose body
+and server log went to a tmpfs scratchpad and did not survive a reboot. They
+declined to write a lookalike and send it as the original, and the reasoning is
+worth keeping — a fabricated "original" makes either outcome unreadable, a hit
+attributed to their August prompt and a miss to the base change, when both would
+really be about the substitute's difficulty. So what follows is **reconstructed
+to a described property, not recovered**, and must be read that way.
+
+The property: one integer answer in the low thousands, reachable by a DP the
+model narrates step by step, `think_budget: 96` against `num_predict: 768`, the
+tag's own sampler params left untouched (so the runs are deliberately *not*
+deterministic). Six problems, two repetitions, both b10969 arms.
+
+**Round 1 missed half the shape, and reading the raw output is what caught it.**
+At budget 96 the cut lands while the model is still setting up the recurrence —
+*before* it commits to anything. The 08-18 output has the opposite order: the
+answer first, then a `<reasoning>` section carrying the second copy and the
+trailing `</think>`. So the model had committed and then opened a **new** block
+to check itself, and that second opening is the guard's precondition. Round 2
+requires that order explicitly.
+
+| shape | arm | runs | copies in `content` | `</think>` in `content` | activations | resets | **re-arm on start tag** |
+|---|---|---|---|---|---|---|---|
+| derive, then answer | before | 12 | 0 | 0 | 12 | 0 | **0** |
+| derive, then answer | after | 12 | 0 | 0 | 12 | 1 | **0** |
+| answer, then reopen | before | 12 | 0 | 4 | 12 | 2 | **0** |
+| answer, then reopen | after | 12 | 0 | 3 | 12 | 1 | **0** |
+
+**The zero is a real absence, not a missing log line.** `re-activated on new
+start tag` is present in *both* arms' `libllama-common.so.0.4.1` by `strings`,
+so counting it on the before arm means something. `forcing the end sequence
+alone` is **after-only** — the fix's own new message, and therefore a clean
+discriminator the day the path is ever taken.
+
+What round 2 did buy is the sharpest datum so far: in 7 of 24 runs the model
+emitted a `</think>` into `content`, i.e. it textually opened a second block —
+**and the sampler still did not re-arm.** The `reset sequence seen, forgiving 96
+spent tokens` lines show the reset half of the machinery firing, so the state
+machine is live; it is the DONE → FORCING re-entry that never occurs.
+
+That raised a question, and the answer retired it — the third hypothesis of
+ours to die on this patch. Verified here, not taken on report:
+
+- `case REASONING_BUDGET_DONE:` (`common/reasoning-budget.cpp:213`) advances
+  **only `start_matcher`**. What we saw in `content` was `</think>`, the **end**
+  sequence, which cannot re-arm anything on either arm. The 7-of-24 is a close
+  with no open in front of it, not a missed match.
+- `grep -ci channel common/reasoning-budget.cpp` → **0**. The sampler is a token
+  matcher; the channel is assigned downstream in `model/parsers/`. "Matched in
+  content but not in thinking" is not a state the code can be in, in any
+  version — so b10434 → b10969 cannot differ that way either.
+
+**The instrument is sound, and it validates itself from the runs already taken.**
+All four trace messages are `COM_TRC` from the same translation unit: `reset
+sequence seen` (112), `activated` (123), `budget exhausted` (194) and
+`re-activated on new start tag` (224). The first three fired in the very same
+requests, so the trace channel was live and `start_matcher` genuinely never
+advanced in `DONE`. Note that `test-reasoning-budget` is *not* usable as a
+control here: it never calls `common_init`, sets no verbosity threshold, and
+prints no `COM_TRC` at all, so a zero from it would mean nothing.
+
+### Verdict: no live repro on b10969
+
+Stated plainly because it is the true and weaker claim. `004`'s spent-response
+half is defended by `spent_response_stays_quiet` and
+`spent_response_bars_reopening` — which fail without it on **both** trees'
+fetches — and by the fork's b10434 observation, which can be described but not
+re-run. It is **not** defended by a current live case, and the four A/B cells
+show why that costs nothing: the after arm matched the before arm on every
+field, so a guard on an untaken path is free.
+
+The fork also corrected their own description in the same exchange: the August
+residual was *not* "the forced sequence firing again with no block open". A
+block **was** opened, textually, after the parser had closed the thinking
+channel, so the re-forced message landed in `content`. Same event, correctly
+named. There is no path into `FORCING` without a start-tag match or an already
+open block.
+
+`forcing the end sequence alone` is the marker to watch: **after-only**, so the
+day it appears in a log it identifies both the build and the path in one string.
+
+### The gate that does hold: the patch's own tests, on our own fetch
+
+The repro is not the gate, and this is. `test-reasoning-budget` built from
+**our** clean b10969 fetch (`391fac1646`) carrying the merged 982-line patch,
+CPU-only:
+
+```
+Test 'spent response scope closes quietly' passed
+Test 'spent response scope bars reopening' passed
+Test 'response scope budget' passed
+Testing reasoning budget sampler... OK (14 tests passed)
+```
+
+Built standalone with the compat hooks (`001`) temporarily reverted, because
+they pull `llama/compat/*.cpp` into `libllama` and `004` lives entirely in
+`common/` and `tests/` — the two files were restored afterwards. `llama/server`
+forces `LLAMA_BUILD_TESTS OFF` (`llama/server/CMakeLists.txt:174`), so the
+ollama sub-build will never run these; a separate configure is the only way.
+
+### Two hypotheses retired, and the one that is left
+
+Both were mine and both are wrong, corrected by the fork with evidence:
+
+- **Not harness-shaped.** Their observation was a single `/api/chat`, no tools,
+  no tool round trip — the model reopened on its own.
+- **Not a dead path.** Reverting the two behaviours fails
+  `tests/test-reasoning-budget.cpp:367` on b10969, so the sampler still
+  re-enters `FORCING` on a second start tag. A base change can only alter
+  whether a model *emits* that tag.
+
+What is left is **b10434 → b10969**, and one correction that matters for reading
+any of this: their two observations are opposite sides of an intermediate fix,
+not one defect seen twice. **08-17** is the 32-copy loop, pre-`b4c58eee`.
+**08-18** is the residual after it — loop gone, one copy in `thinking`, one
+*further* copy leaking into `response`, cutting the answer mid-word with a
+trailing `</think>`. Our before arm carries neither identifier, so it is the
+08-17 configuration, and the loop did not happen on b10969 with their tag.
+
+**Lane note.** These builds ran in a detached worktree, not in this checkout:
+`build/lib/ollama` is a symlink to `/usr/local/lib/ollama` and a local
+`llama-server` build installs straight into the live service's runtime. That
+happened once, on 2026-09-22, before the lane changed. Rule 7 of the
+`xollama-build-test` skill now carries it.
 
 ## Tier 1 — the reason this fork exists
 

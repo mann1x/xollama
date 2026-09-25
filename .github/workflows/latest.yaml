@@ -6,6 +6,19 @@ on:
 
 jobs:
   update-latest:
+    # xollama-hook: docker-release -- see docs/features/docker-release.md
+    #
+    # This job cannot run on the fork and would fail on its first release: it
+    # wants a self-hosted `linux` runner (the fork has none), an
+    # `environment: release` the fork does not define, and vars.DOCKER_USER /
+    # secrets.DOCKER_ACCESS_TOKEN, which are upstream's names -- this fork uses
+    # DOCKERHUB_USERNAME / DOCKERHUB_TOKEN. It is also redundant here, because
+    # .github/workflows/docker-release.yaml already publishes :latest as part
+    # of the multi-arch manifest it assembles.
+    #
+    # Guarded rather than deleted so the file keeps merging cleanly from
+    # upstream.
+    if: github.repository == 'ollama/ollama'
     environment: release
     runs-on: linux
     steps:

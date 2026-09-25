@@ -24,7 +24,7 @@ func TestEnsureCloudEnabledForTool(t *testing.T) {
 			_, _ = w.Write([]byte(`{"cloud":{"disabled":false,"source":"none"}}`))
 		}))
 		t.Cleanup(ts.Close)
-		t.Setenv("OLLAMA_HOST", ts.URL)
+		t.Setenv("XOLLAMA_HOST", ts.URL)
 
 		if err := ensureCloudEnabledForTool(context.Background(), op); err != nil {
 			t.Fatalf("expected nil error, got %v", err)
@@ -41,7 +41,7 @@ func TestEnsureCloudEnabledForTool(t *testing.T) {
 			_, _ = w.Write([]byte(`{"cloud":{"disabled":true,"source":"config"}}`))
 		}))
 		t.Cleanup(ts.Close)
-		t.Setenv("OLLAMA_HOST", ts.URL)
+		t.Setenv("XOLLAMA_HOST", ts.URL)
 
 		err := ensureCloudEnabledForTool(context.Background(), op)
 		if err == nil {
@@ -57,7 +57,7 @@ func TestEnsureCloudEnabledForTool(t *testing.T) {
 			http.NotFound(w, r)
 		}))
 		t.Cleanup(ts.Close)
-		t.Setenv("OLLAMA_HOST", ts.URL)
+		t.Setenv("XOLLAMA_HOST", ts.URL)
 
 		err := ensureCloudEnabledForTool(context.Background(), op)
 		if err == nil {

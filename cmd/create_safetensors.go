@@ -30,6 +30,19 @@ type modelfileConfig struct {
 	Requires   string
 	Parameters map[string]any
 	Messages   []api.Message
+
+	// xollama-hook: model-config — see docs/features/model-config.md
+	//
+	// Recorded verbatim, not parsed. This function runs on EVERY create, only
+	// to decide whether the Modelfile is a safetensors import, and its default
+	// branch treats an unrecognised command as a PARAMETER -- so an XOLLAMA
+	// line was rejected with "unknown parameter 'xollama'" before the GGUF
+	// path, which handles it perfectly well, was ever reached. Recognising it
+	// here is what lets that path run. Parsing it here would mean resolving a
+	// relative .json path this function has no base directory for, and the
+	// GGUF path validates it anyway; the safetensors path refuses it by name
+	// rather than dropping it.
+	XollamaArgs string
 }
 
 var ignoredModelfileParameters = []string{
@@ -77,6 +90,9 @@ func configFromModelfile(modelfile *parser.Modelfile) (string, *modelfileConfig,
 			mfConfig.Requires = strings.TrimPrefix(requires, "v")
 		case "adapter":
 			return "", nil, errAdaptersUnsupported
+		// xollama-hook: model-config — see docs/features/model-config.md
+		case "xollama":
+			mfConfig.XollamaArgs = cmd.Args
 		case "message":
 			role, content, _ := strings.Cut(cmd.Args, ": ")
 			mfConfig.Messages = append(mfConfig.Messages, api.Message{Role: role, Content: content})

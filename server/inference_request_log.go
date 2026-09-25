@@ -14,7 +14,16 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/ollama/ollama/envconfig"
+	"github.com/ollama/ollama/internal/fsowner"
 )
+
+// xollama-hook: store-ownership
+//
+// The creating calls below go through internal/fsowner instead of os. On a
+// packaged Linux install the server runs as an unprivileged service account,
+// and anything a root-run command creates here would be unusable by it
+// afterwards -- silently, as a slow model list rather than an error. The
+// wrappers are os plus one stat when there is no service account to find.
 
 type inferenceRequestLogger struct {
 	dir     string
@@ -109,14 +118,14 @@ func (l *inferenceRequestLogger) log(route, method, scheme, host, contentType st
 	bodyPath := filepath.Join(l.dir, bodyFilename)
 	curlPath := filepath.Join(l.dir, curlFilename)
 
-	if err := os.WriteFile(bodyPath, body, 0o600); err != nil {
+	if err := fsowner.WriteFile(bodyPath, body, 0o600); err != nil {
 		slog.Warn("failed to write debug request body", "route", route, "error", err)
 		return
 	}
 
 	url := fmt.Sprintf("%s://%s%s", scheme, host, route)
 	curl := fmt.Sprintf("#!/bin/sh\nSCRIPT_DIR=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\"\ncurl --request %s --url %q --header %q --data-binary @\"${SCRIPT_DIR}/%s\"\n", method, url, "Content-Type: "+contentType, bodyFilename)
-	if err := os.WriteFile(curlPath, []byte(curl), 0o600); err != nil {
+	if err := fsowner.WriteFile(curlPath, []byte(curl), 0o600); err != nil {
 		slog.Warn("failed to write debug request replay command", "route", route, "error", err)
 		return
 	}

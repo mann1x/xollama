@@ -161,6 +161,12 @@ func TestFilterIntegratedGPUs(t *testing.T) {
 		got := filterIntegratedGPUs(append([]ml.DeviceInfo{}, devices...))
 		want := []ml.DeviceID{
 			{Library: "CUDA", ID: "0"},
+			// xollama-hook: igpu-vulkan — upstream drops this one. On this
+			// fork Vulkan is a first-class backend with its own opencoti
+			// implementation, and an integrated GPU is the case it exists
+			// for, so it is admitted on the same terms as CUDA. See
+			// integratedGPUAllowedByDefault.
+			{Library: "Vulkan", ID: "0"},
 			{Library: "ROCm", ID: "1"},
 			{Library: "Vulkan", ID: "1"},
 		}

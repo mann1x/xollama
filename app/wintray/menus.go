@@ -90,7 +90,7 @@ func (t *winTray) UpdateAvailable(ver string) error {
 
 func (t *winTray) showLogs() error {
 	localAppData := os.Getenv("LOCALAPPDATA")
-	AppDataDir := filepath.Join(localAppData, "Ollama")
+	AppDataDir := filepath.Join(localAppData, "xOllama") // xollama-hook: app-state
 	cmd_path := "c:\\Windows\\system32\\cmd.exe"
 	slog.Debug(fmt.Sprintf("viewing logs with start %s", AppDataDir))
 	cmd := exec.Command(cmd_path, "/c", "start", AppDataDir)

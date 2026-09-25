@@ -191,7 +191,7 @@ func TestGetIntegrationStatuses(t *testing.T) {
 		t.Fatalf("got %d integrations, want %d launcher entries", len(got), wantCount)
 	}
 	terminal := got[len(got)-1]
-	if terminal.ID != "terminal" || terminal.Installed != nil || terminal.Command != "ollama" {
+	if terminal.ID != "terminal" || terminal.Installed != nil || terminal.Command != "xollama" {
 		t.Fatalf("last integration = %+v, want Terminal without install status", terminal)
 	}
 }
@@ -670,7 +670,7 @@ func TestInferenceClientUsesUserAgent(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	t.Setenv("OLLAMA_HOST", ts.URL)
+	t.Setenv("XOLLAMA_HOST", ts.URL)
 
 	server := &Server{}
 	client := server.inferenceClient()

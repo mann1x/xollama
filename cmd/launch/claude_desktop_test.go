@@ -181,7 +181,7 @@ func TestLaunchIntegration_ClaudeDesktopDoesNotRequireLocalCloudSignIn(t *testin
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	DefaultSignIn = func(modelName, signInURL string) (string, error) {
 		t.Fatalf("Claude Desktop launch should not require Ollama Cloud sign-in, got %s at %s", modelName, signInURL)

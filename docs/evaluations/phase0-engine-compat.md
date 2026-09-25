@@ -199,3 +199,89 @@ form: **a flag in the vendor's source tree is not a flag in the vendor's
 published binary.** Probe the artifact the pin names. And because a flag probe
 cannot see values, probe those too — `-ctk kvarn3` against a bogus model path
 should fail on the *type*, not on the file.
+
+### Re-measured 2026-09-21 against build 19 (`66408c19`)
+
+The pin moved from build 18 to `opencoti-0.10.5-c7-2609210611001` for patch 0320.
+opencoti stated plainly that they ran no engine-compat pass on these bytes, so
+the matrix was taken again here rather than inherited — the rule above, applied
+to its own author.
+
+Probed as the `ollama` user on solidPC, `--server <flag> <value> --model
+/nonexistent.gguf`:
+
+| Flag | build 19 |
+|---|---|
+| `--gpu nvidia` | accepted |
+| `--no-mmap` | accepted |
+| `--max-parallel`, `--max-parallel-tps-floor`, `--max-parallel-vram-reserve` | accepted |
+| `--kv-unified`, `--swa-seq-budget` | accepted |
+| `--cache-type-k-swa`, `--cache-type-v-swa` | accepted |
+| `--kv-residency-mode auto` | accepted |
+| `--load-mode none` | **rejected** |
+| `--banana 1` (control) | rejected |
+
+Unchanged from build 18. `--load-mode` is still the one rejection and is still
+not a defect: opencoti spells it `--no-mmap`, and `Command` translates it. The
+control being refused is what makes the rest of the column mean anything.
+
+`--sparse-attn` is accepted, which is why it needed an advisory rather than a
+defect row — see `llm/engine_args.go`. opencoti's bug-3524 makes it lose
+retrievable content over a plain cache, silently, so nothing downstream can
+notice and the engine never says a word.
+
+### The 0320 fix, measured rather than inherited (2026-09-21)
+
+The pin moved for one patch, so the patch was checked. Both builds served the
+same qwen3 blob on the same 3090, as the `ollama` user, `--server
+--reasoning-format deepseek`, and were asked `What is 2+2?` with
+`reasoning_effort: "none"`:
+
+| build | `reasoning_content` | `content` |
+|---|---|---|
+| 18 (`a7a4e7da`) | the entire answer, as thinking | **empty** |
+| 19 (`66408c19`) | field absent | `"2 + 2 equals 4."` |
+
+On build 18 thinking-off through the API did not switch thinking off: everything
+went to the reasoning channel and a caller reading `content` got an empty
+string.
+
+**The inference drawn from that was wrong, and opencoti corrected it
+(2026-09-21).** We also saw `reasoning_effort: "low"` come back with an empty
+`content` and read it as the defect spanning the effort range. It is not:
+
+- The engine's thinking-off predicate is the exact string
+  `reasoning_effort == "none"`, or a request budget of 0
+  (`reasoning_budget_tokens` / `thinking_budget_tokens`), or Anthropic
+  `thinking: {type: "disabled"}`. **`low`, `medium`, `high` and `minimal` are
+  no-ops** — deliberately, since `low` asks for less thinking and not for none.
+  opencoti measured all four as byte-identical to each other. Upstream
+  llama.cpp never reads the field at all.
+- An empty `content` on a thinking-on turn is what **any** such turn returns
+  when the token cap lands inside the think block: `finish_reason: "length"`,
+  everything in `reasoning_content`. opencoti reproduced it with no effort field
+  present at all.
+
+So on build 18, `none` and `low` looked alike because `none` was broken into
+being a thinking-on turn and `low` always was one — not because one defect
+covered both. On build 19 `none` is fixed; `low` will still answer empty under a
+short cap, and that is correct behaviour.
+
+**Not yet re-verified here**: this repro was ad hoc and its `max_tokens` was not
+recorded, so the cap explanation is opencoti's measurement rather than ours. The
+source-level fact about the predicate is decisive on its own and is what
+retires the "broader than reported" claim.
+
+The consequence for anything that translates ollama's think levels: map only
+`false` / `none` to `"none"`, and never expect `low` / `medium` / `high` to
+differ. To ask for *less* thinking rather than none, send a request budget —
+`reasoning_budget_tokens: N` force-closes the block and leaves room for the
+answer. Whether xollama should map effort levels onto budgets is a
+default-behaviour decision, not something to adopt silently.
+
+One negative result worth keeping, because it nearly became a false conclusion:
+the first attempt ran the same comparison through `--cli` instead of `--server`,
+and **both** builds emitted a full `<think>` block despite `--reasoning off
+--reasoning-budget 0`. That is not a disproof of the fix; `--cli` simply does not
+apply the server-side reasoning controls. A repro that cannot reach the defect
+proves nothing about it.

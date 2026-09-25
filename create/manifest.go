@@ -215,12 +215,23 @@ func ApplyModelfileLayers(layers []manifest.Layer, opts ModelfileLayerOptions) (
 	// Replace rather than append: a model has one xollama config, and a child
 	// created FROM a parent must be able to override it rather than inherit a
 	// stale engine pin.
-	if !opts.Xollama.IsZero() {
+	//
+	// nil and empty are DIFFERENT here, which is the whole reason this reads
+	// the pointer rather than IsZero alone. nil is "this request says nothing
+	// about the fork config", and the parent's layer is inherited untouched --
+	// every ordinary create goes through that branch. A non-nil config that
+	// carries no settings is "this request says the fork config is nothing",
+	// and removes the layer. `xollama tweak model <m> --clear` has no other
+	// way to say it, and neither does a Modelfile that means to strip a
+	// parent's engine pin rather than add to it.
+	if opts.Xollama != nil {
 		layers = removeXollamaConfigLayer(layers)
-		var err error
-		layers, err = appendXollamaConfigLayer(layers, opts.Xollama)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create xollama config layer: %w", err)
+		if !opts.Xollama.IsZero() {
+			var err error
+			layers, err = appendXollamaConfigLayer(layers, opts.Xollama)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create xollama config layer: %w", err)
+			}
 		}
 	}
 

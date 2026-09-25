@@ -35,7 +35,7 @@ func TestDeepSeekHarnessRegistry(t *testing.T) {
 func TestDeepSeekHarnessConfigurePreservesSettingsAndIsIdempotent(t *testing.T) {
 	home := t.TempDir()
 	setTestHome(t, home)
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:12345")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:12345")
 
 	settingsPath, err := deepSeekHarnessSettingsPath()
 	if err != nil {
@@ -161,7 +161,7 @@ func TestDeepSeekHarnessConfigureSkipsWebSearchWhenCloudDisabled(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 	t.Cleanup(srv.Close)
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	settingsPath, err := deepSeekHarnessSettingsPath()
 	if err != nil {
@@ -195,12 +195,12 @@ func TestDeepSeekHarnessConfigureSkipsWebSearchWhenCloudDisabled(t *testing.T) {
 
 func TestDeepSeekHarnessCurrentModelRejectsDrift(t *testing.T) {
 	setTestHome(t, t.TempDir())
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 	dsh := &DeepSeekHarness{}
 	if err := dsh.Configure("qwen3.5"); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:9999")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:9999")
 	if got := dsh.CurrentModel(); got != "" {
 		t.Fatalf("CurrentModel() = %q for stale endpoint", got)
 	}
@@ -208,7 +208,7 @@ func TestDeepSeekHarnessCurrentModelRejectsDrift(t *testing.T) {
 
 func TestDeepSeekHarnessCurrentModelRejectsPatchDrift(t *testing.T) {
 	setTestHome(t, t.TempDir())
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 	dsh := &DeepSeekHarness{}
 	if err := dsh.Configure("qwen3.5"); err != nil {
 		t.Fatal(err)

@@ -4047,6 +4047,8 @@ func TestLlamaServerCompletionReasoningBudget(t *testing.T) {
 		wantStart            any
 		wantEnd              any
 		wantMessage          any
+		wantScope            any
+		wantResetTag         any
 		wantGenerationPrompt any
 	}{
 		{
@@ -4058,6 +4060,7 @@ func TestLlamaServerCompletionReasoningBudget(t *testing.T) {
 				ThinkingEndTag:   "<channel|>",
 			},
 			wantBudget:  float64(512),
+			wantScope:   "response",
 			wantStart:   "<|channel>",
 			wantEnd:     "<channel|>",
 			wantMessage: "",
@@ -4071,6 +4074,7 @@ func TestLlamaServerCompletionReasoningBudget(t *testing.T) {
 				ThinkingEndTag:   "</think>",
 			},
 			wantBudget:           float64(512),
+			wantScope:            "response",
 			wantStart:            "<think>",
 			wantEnd:              "</think>",
 			wantMessage:          "",
@@ -4088,6 +4092,7 @@ func TestLlamaServerCompletionReasoningBudget(t *testing.T) {
 				ThinkingEndTag:   "<channel|>",
 			},
 			wantBudget:           float64(512),
+			wantScope:            "response",
 			wantStart:            "<|channel>",
 			wantEnd:              "<channel|>",
 			wantMessage:          "",
@@ -4102,6 +4107,7 @@ func TestLlamaServerCompletionReasoningBudget(t *testing.T) {
 				ThinkingEndTag:   "<channel|>",
 			},
 			wantBudget:  float64(512),
+			wantScope:   "response",
 			wantStart:   "<|channel>",
 			wantEnd:     "<channel|>",
 			wantMessage: "",
@@ -4117,6 +4123,7 @@ func TestLlamaServerCompletionReasoningBudget(t *testing.T) {
 				ThinkingEndTag:   "</think>",
 			},
 			wantBudget:  float64(512),
+			wantScope:   "response",
 			wantStart:   "<think>",
 			wantEnd:     "</think>",
 			wantMessage: "",
@@ -4131,9 +4138,28 @@ func TestLlamaServerCompletionReasoningBudget(t *testing.T) {
 				ThinkingEndTag:     "<channel|>",
 			},
 			wantBudget:  float64(512),
+			wantScope:   "response",
 			wantStart:   "<|channel>",
 			wantEnd:     "<channel|>",
 			wantMessage: "\n\nTime to answer now.\n",
+		},
+		{
+			// the budget bounds the whole response, and a tool call forgives
+			// what the thinking before it spent
+			name: "tool call tag rides along as the budget reset",
+			req: CompletionRequest{
+				Prompt:              "<bos><|turn>user\nhi<turn|>\n<|turn>model\n",
+				ThinkBudget:         512,
+				ThinkingStartTag:    "<|channel>",
+				ThinkingEndTag:      "<channel|>",
+				ThinkBudgetResetTag: "<|tool_call>",
+			},
+			wantBudget:   float64(512),
+			wantStart:    "<|channel>",
+			wantEnd:      "<channel|>",
+			wantMessage:  "",
+			wantScope:    "response",
+			wantResetTag: "<|tool_call>",
 		},
 		{
 			name: "no budget",
@@ -4209,6 +4235,8 @@ func TestLlamaServerCompletionReasoningBudget(t *testing.T) {
 				// message+end_tag, and only when this field is present, so an
 				// empty message still has to reach the wire
 				{"reasoning_budget_message", tt.wantMessage},
+				{"reasoning_budget_scope", tt.wantScope},
+				{"reasoning_budget_reset_tag", tt.wantResetTag},
 				{"generation_prompt", tt.wantGenerationPrompt},
 			}
 
@@ -4482,5 +4510,40 @@ func TestLlamaServerConfigXollamaAccessorsTolerateNil(t *testing.T) {
 	spec := LlamaServerConfig{Xollama: &xollama.Config{Version: 1, Draft: &xollama.Draft{SpecType: draftTypeAssistant}}}
 	if got := spec.draftSpecTypeOverride(); got != draftTypeAssistant {
 		t.Fatalf("draftSpecTypeOverride = %q, want %q", got, draftTypeAssistant)
+	}
+}
+
+// A pin beats inference wherever the drafter came from. The external path was
+// covered; the built-in-head path was not, and it silently ignored the setting
+// that `tweak model` writes and `xollama show` prints.
+func TestASpecTypePinIsHonouredForABuiltInHeadToo(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		inferred string
+		override string
+		want     string
+	}{
+		{"built-in MTP head, no pin", draftTypeMTP, "", draftTypeMTP},
+		{"built-in MTP head, pinned", draftTypeMTP, draftTypeAssistant, draftTypeAssistant},
+		{"attached drafter, no pin", draftTypeAssistant, "", draftTypeAssistant},
+		{"attached drafter, pinned", draftTypeAssistant, draftTypeMTP, draftTypeMTP},
+		{"no drafter, no pin", "", "", ""},
+		{"no drafter, a pin states nothing", "", draftTypeAssistant, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := resolveDraftType(tt.inferred, tt.override); got != tt.want {
+				t.Fatalf("resolveDraftType(%q, %q) = %q, want %q", tt.inferred, tt.override, got, tt.want)
+			}
+		})
+	}
+}
+
+// A pin on a model with no drafter must not reach the command line: a
+// --spec-type with nothing behind it is a broken launch, not a preference.
+func TestAPinOnAModelWithNoDrafterWritesNoSpecType(t *testing.T) {
+	draftType := resolveDraftType("", draftTypeAssistant)
+	args := appendDraftArgs(nil, draftType, "", api.Options{Runner: api.Runner{DraftNumPredict: 3}})
+	if len(args) != 0 {
+		t.Fatalf("appendDraftArgs = %v, want nothing", args)
 	}
 }

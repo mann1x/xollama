@@ -11,6 +11,13 @@ env:
 
 jobs:
   setup-environment:
+    # xollama-hook: fork-release -- see docs/protocols/RELEASE.md
+    #
+    # Off on the fork, and with it every job below, since they all chain from
+    # this one. They target upstream's self-hosted runners and signing keys;
+    # a hand-pushed v* tag would leave them queued for a day. The fork
+    # releases through xollama-release.yaml instead.
+    if: github.repository == 'ollama/ollama'
     runs-on: ubuntu-latest
     environment: release
     outputs:
@@ -27,6 +34,18 @@ jobs:
           echo vendorsha=$(cat LLAMA_CPP_VERSION)-$(cat MLX_VERSION)-$(cat MLX_C_VERSION) | tee -a $GITHUB_OUTPUT
 
   darwin-build:
+    # xollama-hook: docker-release -- see docs/features/docker-release.md
+    #
+    # Disabled on the fork. This builds and signs the macOS app, which needs a
+    # Metal toolchain and an Apple signing identity the fork has neither of, on
+    # a macos-26-xlarge runner that is billed per minute. It would fail on the
+    # first release rather than produce anything.
+    #
+    # Guarded rather than deleted so the job keeps merging from upstream, and
+    # removed from the `release` job's `needs` so a skipped job here does not
+    # skip the release itself. Nothing in that job's `required=` list is a
+    # darwin artifact, so it verifies exactly as before.
+    if: github.repository == 'ollama/ollama'
     runs-on: macos-26-xlarge
     environment: release
     needs: setup-environment
@@ -181,6 +200,13 @@ jobs:
               - '"nvptxcompiler"'
             cuda-version: '13.0'
     runs-on: ${{ matrix.arch == 'arm64' && format('{0}-{1}', matrix.os, matrix.arch) || matrix.os }}
+    # `windows` is a self-hosted runner LABEL, not a GitHub-hosted image, so
+    # nothing can infer the OS from it and every run: step below was being
+    # read as bash. Every one of them is PowerShell; saying so is a no-op at
+    # run time and is what the steps already rely on.
+    defaults:
+      run:
+        shell: pwsh
     environment: release
     env:
       GOFLAGS: ${{ needs.setup-environment.outputs.GOFLAGS }}
@@ -334,6 +360,13 @@ jobs:
 
   windows-build:
     runs-on: windows
+    # `windows` is a self-hosted runner LABEL, not a GitHub-hosted image, so
+    # nothing can infer the OS from it and every run: step below was being
+    # read as bash. Every one of them is PowerShell; saying so is a no-op at
+    # run time and is what the steps already rely on.
+    defaults:
+      run:
+        shell: pwsh
     environment: release
     needs: [setup-environment]
     env:
@@ -398,6 +431,13 @@ jobs:
 
   windows-app:
     runs-on: windows
+    # `windows` is a self-hosted runner LABEL, not a GitHub-hosted image, so
+    # nothing can infer the OS from it and every run: step below was being
+    # read as bash. Every one of them is PowerShell; saying so is a no-op at
+    # run time and is what the steps already rely on.
+    defaults:
+      run:
+        shell: pwsh
     environment: release
     needs: [setup-environment, windows-build, windows-depends]
     env:
@@ -464,7 +504,7 @@ jobs:
             cmake --build build/go-license --target ollama-go-license
           done
       - run: |
-          ./scripts/build_windows.ps1 deps sign installer zip
+          ./scripts/build_windows.ps1 deps sign installer installerUpdate zip
       - name: Log contents after build
         run: |
           gci -path .\dist -Recurse -File | ForEach-Object { get-filehash -path $_.FullName -Algorithm SHA256 } | format-list
@@ -474,7 +514,9 @@ jobs:
           path: |
             dist/*.zip
             dist/*.ps1
+            dist/payload-id.txt
             dist/xOllamaSetup.exe
+            dist/xOllamaUpdate.exe
 
   linux-depends:
     strategy:
@@ -735,7 +777,7 @@ jobs:
           username: ${{ vars.DOCKER_USER }}
           password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
       - id: metadata
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         with:
           flavor: |
             latest=false
@@ -759,7 +801,8 @@ jobs:
   release:
     runs-on: ubuntu-latest
     environment: release
-    needs: [darwin-build, windows-app, docker-build-push]
+    # darwin-build is guarded off on the fork; see the note on that job.
+    needs: [windows-app, docker-build-push]
     permissions:
       contents: write
     env:
@@ -781,6 +824,11 @@ jobs:
         run: |
           required=(
             dist/xOllamaSetup.exe
+            # The update-only installer and the payload id it is keyed on. An
+            # update that ships without them silently costs every user the full
+            # ~1.5 GB download, which is a regression nobody would notice.
+            dist/xOllamaUpdate.exe
+            dist/payload-id.txt
             dist/install.ps1
             dist/install.sh
             dist/xollama-windows-amd64.zip
@@ -814,7 +862,7 @@ jobs:
           done
           exit $status
       - name: Generate checksum file
-        run: find . -type f -not -name 'sha256sum.txt' | xargs sha256sum | tee sha256sum.txt
+        run: find . -type f -not -name 'sha256sum.txt' -print0 | xargs -0 sha256sum | tee sha256sum.txt
         working-directory: dist
       - name: Create or update Release for tag
         run: |

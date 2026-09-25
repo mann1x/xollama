@@ -92,9 +92,19 @@ endif()
 # llm/engine/opencoti.go finds it by the artifact prefix, not an exact name.
 file(STRINGS "${XOLLAMA_ENGINE_PIN}" _pin_lines REGEX "^[ \t]*bin[ \t]+${_engine_arch}[ \t]")
 list(LENGTH _pin_lines _pin_matches)
+if(_pin_matches EQUAL 0)
+    # Not an error either: a snapshot states what it carries, and one without
+    # this platform's row simply has no engine for it -- llm/engine/policy.go
+    # (pinUncovered) routes that platform to llama.cpp. Failing here made every
+    # Windows configure fail while the pin had no Windows artifact.
+    message(STATUS
+        "opencoti-llamafile: ${XOLLAMA_ENGINE_PIN} has no 'bin ${_engine_arch}' row; "
+        "packages will carry llama.cpp only")
+    return()
+endif()
 if(NOT _pin_matches EQUAL 1)
     message(FATAL_ERROR
-        "opencoti-llamafile: expected exactly one 'bin ${_engine_arch}' row in "
+        "opencoti-llamafile: expected one 'bin ${_engine_arch}' row in "
         "${XOLLAMA_ENGINE_PIN}, found ${_pin_matches}")
 endif()
 list(GET _pin_lines 0 _pin_row)

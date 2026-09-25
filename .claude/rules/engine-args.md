@@ -28,6 +28,11 @@ paths:
   the server addresses and reuses the runner, `-lv`/`--verbosity`/
   `--log-disable`/`--log-file` are how it reads the load. Adding a flag xollama
   starts setting means adding its guard row in the same commit.
+- `engineArgsAdvisories` (read by `advisoriesFor`) is a separate list: flags
+  that the pinned bytes answer badly *without failing* (`--sparse-attn`,
+  opencoti bug-3524). It logs a WARN and never refuses. It is not the guarded
+  list and not `llm/engine_defects.go`. Retire a row in the same commit that
+  moves `llm/engine/pin.txt` to bytes that fix it.
 - The splitter treats a backslash as a literal backslash, never an escape —
   Windows paths are a likelier value than an escape sequence. Quote instead.
 - What is appended is logged at INFO, not DEBUG.

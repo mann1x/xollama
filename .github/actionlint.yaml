@@ -1,0 +1,6 @@
+# Self-hosted runner labels this repository uses, so actionlint does not report
+# them as typos. `xollama-build` is the label on the bs2 build host, which is
+# where .github/workflows/docker-release.yaml builds the container image.
+self-hosted-runner:
+  labels:
+    - xollama-build

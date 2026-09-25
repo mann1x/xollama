@@ -598,6 +598,10 @@ func TestSchedGetRunnerUsesDigestKeyWhenModelPathEmpty(t *testing.T) {
 		llama:       &mockLlm{vramByGPU: map[ml.DeviceID]uint64{}},
 		Options:     &opts,
 		numParallel: 1,
+		// Every runner the scheduler builds records this; one built by hand
+		// must too, or it reads as a runner whose flags disagree with the
+		// request and the reuse these tests are about never happens.
+		llamaConfig: llamaServerConfigForModel(loadedModel),
 	}
 
 	s.loadedMu.Lock()
@@ -635,6 +639,10 @@ func TestSchedGetRunnerReusesSameDigestWhenModelPathEmpty(t *testing.T) {
 		llama:       &mockLlm{vramByGPU: map[ml.DeviceID]uint64{}},
 		Options:     &opts,
 		numParallel: 1,
+		// Every runner the scheduler builds records this; one built by hand
+		// must too, or it reads as a runner whose flags disagree with the
+		// request and the reuse these tests are about never happens.
+		llamaConfig: llamaServerConfigForModel(loadedModel),
 	}
 
 	s.loadedMu.Lock()
@@ -891,6 +899,14 @@ func TestSchedNeedsReload(t *testing.T) {
 		Options:     &do,
 		llama:       llm,
 		numParallel: 1,
+		// Every runner the scheduler builds records the config it was launched
+		// with; one built by hand must too, or it reads as a runner whose
+		// flags disagree with the request and never satisfies a reuse. See
+		// upstream #18289.
+		llamaConfig: llamaServerConfigForModel(&Model{
+			AdapterPaths:   []string{"adapter1"},
+			ProjectorPaths: []string{"projector1"},
+		}),
 	}
 	req := &LlmRequest{
 		model: &Model{
@@ -967,6 +983,7 @@ func TestSchedNeedsReloadIgnoresAutomaticNumCtxClamp(t *testing.T) {
 		llama:       llm,
 		numParallel: 1,
 		numCtxAuto:  true,
+		llamaConfig: llamaServerConfigForModel(model),
 	}
 	req := &LlmRequest{
 		model:      model,
@@ -1052,6 +1069,7 @@ func TestSchedNeedsReloadIgnoresAutomaticNumBatchDerivation(t *testing.T) {
 		llama:        llm,
 		numParallel:  1,
 		numBatchAuto: true,
+		llamaConfig:  llamaServerConfigForModel(model),
 	}
 	req := &LlmRequest{
 		model:        model,
@@ -1081,6 +1099,7 @@ func TestSchedNeedsReloadIgnoresAutomaticUseMMapDefault(t *testing.T) {
 		llama:       llm,
 		numParallel: 1,
 		useMMapAuto: true,
+		llamaConfig: llamaServerConfigForModel(model),
 	}
 	req := &LlmRequest{
 		model: model,
@@ -2292,6 +2311,7 @@ func TestSchedNeedsReloadWhenTagsShareABlobButNotTheirFlags(t *testing.T) {
 		numParallel: 1,
 		// Both tags resolve the same context shift; it is the flags that differ.
 		contextShift: resolveContextShift(nil, rendered),
+		llamaConfig:  llamaServerConfigForModel(rendered),
 	}
 
 	require.False(t, runner.needsReload(ctx, &LlmRequest{model: rendered, opts: api.DefaultOptions()}),
@@ -2314,11 +2334,17 @@ func TestSchedNeedsReloadOnXollamaConfig(t *testing.T) {
 
 	do := api.DefaultOptions()
 	newRunner := func(cfg *xollama.Config) *runnerRef {
+		m := &Model{Xollama: cfg}
 		return &runnerRef{
-			model:       &Model{Xollama: cfg},
+			model:       m,
 			Options:     &do,
 			llama:       &mockLlm{vramByGPU: map[ml.DeviceID]uint64{}},
 			numParallel: 1,
+			// needsReload reads the config the runner was LAUNCHED with, not
+			// one recomputed from its model, so a fixture that leaves this
+			// zero compares an empty config against a real one and reloads
+			// every time. #18289 hit the same thing in two upstream fixtures.
+			llamaConfig: llamaServerConfigForModel(m),
 		}
 	}
 	newReq := func(cfg *xollama.Config) *LlmRequest {

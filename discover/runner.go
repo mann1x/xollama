@@ -17,6 +17,7 @@ import (
 	"github.com/ollama/ollama/envconfig"
 	"github.com/ollama/ollama/format"
 	"github.com/ollama/ollama/llm"
+	"github.com/ollama/ollama/llm/engine"
 	"github.com/ollama/ollama/logutil"
 	"github.com/ollama/ollama/ml"
 )
@@ -250,6 +251,9 @@ func GPUDevices(ctx context.Context, runners []ml.FilteredRunnerDiscovery) []ml.
 			}
 		}
 
+		// xollama-hook: opencoti-discover — see docs/features/device-selection.md
+		devices = filterIntegratedGPUs(overlayOpencotiDevices(ctx, devices))
+
 		// Reset the libDirs to what we actually wind up using for future refreshes
 		libDirs = make(map[string]struct{})
 		for _, dev := range devices {
@@ -427,6 +431,23 @@ func integratedGPUAllowedByDefault(device ml.DeviceInfo) bool {
 	switch device.Library {
 	case "CUDA":
 		return true
+	// xollama-hook: igpu-vulkan — see docs/features/device-selection.md
+	//
+	// Vulkan is admitted on the same terms as CUDA, because on this fork it is
+	// a first-class backend rather than a fallback: opencoti carries its own
+	// Vulkan implementation and is the engine that serves it. An integrated
+	// GPU is the whole point of that path -- a small agentic model served at
+	// idle power without waking a discrete card -- so hiding it by default
+	// made the one case the backend exists for unreachable without an
+	// environment variable.
+	//
+	// Measured on solidPC before the change, against the AMD RADV RENOIR
+	// (ACO) iGPU (PCI 0000:18:00.0) on the host Mesa stack: qwen3.5:2b served
+	// 512 coherent tokens at 19.51 tok/s with 2.47 GB resident on Vulkan0.
+	//
+	// Not under XOLLAMA_ENGINE=llamacpp: off means off, and upstream hides it.
+	case "Vulkan":
+		return !strings.EqualFold(strings.TrimSpace(envconfig.Var(engine.EnvSelector)), string(engine.KindLlamaCpp))
 	case "ROCm":
 		_, ok := defaultIntegratedROCmGFXTargets[device.GFXTarget]
 		return ok

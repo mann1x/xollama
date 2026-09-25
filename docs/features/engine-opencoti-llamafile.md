@@ -293,6 +293,115 @@ fails the release at 1900 MiB so the cap is never met at upload time.
 **Anyone on a pre-Turing NVIDIA card needs the `-cuda12` asset**, on Linux and
 Windows alike. Without it that hardware falls back to CPU.
 
+## Where the GPU payload lands
+
+A **self-extracting** artifact carries its `ggml-*.so` inside itself and unpacks
+them on first run to `$HOME/.llamafile/v/<engine-version>/`. Only `$HOME` is
+ours to choose: `.llamafile` comes from llamafile's `g_app_name`, settable only
+by an in-process C call, and the version segment is compiled in.
+
+That last part is the problem. opencoti re-cuts a release **in place**, so c7 r1
+and c7 r2 are different bytes under one tag and resolve to the same directory.
+The engine unpacks only when what is already there is older, then loads what it
+found — so a machine that has run r1 can go on running r1's CUDA kernels under
+an r2 binary, silently. opencoti already hit the coarser version of this (their
+bug-2272: c5, c6 and c7 all landing in `v/0.10.3/`) and namespaced by cut, which
+cannot separate re-cuts of a single cut. Measured on one host: that one
+directory name held three different `ggml-cuda.so` within 36 hours, and two
+users held two different ones simultaneously.
+
+So xollama does not share it. The engine subprocess is given a `HOME` holding
+exactly one payload — the one belonging to the artifact about to run — and
+anything another artifact left is deleted first.
+
+That `HOME` goes where the rest of the engine's runtime already lives:
+ollama's own library directory, beside `llama-server` and the ggml backends.
+
+| Platform | Preferred payload root |
+|---|---|
+| Windows | `%LOCALAPPDATA%\Programs\Ollama\lib\ollama\engines\payload` |
+| Linux | `/usr/local/lib/ollama/engines/payload` |
+| macOS | `Ollama.app/Contents/Resources/lib/ollama/engines/payload` |
+
+giving, in full:
+
+```
+<lib>/ollama/engines/payload/.llamafile/v/<engine-version>/
+```
+
+It is not always writable, and that is expected rather than an error. A packaged
+Linux install leaves that directory owned by `root` while the service runs as
+`ollama`; a macOS install puts it inside a signed application bundle. Where the
+preferred root cannot be written, xollama falls back to
+`~/.ollama/engines/payload` — still its own directory, never your `~/.llamafile`.
+Whether a root is writable is **checked before any work**, so a root that cannot
+be used is not paid for with a hash of the artifact first.
+
+### Who owns it
+
+On Linux the server is usually a system service running as `ollama`, while an
+administrator occasionally runs a command as root. Anything root creates would
+otherwise be root-owned and unusable by the service afterwards — the same
+mistake against the model store once turned a 0.06 s model list into a 9.89 s
+one, reported by clients as a timeout rather than as any kind of error.
+
+So when xollama runs as root it does not create the payload directory as root.
+It takes the owner of the model store — whoever owns that must be able to write
+it, so that identity is the service — and hands the directory over, with setgid
+and group write. A purge removes files by writing the *directory*, so the
+service can still clear a payload some earlier root invocation unpacked.
+
+A non-root server already creates files as the right user, so nothing happens at
+all. Windows has no equivalent problem: Ollama installs per user there, with no
+unprivileged service account for an elevated process to lock out.
+
+Two consequences worth stating plainly. Your own `~/.llamafile` is never read or
+written, so you can run any opencoti build by hand without it interacting with
+the one xollama launches. And the directory holds one payload rather than
+accumulating one per artifact, so switching pins re-unpacks instead of growing.
+
+Nothing here touches stock `llama-server`, which extracts nothing and is
+launched with the environment it inherited. If no root can be used at all,
+xollama logs a warning and falls back to the inherited `HOME` rather than
+failing the load.
+
+A **split** artifact — a bare APE with its `ggml-cuda.so` staged beside it, the
+shape the `dev` channel publishes — extracts nothing at all, so none of this
+applies to it. That is the better arrangement, because both halves can then be
+pinned by sha256 in `llm/engine/pin.txt` and verified at fetch, where a fat
+bin's payload is unverifiable once unpacked.
+
+## Queued for the next pin (reported 2026-09-21, not published)
+
+opencoti's dev repo moves only on its owner's word, so these are recorded here
+rather than acted on. When they land, the pin moves in one commit and each row
+is retired only on a measurement (`.claude/rules/engine-pin.md`).
+
+- **0331 (bug-3535) — `--swa-seq-budget N` admitted N+1 windows.** The pool's
+  `n_ubatch` batch slack was being sold as a session, so three sessions arriving
+  under `N=2` produced a `find_slot` failure storm (3–590 failures per burst,
+  clients timing out). **This one is ours to care about**: `appendSWABudgetArgs`
+  in `llm/engine_launch.go` passes the flag whenever
+  `XOLLAMA_SWA_SEQ_BUDGET` or a model's setting sizes it, and
+  `llm/engine_estimate.go` budgets `min(SWASeqBudget, seqs)` windows of VRAM —
+  the correct number. On the bytes pinned today the engine can hold one window
+  more than the estimate paid for, silently. After the fix, expect one extra
+  429 per burst and no stalls, and size on N.
+- **0332 (bug-3538) — a second SIGTERM could deadlock the server** (upstream's
+  `exit()` inside the signal handler). Measured on old bytes: 13/40 hung when
+  the second signal followed within 0–3 ms, 12/12 when it beat the main thread's
+  cleanup; 0/40 after the fix. **Not reachable from xollama**: the engine
+  subprocess is stopped with `Process.Kill()` in `llm/llama_server.go`, a single
+  SIGKILL, never a TERM → TERM → KILL escalation. It matters only to an operator
+  driving the artifact directly.
+- **0333 — `--repeat-layers` composes with a KVarN cache** (it refused to boot
+  before).
+
+The first of these is the advisory category again — a defect that answers worse
+without saying anything — but it is *not* an `engineArgsAdvisories` row, because
+that list covers flags an operator passes through `XOLLAMA_ENGINE_ARGS` and this
+flag is one xollama emits itself. See `.claude/rules/engine-args.md`.
+
 ## Phases
 
 - **Phase 0 — verify (no code). DONE 2026-09-18, PASS.** Full result in

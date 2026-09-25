@@ -1776,3 +1776,25 @@ func TestGemma4ParserDropsUnmatchedThinkingCloseTag(t *testing.T) {
 		}
 	})
 }
+
+func TestGemma4ToolCallTags(t *testing.T) {
+	p := &Gemma4Parser{}
+	start, end := p.ToolCallTags()
+	if start != "<|tool_call>" || end != "<tool_call|>" {
+		t.Fatalf("tool call tags = %q, %q", start, end)
+	}
+
+	// A response-wide thinking budget reads the opening tag through the generic
+	// helper, which must find it without knowing the parser's type.
+	if got := ToolCallStartTagForParser(p); got != "<|tool_call>" {
+		t.Fatalf("ToolCallStartTagForParser = %q, want %q", got, "<|tool_call>")
+	}
+}
+
+func TestToolCallStartTagForParserWithoutTags(t *testing.T) {
+	// A parser that names no tool call tags leaves the budget with nothing to
+	// forgive it, rather than reporting a tag that will never be generated.
+	if got := ToolCallStartTagForParser(nil); got != "" {
+		t.Fatalf("nil parser reported %q", got)
+	}
+}

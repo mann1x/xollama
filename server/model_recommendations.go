@@ -18,7 +18,16 @@ import (
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/envconfig"
 	"github.com/ollama/ollama/format"
+	"github.com/ollama/ollama/internal/fsowner"
 )
+
+// xollama-hook: store-ownership
+//
+// The creating calls below go through internal/fsowner instead of os. On a
+// packaged Linux install the server runs as an unprivileged service account,
+// and anything a root-run command creates here would be unusable by it
+// afterwards -- silently, as a slow model list rather than an error. The
+// wrappers are os plus one stat when there is no service account to find.
 
 const modelRecommendationsURL = "https://ollama.com/api/experimental/model-recommendations"
 
@@ -270,7 +279,7 @@ func (c *modelRecommendationsCache) persistSnapshot(recs []api.ModelRecommendati
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := fsowner.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
 
@@ -280,7 +289,7 @@ func (c *modelRecommendationsCache) persistSnapshot(recs []api.ModelRecommendati
 		return err
 	}
 
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".model-recommendations-*.tmp")
+	tmp, err := fsowner.CreateTemp(filepath.Dir(path), ".model-recommendations-*.tmp")
 	if err != nil {
 		return err
 	}

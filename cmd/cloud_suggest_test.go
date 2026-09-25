@@ -161,7 +161,7 @@ func (s *cloudSuggestServer) start(t *testing.T) {
 		}
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 }
 

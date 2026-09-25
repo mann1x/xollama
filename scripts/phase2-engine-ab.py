@@ -323,6 +323,20 @@ AXES = ("compat", "throughput", "multislot", "gemma4", "overflow")
 def sideloaded_dso_sha(artifact):
     if not artifact:
         return None
+    # A development snapshot is a bare APE that side-loads its CUDA payload
+    # from BESIDE the binary and extracts nothing, so that file is the one
+    # that matters and ~/.llamafile is irrelevant to it. Looking only in the
+    # cache reported a release cut's leftover extraction as though it were the
+    # dev build's payload -- which reads as though the wrong engine had been
+    # measured, and would have been believed.
+    beside = pathlib.Path(artifact).parent / "ggml-cuda.so"
+    if beside.is_file():
+        h = hashlib.sha256()
+        with open(beside, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                h.update(chunk)
+        return {"path": str(beside), "sha256": h.hexdigest(), "source": "beside-artifact",
+                "mtime": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(beside.stat().st_mtime))}
     home = pathlib.Path(os.path.expanduser("~/.llamafile/v"))
     if not home.is_dir():
         return None
@@ -337,7 +351,7 @@ def sideloaded_dso_sha(artifact):
     with open(best[0], "rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             h.update(chunk)
-    return {"path": str(best[0]), "sha256": h.hexdigest(),
+    return {"path": str(best[0]), "sha256": h.hexdigest(), "source": "llamafile-cache",
             "mtime": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(best[1]))}
 
 

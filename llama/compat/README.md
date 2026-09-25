@@ -25,12 +25,24 @@ intentionally skipped so a developer can iterate on a local llama.cpp tree.
   small tensor repacking primitives.
 - `001-llama-cpp-hooks.patch` - small additive call-site edits in llama.cpp files.
   It currently touches `src/llama-model-loader.cpp` and `tools/mtmd/clip.cpp`.
-- `002-llama-cpp-ui-empty-assets.patch` - lets the llama.cpp UI embed helper
-  generate an empty asset table when no UI assets are present.
-- `004-reasoning-budget-line-boundary.patch` - makes a spent reasoning budget
-  close the thinking block at a line boundary instead of as soon as the current
-  UTF-8 codepoint completes, which lands mid-word. Carried here until
-  ggml-org/llama.cpp merges it; drop this file when the pinned llama.cpp
+- `models/003-llama-cpp-laguna-metal.patch` - the one architecture patch under
+  `models/`, applied in the same numeric order as the files beside it.
+- `004-reasoning-budget-line-boundary.patch` - the reasoning-budget sampler.
+  Three behaviours, not one:
+  1. a spent budget closes the thinking block at a **line boundary** rather than
+     as soon as the current UTF-8 codepoint completes, which lands mid-word;
+  2. a **response-scope** budget (`--reasoning-budget-scope`,
+     `THINK_BUDGET_SCOPE`, or per request over the wire) spends once across the
+     whole response instead of re-arming for every block, with a reset sequence
+     that forgives what a tool call cost;
+  3. a spent response **stays quiet and does not reopen** — a reopened block is
+     closed with the end tag alone rather than the whole message again, and the
+     start sequence is barred while the allowance is gone. Without the second
+     half the first is pointless: the model reopens the instant it is closed and
+     the pair burns the rest of the output cap.
+  Covered by `test-reasoning-budget` in the fetched tree, including
+  `spent_response_stays_quiet` and `spent_response_bars_reopening`. Carried here
+  until ggml-org/llama.cpp merges it; drop this file when the pinned llama.cpp
   contains the change.
 - `005-gemma4-assistant-unchecked-tensor-shape.patch` - makes an empty expected
   `ne` mean "shape unchecked" in `check_tensor_dims` and stops
@@ -44,6 +56,13 @@ intentionally skipped so a developer can iterate on a local llama.cpp tree.
   `llama/server/CMakeLists.txt`) for every `*.patch` under
   this directory by numeric filename order — the hooks patch plus each
   `models/` architecture patch.
+
+  **Idempotent means a wrong patch can be silent.** The applier skips anything
+  `git apply --reverse --check` accepts, so on a source tree that already
+  carries the old version of a patch, a new one is skipped rather than
+  rejected. Verifying a change to a `.patch` needs a *clean* fetch — and note
+  that no Go gate sees these files at all: `gofmt`, `go build`, `go vet`,
+  `go test` and `golangci-lint` all pass on a tree whose patch is mangled.
 - `models/` - the sibling **new-architecture** layer: implementations of
   architectures llama.cpp doesn't support yet, each added via a small
   registration patch. (Those files *add* archs; the files above *translate*

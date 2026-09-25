@@ -1,0 +1,249 @@
+---
+title: Changing a model's settings
+---
+
+[The settings that belong to the model](/xollama/model-settings) live in a layer
+inside the model. Writing one by hand means writing a Modelfile with a `XOLLAMA`
+directive holding JSON — which means knowing the field names, the value sets,
+and the half-dozen rules about which settings need which others.
+
+`xollama tweak model` knows all three.
+
+```sh
+xollama tweak model qwen3.6:latest
+```
+
+It reads what the model states now, asks about every setting with an
+explanation of what each one does, drops anything the model cannot act on, and
+replaces the model's config layer. Nothing else about the model changes: the
+weights, template, system prompt and parameters are untouched.
+
+## One setting, no questions
+
+A flag with a value sets that setting and asks nothing:
+
+```sh
+xollama tweak model qwen3.6:latest --dca=on
+xollama tweak model qwen3.6:latest --kv-k=kvarn4 --kv-v=kvarn4
+xollama tweak model qwen3.6:latest --slots-max=8 --slots-tps-floor=12
+```
+
+The same flag with **no** value scopes the walk to that feature and leaves
+everything else alone:
+
+```sh
+xollama tweak model qwen3.6:latest --dca
+```
+
+`--dca` asks the DCA questions — whether to enable it, and the chunk length.
+`--slots` asks the five slot questions. Any other flag asks about itself, plus
+whatever it is only meaningful beside: `--kv-k` also asks `kv.v`, because a
+cache is a pair.
+
+`--clear` removes the model's config entirely. `--dry-run` shows what would be
+written without writing it, and `--json` prints the exact bytes that land in the
+layer.
+
+<Note>
+  Every setting has a flag and every flag has a setting — both come from one
+  table in `cmd/tweak/fields.go`, so `xollama tweak model --help` is the full
+  list and cannot fall behind.
+</Note>
+
+## Choosing the GPU a model runs on
+
+`--device-backend` asks where the model runs, and lists every device the
+**server** found — backend, name, PCI ID, whether it is integrated, its memory,
+and which engine serves it:
+
+```
+   devices on this server:
+     CUDA NVIDIA GeForce RTX 3090 (0000:01:00.0, #0, 24.0 GiB total, 23.0 GiB free, served by opencoti)
+     Vulkan AMD RADV RENOIR (ACO) (0000:18:00.0, #1, integrated, 63.0 GiB total, 60.0 GiB free, served by opencoti)
+
+   1) CUDA
+   2) Vulkan
+   3) CPU
+   4) unset
+device-backend [unset]>
+```
+
+Only backends with a device present are offered, plus `CPU`. The next question
+lists that backend's devices; pick one, or several by commas (`1,2`) to spread
+the model across them. A pick is written as the device's PCI ID, the one
+identity that survives a reboot or a card being added.
+
+From a script, name the values directly — a number here is a device index, not
+a menu line:
+
+```sh
+xollama tweak model qwen3.5:2b --device-backend=vulkan --devices=0000:18:00.0
+xollama tweak model qwen3.6:27b --device-backend=cuda --devices=discrete
+xollama tweak model nomic-embed-text --device-backend=cpu
+```
+
+A model pinned to a device that is not there is **refused**, naming what it
+asked for, the backends the installation carries and the devices present. It is
+never served on other hardware instead. An unpinned model is never placed on an
+integrated Vulkan GPU while a discrete one is present — see
+[device selection](/features/device-selection).
+
+## Pinning a drafter's driver
+
+A drafter is attached at build time with a `DRAFT` line, and its driver is
+normally inferred from the drafter's own metadata — a gemma-4 assistant head
+declares `requires_target_arch`, which resolves to `draft-assistant` without
+anyone saying so:
+
+```
+FROM  gemma-4-A4B-98e-v9-agentic-it-Q4_K_M.gguf
+DRAFT gemma-4-26B-A4B-it-assistant-Q8_0.gguf
+PARAMETER draft_num_predict 3
+```
+
+`--spec-type` overrides that inference, for a head built into the target as much
+as for an attached file:
+
+```sh
+xollama tweak model gemma4-98e-v9-agentic:q4km-drafter --spec-type=draft-assistant
+xollama tweak model gemma4-98e-v9-agentic:q4km-drafter --spec-type=unset   # back to inferring
+```
+
+<Warning>
+  A pin is an override, so it is able to be wrong. Pinning `draft-mtp` on a
+  gemma-4 assistant drafter reaches the engine and the load then fails with
+  `Gemma4Assistant requires ctx_other to be set`. Leave it unset unless you know
+  the inference is wrong for your drafter.
+</Warning>
+
+`draft_num_predict` is deliberately **not** here — it is an ordinary
+`PARAMETER`, settable per request like any other.
+
+`xollama show` prints what the next load will actually use, and says where the
+answer came from:
+
+```
+  Drafter
+    source          attached
+    architecture    gemma4-assistant
+    parameters      419.71M
+    quantization    Q8_0
+    spec type       draft-assistant (inferred)
+```
+
+`(pinned)` in place of `(inferred)` means the driver came from
+`draft.spec_type` rather than from the drafter's own metadata. A head built
+into the weights shows `source built-in` and no file details. A model with no
+drafter prints no block at all.
+
+## Driving it from a script
+
+The prompts are plain lines, each ending in a token that names the setting:
+
+```
+dca [unset]>
+kv-k [q8_0]>
+write [y/N]>
+```
+
+The name is the flag name, and the bracket holds the current value, which is
+also what a blank answer keeps. Answers may be the menu number or the value
+itself, so `2` and `llamacpp` do the same thing. That makes the whole walk
+drivable with `expect`:
+
+```expect
+spawn xollama tweak model qwen3.6:latest --dca
+expect "dca \[*\]> " { send "on\r" }
+expect "dca-chunk \[*\]> " { send "262144\r" }
+expect "write \[y/N\]> " { send "y\r" }
+```
+
+Running out of answers stops the command without writing anything, rather than
+filling in defaults nobody chose.
+
+## Consistency
+
+Two different things can be wrong with a configuration, and they are handled
+differently on purpose.
+
+**A setting the model cannot act on is dropped, and named.** An opencoti-only
+setting on a model that pins `llamacpp`, a chunk length under a DCA switch that
+is off — there is nothing to decide, the setting cannot do anything, and leaving
+it in the file would read as if it did:
+
+```
+── Consistency
+   dropped kv.k_swa = kvarn4: a separate sliding-window ring cache needs the opencoti engine, and this model pins llamacpp
+   dropped kv.residency_mode = window: the rolling-KV residency tactic needs the opencoti engine, and this model pins llamacpp
+```
+
+During the walk the same rule shows up as a question that is skipped rather than
+asked, with the reason.
+
+**A combination where only you know which half you meant is refused.** Saying
+`kv.unified` off while dynamic slots are on is a real choice between two
+features, not a redundancy, so it is not resolved for you. Interactively the
+refusal re-asks exactly the settings it names — not the whole walk:
+
+```
+   ! kv.k / XOLLAMA_K_CACHE_TYPE = "kvarn3" is not a cache type stock llama.cpp accepts
+   the settings it names are asked again; `unset` clears one.
+```
+
+From a script the same case is an error and a non-zero exit, because there is
+nobody to ask and guessing a cache type would change the model's output.
+
+Some of these rules are **measured**, not read out of a flag table: a
+sliding-window ring needs a KVarN base on both `kv.k` and `kv.v`; both halves of
+the ring must be set together; and a KVarN cache needs flash attention, so
+`kv.k: kvarn2` with `flash_attention: "off"` is refused here. The engine states each of those and exits
+during startup, which reaches you as a model that will not load -- and the
+flash-attention one reached us the ugly way, as a model that loaded at one
+context length and failed at another, because the size that failed took a retry
+path where `-fa auto` resolved off. Checking them
+here names the setting that has to change instead.
+
+## Starting over
+
+A model that already has a config is offered the choice before any questions:
+
+```
+── This model already has an xollama config
+   1) modify it -- every question starts from what is there
+   2) start from scratch -- every question starts unset
+   3) clear it -- remove the config entirely and write nothing else
+   4) quit -- change nothing
+```
+
+## What "unset" means
+
+Every question offers `unset`, and it is not the same as `off`. A setting the
+model does not state falls through to the server's environment variable, which
+the prompt names:
+
+```
+   current: not set, so XOLLAMA_DCA decides
+```
+
+That is what makes a partial config safe to publish: a model says only what it
+actually needs, and everything else follows the machine it lands on. See
+[which setting wins](/xollama/model-settings#which-setting-wins).
+
+## Checking it applied
+
+```sh
+xollama show qwen3.6:latest
+```
+
+```
+  xOllama
+    kv.k              q8_0
+    kv.v              q8_0
+    dca.enabled       on
+    dca.chunk_size    32768
+```
+
+The section appears only when the model states something, and lists only what
+it states. Settings are resolved at load time, so a change needs the model
+reloaded before it takes effect. [Seeing what the engine did](/xollama/introspection) shows what
+the running model was actually given.

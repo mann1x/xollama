@@ -11,6 +11,13 @@ import (
 )
 
 func TestVerifyDownloadRejectsUnsignedWindowsInstaller(t *testing.T) {
+	// xollama-hook: update-feed -- the fork's channel is unsigned: verifyDownload
+	// accepts an installer on the release's published sha256 (the update-signer
+	// block), so the rejection asserted below does not exist here. What the fork
+	// does instead is asserted by fork_signer_windows_test.go and fork_test.go.
+	// Remove this skip with the block, the day the fork has a certificate.
+	t.Skip("xollama: unsigned update channel, gated on the release sha256 instead")
+
 	oldUpdateStageDir := UpdateStageDir
 	defer func() {
 		UpdateStageDir = oldUpdateStageDir
@@ -33,6 +40,13 @@ func TestVerifyDownloadRejectsUnsignedWindowsInstaller(t *testing.T) {
 }
 
 func TestDoUpgradeAtStartupRejectsUnsignedWindowsInstaller(t *testing.T) {
+	// xollama-hook: update-feed -- the fork's channel is unsigned: verifyDownload
+	// accepts an installer on the release's published sha256 (the update-signer
+	// block), so the rejection asserted below does not exist here. What the fork
+	// does instead is asserted by fork_signer_windows_test.go and fork_test.go.
+	// Remove this skip with the block, the day the fork has a certificate.
+	t.Skip("xollama: unsigned update channel, gated on the release sha256 instead")
+
 	oldUpdateStageDir := UpdateStageDir
 	oldRunningInstaller := runningInstaller
 	oldUpgradeLogFile := UpgradeLogFile

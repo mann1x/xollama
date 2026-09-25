@@ -47,8 +47,11 @@ xollama and Ollama side by side with different settings. An **empty**
 | `XOLLAMA_MAX_PARALLEL`, `XOLLAMA_SLOTS_TPS_FLOOR`, `XOLLAMA_SLOTS_VRAM_RESERVE` | The ceiling and the two brakes on admitting another request |
 | `XOLLAMA_HOST`, `XOLLAMA_MODELS`, `XOLLAMA_DEBUG`, `XOLLAMA_FLASH_ATTENTION`, `XOLLAMA_LLAMA_ARG_FIT` | Aliases for the `OLLAMA_*` variables of the same name |
 
-Run `xollama serve --help` or `ollama show --help` for the full list as your
-build sees it.
+Run `xollama serve --help` or `xollama tweak model --help` for the full list as
+your build sees it. Anything in that table is a **server-wide** answer; a model
+can override most of them for itself — see
+[Settings that belong to the model](/xollama/model-settings), and
+[`xollama tweak model`](/xollama/tweak) for the command that sets them.
 
 ## Which pages to read
 
@@ -74,5 +77,9 @@ build sees it.
 </Card>
 <Card title="Concurrent requests" icon="layer-group" href="/xollama/slots">
   Concurrency that grows with demand instead of being reserved up front.
+</Card>
+<Card title="Changing a model's settings" icon="wand-magic-sparkles" href="/xollama/tweak">
+  `xollama tweak model` — set any of the above on a model, with the rules about
+  which settings need which others applied for you.
 </Card>
 </CardGroup>

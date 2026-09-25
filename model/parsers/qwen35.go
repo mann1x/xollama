@@ -51,6 +51,23 @@ func (p *Qwen35Parser) ThinkingTags() (string, string) {
 	return qwen35ThinkingOpenTag, qwen35ThinkingCloseTag
 }
 
+// ToolCallTags reports the delimiters of this parser's tool calls, so a
+// response-wide thinking budget can forgive what was spent getting to one.
+//
+// Naming them is opt-in: a parser that names none leaves the budget cumulative
+// across the whole response, which is safe but means a long agentic turn runs
+// out of thinking after its first few steps. gemma4 was the only parser to name
+// its tags when the response-scope budget landed, because it was the only one
+// measured; on qwen3.5 the budget was silently cumulative for the same reason.
+//
+// The tag has to be a single special token or the reset would fire on prose
+// that merely spells it, since the sampler matches a token sequence rather than
+// text. It is: `<tool_call>` is token 248058 of type USER_DEFINED in the
+// qwen3.5 vocab, the same property gemma4's `<|tool_call>` has.
+func (p *Qwen35Parser) ToolCallTags() (string, string) {
+	return toolOpenTag, toolCloseTag
+}
+
 func (p *Qwen35Parser) PreservedTokens() []string {
 	return []string{
 		qwen35ThinkingOpenTag,
@@ -218,6 +235,26 @@ func (p *Qwen35Parser) eat() ([]qwen35Event, bool) {
 				p.state = qwen35ParserStateCollectingContent
 			}
 			return events, true
+		} else if strings.Contains(acc, qwen35ToolCallOpenTag) {
+			// qwen3.5:9b model forgets sometimes to use </think> tag before the <tool_call> block starts
+			// this condition ends the Think block and continues with the <tool_call> when the tag
+			// is found.
+			//
+			// This must be tested BEFORE the partial-tag check below. A complete
+			// opening tag already in the buffer is not ambiguous, and it outranks a
+			// suffix that merely could become one: the call's own body is full of
+			// `<`, so any chunk boundary landing on one -- `<parameter=`, `</parameter>`
+			// -- makes the partial-tag branch flush everything before it, opening tag
+			// included, into the thinking channel. The buffer then keeps only the `<`,
+			// this branch can never fire again, and the rest of the call drains into
+			// thinking as prose. The client sees no tool call and no content, and an
+			// agentic loop reads that as "the model is done". Measured on the live
+			// shape from omnimerge-v6: 12 of 214 two-way splits lost the call, every
+			// one of them a boundary immediately after a `<`.
+			thinking, tooling := p.splitAtTag(qwen35ToolCallOpenTag, true)
+			p.buffer.Reset()
+			p.buffer.WriteString(thinking + qwen35ThinkingCloseTag + qwen35ToolCallOpenTag + tooling)
+			return events, true
 		} else if overlapLen := max(overlap(acc, qwen35ThinkingCloseTag), overlap(acc, qwen35ToolCallOpenTag)); overlapLen > 0 {
 			beforePartialTag := acc[:len(acc)-overlapLen]
 			trailingWsLen := trailingWhitespaceLen(beforePartialTag)
@@ -231,14 +268,6 @@ func (p *Qwen35Parser) eat() ([]qwen35Event, bool) {
 				events = append(events, qwen35EventThinkingContent{content: unambiguous})
 			}
 			return events, false
-		} else if strings.Contains(acc, qwen35ToolCallOpenTag) {
-			// qwen3.5:9b model forgets sometimes to use </think> tag before the <tool_call> block starts
-			// this condition ends the Think block and continues with the <tool_call> when the tag
-			// is found
-			thinking, tooling := p.splitAtTag(qwen35ToolCallOpenTag, true)
-			p.buffer.Reset()
-			p.buffer.WriteString(thinking + qwen35ThinkingCloseTag + qwen35ToolCallOpenTag + tooling)
-			return events, true
 		}
 
 		whitespaceLen := trailingWhitespaceLen(acc)

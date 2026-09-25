@@ -156,7 +156,57 @@ func ParsePin(text string) (Pin, error) {
 			return Pin{}, fmt.Errorf("pin.txt: accel %s %s has no bin row for %s", a.Arch, a.Backend, a.Arch)
 		}
 	}
+	p.deriveAccelsFromDSOs()
 	return p, nil
+}
+
+// deriveAccelsFromDSOs adds the (arch, backend) pairs the pin's OWN dso rows
+// prove, on top of any stated explicitly.
+//
+// The payloads shipped are the ground truth about what the artifact can
+// accelerate, and an `accel` row merely restates them. opencoti's dev
+// publisher says so directly -- "key off the dso rows actually present" -- and
+// snapshot 2609242056001 carries no accel rows at all, stating its payload set
+// in a header comment instead. Keyed on accel rows alone that pin accelerates
+// NOTHING, so every GPU load would route to llama.cpp while the pinned engine
+// sat there holding a working Vulkan payload.
+//
+// Explicit rows are still honoured and still validated above: this only ever
+// ADDS, so a pin that states its accels keeps behaving exactly as before.
+func (p *Pin) deriveAccelsFromDSOs() {
+	for _, a := range p.Assets {
+		if a.Kind != "dso" {
+			continue
+		}
+		arch, backend := splitDSOLabel(a.Arch)
+		// A payload for a platform this pin ships no engine for accelerates
+		// nothing here. Skipping rather than erroring keeps a cross-platform
+		// snapshot usable: today's pin carries a win-x86_64 CUDA dso and no
+		// win-x86_64 bin row, which is a Windows build's business, not ours.
+		if _, ok := p.Asset(arch); !ok {
+			continue
+		}
+		if !slices.Contains(p.Accels, Accel{Arch: arch, Backend: backend}) {
+			p.Accels = append(p.Accels, Accel{Arch: arch, Backend: backend})
+		}
+	}
+}
+
+// splitDSOLabel reads a dso row's label as <arch>[-<backend>].
+//
+// The bare form is CUDA: it is the label opencoti has always used for the CUDA
+// payload (`dso x86_64`), and renaming it would break every consumer of an
+// existing snapshot, so the default has to stay what it already means.
+func splitDSOLabel(label string) (arch string, backend Backend) {
+	for suffix, b := range map[string]Backend{
+		"-vulkan": BackendVulkan,
+		"-rocm":   BackendROCm,
+	} {
+		if rest, ok := strings.CutSuffix(label, suffix); ok {
+			return rest, b
+		}
+	}
+	return label, BackendCUDA
 }
 
 func isCommitRev(rev string) bool {

@@ -738,6 +738,17 @@ func isValidMessageRole(role string) bool {
 // a path to a .json file beside the Modelfile.
 //
 // xollama-hook: model-config
+// ParseXollamaConfig reads an XOLLAMA command's argument -- inline JSON, or a
+// path to a .json file relative to the Modelfile -- and validates it.
+//
+// Exported because two callers have to agree on what the command means. The
+// create path in cmd/ pre-parses every Modelfile to decide whether it is a
+// safetensors import, and a command it does not recognise is not an unknown
+// PARAMETER, it is a command it must not reject on another path's behalf.
+func ParseXollamaConfig(arg, relativeDir string) (*xollama.Config, error) {
+	return parseXollamaConfig(arg, relativeDir)
+}
+
 func parseXollamaConfig(arg, relativeDir string) (*xollama.Config, error) {
 	data := []byte(strings.TrimSpace(arg))
 	if len(data) == 0 {

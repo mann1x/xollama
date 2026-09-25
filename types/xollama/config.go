@@ -31,8 +31,13 @@ const ConfigPath = "xollama.json"
 // through every path that handles layers generically.
 const MediaTypeImageJSON = "application/vnd.ollama.image.json"
 
-// SchemaVersion is the schema this build writes and the newest it can read.
-const SchemaVersion = 1
+// SchemaVersion is the newest schema this build can read. It is NOT
+// necessarily what it writes: see requiredVersion.
+const SchemaVersion = 3
+
+// SchemaVersionBase is the version that expresses everything except the fields
+// added in v2 (kv.unified, kv.residency_mode) and v3 (devices).
+const SchemaVersionBase = 1
 
 // Config is the contents of the xollama.json layer.
 type Config struct {
@@ -89,6 +94,9 @@ type Config struct {
 	// wants affinity; a model answering unrelated one-shot prompts does not,
 	// and pinning those to one slot would make it worse.
 	Session *Session `json:"session,omitempty"`
+
+	// Devices pins the backend and devices this model runs on. See Devices.
+	Devices *Devices `json:"devices,omitempty"`
 }
 
 // Slots holds this model's serving-capacity settings.
@@ -216,6 +224,37 @@ type KV struct {
 	// message saying so, rather than started without it.
 	KSWA string `json:"k_swa,omitempty"`
 	VSWA string `json:"v_swa,omitempty"`
+
+	// Unified says whether the cells are one pool shared across sequences
+	// (--kv-unified) or a fixed per-slot split (--no-kv-unified). Schema v2.
+	//
+	// Until now this was DERIVED: the server passed --kv-unified exactly when
+	// it had parked slots or a shared pool to admit into, and a model could
+	// not say otherwise. It is stated here because the derivation answers a
+	// different question from the one an operator sometimes has. A shared pool
+	// lets ONE long conversation use every cell, which is what a single-user
+	// long-context model wants; a fixed split guarantees each slot its share,
+	// which is what a model serving several short conversations wants. The
+	// total cell count is the same either way.
+	//
+	// nil means "not stated" and keeps the derivation. Stating false while
+	// dynamic slots or shared pools are on is refused: parked slots have
+	// nothing to be admitted into when every slot owns a fixed share, and a
+	// pool's reserved sequence is a share of the same cells.
+	Unified *bool `json:"unified,omitempty"`
+
+	// ResidencyMode is the rolling-KV tactic for a cache that does not fit in
+	// VRAM: "auto", "head" or "window". Schema v2.
+	//
+	// The set is the engine's own, read from its argument parser rather than
+	// from a changelog: --kv-residency-mode must be auto|head|window. auto
+	// picks the position-window tactic when the cache is eligible and the M2
+	// head split otherwise; head and window force one.
+	//
+	// It is an opencoti extension -- stock llama.cpp has no such flag -- so a
+	// model that pins engine "llamacpp" and also names a residency mode is
+	// refused rather than served without it.
+	ResidencyMode string `json:"residency_mode,omitempty"`
 }
 
 // Draft holds speculative-decoding settings for this model.
@@ -239,6 +278,17 @@ const (
 
 var validEngines = []string{EngineOpencoti, EngineLlamaCpp}
 
+// KV residency tactics. Taken from the engine's own parser -- it answers a bad
+// value with "--kv-residency-mode must be auto|head|window" -- and not from
+// documentation, so this list is a measurement of the artifact.
+const (
+	ResidencyAuto   = "auto"
+	ResidencyHead   = "head"
+	ResidencyWindow = "window"
+)
+
+var validResidencyModes = []string{ResidencyAuto, ResidencyHead, ResidencyWindow}
+
 // validFlashAttention is what llama-server's --flash-attn accepts.
 var validFlashAttention = []string{"on", "off", "auto"}
 
@@ -258,6 +308,11 @@ func (c *Config) Validate() error {
 	}
 	if c.Version > SchemaVersion {
 		return fmt.Errorf("xollama config: schema version %d is newer than this build understands (%d); upgrade xollama", c.Version, SchemaVersion)
+	}
+	if c.Devices != nil {
+		if err := c.Devices.validate(); err != nil {
+			return err
+		}
 	}
 	if c.Engine != "" && !slices.Contains(validEngines, c.Engine) {
 		return fmt.Errorf("xollama config: unknown engine %q (want one of %v)", c.Engine, validEngines)
@@ -282,6 +337,28 @@ func (c *Config) Validate() error {
 		// it while the model is being created, where the line is visible.
 		if (c.KV.KSWA == "") != (c.KV.VSWA == "") {
 			return fmt.Errorf("xollama config: kv.k_swa and kv.v_swa must be set together (got k_swa=%q, v_swa=%q)", c.KV.KSWA, c.KV.VSWA)
+		}
+		if c.KV.ResidencyMode != "" && !slices.Contains(validResidencyModes, c.KV.ResidencyMode) {
+			return fmt.Errorf("xollama config: unknown kv.residency_mode %q (want one of %v)", c.KV.ResidencyMode, validResidencyModes)
+		}
+		// The rolling-KV residency tactic is an opencoti extension. A model
+		// that pins the stock engine and also names one is asking for two
+		// incompatible things; refuse it here, where the line is visible,
+		// rather than serve it silently without the tactic it named.
+		if c.KV.ResidencyMode != "" && c.Engine == EngineLlamaCpp {
+			return fmt.Errorf("xollama config: kv.residency_mode needs the opencoti engine; this config pins engine %q", c.Engine)
+		}
+		// A fixed per-slot split has nothing for a parked slot to be admitted
+		// into, and a shared prefix pool's reserved sequence is a share of the
+		// same cells. Both features require the unified pool, so saying no to
+		// it while asking for either is a configuration that cannot be served.
+		if c.KV.Unified != nil && !*c.KV.Unified {
+			if c.Slots != nil && c.Slots.Dynamic != nil && *c.Slots.Dynamic {
+				return fmt.Errorf("xollama config: slots.dynamic needs kv.unified; a parked slot has nothing to be admitted into when every slot owns a fixed share of the cells")
+			}
+			if c.Session != nil && c.Session.Pool != nil && *c.Session.Pool {
+				return fmt.Errorf("xollama config: session.pool needs kv.unified; a shared prefix pool is a share of the same cells")
+			}
 		}
 	}
 	if c.Slots != nil {
@@ -343,6 +420,7 @@ func Parse(data []byte) (*Config, error) {
 	if err := json.Unmarshal(data, &c); err != nil {
 		return nil, fmt.Errorf("xollama config: %w", err)
 	}
+	c.Devices.normalize()
 	if err := c.Validate(); err != nil {
 		return nil, err
 	}
@@ -351,11 +429,40 @@ func Parse(data []byte) (*Config, error) {
 
 // Marshal renders the config for storage, stamping the schema version so a
 // caller cannot write an unversioned blob by forgetting to set it.
+// requiredVersion is the LOWEST schema that can express this config.
+//
+// Writing SchemaVersion unconditionally would make every model this build
+// touches unreadable to an older xollama, including models that use nothing
+// newer than v1 -- Validate treats a future version as an error, deliberately,
+// because reading a newer config as if it were older runs the model
+// differently from how its publisher meant. So a config states the oldest
+// version that is true of it, and only a model that actually uses a v2 field
+// pays the v2 floor.
+func (c *Config) requiredVersion() int {
+	// An older build would read a device pin as an unknown field and serve
+	// the model wherever it pleased -- on the discrete card the pin exists to
+	// keep it off. Refusing is the honest answer, so the pin raises the floor.
+	if !c.Devices.IsZero() {
+		return 3
+	}
+	if c.KV != nil && (c.KV.Unified != nil || c.KV.ResidencyMode != "") {
+		return 2
+	}
+	return SchemaVersionBase
+}
+
 func (c *Config) Marshal() ([]byte, error) {
 	out := *c
-	if out.Version == 0 {
-		out.Version = SchemaVersion
+	// Recomputed, not defaulted: a config that was v2 and has since had its v2
+	// fields cleared becomes readable by an older build again, which is the
+	// whole point of stating the lowest true version.
+	if out.Devices != nil {
+		d := *out.Devices
+		d.IDs = slices.Clone(d.IDs)
+		d.normalize()
+		out.Devices = &d
 	}
+	out.Version = out.requiredVersion()
 	if err := out.Validate(); err != nil {
 		return nil, err
 	}
@@ -371,9 +478,32 @@ func (c *Config) IsZero() bool {
 	return c.Engine == "" &&
 		c.FlashAttention == "" &&
 		(c.Draft == nil || c.Draft.SpecType == "") &&
-		(c.KV == nil || (c.KV.K == "" && c.KV.V == "" && c.KV.KSWA == "" && c.KV.VSWA == "")) &&
+		(c.KV == nil || (c.KV.K == "" && c.KV.V == "" && c.KV.KSWA == "" && c.KV.VSWA == "" &&
+			c.KV.Unified == nil && c.KV.ResidencyMode == "")) &&
 		(c.Slots == nil || (c.Slots.Dynamic == nil && c.Slots.Max == 0 && c.Slots.TPSFloor == 0 &&
 			c.Slots.VRAMReserveMiB == 0 && c.Slots.SWASeqBudget == 0)) &&
 		(c.DCA == nil || (c.DCA.Enabled == nil && c.DCA.ChunkSize == 0)) &&
-		(c.Session == nil || (c.Session.Affinity == nil && c.Session.Pool == nil && c.Session.MaxPools == 0))
+		(c.Session == nil || (c.Session.Affinity == nil && c.Session.Pool == nil && c.Session.MaxPools == 0)) &&
+		c.Devices.IsZero()
 }
+
+// The closed sets, exported so a tool that ASKS for one of these values offers
+// exactly what Validate will accept. A menu built from a second hand-written
+// list is a menu that drifts; `xollama tweak model` builds its from these.
+//
+// Engines and cache types are deliberately not both here: the engine set is
+// closed and returned, while cache types are not validated at all (see KV),
+// because the set a build accepts depends on the engine that serves the load.
+
+// ValidEngines returns the engines a model may pin.
+func ValidEngines() []string { return slices.Clone(validEngines) }
+
+// ValidResidencyModes returns the rolling-KV tactics the engine's own parser
+// accepts.
+func ValidResidencyModes() []string { return slices.Clone(validResidencyModes) }
+
+// ValidFlashAttention returns what llama-server's --flash-attn accepts.
+func ValidFlashAttention() []string { return slices.Clone(validFlashAttention) }
+
+// ValidSpecTypes returns the speculative-decoding types a model may pin.
+func ValidSpecTypes() []string { return slices.Clone(validSpecTypes) }

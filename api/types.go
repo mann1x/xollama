@@ -888,6 +888,51 @@ type ShowResponse struct {
 	// own `num_predict` and `num_ctx`. A request that sets either will resolve
 	// to a different number, which is why the responses report their own.
 	ThinkBudgetTokens int `json:"think_budget_tokens,omitempty"`
+
+	// xollama-hook: model-config — see docs/features/model-config.md
+	//
+	// Xollama is the model's own fork configuration, the contents of its
+	// xollama.json layer. The server already reads it to build the launch;
+	// naming it here is what lets a client SEE it, which `xollama tweak model`
+	// needs before it can offer to change one setting and leave the rest.
+	// Reading it back out of the manifest client-side would only work against
+	// a local store.
+	Xollama *xollama.Config `json:"xollama,omitempty"`
+
+	// xollama-hook: model-config — see docs/features/model-config.md
+	//
+	// Drafter describes the speculative drafter this model would launch with,
+	// and is nil when it has none. A drafter is a DRAFT layer in the manifest
+	// or a head inside the weights; neither shows up anywhere else in this
+	// response, so a model could carry a 440 MiB drafter with no sign of it.
+	Drafter *DrafterInfo `json:"drafter,omitempty"`
+}
+
+// xollama-hook: model-config — see docs/features/model-config.md
+//
+// DrafterInfo is what `xollama show` prints about a model's drafter. SpecType
+// is the driver the next load will actually pass, pin included, so it answers
+// the question an operator has -- not "what does the layer say" but "what will
+// this do".
+type DrafterInfo struct {
+	// Source is "attached" for a DRAFT layer beside the weights, or
+	// "built-in" for a head inside them.
+	Source string `json:"source"`
+
+	// SpecType is the resolved --spec-type, in upstream's spelling. The
+	// engine's own spelling may differ: opencoti calls the assistant driver
+	// draft-assistant where llama.cpp reaches it through draft-mtp.
+	SpecType string `json:"spec_type,omitempty"`
+
+	// Pinned is true when SpecType came from the model's xollama.json rather
+	// than from the drafter's own metadata.
+	Pinned bool `json:"pinned,omitempty"`
+
+	// Architecture, ParameterSize and QuantizationLevel describe an attached
+	// drafter's own file, and are empty for a built-in head.
+	Architecture      string `json:"architecture,omitempty"`
+	ParameterSize     string `json:"parameter_size,omitempty"`
+	QuantizationLevel string `json:"quantization_level,omitempty"`
 }
 
 // CopyRequest is the request passed to [Client.Copy].

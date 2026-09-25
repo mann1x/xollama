@@ -38,6 +38,7 @@ import (
 	"github.com/ollama/ollama/format"
 	"github.com/ollama/ollama/fs/gguf"
 	internalcloud "github.com/ollama/ollama/internal/cloud"
+	"github.com/ollama/ollama/internal/fsowner"
 	"github.com/ollama/ollama/internal/proxy"
 	"github.com/ollama/ollama/llm"
 	"github.com/ollama/ollama/logutil"
@@ -681,11 +682,12 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 			// head to derive an identity from, and deriving one per request
 			// would pin every unrelated prompt to a slot of its own. A caller
 			// that knows these requests belong together sends session_id.
-			SessionID:          req.SessionID,
-			ThinkBudget:        thinkBudget,
-			ThinkBudgetMessage: opts.ThinkBudgetMessage,
-			ThinkingStartTag:   thinkStartTag,
-			ThinkingEndTag:     thinkEndTag,
+			SessionID:           req.SessionID,
+			ThinkBudget:         thinkBudget,
+			ThinkBudgetMessage:  opts.ThinkBudgetMessage,
+			ThinkingStartTag:    thinkStartTag,
+			ThinkingEndTag:      thinkEndTag,
+			ThinkBudgetResetTag: thinkBudgetResetTagForCompletion(builtinParser),
 		}, func(cr llm.CompletionResponse) {
 			res := api.GenerateResponse{
 				Model:     req.Model,
@@ -1592,6 +1594,8 @@ func GetModelInfo(req api.ShowRequest) (*api.ShowResponse, error) {
 		// Several integrations crash on a nil/omitempty+empty ModelInfo, so by
 		// default we return an empty map.
 		ModelInfo: make(map[string]any),
+		// xollama-hook: model-config
+		Xollama: m.Xollama,
 	}
 
 	if m.Config.RemoteHost != "" {
@@ -1729,6 +1733,9 @@ func GetModelInfo(req api.ShowRequest) (*api.ShowResponse, error) {
 		projectorInfo := projectorData.Values()
 		resp.ProjectorInfo = projectorInfo
 	}
+
+	// xollama-hook: model-config — see docs/features/model-config.md
+	resp.Drafter = drafterShowInfo(m, kvData, tensors, drafterSpecTypePin(m))
 
 	return resp, nil
 }
@@ -1990,6 +1997,11 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.GET("/", func(c *gin.Context) { c.String(http.StatusOK, "Ollama is running") })
 	r.HEAD("/api/version", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"version": version.Version}) })
 	r.GET("/api/version", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"version": version.Version}) })
+	// xollama-hook: host-fallback — see docs/xollama/default-port.mdx
+	r.HEAD(api.XollamaIdentityPath, XollamaIdentityHandler)
+	r.GET(api.XollamaIdentityPath, XollamaIdentityHandler)
+	// xollama-hook: device-select — see docs/features/device-selection.md
+	r.GET(api.XollamaDevicesPath, XollamaDevicesHandler)
 	r.GET("/api/status", s.StatusHandler)
 	// Codex uses this existing Ollama listener for both native and Ollama
 	// models. The proxy selects the upstream per request.
@@ -2071,6 +2083,13 @@ func Serve(ln net.Listener) error {
 	slog.Info("server config", "env", envconfig.Values())
 	cloudDisabled, _ := internalcloud.Status()
 	slog.Info(fmt.Sprintf("Ollama cloud disabled: %t", cloudDisabled))
+
+	// xollama-hook: store-ownership
+	//
+	// Said once at startup, because the mirror case cannot be fixed in code: an
+	// ordinary user running against a service-owned store cannot chown what it
+	// writes, and the damage shows up as a slow model list rather than an error.
+	fsowner.Preflight(envconfig.Models())
 
 	blobsDir, err := manifest.BlobsPath("")
 	if err != nil {
@@ -2165,6 +2184,11 @@ func Serve(ln net.Listener) error {
 
 	var totalVRAM uint64
 	for _, gpu := range gpus {
+		// xollama-hook: igpu-vulkan — an integrated Vulkan GPU reports host
+		// RAM; counting it as VRAM would lift every model's default context.
+		if gpu.Integrated && gpu.Library == "Vulkan" {
+			continue
+		}
 		totalVRAM += gpu.TotalMemory - envconfig.GpuOverhead()
 	}
 
@@ -2574,6 +2598,13 @@ func optionAsInt(value any) (int, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// thinkBudgetResetTagForCompletion reports the tag whose appearance forgives the
+// thinking spent so far, which is the tag a tool call opens with. Parsers that
+// do not name one leave the budget cumulative with nothing to forgive it.
+func thinkBudgetResetTagForCompletion(builtinParser parsers.Parser) string {
+	return parsers.ToolCallStartTagForParser(builtinParser)
 }
 
 func toolCallTagForCompletion(toolParser *tools.Parser) string {
@@ -3079,6 +3110,7 @@ func (s *Server) ChatHandler(c *gin.Context) {
 				ThinkBudgetMessage:         opts.ThinkBudgetMessage,
 				ThinkingStartTag:           thinkStartTag,
 				ThinkingEndTag:             thinkEndTag,
+				ThinkBudgetResetTag:        thinkBudgetResetTagForCompletion(builtinParser),
 			}, func(r llm.CompletionResponse) {
 				metrics := api.Metrics{
 					PromptEvalCount:       r.PromptEvalCount,

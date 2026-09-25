@@ -174,12 +174,14 @@
             "group": "Engine tuning",
             "pages": [
               "/xollama/model-settings",
+              "/xollama/tweak",
               "/xollama/kv-cache",
               "/xollama/slots",
               "/xollama/dca",
               "/xollama/sessions",
               "/xollama/introspection",
               "/xollama/opencoti-tuning",
+              "/xollama/default-port",
               "/xollama/engine-args"
             ]
           }

@@ -114,8 +114,8 @@ func TestClineEdit(t *testing.T) {
 		if config["actModeOllamaModelId"] != "kimi-k2.5:cloud" {
 			t.Errorf("actModeOllamaModelId = %v, want kimi-k2.5:cloud", config["actModeOllamaModelId"])
 		}
-		if config["actModeOllamaBaseUrl"] != "http://127.0.0.1:11434" {
-			t.Errorf("actModeOllamaBaseUrl = %v, want http://127.0.0.1:11434", config["actModeOllamaBaseUrl"])
+		if config["actModeOllamaBaseUrl"] != "http://127.0.0.1:22434" {
+			t.Errorf("actModeOllamaBaseUrl = %v, want http://127.0.0.1:22434", config["actModeOllamaBaseUrl"])
 		}
 		if config["planModeApiProvider"] != clineLaunchProvider {
 			t.Errorf("planModeApiProvider = %v, want %s", config["planModeApiProvider"], clineLaunchProvider)
@@ -123,11 +123,11 @@ func TestClineEdit(t *testing.T) {
 		if config["planModeOllamaModelId"] != "kimi-k2.5:cloud" {
 			t.Errorf("planModeOllamaModelId = %v, want kimi-k2.5:cloud", config["planModeOllamaModelId"])
 		}
-		if config["planModeOllamaBaseUrl"] != "http://127.0.0.1:11434" {
-			t.Errorf("planModeOllamaBaseUrl = %v, want http://127.0.0.1:11434", config["planModeOllamaBaseUrl"])
+		if config["planModeOllamaBaseUrl"] != "http://127.0.0.1:22434" {
+			t.Errorf("planModeOllamaBaseUrl = %v, want http://127.0.0.1:22434", config["planModeOllamaBaseUrl"])
 		}
-		if config["ollamaBaseUrl"] != "http://127.0.0.1:11434" {
-			t.Errorf("ollamaBaseUrl = %v, want http://127.0.0.1:11434", config["ollamaBaseUrl"])
+		if config["ollamaBaseUrl"] != "http://127.0.0.1:22434" {
+			t.Errorf("ollamaBaseUrl = %v, want http://127.0.0.1:22434", config["ollamaBaseUrl"])
 		}
 		if config["welcomeViewCompleted"] != true {
 			t.Errorf("welcomeViewCompleted = %v, want true", config["welcomeViewCompleted"])
@@ -149,8 +149,8 @@ func TestClineEdit(t *testing.T) {
 		if _, ok := settings["apiKey"]; ok {
 			t.Errorf("settings.apiKey = %v, want omitted for local Ollama", settings["apiKey"])
 		}
-		if settings["baseUrl"] != "http://127.0.0.1:11434/v1" {
-			t.Errorf("settings.baseUrl = %v, want http://127.0.0.1:11434/v1", settings["baseUrl"])
+		if settings["baseUrl"] != "http://127.0.0.1:22434/v1" {
+			t.Errorf("settings.baseUrl = %v, want http://127.0.0.1:22434/v1", settings["baseUrl"])
 		}
 	})
 
@@ -213,8 +213,8 @@ func TestClineEdit(t *testing.T) {
 		if settings["model"] != "glm-5:cloud" {
 			t.Errorf("settings.model = %v, want glm-5:cloud", settings["model"])
 		}
-		if settings["baseUrl"] != "http://127.0.0.1:11434/v1" {
-			t.Errorf("settings.baseUrl = %v, want http://127.0.0.1:11434/v1", settings["baseUrl"])
+		if settings["baseUrl"] != "http://127.0.0.1:22434/v1" {
+			t.Errorf("settings.baseUrl = %v, want http://127.0.0.1:22434/v1", settings["baseUrl"])
 		}
 	})
 
@@ -244,7 +244,7 @@ func TestClineEdit(t *testing.T) {
 					"settings": map[string]any{
 						"provider": clineLaunchProvider,
 						"model":    "kimi-k2.5:cloud",
-						"baseUrl":  "http://127.0.0.1:11434/v1",
+						"baseUrl":  "http://127.0.0.1:22434/v1",
 					},
 				},
 			},

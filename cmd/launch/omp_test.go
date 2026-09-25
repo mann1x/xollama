@@ -136,7 +136,7 @@ func TestOMPRun_WebSearchPluginLifecycle(t *testing.T) {
 			http.NotFound(w, r)
 		}))
 		t.Cleanup(srv.Close)
-		t.Setenv("OLLAMA_HOST", srv.URL)
+		t.Setenv("XOLLAMA_HOST", srv.URL)
 	}
 
 	setup := func(t *testing.T, pluginList string, cloudDisabled bool) (string, *OMP) {
@@ -316,7 +316,7 @@ func TestOMPFindPath(t *testing.T) {
 func TestOMPConfigureWithModelsWritesModelsYML(t *testing.T) {
 	home := t.TempDir()
 	setOMPTestHome(t, home)
-	t.Setenv("OLLAMA_HOST", "http://0.0.0.0:11434")
+	t.Setenv("XOLLAMA_HOST", "http://0.0.0.0:11434")
 
 	o := &OMP{}
 	models := []LaunchModel{
@@ -403,7 +403,7 @@ providers:
   anthropic:
     baseUrl: https://example.com/anthropic
   ollama:
-    baseUrl: http://old-host:11434
+    baseUrl: http://old-host:22434
     api: openai-responses
     auth: none
     models:
@@ -441,7 +441,7 @@ theme: monochrome
 	}
 
 	provider := ompProviderFromYAML(t, cfg)
-	if provider["baseUrl"] != "http://127.0.0.1:11434/v1" {
+	if provider["baseUrl"] != "http://127.0.0.1:22434/v1" {
 		t.Fatalf("baseUrl = %v, want repaired OpenAI-compatible host", provider["baseUrl"])
 	}
 
@@ -557,7 +557,7 @@ func TestOMPConfigureWithModelsRespectsPiCodingAgentDir(t *testing.T) {
 func TestOMPCurrentModelRequiresHealthyProvider(t *testing.T) {
 	home := t.TempDir()
 	setOMPTestHome(t, home)
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 
 	modelsPath := filepath.Join(home, ".omp", "agent", "models.yml")
 	if err := os.MkdirAll(filepath.Dir(modelsPath), 0o755); err != nil {

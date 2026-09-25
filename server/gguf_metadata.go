@@ -14,6 +14,7 @@ import (
 
 	"github.com/ollama/ollama/envconfig"
 	fsgguf "github.com/ollama/ollama/fs/gguf"
+	"github.com/ollama/ollama/internal/fsowner"
 	"github.com/ollama/ollama/manifest"
 	"github.com/ollama/ollama/version"
 )
@@ -25,6 +26,14 @@ import (
 
 // Comfortably above per-layer arrays, which scale with block count, and far
 // below any tokenizer vocabulary.
+// xollama-hook: store-ownership
+//
+// The creating calls below go through internal/fsowner instead of os. On a
+// packaged Linux install the server runs as an unprivileged service account,
+// and anything a root-run command creates here would be unusable by it
+// afterwards -- silently, as a slow model list rather than an error. The
+// wrappers are os plus one stat when there is no service account to find.
+
 const ggufMetadataMaxArray = 4096
 
 type ggufMetadata struct {
@@ -156,12 +165,12 @@ func writeGGUFMetadata(path, blob string, md ggufMetadata) {
 		slog.Debug("could not encode gguf metadata", "path", path, "error", err)
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := fsowner.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		slog.Debug("could not create gguf metadata dir", "path", path, "error", err)
 		return
 	}
 
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".gguf-metadata-*.tmp")
+	tmp, err := fsowner.CreateTemp(filepath.Dir(path), ".gguf-metadata-*.tmp")
 	if err != nil {
 		slog.Debug("could not create gguf metadata temp file", "path", path, "error", err)
 		return

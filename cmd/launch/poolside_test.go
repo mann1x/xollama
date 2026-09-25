@@ -48,7 +48,7 @@ func TestPoolsideRunSetsOllamaEnv(t *testing.T) {
 	}
 
 	t.Setenv("PATH", tmpDir)
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 
 	p := &Poolside{}
 	if err := p.Run("qwen3.5", nil, []string{"session"}); err != nil {

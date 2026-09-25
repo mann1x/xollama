@@ -111,7 +111,7 @@ func TestLaunchCmdTUICallback(t *testing.T) {
 	t.Run("integration arg bypasses TUI", func(t *testing.T) {
 		srv := httptest.NewServer(http.NotFoundHandler())
 		defer srv.Close()
-		t.Setenv("OLLAMA_HOST", srv.URL)
+		t.Setenv("XOLLAMA_HOST", srv.URL)
 
 		tuiCalled := false
 		mockTUI := func(cmd *cobra.Command) {
@@ -310,7 +310,7 @@ func TestLaunchCmdModelFlagFiltersDisabledCloudFromSavedConfig(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	stub := &launcherEditorRunner{}
 	restore := OverrideIntegration("stubeditor", stub)
@@ -356,7 +356,7 @@ func TestLaunchCmdModelFlagClearsDisabledCloudOverride(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	stub := &launcherSingleRunner{}
 	restore := OverrideIntegration("stubapp", stub)
@@ -456,7 +456,7 @@ func TestLaunchCmdYes_AutoConfirmsLaunchPromptPath(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	stub := &launcherEditorRunner{paths: []string{"/tmp/stubeditor.json"}}
 	restore := OverrideIntegration("stubeditor", stub)
@@ -502,7 +502,7 @@ func TestLaunchCmdHeadlessWithYes_AutoPullsMissingLocalModel(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	stub := &launcherSingleRunner{}
 	restore := OverrideIntegration("stubapp", stub)
@@ -545,7 +545,7 @@ func TestLaunchCmdHeadlessWithoutYes_AllowsConfiguredLaunch(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	stub := &launcherEditorRunner{paths: []string{"/tmp/stubeditor.json"}}
 	restore := OverrideIntegration("stubeditor", stub)
@@ -591,7 +591,7 @@ func TestLaunchCmdIntegrationArgPromptsForModelWithSavedSelection(t *testing.T) 
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	stub := &launcherSingleRunner{}
 	restore := OverrideIntegration("stubapp", stub)
@@ -647,7 +647,7 @@ func TestLaunchCmdHeadlessYes_IntegrationRequiresModelEvenWhenSaved(t *testing.T
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	stub := &launcherSingleRunner{}
 	restore := OverrideIntegration("stubapp", stub)
@@ -684,7 +684,7 @@ func TestLaunchCmdHeadlessYes_IntegrationWithoutSavedModelReturnsError(t *testin
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	stub := &launcherSingleRunner{}
 	restore := OverrideIntegration("stubapp", stub)

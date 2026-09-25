@@ -2,6 +2,7 @@
 paths:
   - llm/engine/**
   - cmake/opencoti-fetch.cmake
+  - cmake/opencoti-engine.cmake
 ---
 
 # opencoti engine pin
@@ -12,7 +13,9 @@ paths:
   `TestPinFormatIsWhatCMakeParses` in `llm/engine/pin_test.go` holds them to it.
 - `rev` is a 40-character commit sha, never a branch or tag: opencoti re-cuts a
   release in place, so a moving rev fetches bytes the pinned `sha256` rows
-  reject. `ParsePin` rejects anything shorter or non-hex.
+  reject. `ParsePin` rejects anything shorter or non-hex; on the dev repo it
+  names the *snapshot* commit carrying the files, not the `pin ->` pointer
+  commit a second later.
 - `channel` is required and is `release` or `dev` (`ChannelRelease` /
   `ChannelDev` in `llm/engine/pin.go`). It is declared, never guessed from the
   repo name; `cmake/opencoti-fetch.cmake` names a dev channel in the build log.
@@ -33,12 +36,19 @@ paths:
   subset. It must be served by the pin or refused for a stated reason, which is
   what `TestEveryTestedPlatformIsServedOrRefused` in `llm/engine/pin_test.go`
   asserts: no `bin` row for a tested platform means `pinUncoveredIn` has to
-  return a reason, never route.
+  return a reason, never route. `cmake/opencoti-engine.cmake` matches it: no
+  `bin <arch>` row is a STATUS line and a llama.cpp-only package, not a
+  configure failure; more than one row is still fatal.
 - Asset rows are `bin` (the engine) or `dso` (a side-loadable GPU payload staged
   beside the binary); release bins embed their payloads, a dev snapshot is a bare
   APE that needs one. Address them with `pin.Asset` (bin rows only) and `pin.DSO`;
   build offline with `-DLOCAL_DSO_FILE=<payload>`. One row per kind per arch and
   at least one `bin` — `TestCommittedPinParses` fails duplicates and dso-only pins.
+- `Find` in `llm/engine/opencoti.go` knows **both** artifact names: release
+  `opencoti-llamafile-<version>-<tag>-<arch>.llamafile[.exe]` and the dev bare APE
+  `opencoti-<version>-<build>` (no extension; `filepath.Ext` sees the version's
+  dots). `isArtifact` decides by a known extension first, else the executable bit
+  (APE `0755`, CUDA payload `0644`). Missing either shape falls back silently.
 - A test about policy must not also be a test of what this branch pins: stub the
   pin with `withPin` (`llm/engine/coverage_test.go`), which swaps `loadPin` and
   restores it in `t.Cleanup`. `TestSupportsDeviceHonoursTheCUDAComputeFloor` in

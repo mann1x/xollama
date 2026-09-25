@@ -1,5 +1,44 @@
 # Phase 2 — engine A/B, measured
 
+> **Provenance caveat on the 2026-09-20 re-takes (raised 2026-09-22).** opencoti
+> reported that every dev build mirrored its CUDA library into the *release* app
+> key `~/.llamafile/v/opencoti-0.10.5-c7/ggml-cuda.so` on both hosts — first
+> logged write 2026-09-05 13:43, last 2026-09-22 09:30, 97 writes in total and
+> **29 on 2026-09-20 alone** — until they restored the pinned c7-r2 DSO at about
+> 2026-09-22 10:05 CEST. A cell is only exposed if its binary found no GPU
+> library beside itself, because the executable's directory always wins.
+>
+> Checked here rather than assumed, and it splits in two. The harness records
+> where it side-loaded from, but **that instrumentation only begins at
+> 2026-09-21 12:05**, so no 09-20 file self-certifies.
+>
+> - **b18 cells — clean.** `b18-compat` (8/8), `b18-gemma4`, `b18-overflow`,
+>   `b18-smoke` and `multislot/b18` ran from `/srv/ml/opencoti-dev/build18/`,
+>   which holds `ggml-cuda.so` (22:26) *beside* the binary (22:25), both staged
+>   before the first of those runs at 22:27. The app dir was never consulted.
+> - **c7r2 cells — annotate, do not re-take.** `c7r2-overflow`,
+>   `c7r2-overflow-clean`, `c7r2-narrowing` and `multislot/r2` ran the fat
+>   release bin at `c7r2/artifacts/…-x86_64.llamafile`, and `artifacts/` holds no
+>   `ggml-cuda.so`, so those boots resolved through the app dir. That turned on
+>   whether a fat boot writes its embedded payload unconditionally or only when
+>   absent, and opencoti answered it (#200): `llamafile_is_file_newer_than`
+>   dispatches a `/zip/…` payload to `is_file_newer_than_bytes`, which `pread`s
+>   both files in 512-byte chunks and returns at the first differing byte, and
+>   `llamafile_extract` then rewrites via `mkstemp` + `rename`. A fat boot
+>   therefore compares the whole payload every time and always ends up mapping
+>   **its own** embedded bytes, whatever a dev build left in the app dir. The
+>   cells stand. opencoti acknowledge one residual they have not closed: the
+>   window between that byte compare and the `dlopen` is a TOCTOU, so a write
+>   landing inside it would still be picked up. Nothing here ran concurrently
+>   with a dev build, and these binaries predate 0341, so there is no loaded
+>   line to read either way.
+> - **Every `llamacpp` cell is unaffected** — different engine, no side-load.
+>
+> A packaged xollama was never exposed: `cmake/opencoti-fetch.cmake` stages the
+> `dso` row into the same directory as the `bin` row (`_dso_dest` is
+> `${DEST_DIR}/${_dso_name}`). Only the bare-artifact harness runs could reach
+> the app dir, and that is now a reason to keep the packaging rule.
+
 > Measured 2026-09-18 on solidPC. Harness: [`scripts/phase2-engine-ab.py`](../../scripts/phase2-engine-ab.py).
 > Raw results: `/srv/ml/xollama-phase2/results-{llamacpp,opencoti}.json`.
 
@@ -43,6 +82,28 @@ One 1-token generation per model. `loaded` means the runner started and answered
 | `qwen3.5:2b` | ok | **fails** | `qwen35.rope.dimension_sections has wrong array length; expected 4, got 3` |
 | `llama3.1:70b-instruct-q3_K_S` | ok | **fails** | `ggml_new_object: not enough space in the context's memory pool` → `signal: aborted` |
 | | **8 / 8** | **3 / 8** | |
+
+> **Re-taken on build 18 of the dev line, 2026-09-20 — 8 / 8.** Every model c7
+> refused now loads, on the same host, same models, same recipe. Raw:
+> `/srv/ml/xollama-phase2/as-ollama/{b18-compat,lcpp-compat}/`.
+>
+> | model | llama.cpp | opencoti **build 18** |
+> |---|---|---|
+> | `llama3:latest` | ok | ok |
+> | `qwen2.5:1.5b` | ok | ok |
+> | `tinyllama:latest` | ok | ok |
+> | `gemma4:e4b` | ok | **ok** (was `done_getting_tensors: expected 2131, got 720`) |
+> | `gemma3:27b-it-qat` | ok | **ok** (was `expected 1247, got 808`) |
+> | `mistral-small3.1:latest` | ok | **ok** (was `expected 585, got 363`) |
+> | `qwen3.5:2b` | ok | **ok** (was `rope.dimension_sections … expected 4, got 3`) |
+> | `llama3.1:70b-instruct-q3_K_S` | ok | **ok** (was the pool abort) |
+> | | **8 / 8** | **8 / 8** |
+>
+> Both causes below are fixed on that line: the compat-layer gap by opencoti's
+> patch 0307, and the 70B abort by 0308 (their bug-3470; see §5). This is the
+> finding that qualified Phase 0's verdict, and it does not survive the move to
+> the development line — which is the case for integrating towards c8 rather
+> than a reason to hold at c7.
 
 Two causes, not three, and neither is in our argv.
 
@@ -129,12 +190,37 @@ the full 512 tokens.
 > `bufferSizeRegex` did not match, so `memGPU` was short by 3584 MiB of CUDA0 KV
 > and the scheduler planned against a wrong figure. No warning fired, because
 > the model and compute lines still matched. The parser is fixed (`memory-scrape`
-> in the hook Registry); the number is not re-taken.
+> in the hook Registry).
+>
+> **Re-taken 2026-09-20**, with that parser fixed, run as the `ollama` user (see
+> `.claude/rules/solidpc-testing.md`). Raw:
+> `/srv/ml/xollama-phase2/as-ollama/multislot/`.
+>
+> | engine | wall | aggregate (tok/s) | vs llama.cpp | per slot (tok/s) |
+> |---|---|---|---|---|
+> | llama.cpp | 3.27 s | 625.6 | — | 159.2, 159.2, 159.2, 157.8 |
+> | opencoti c7 **r2** | 5.13 s | 399.2 | **−36.2%** | 106.0, 104.6, 104.6, 104.6 |
+> | opencoti **build 18** (c8 line) | 3.25 s | **630.1** | **+0.7%** | 162.7, 162.5, 162.1, 162.3 |
+>
+> Two things change here. The provisional −27% was **optimistic**: measured
+> honestly on the shipped release pin the concurrency deficit is −36.2%, not
+> −27%. And it is **gone on the development line** — build 18 carries opencoti's
+> patch 0311, and four slots reach parity with stock llama.cpp, marginally ahead
+> of it and within noise of it.
+>
+> So the one real performance difference this A/B found is a property of the c7
+> release cut, not of the engine. It is the strongest single argument for the
+> move to c8: on the release pin xollama serves four concurrent requests at
+> roughly two thirds of stock throughput; on the line we are integrating
+> towards, it does not.
 
 This is the one real performance difference the A/B found: single-stream parity
 does **not** carry over to concurrency. All four opencoti slots reported an
-identical 111.34 tok/s, which is consistent with stricter lockstep batching.
-Worth understanding before Phase 3 exposes any knob that changes batching.
+identical 111.34 tok/s, which is consistent with stricter lockstep batching —
+and the re-take above shows the same signature on r2 (104.6 x3) and its
+disappearance on build 18, where the four slots sit at 162 each, above stock's
+159. The lockstep is still there; what changed is that it no longer costs
+anything.
 
 ## 4. Gemma-4 parsers
 
@@ -146,6 +232,19 @@ Worth understanding before Phase 3 exposes any knob that changes batching.
 The parsers are ours and run above the engine, so nothing suggests they would
 behave differently. But this axis cannot be closed until §1a is fixed, and
 recording it as "passed" would be a lie about what was run.
+
+> **Closed on build 18, 2026-09-20** — measured, not assumed, now that the
+> model loads. Raw: `/srv/ml/xollama-phase2/as-ollama/{b18-gemma4,lcpp-gemma4}/`.
+>
+> | engine | tool call | thinking channel |
+> |---|---|---|
+> | llama.cpp | 1 call, `get_weather({"city":"Berlin"})`, no markup leaked | separated, 781 thinking / 381 content chars, no channel markup leaked |
+> | opencoti **build 18** | 1 call, `get_weather({"city":"Berlin"})`, no markup leaked | separated, 781 thinking / 366 content chars, no channel markup leaked |
+>
+> Identical tool call and an identical 781-character thinking span; the content
+> lengths differ by 15 characters, which is sampling, not structure. The
+> expectation that the parsers sit above the engine turns out to be right — but
+> it is now a measurement rather than an argument.
 
 ## 5. VRAM overflow
 
@@ -209,7 +308,10 @@ rolling-KV spill actually do something — and it does not survive contact.
 > because retiring it removed the only diagnosis a user gets for a failure that
 > still ships. Reported to opencoti.
 >
-> **Narrowed, same day**, after opencoti asked (their bug-3515). The failing
+> **Narrowed, same day**, after opencoti asked. (They logged it as bug-3515 and
+> then found it a duplicate of their **bug-3470** — same abort, same
+> 118128/117760, same model; 3515 had been filed without matching the error
+> string. The fix is their patch `0308-rolling-kv-host-layers`.) The failing
 > load says which tactic it chose:
 >
 > ```
@@ -231,6 +333,29 @@ rolling-KV spill actually do something — and it does not survive contact.
 >
 > That makes the workaround a real one — it keeps the user on this engine
 > instead of off it — and it is what `llm/engine_defects.go` now tells them.
+>
+> **Already fixed on the development line, measured 2026-09-20.** Build 18 of
+> the c7 dev line (`a7a4e7da…` + its side-loaded `bef1ab64…` CUDA payload, both
+> verified against `llm/engine/pin.txt` on the `dev` branch) loads the same
+> model on the same card. Raw: `/srv/ml/xollama-phase2/as-ollama/b18-overflow/`.
+>
+> | arm | result |
+> |---|---|
+> | llama.cpp | loads, 56.8% resident, 2.71 tok/s |
+> | opencoti c7 r2 | aborts in 2.7 s |
+> | opencoti **build 18** | **loads** in 37.5 s, **76.0% resident**, **4.25 tok/s** |
+>
+> It is the same path, not an avoided one — the log still says
+> `rolling-kv POSITION_WINDOW mode ON (--kv-residency-mode auto)` with the same
+> window 256 / 32768 and host tail 32512, and the plan reads
+> `POSITION_WINDOW=80`. It places 310 KV layers on the CPU where r2 died on the
+> 54th, and aborts zero times. So opencoti's patch 0308 (rolling-KV metadata
+> budget) is the fix, and it is already on the line c8 is cut from.
+>
+> It is also the fastest arm of the three, by a distance: 4.25 tok/s against
+> stock's 2.71, because the position window keeps 76% of the model resident
+> where stock's split manages 56.8%. This is the feature working as designed,
+> on the exact case that was chosen to break it.
 >
 > One hazard found while measuring, worth knowing before trusting any r1-vs-r2
 > comparison: the llamafile self-extraction cache is keyed by version string,
@@ -326,3 +451,440 @@ logged as bug-008.
   Compatibility gating comes first.
 - Concurrency (−27%) is the only performance question worth carrying forward;
   single-stream parity means throughput is not the reason to pick either engine.
+
+## Re-measured on build 19 (`66408c19`), 2026-09-21
+
+opencoti stated plainly that they ran no plain-KV throughput, multi-slot or
+compat pass on these bytes and that our cells were the right re-check, so both
+axes were taken again rather than carried forward. As the `ollama` user, RTX
+3090 idle (24 GiB free, nothing loaded on the live service), DSO
+`7144a91a…` staged beside the artifact and reported as `beside-artifact`.
+
+### Multi-slot — the r2 deficit stays closed
+
+`qwen2.5:1.5b`, `-np 4`, four concurrent × 512 tokens:
+
+| engine | wall | aggregate (tok/s) | vs llama.cpp | per slot (tok/s) |
+|---|---|---|---|---|
+| llama.cpp | 3.30 s | 619.7 | — | 157.0, 156.9, 157.9, 158.0 |
+| opencoti c7 **r2** (2026-09-20) | 5.13 s | 399.2 | **−36.2%** | 106.0, 104.6, 104.6, 104.6 |
+| opencoti **build 18** (2026-09-20) | 3.25 s | 630.1 | +0.7% | 162.7, 162.5, 162.1, 162.3 |
+| opencoti **build 19** | 3.24 s | **632.6** | **+2.1%** | 163.3, 163.5, 163.9, 163.7 |
+
+Build 19 holds what build 18 won. The lockstep batching is still visible — all
+four slots within 0.6 tok/s of each other — and still costs nothing.
+
+### Single-stream — no regression, and the prompt-eval gap has closed
+
+`llama3:latest`, five iterations, unique ~5000-token prompts. Build 18 was
+re-measured **in the same session** rather than compared across days, because a
+1-point difference against a figure taken yesterday is not a finding:
+
+| engine | generation (tok/s) | spread | prompt eval (tok/s) |
+|---|---|---|---|
+| llama.cpp | **78.58** | 78.21–78.62 | 3966.8 |
+| opencoti build 18 | 76.46 | 76.35–76.96 | 3953.0 |
+| opencoti build 19 | 76.26 | 75.87–76.95 | 3987.9 |
+
+Build 18 and build 19 spreads overlap across most of their range, so **the pin
+move costs nothing on generation**. The ~3% deficit against stock is a property
+of the development line, not of this artifact.
+
+Against the c7 figures higher up this page (llama.cpp 78.38, opencoti 77.05),
+the dev line trades one for the other: generation is about a point further
+behind (−1.7% → −3.0%), and prompt eval, which was **−4.6%**, is now at parity
+(**+0.5%**). On the shape this axis actually measures — a 5000-token prompt for
+44 generated tokens — prompt eval is the larger term.
+
+### Method note
+
+The `--iters` default is 3; the figures above this section were taken at 5. The
+first build-19 pass was run at the default and showed −3.2%, which is the same
+number, but comparing a 3-iteration median against a 5-iteration one is a
+comparison of two methods. Match the method before reading a delta.
+
+## Candidate `2609220756001` (build 20), 2026-09-22 — NOT PINNABLE
+
+opencoti published a post-0342 snapshot; this is the measurement the pin rule
+asks for before it can move (`.claude/rules/engine-pin.md`). Both digests were
+checked against the published values before anything ran — bin `138d4614…`,
+dso `d676a779…`, from `ManniX-ITA/opencoti-llamafile-dev` rev
+`12f73a6adb8e8277b80fa5bd86872f3b0761eb1e` — and staged flat with the library
+beside the binary. For the first time the artifact says so itself, because 0341
+added the line:
+
+```
+cuda: loaded /srv/ml/opencoti-dev/build20/flat/ggml-cuda.so (executable directory, 734023016 bytes)
+```
+
+That closes the provenance question at the top of this page for every cell
+below: the app dir was not consulted, and the binary said which bytes it mapped
+rather than us inferring it from where we put them.
+
+**Four axes clean, one axis broken, and the broken one is `/api/chat`.**
+
+| axis | build 19 (pinned) | candidate `…0756001` |
+|---|---|---|
+| compat | 8/8 | **8/8** |
+| throughput, gen (5 iters) | 76.56 (75.68–76.82) | 76.12 (75.53–76.58) |
+| throughput, prompt eval | 3968.5 | 3940.9 |
+| multi-slot, aggregate | 609.95 (3.36 s) | 615.03 (3.33 s) |
+| overflow, 70B at 0.76 in VRAM | — | loaded, 4.01 tok/s |
+| **gemma-4 parsers** | **pass** | **HTTP 500** |
+
+Throughput and multi-slot were re-taken **in the same session at matched
+settings**, because the first candidate pass read −3.7% on multi-slot against a
+figure from the day before and that turned out to be session noise: taken back
+to back the two builds are 609.95 against 615.03. The method note further up
+this page is there for exactly this, and it caught something this time.
+
+### The gemma-4 failure is not about gemma 4
+
+The axis sends two `/api/chat` requests. The first returned
+`get_weather{city: Berlin}` normally; the second sat for two minutes and came
+back 500:
+
+```
+the engine has had no room for this request for 2m0s; it is refusing new work
+rather than queueing it, which usually means the context or the slot ceiling is
+too large for the memory available
+```
+
+The engine's own allocator says what happened. One booking, then sixty
+refusals, and the free count never moves:
+
+```
+kv-reservation: booked  peak=327747 | base need 32768 of 32768 free | swa need 512 of 2048 free | outstanding=0
+kv-reservation: REFUSED (context allocation exhausted) peak=541 seqs=1 | base 0/32768 free need 32768 | swa 2048/2048 free need 0
+```
+
+Build 19, same model, same axis, same host:
+
+```
+kv-reservation: booked peak=327747 | base need 32768 of 32768 free | swa need 512 of 3072 free | outstanding=0
+kv-reservation: booked peak=541    | base need   541 of 32768 free | swa need 512 of 3072 free | outstanding=0
+```
+
+Four probes narrowed it, each cell a fresh server and two sequential requests
+(`/srv/ml/xollama-phase2/probes/kvleak{,2,3}.py`):
+
+- **not the tool call and not the thinking turn** — tools-then-plain,
+  plain-then-plain and think-then-plain all fail identically;
+- **not gemma 4 and not the iSWA cache** — `llama3:latest` fails the same way at
+  `base 0/8192 free`;
+- **not the context size** — it reproduces at 8192 and at 32768;
+- **`/api/generate` is unaffected**, at every size, on both models;
+- a second request carrying the *same* prompt passes, because a full prefix-cache
+  hit needs zero new cells. That is why the compat axis, which sends one request
+  per model, and the throughput axis, which sends `/api/generate`, both stayed
+  green on bytes that cannot hold a two-turn conversation.
+
+The engine's slot dump names the mechanism. The candidate replaced `session_id`
+with an **`alloc_key`**, and allocation is now keyed by it:
+
+| build | endpoint | slot dump |
+|---|---|---|
+| 19 | chat | `"session_id":"xo-036c468c45a…","shared_pool_slot":-1,"pool_id":-1` |
+| candidate | chat | `"alloc_key":"xo-036c468c45a…","alloc_worker":false` |
+| candidate | generate | `"alloc_key":"req#1"` … `"alloc_key":"req#2"` |
+
+`/api/generate` gets a per-request key and is released at the end of the
+request. `/api/chat` gets our session-affinity id, and that reservation is never
+released and never reused — the next request under the same key is refused until
+the runner dies. Confirmed by removing the input rather than by reading the
+code: **with `XOLLAMA_SESSION_AFFINITY=false` every failing cell passes on the
+candidate**, with the same bytes and the same probe.
+
+So this is the engine's regression, reached through a feature of ours that is on
+by default. It was reported to opencoti with the two reservation lines, the
+slot dumps and the affinity-off control.
+
+### What this decides
+
+**The pin stays at `2609210611001` (build 19).** The rule is that bytes move on
+a measurement; this measurement says the candidate breaks the second turn of
+every conversation on the default configuration, which is worse than anything it
+fixes. Nothing else in the run argues for moving either — compat is the same
+8/8, and throughput and multi-slot are inside each other's spread.
+
+Build 19 was also given the gemma-4 axis here, which it had never been run
+against (its section above measured only throughput and multi-slot): it passes,
+`get_weather{city: Berlin}` with thinking separated at 781 characters — the same
+result build 18 gave. That closes a hole in the pinned build's coverage rather
+than leaving it inferred.
+
+## `2609221142001` (build 21), 2026-09-22 — the fix, measured
+
+opencoti reproduced the above on their own endpoint without an ollama layer,
+and the mechanism turned out to be one level up from "never released". Their
+`/kv` named it:
+
+```
+"key":"s-repro-1","window":32768,"requested":null,"cells":32768,"used":13
+```
+
+`requested: null` — the client never stated `num_ctx`. Their session allocator
+books a session's window **whole** and holds it until close or TTL, which is the
+guarantee working as designed; the defect was the size it chose when nobody
+asked, namely the per-session maximum. So the first turn of the first
+conversation took all 32768 cells for 300 s and everything else was refused.
+That is the "secondary observation, no action implied" at the end of our report
+— `base need 32768` for `peak=51` — which was not benign after all and was the
+whole bug in one line. Worth remembering: the thing filed as background colour
+was the cause, and the four narrowings only bounded it.
+
+Patch 0345 (`739e5f076e`) makes an **unstated** window per-request — released
+when the request completes, and negotiated down to the largest window that fits
+with the request's own peak as the floor — while a **stated** `num_ctx` keeps the
+old contract: booked whole, held across turns, refused rather than silently
+shrunk.
+
+Measured here on `e3a19b0b…`, the host binary only; the DSO is the same
+`d676a779…` already measured, staged beside it, and the artifact again said so
+itself (`executable directory, 734023016 bytes`).
+
+| axis | build 19 (pinned) | build 20 | **build 21** |
+|---|---|---|---|
+| compat | 8/8 | 8/8 | **8/8** |
+| throughput, gen (5 iters, matched) | 76.17 (75.77–76.74) | 76.12 | **76.68 (76.48–76.80)** |
+| multi-slot, aggregate (matched) | 613.76 (3.34 s) | 615.03 | **612.66 (3.34 s)** |
+| overflow, 70B | — | 4.01 tok/s | **4.05 tok/s, 0.759 in VRAM** |
+| gemma-4 parsers | pass | **HTTP 500** | **pass** |
+
+The gemma-4 cell returns exactly what build 19 returns —
+`get_weather{city: Berlin}`, thinking separated at 781 characters — and the
+`kvleak3` probe that isolated the defect now passes all three cells with the
+pool free again for the second request (`base need 32768 of 32768 free` where
+build 20 read `base 0/32768 free`). **Zero `REFUSED` lines in the entire
+five-axis sweep.** Throughput and multi-slot were taken back to back against
+build 19 in one session and are inside each other's spread.
+
+### One thing this did NOT verify
+
+opencoti's gate arm A is two *distinct* session ids with `num_ctx` unstated, and
+their arms C and D show a stated window still held and still refused rather than
+shrunk. A probe was written to reproduce arm A through our stack
+(`probes/kvleak4.py`, four concurrent `/api/chat`) and it is **not a
+discriminator**: build 20 passes it too. Two reasons, both visible in its logs —
+xollama minted **one** session id for all four requests, not four, and the
+bookings read `base need 0`, so nothing was being contended. The arm-A claim
+therefore rests on opencoti's own measurement, not on ours. Reproducing it here
+needs a probe that forces distinct session ids; until one exists, do not cite
+concurrency-with-distinct-sessions as something this page measured.
+
+### What this decides
+
+On the measurement, **build 21 is pinnable and build 19 is not preferable to
+it**: same compat, same performance inside the spread, and the defect that
+blocked build 20 is gone. The bytes were published to the dev repo shortly
+afterwards, so **`llm/engine/pin.txt` now names `2609221142001`** at rev
+`32ec86e8…`, with `e3a19b0b…` for the binary and the unchanged `d676a779…` for
+the library. Both digests were checked against the published tree before the pin
+moved, and both URLs resolve at that revision with the byte counts measured
+here — the pin names the bytes that were measured, not a build id that happens
+to match.
+
+No `llm/engine_defects.go` row moves with it. The single live row is queued for
+c8 and accuses release bytes; a dev pin carries different bytes and the row is
+inert there, which is why `TestKnownDefectsMatchThePinnedArtifact` skips off the
+release channel. The `feature swa-cache-types` row was re-probed against these
+bytes rather than carried forward, paired against build 19 so a pass could not
+be a no-op.
+
+## Build 24 — `2609230556001`, the DCA abort fixed
+
+The reason for this move is [the DCA abort](#) that build 21 carried: on every
+qwen35 vehicle, `--dca on` aborted at the first post-load 2-token decode with
+`ggml-backend.cpp:201: GGML_ASSERT(buffer) failed`. Bisected here to four flags
+with no ollama in the picture —
+`<artifact> --server --model <blob> -ngl 99 -c 32768 --dca on` — and independent
+of KV type, quantization, MTP, `--no-warmup`, the resolved chunk and
+`OPENCOTI_GRAPH_LANES=0`. opencoti's bug-3566 / patch 0347: where every
+attention layer is DCA-routed the standard `attn_inp_kq_mask` is consumed by no
+node, galloc correctly does not allocate it, and the unguarded setter asserts on
+the NULL. Two fill sites, the KVarN cache having its own.
+
+Measured on `dc6dbb89…`, host binary only; the DSO is the same `d676a779…`
+already measured, so this is a host swap.
+
+### The DCA gate, run directly against the artifact
+
+Same cells that produced the bug, plus the controls, at `--log-verbosity 5`:
+
+| cell | build 21 | **build 24** | `dca:` line (new, patch 0349) |
+|---|---|---|---|
+| qwen35 Q4_K_M `-c 32768 --dca on` f16 | **abort** | **serves** | `INERT — chunk 262144 (auto: n_ctx_orig_yarn) >= n_ctx` |
+| qwen35 Q4_K_M `--dca on` kvarn2 | **abort** | **serves** | `INERT` |
+| qwen35 Q4_K_M `--dca on --dca-chunk-size 4096` kvarn2 | **abort** | **serves** | `ENGAGED` |
+| qwen35 Q4_K_M `--dca off` f16 / kvarn2 | serves | serves | *(no line)* |
+| qwen35 IQ2_M `-c 32768 --dca on` (the minimal repro) | **abort** | **serves** | `INERT` |
+
+The orphan-mask guard logs once per process on the qwen35 arms with DCA on and
+is silent with DCA off, which is the guard doing its job rather than masking the
+normal path.
+
+**Patch 0349 settles something this page got close to and could not state.** Our
+own crash repro at `-c 32768` was `INERT`: the auto chunk resolves to
+`n_ctx_orig_yarn` = 262144, so there was never an inter-chunk distance to clamp.
+`--dca on` was breaking graph construction *without doing any chunking at all*.
+That was inferred here on 2026-09-22 from the vendor's arithmetic; the engine
+now says it, so no future cell has to infer it.
+
+### VRAM overflow — the axis the live defect row is about
+
+`llama3.1:70b-instruct-q3_K_S`, 24 GiB card, the Phase 2 recipe exactly
+(`axis_overflow`: no `num_ctx` stated, 64 tokens). `POSITION_WINDOW mode ON
+(--kv-residency-mode auto)` confirmed in every log, so this is the path the row
+accuses and not a neighbouring one.
+
+| arm | result |
+|---|---|
+| llama.cpp | loads, 0.568 in VRAM |
+| opencoti c7 **r2 release** (what `main` pins) | **aborts**, `not enough space in the context's memory pool (needed 118128, available 117760)` |
+| opencoti dev build 21 | **loads**, 0.759 in VRAM |
+| opencoti dev build 24 | **loads**, 0.759 in VRAM |
+| opencoti dev build 29 | **loads**, 0.759 in VRAM |
+
+What follows is the binary outcome and only that: the POSITION_WINDOW path
+aborts on the release bytes and loads on every dev build measured. That is the
+claim the defect row makes, and it holds.
+
+<Warning>
+**The throughput figures this table used to carry are withdrawn.** It read
+`build 24, auto` at **7.70 tok/s** against build 21's 4.05, called the axis
+"nearly doubled", and concluded the `head` workaround had *inverted*. opencoti
+attributed the numbers on 2026-09-23 and none of it survives:
+
+- **7.70 came from a two-token generation** (`"Say ok"` → `"OK"`, 130 ms/tok).
+  At that length the first-token and graph-warm-up cost is the measurement. The
+  4.05 it was compared against came from 64 tokens — so the "doubling" compared
+  two different measurements, not two builds.
+- **The inversion rested on those same two-token runs**, and disappears.
+- **The recipe never ran at the context it names.** The 32k load fails with
+  `failed to allocate CUDA0 buffer of size 8187281408` and the harness silently
+  retries at `-c 4096`, giving 62/81 layers on the GPU and a host tail. Every
+  row above was really measured on that fallback.
+
+Re-run on the same argv with `n_predict 256` and `ignore_eos` on a quiet card:
+**b21 3.54, b24 3.47, b29 3.43 tok/s**, and `head` 3.19 against `auto`. Within
+about 3% — no regression, no improvement, no inversion, nothing to fix
+engine-side.
+
+Three harness rules come out of this, and they apply to every axis on this page:
+fail or flag a cell when the requested `-c` falls back, and log the effective
+`n_ctx`; **every probe, smoke and A/B cell generates at least 256 tokens, 512
+where practical**, always with `ignore_eos` so the model cannot end the run
+early; keep the GPU exclusive for the whole of a cell. Where the model has
+thinking and it is enabled, size `n_predict` and `num_ctx` for prompt + the
+*full* thinking block + a 512-token answer, and set the engine's reasoning
+budget explicitly — thinking length varies from a few hundred tokens to tens of
+thousands by model and by question, and a budget sized for the answer alone
+truncates inside the thinking and measures nothing. This page violated
+all three at once, which is how a warm-up artefact reached a defect-row comment
+and a user-facing Warning in `docs/xollama/slots.mdx`.
+</Warning>
+
+### One new observation, not a regression, reported to opencoti
+
+Stating `num_ctx: 32768` explicitly on this overflow model fails where leaving it
+unstated succeeds — same 32768 `n_ctx`, same `offloaded 62/81 layers`, same
+`POSITION_WINDOW mode ON`:
+
+```
+alloc_tensor_range: failed to allocate CUDA0 buffer of size 8187281408
+llama_init_from_model: failed to initialize the context: failed to allocate buffer for kv cache
+```
+
+The planner's two-pass re-size flips the tactic table from `POSITION_WINDOW=61`
+to `GPU_RESIDENT=80` and then cannot fit the result. This is a clean error, not
+an abort, and it is not the defect above. It is recorded here because it is the
+stated-versus-unstated `num_ctx` distinction their session allocator already
+draws elsewhere (their bug-3555 / patch 0345), and because a reader comparing
+this table to their own run needs to know the recipe states no window.
+
+### What this decides
+
+**Build 24 is pinnable and build 21 is not preferable to it.** It fixes an abort
+that made `--dca on` unusable on every qwen35 vehicle, it loads the overflow
+model the release bytes abort on, and it adds the one line (`dca: ENGAGED|INERT`) that makes every
+future DCA cell self-describing instead of requiring the reader to recompute the
+chunk. `llm/engine/pin.txt` now names `2609230556001` at rev `7a9d43c1…`, with
+`dc6dbb89…` for the binary, the unchanged `d676a779…` for the Linux library, and
+a new `ggml-cuda-win-x86_64.dll` row at `8664167e…`. All three digests were
+downloaded and hashed here before the pin moved, not copied from the vendor's
+mail.
+
+**No `llm/engine_defects.go` row moves with it, and the reason is worth being
+exact about.** The single live row accuses `4f4102d6…` — the c7 **r2 release**
+x86_64 binary that `main` pins and ships. Build 24 is a *dev* snapshot of the
+same cut; measuring the defect gone in it says the fix exists on the dev line,
+which was already known from build 18, and says nothing about the release bytes
+the row names. Retiring it here would delete a true accusation about the artifact
+users actually get from `main`, and the row is inert on this branch anyway
+because a row can only speak when its sha256 matches the artifact that failed.
+The retirement condition is unchanged in substance and narrower in detail: it
+needs a **release** artifact carrying patch 0308, re-measured by this recipe.
+
+## Build 29 — `2609230917001`, the first pin where the DSO moved
+
+Three patches over build 24. **0350** (opencoti bug-3570) is a Nemotron-H
+`libcuda` segfault and is the reason `ggml-cuda.so` was rebuilt. **0351**
+(their bug-3572) is the crash [this page reported from build 21 and
+re-confirmed on build 24](#one-new-observation-not-a-regression-reported-to-opencoti):
+`--spec-type draft-simple` against a target carrying a built-in NextN head
+segfaulted in `llama_n_batch(NULL)`. **0352** is PolyKV/elastic, from
+Cerebriline, and is not exercised here.
+
+**Nothing measured on build 24 carries forward.** The DSO changed —
+`7ae729af…` replaces `d676a779…`, which had been byte-identical since build 20 —
+so this is the first pin move in this campaign that is *not* a host swap. Every
+GPU-behaviour cell below was re-run against these bytes rather than inherited,
+and the artifact each cell loaded was read back out of its own log
+(`build 2609230917001`) rather than assumed from the path.
+
+### Argv acceptance — unchanged
+
+Re-run with `--model /nonexistent.gguf`, so this probe says nothing about GPU
+behaviour and everything about what the parser takes. Verdicts are identical to
+build 24 and to build 21: `kvarn2/3/4/5/6/8` and `q6_0` accepted, `kvarn7`
+refused (the structural gap `KnownCacheTypes` omits), the SWA ring accepted on a
+KVarN base, `--sparse-attn` accepted, `--banana` refused as a control.
+
+The two ring refusals still answer with the rule in their own words —
+`--cache-type-k/v-swa overrides require KVarN --cache-type-k` and `a plain SWA
+cache type requires both` — rather than `invalid argument`. A probe that scores
+only on that phrase reads them as neither accepted nor refused; the message *is*
+the refusal, and `llm/engine_launch.go` enforces both rules up front so an
+operator never meets them as a model that will not load.
+
+### Patch 0351 — the `draft-simple` crash this campaign reported, closed
+
+Build 21 and build 24 both segfaulted when `--spec-type draft-simple` was
+pinned onto a target carrying its own NextN head (`segfault at 10`, `ip
+0x13c5766`; build 24's log showed `ctx_tgt=no, ctx_dft=no`). On build 29 the
+same argv refuses to boot and names the fix:
+
+```
+E srv load_model: failed to initialize speculative decoding context:
+  'draft-simple' needs a separate draft model (-md <draft.gguf>) and none was
+  given; this target carries a built-in NextN/MTP head, so use
+  --spec-type draft-mtp instead
+E srv load_model: speculation was requested EXPLICITLY but could not be
+  initialized -- refusing to boot rather than serve silently-unspeculated.
+```
+
+Refusing beats serving unspeculated: an operator who pinned a driver asked for
+speculation on purpose, and the target context has already reserved the
+recurrent rollback ring for that config.
+
+**This cell was run at `-ngl 0`, deliberately.** An out-of-memory load also
+exits 1, and a first attempt at this cell OOM'd on a card another run had taken
+and looked exactly like a pass. Moving it to the CPU removes VRAM from the
+question entirely, and the verdict is read off the refusal text rather than the
+exit code. The check is metadata-driven — `qwen35.nextn_predict_layers = 1` plus
+the `blk.64.nextn.*` tensors — so nothing about it needs a GPU.
+
+This is the last open item from [the observation reported to
+opencoti](#one-new-observation-not-a-regression-reported-to-opencoti); it needs
+no workaround in this tree, because `resolveDraftType` only lets a pin override
+an inferred driver and `xollama show` now prints the resolved one.

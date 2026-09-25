@@ -1,0 +1,460 @@
+# xOllama releases. The procedure this implements is docs/protocols/RELEASE.md;
+# read that first — this file is the mechanism, not the rules.
+#
+# A release is a pull request from dev into main titled `release: v<version>`,
+# whose body is the release notes. While the PR is open this workflow only
+# checks it. When it is merged (with a merge commit), it builds on
+# GitHub-hosted runners, fills a draft release, and publishes it as a
+# pre-release — which is also what creates the tag, on the merge commit.
+# Promotion to stable is a separate, manual `gh release edit`.
+#
+# A manual run (workflow_dispatch, input `pr`) re-runs a merged PR's release,
+# or — against an OPEN PR — builds its head into a draft that nobody but the
+# repository's writers can see: the dry run.
+#
+# Nothing native is compiled here. The CPU runtime is a pinned artifact built
+# once by xollama-runtime.yaml (llama/runtime-pin.txt), the CUDA and Vulkan
+# backends come from upstream's release of the same base, guarded by
+# LLAMA_CPP_VERSION, and the opencoti engine comes from llm/engine/pin.txt,
+# SHA-256 enforced. So the payload -- and the payload id the delta update keys
+# on -- changes only when one of those three pins moves. Only the Go binaries,
+# the tray app and the installers are built.
+#
+# No third-party actions, not even actions/checkout: git and gh are on every
+# hosted image, and a job that cannot run because an action was not allowed
+# queues silently. Nothing from the PR (title, body) is ever interpolated into
+# a script; it is read through gh into variables.
+name: xollama release
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened, closed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'Release PR number (open = draft dry run, merged = the real release)'
+        required: true
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: xollama-release-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+  GOTOOLCHAIN: auto
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.plan.outputs.go }}
+      mode: ${{ steps.plan.outputs.mode }}
+      pr: ${{ steps.plan.outputs.pr }}
+      sha: ${{ steps.plan.outputs.sha }}
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      upstream: ${{ steps.plan.outputs.upstream }}
+      engine: ${{ steps.plan.outputs.engine }}
+      runtime_tag: ${{ steps.plan.outputs.runtime_tag }}
+      runtime_asset: ${{ steps.plan.outputs.runtime_asset }}
+      runtime_sha256: ${{ steps.plan.outputs.runtime_sha256 }}
+    steps:
+      - name: plan
+        id: plan
+        env:
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          EVENT_ACTION: ${{ github.event.action }}
+          INPUT_PR: ${{ inputs.pr }}
+        run: |
+          set -euo pipefail
+          out() { echo "$1=$2" >> "$GITHUB_OUTPUT"; }
+          fail() { echo "::error::$*"; exit 1; }
+          out go false
+
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then pr=$EVENT_PR; else pr=$INPUT_PR; fi
+          [[ "$pr" =~ ^[0-9]+$ ]] || fail "pr must be a number, got '$pr'"
+          out pr "$pr"
+
+          gh pr view "$pr" --json title,body,state,baseRefName,headRefOid,mergeCommit > pr.json
+          title=$(jq -r .title pr.json)
+          state=$(jq -r .state pr.json)
+          re='^release: v([0-9]+\.[0-9]+\.[0-9]+)-xollama\.([1-9][0-9]*)$'
+          if ! [[ "$title" =~ $re ]]; then
+            # Any other PR into main is not a release, and that is not an error.
+            [ "$GITHUB_EVENT_NAME" = pull_request ] && { echo "not a release PR: $title"; exit 0; }
+            fail "PR #$pr is not a release PR: its title must be 'release: v<upstream>-xollama.<n>', got '$title'"
+          fi
+          upstream=${BASH_REMATCH[1]}
+          version="${upstream}-xollama.${BASH_REMATCH[2]}"
+          tag="v$version"
+          out version "$version"; out tag "$tag"; out upstream "$upstream"
+
+          # check  : PR open, event-driven — validate only, build nothing
+          # draft  : manual run on an open PR — build the head into a draft
+          # release: PR merged — build the merge commit and publish
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            if [ "$EVENT_ACTION" != closed ]; then mode=check
+            elif [ "$state" = MERGED ]; then mode=release
+            else echo "release PR closed without merging; nothing to do"; exit 0; fi
+          else
+            case "$state" in
+              OPEN) mode=draft ;;
+              MERGED) mode=release ;;
+              *) fail "PR #$pr is $state; only an open PR (dry run) or a merged one (release) can be built" ;;
+            esac
+          fi
+          out mode "$mode"
+          if [ "$mode" = release ]; then sha=$(jq -r .mergeCommit.oid pr.json); else sha=$(jq -r .headRefOid pr.json); fi
+          out sha "$sha"
+          echo "PR #$pr: $mode $tag at $sha"
+
+          [ "$(jq -r .baseRefName pr.json)" = main ] || fail "a release PR targets main"
+          [ -n "$(jq -r '.body // ""' pr.json | tr -d '[:space:]')" ] \
+            || fail "the PR body is the release notes, and it is empty; a release with no notes does not build"
+
+          git clone --quiet --filter=blob:none --no-checkout "https://github.com/$GITHUB_REPOSITORY" repo
+          cd repo
+          git fetch --quiet origin "$sha"
+
+          # A squash or rebase merge leaves main without dev's history, and the
+          # next upstream sync without a merge-base. Refuse to release it.
+          if [ "$mode" = release ]; then
+            git merge-base --is-ancestor "$(jq -r .headRefOid ../pr.json)" "$sha" \
+              || fail "PR #$pr was not merged with a merge commit; see RELEASE.md rule 4"
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null; then
+            fail "tag $tag already exists; a published tag is never reused — bump <n>"
+          fi
+          if published=$(gh release view "$tag" --json isDraft --jq .isDraft 2> /dev/null); then
+            [ "$published" = true ] || fail "release $tag is already published"
+          fi
+          # Newer than everything published, by the order the updater uses.
+          newest=$(gh release list --limit 100 --json tagName,isDraft --jq '.[] | select(.isDraft | not) | .tagName' \
+            | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-xollama\.[0-9]+$' || true; } | sed 's/^v//' | { cat; echo "$version"; } | sort -V | tail -1)
+          [ "$newest" = "$version" ] || fail "$version is not newer than the published $newest"
+
+          # The CUDA and Vulkan backends are borrowed from upstream's release of
+          # the same base, which is only sound when both sides built the same
+          # llama.cpp. When dev has moved past it, fail rather than ship a pair
+          # that merely loads.
+          ours=$(git show "$sha:LLAMA_CPP_VERSION" | tr -d '[:space:]')
+          theirs=$(gh api "repos/ollama/ollama/contents/LLAMA_CPP_VERSION?ref=v$upstream" --jq .content | base64 -d | tr -d '[:space:]') \
+            || fail "ollama/ollama has no tag v$upstream to take the GPU backends from"
+          [ "$ours" = "$theirs" ] \
+            || fail "LLAMA_CPP_VERSION is $ours here but $theirs in upstream v$upstream; the GPU backends cannot be borrowed"
+          gh release view "v$upstream" --repo ollama/ollama --json assets --jq '.assets[].name' | grep -qx ollama-windows-amd64.zip \
+            || fail "upstream v$upstream publishes no ollama-windows-amd64.zip"
+          echo "llama.cpp $ours on both sides; GPU backends from upstream v$upstream"
+
+          # The CPU runtime is a pinned artifact (xollama-runtime.yaml), so the
+          # payload -- and with it the payload id the delta update keys on --
+          # only changes when a pin moves. Refuse a pin built from other inputs
+          # than this commit has: a llama/compat change must not ship on a
+          # runtime that predates it.
+          pin=$(git show "$sha:llama/runtime-pin.txt") \
+            || fail "no llama/runtime-pin.txt at $sha; run xollama-runtime.yaml and commit the pin (RELEASE.md)"
+          field() { awk -v k="$1" '$1==k {print $2}' <<< "$pin"; }
+          rtag=$(field tag); rasset=$(field asset); rsum=$(field sha256); rinputs=$(field inputs)
+          now=$(git ls-tree -r "$sha" -- LLAMA_CPP_VERSION llama/server llama/compat | sha256sum | cut -c1-64)
+          [ "$now" = "$rinputs" ] \
+            || fail "llama/runtime-pin.txt was built from inputs $rinputs, but this commit's are $now; run xollama-runtime.yaml on it and commit the new pin (RELEASE.md, 'Moving the runtime pin')"
+          gh release view "$rtag" --json assets --jq '.assets[].name' | grep -qx "$rasset" \
+            || fail "the pinned runtime $rtag/$rasset is not published"
+          out runtime_tag "$rtag"; out runtime_asset "$rasset"; out runtime_sha256 "$rsum"
+          echo "CPU runtime: $rtag (inputs match)"
+
+          if git show "$sha:llm/engine/pin.txt" | grep -Eq '^[[:space:]]*bin[[:space:]]+win-x86_64-gpu[[:space:]]'; then
+            out engine yes; echo "opencoti: the pin carries a Windows artifact"
+          else
+            out engine no; echo "opencoti: no Windows row at this pin; the installer carries llama.cpp only"
+          fi
+
+          [ "$mode" = check ] && { echo "checks passed; merge to release"; exit 0; }
+
+          # The draft is what the build jobs fill. Nothing is visible to the
+          # updater until publish turns it into a pre-release.
+          if [ "${published:-}" = true ]; then gh release delete "$tag" --yes; fi
+          jq -r .body ../pr.json > notes.md
+          gh release create "$tag" --draft --prerelease --target "$sha" \
+            --title "xOllama $version" --notes-file notes.md
+          out go true
+
+  windows:
+    needs: plan
+    if: needs.plan.outputs.go == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      SHA: ${{ needs.plan.outputs.sha }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      UPSTREAM: ${{ needs.plan.outputs.upstream }}
+      ENGINE: ${{ needs.plan.outputs.engine }}
+      RUNTIME_TAG: ${{ needs.plan.outputs.runtime_tag }}
+      RUNTIME_ASSET: ${{ needs.plan.outputs.runtime_asset }}
+      RUNTIME_SHA256: ${{ needs.plan.outputs.runtime_sha256 }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: clone
+        run: |
+          # LF, not CRLF: llama/compat/*.patch are LF and `git apply` will not
+          # match them against a CRLF checkout.
+          git init -q repo && cd repo
+          git config core.autocrlf false && git config core.eol lf
+          git remote add origin "https://github.com/$GITHUB_REPOSITORY"
+          git fetch -q --depth 1 origin "$SHA" && git checkout -q --detach FETCH_HEAD
+          git log -1 --oneline
+
+      # Downloaded, not built: see xollama-runtime.yaml for why. plan has
+      # already proved the pin matches this commit's llama/ inputs.
+      - name: take the pinned CPU runtime
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          gh release download "$RUNTIME_TAG" --pattern "$RUNTIME_ASSET" --dir runtime-pin --clobber
+          got=$(sha256sum "runtime-pin/$RUNTIME_ASSET" | cut -c1-64)
+          [ "$got" = "$RUNTIME_SHA256" ] || { echo "::error::$RUNTIME_ASSET is $got, the pin says $RUNTIME_SHA256"; exit 1; }
+          mkdir -p dist/windows-amd64/lib/ollama
+          # Expand-Archive, not unzip: Git Bash on the runner does not promise one.
+          pwsh -NoProfile -Command "Expand-Archive -Path 'runtime-pin\\$RUNTIME_ASSET' -DestinationPath 'dist\\windows-amd64\\lib\\ollama' -Force"
+          test -f dist/windows-amd64/lib/ollama/llama-server.exe
+          ./dist/windows-amd64/lib/ollama/llama-server.exe --version
+
+      - name: take the GPU backends from upstream v${{ needs.plan.outputs.upstream }}
+        shell: pwsh
+        working-directory: repo
+        run: |
+          # plan already proved upstream built the same llama.cpp.
+          $zip = Join-Path $env:RUNNER_TEMP 'ollama-windows-amd64.zip'
+          & gh release download "v$env:UPSTREAM" --repo ollama/ollama --pattern ollama-windows-amd64.zip --output $zip --clobber
+          if ($LASTEXITCODE -ne 0) { throw "download failed" }
+          # System32 tar is bsdtar and reads zip; Git's GNU tar does not.
+          $tar = "$env:SystemRoot\System32\tar.exe"
+          $x = Join-Path $env:RUNNER_TEMP 'upstream'
+          New-Item -ItemType Directory -Force $x | Out-Null
+          & $tar -xf $zip -C $x lib/ollama/cuda_v13 lib/ollama/vulkan
+          if ($LASTEXITCODE -ne 0) { throw "upstream's zip has no lib/ollama/cuda_v13 or lib/ollama/vulkan" }
+          foreach ($d in @('cuda_v13', 'vulkan')) {
+            $src = Join-Path $x "lib\ollama\$d"
+            if (-not (Get-ChildItem $src -Filter 'ggml-*.dll')) { throw "no ggml backend in upstream $d" }
+            Copy-Item -Recurse -Force $src 'dist\windows-amd64\lib\ollama\'
+          }
+          Remove-Item -Force $zip
+
+      - name: stage the opencoti engine
+        if: env.ENGINE == 'yes'
+        working-directory: repo
+        run: |
+          cmake -DPIN_FILE=llm/engine/pin.txt -DARCH=win-x86_64-gpu \
+            -DDEST_DIR=dist/windows-amd64/lib/ollama -P cmake/opencoti-fetch.cmake
+
+      - name: payload
+        working-directory: repo
+        run: |
+          find dist/windows-amd64/lib/ollama -type f -printf '%P  %s\n' | sort
+          du -sh dist/windows-amd64/lib/ollama
+
+      # -s -w and a static link: an unstripped cgo PE will not load, and a
+      # dynamic one imports libwinpthread-1.dll, which a clean Windows lacks.
+      - name: build xollama.exe
+        working-directory: repo
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          go build -trimpath \
+            -ldflags "-s -w -extldflags=-static -X=github.com/ollama/ollama/version.Version=$VERSION -X=github.com/ollama/ollama/server.mode=release" \
+            -o dist/windows-amd64/xollama.exe .
+          ./dist/windows-amd64/xollama.exe --version 2>&1 | tee version.txt
+          grep -q "$VERSION" version.txt || { echo "::error::xollama.exe does not report $VERSION"; exit 1; }
+
+      # app/ui/app.go embeds app/dist, so the UI is built before the app.
+      - name: build the web ui
+        working-directory: repo/app/ui/app
+        run: |
+          npm ci
+          npm run build
+          test -s dist/index.html
+
+      - name: build the tray app
+        working-directory: repo
+        env:
+          CGO_ENABLED: "1"
+        run: |
+          go build -trimpath \
+            -ldflags "-s -w -H windowsgui -extldflags=-static -X=github.com/ollama/ollama/app/version.Version=$VERSION" \
+            -o dist/windows-xollama-app-amd64.exe ./app/cmd/app/
+
+      - name: no third-party DLL imports
+        working-directory: repo
+        run: |
+          bad=0
+          for exe in dist/windows-amd64/xollama.exe dist/windows-xollama-app-amd64.exe; do
+            for dll in libwinpthread-1.dll libgcc_s_seh-1.dll libstdc++-6.dll libgomp-1.dll; do
+              if grep -qa "$dll" "$exe"; then echo "::error::$exe references $dll"; bad=1; fi
+            done
+          done
+          exit "$bad"
+
+      # If the app does not ask this fork's releases, it asks ollama.com and
+      # replaces the install with a stock ollama.
+      - name: the app updates from the fork
+        working-directory: repo
+        run: |
+          grep -qa "repos/mann1x/xollama/releases" dist/windows-xollama-app-amd64.exe \
+            || { echo "::error::the tray app does not name the fork's releases endpoint"; exit 1; }
+
+      # build_windows.ps1's own steps, so the payload id and the installer
+      # defines cannot drift from a local build.
+      - name: build the installers
+        shell: pwsh
+        working-directory: repo
+        run: |
+          if (-not (Get-Item "C:\Program Files*\Inno Setup*\ISCC.exe" -ErrorAction SilentlyContinue)) {
+            & choco install innosetup --no-progress -y
+            if ($LASTEXITCODE -ne 0) { throw "could not install Inno Setup" }
+          }
+          $env:ARCH = 'amd64'
+          & .\scripts\build_windows.ps1 installer installerUpdate
+          foreach ($f in @('dist\xOllamaSetup.exe', 'dist\xOllamaUpdate.exe', 'dist\payload-id.txt')) {
+            if (-not (Test-Path $f)) { throw "the installer steps did not produce $f" }
+          }
+          Get-ChildItem dist -File | ForEach-Object { "{0}  {1:N1} MB" -f $_.Name, ($_.Length/1MB) }
+
+      - name: attach to the draft
+        working-directory: repo
+        run: |
+          cp dist/windows-amd64/xollama.exe xollama-windows-amd64.exe
+          for f in dist/xOllamaSetup.exe dist/xOllamaUpdate.exe; do
+            size=$(stat -c %s "$f")
+            [ "$size" -lt 2147483648 ] || { echo "::error::$f is $size bytes, over GitHub's 2 GiB asset cap"; exit 1; }
+          done
+          gh release upload "$TAG" dist/xOllamaSetup.exe dist/xOllamaUpdate.exe dist/payload-id.txt \
+            xollama-windows-amd64.exe --clobber
+
+  linux:
+    needs: plan
+    if: needs.plan.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    env:
+      SHA: ${{ needs.plan.outputs.sha }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      VERSION: ${{ needs.plan.outputs.version }}
+    steps:
+      - name: clone
+        run: |
+          git init -q repo && cd repo
+          git remote add origin "https://github.com/$GITHUB_REPOSITORY"
+          git fetch -q --depth 1 origin "$SHA" && git checkout -q --detach FETCH_HEAD
+      # Inside AlmaLinux 8, so the binary runs on glibc 2.28 and newer rather
+      # than on the runner's 2.39 only. -ldl because dlopen only joined libc in 2.34.
+      - name: build (inside almalinux 8)
+        working-directory: repo
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src -e VERSION \
+            -e CGO_ENABLED=1 -e CGO_LDFLAGS=-ldl -e GOTOOLCHAIN=auto \
+            almalinux:8 bash -euo pipefail -c '
+              dnf install -y -q gcc gcc-c++ tar gzip findutils > /dev/null
+              ver=$(curl -fsSL "https://go.dev/VERSION?m=text" | head -1)
+              curl -fsSL "https://go.dev/dl/${ver}.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+              tar -C /usr/local -xzf /tmp/go.tar.gz
+              export PATH=/usr/local/go/bin:$PATH
+              go build -trimpath \
+                -ldflags "-s -w -X=github.com/ollama/ollama/version.Version=$VERSION -X=github.com/ollama/ollama/server.mode=release" \
+                -o xollama-linux-amd64 .
+            '
+          sudo chown "$(id -u):$(id -g)" xollama-linux-amd64
+          ./xollama-linux-amd64 --version 2>&1 | tee version.txt
+          grep -q "$VERSION" version.txt || { echo "::error::the binary does not report $VERSION"; exit 1; }
+          objdump -T xollama-linux-amd64 | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
+      - name: attach to the draft
+        working-directory: repo
+        run: gh release upload "$TAG" xollama-linux-amd64 --clobber
+
+  publish:
+    needs: [plan, windows, linux]
+    if: needs.plan.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    env:
+      PR: ${{ needs.plan.outputs.pr }}
+      SHA: ${{ needs.plan.outputs.sha }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      MODE: ${{ needs.plan.outputs.mode }}
+      UPSTREAM: ${{ needs.plan.outputs.upstream }}
+      ENGINE: ${{ needs.plan.outputs.engine }}
+      RUNTIME_TAG: ${{ needs.plan.outputs.runtime_tag }}
+    steps:
+      - name: verify the asset set
+        run: |
+          set -euo pipefail
+          mkdir assets && cd assets
+          gh release download "$TAG" --clobber
+          rm -f sha256sum.txt
+          want="payload-id.txt xOllamaSetup.exe xOllamaUpdate.exe xollama-linux-amd64 xollama-windows-amd64.exe"
+          have=$(ls | sort | xargs)
+          [ "$have" = "$want" ] || { echo "::error::assets are '$have', expected '$want'"; exit 1; }
+          grep -Eqx '[0-9a-f]{64}' payload-id.txt || { echo "::error::payload-id.txt is not a sha256"; exit 1; }
+          # The format app/updater/fork.go parses.
+          sha256sum $want > sha256sum.txt
+          cat sha256sum.txt
+          gh release upload "$TAG" sha256sum.txt --clobber
+
+      - name: notes
+        run: |
+          set -euo pipefail
+          gh pr view "$PR" --json body --jq .body > notes.md
+          git clone -q --filter=blob:none --no-checkout "https://github.com/$GITHUB_REPOSITORY" repo
+          git -C repo fetch -q origin "$SHA"
+          llama=$(git -C repo show "$SHA:LLAMA_CPP_VERSION" | tr -d '[:space:]')
+          etag=$(git -C repo show "$SHA:llm/engine/pin.txt" | awk '$1=="tag"{print $2}')
+          if [ "$ENGINE" = yes ]; then engine="opencoti-llamafile \`$etag\` on Windows and Linux"
+          else engine="opencoti-llamafile \`$etag\` on Linux; **llama.cpp only on Windows** at this pin"; fi
+          # Whether updating to this release takes the small installer: only when
+          # the previous published release carried the same payload.
+          id=$(cat assets/payload-id.txt)
+          prev=$(gh release list --limit 20 --json tagName,isDraft --jq '.[] | select(.isDraft | not) | .tagName' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-xollama\.[0-9]+$' | grep -vx "$TAG" | sort -V | tail -1 || true)
+          if [ -z "$prev" ]; then delta="first release: every install takes \`xOllamaSetup.exe\`"
+          elif [ "$(gh release download "$prev" -p payload-id.txt -O - 2>/dev/null)" = "$id" ]; then
+            delta="payload unchanged since $prev: updating from it downloads \`xOllamaUpdate.exe\` only"
+          else delta="payload changed since $prev: updating from it downloads \`xOllamaSetup.exe\`"; fi
+          echo "delta: $delta"
+          {
+            echo
+            echo "---"
+            echo "### Provenance"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| commit | \`$SHA\` |"
+            echo "| upstream base | ollama v$UPSTREAM |"
+            echo "| llama.cpp | \`$llama\`: CPU runtime \`$RUNTIME_TAG\`, CUDA 13 and Vulkan backends from upstream v$UPSTREAM |"
+            echo "| engine | $engine |"
+            echo "| payload id | \`$id\` |"
+            echo "| update | $delta |"
+            echo
+            echo "The installer is unsigned; SmartScreen warns on first run. Verify it against \`sha256sum.txt\`."
+          } >> notes.md
+          gh release edit "$TAG" --notes-file notes.md
+
+      # Publishing the draft is what creates the tag, on $SHA.
+      - name: publish as a pre-release
+        if: env.MODE == 'release'
+        run: |
+          set -euo pipefail
+          gh release edit "$TAG" --draft=false --prerelease --latest=false
+          got=$(git ls-remote "https://github.com/$GITHUB_REPOSITORY" "refs/tags/$TAG" | cut -f1)
+          [ "$got" = "$SHA" ] || { echo "::error::tag $TAG points at $got, not $SHA"; exit 1; }
+          echo "published $TAG as a pre-release; promote after the test-host check (RELEASE.md step 8)"
+
+      - name: dry run
+        if: env.MODE == 'draft'
+        run: echo "draft $TAG is ready; install it on the test host, then delete it (RELEASE.md step 3)"

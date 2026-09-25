@@ -49,9 +49,88 @@ func TestApplyModelfileLayersWritesXollamaConfig(t *testing.T) {
 	if cfg.Engine != xollama.EngineOpencoti {
 		t.Fatalf("stored engine = %q, want %q", cfg.Engine, xollama.EngineOpencoti)
 	}
-	if cfg.Version != xollama.SchemaVersion {
-		t.Fatalf("stored version = %d, want %d", cfg.Version, xollama.SchemaVersion)
+	// The LOWEST schema that is true of it, not the newest this build knows:
+	// an engine pin is a v1 config, so an older xollama must still be able to
+	// read this model. See xollama.requiredVersion.
+	if cfg.Version != xollama.SchemaVersionBase {
+		t.Fatalf("stored version = %d, want %d", cfg.Version, xollama.SchemaVersionBase)
 	}
+}
+
+// The other half of the version rule, at the storage boundary rather than in
+// the marshaller: a config that actually uses a v2 field must say v2, or an
+// older build would read it as v1 and serve the model differently from how its
+// publisher meant.
+func TestTheStoredVersionFollowsTheFieldsUsed(t *testing.T) {
+	t.Setenv("OLLAMA_MODELS", t.TempDir())
+
+	unified := true
+	layers, err := ApplyModelfileLayers(nil, ModelfileLayerOptions{
+		Xollama: &xollama.Config{KV: &xollama.KV{Unified: &unified}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := storedXollamaConfig(t, layers)
+	if cfg.Version != 2 {
+		t.Fatalf("stored version = %d, want 2", cfg.Version)
+	}
+}
+
+// nil and empty are different requests. An ordinary create says nothing about
+// the fork config and must inherit the parent's; `tweak model --clear` says
+// the fork config is nothing, and has no other way to say it.
+func TestAnEmptyXollamaConfigRemovesTheInheritedLayer(t *testing.T) {
+	t.Setenv("OLLAMA_MODELS", t.TempDir())
+
+	parent, err := ApplyModelfileLayers(nil, ModelfileLayerOptions{
+		Xollama: &xollama.Config{Engine: xollama.EngineOpencoti},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := xollamaLayers(t, parent); len(got) != 1 {
+		t.Fatalf("parent has %d xollama config layers, want 1", len(got))
+	}
+
+	kept, err := ApplyModelfileLayers(parent, ModelfileLayerOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := xollamaLayers(t, kept); len(got) != 1 {
+		t.Fatalf("a create that says nothing left %d xollama config layers, want 1 inherited", len(got))
+	}
+
+	cleared, err := ApplyModelfileLayers(parent, ModelfileLayerOptions{Xollama: &xollama.Config{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := xollamaLayers(t, cleared); len(got) != 0 {
+		t.Fatalf("an empty config left %d xollama config layers, want 0", len(got))
+	}
+}
+
+func storedXollamaConfig(t *testing.T, layers []manifest.Layer) *xollama.Config {
+	t.Helper()
+
+	got := xollamaLayers(t, layers)
+	if len(got) != 1 {
+		t.Fatalf("got %d xollama config layers, want 1", len(got))
+	}
+	blob, err := manifest.BlobsPath(got[0].Digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := xollama.Parse(data)
+	if err != nil {
+		t.Fatalf("stored blob does not parse: %v (%s)", err, data)
+	}
+	return cfg
 }
 
 // A model has exactly one xollama config. Creating FROM a parent that already

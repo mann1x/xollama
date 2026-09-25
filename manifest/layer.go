@@ -7,7 +7,17 @@ import (
 	"io"
 	"os"
 	"time"
+
+	"github.com/ollama/ollama/internal/fsowner"
 )
+
+// xollama-hook: store-ownership
+//
+// The creating calls below go through internal/fsowner instead of os. On a
+// packaged Linux install the server runs as an unprivileged service account,
+// and anything a root-run command creates here would be unusable by it
+// afterwards -- silently, as a slow model list rather than an error. The
+// wrappers are os plus one stat when there is no service account to find.
 
 type Layer struct {
 	MediaType string `json:"mediaType"`
@@ -29,7 +39,7 @@ func NewLayer(r io.Reader, mediatype string) (Layer, error) {
 		return Layer{}, err
 	}
 
-	temp, err := os.CreateTemp(blobs, "sha256-")
+	temp, err := fsowner.CreateTemp(blobs, "sha256-")
 	if err != nil {
 		return Layer{}, err
 	}

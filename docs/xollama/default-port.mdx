@@ -1,0 +1,118 @@
+---
+title: The default port
+---
+
+xollama listens on **22434**, and takes its listen address from
+**`XOLLAMA_HOST`** alone. Upstream Ollama listens on 11434 and reads
+`OLLAMA_HOST`. Neither difference is accidental.
+
+```shell
+xollama serve
+# Listening on 127.0.0.1:22434
+
+XOLLAMA_HOST=0.0.0.0:22434 xollama serve   # bind every interface
+```
+
+## Running xollama and Ollama on the same machine
+
+It will work. **It is not supported, and we recommend against it.**
+
+The separate port and the separate variable exist so that the two installations
+cannot collide *by accident* — not as an invitation to run them together. They
+remove one failure mode, the contended socket. They do not remove the others,
+and the others are quieter:
+
+- **One model store, two writers.** Both default to `~/.ollama/models`. Blobs,
+  manifests and the parsed-GGUF metadata cache are shared, and nothing
+  coordinates writes to them.
+- **Ownership drift in that store.** If the two run as different users — a
+  packaged Ollama service as `ollama`, xollama as you — each creates cache
+  entries the other cannot read or replace. The symptom is not an error. It is
+  a slow `list`, which clients report as a timeout or a bogus 404. This has
+  happened here, and it cost 9.89 s per request until the ownership was fixed.
+- **One GPU, two schedulers.** Each server sizes a load against the VRAM it
+  believes is free, and neither knows about the other's runners. Both admit a
+  model that fits; together they do not.
+- **One runtime directory.** Both look for GPU backends under
+  `<install>/lib/ollama`. Two installs pointing at one directory will
+  eventually disagree about what is in it.
+
+If you want to compare them, run them on different machines, or run one at a
+time. If you must run both at once, give each its own `OLLAMA_MODELS`, run them
+as the same user, and expect to debug the GPU accounting yourself.
+
+<Warning>
+  Side-by-side operation is untested and unsupported. We use it internally, on
+  hosts we control, to take A/B measurements — with the model store and the GPU
+  accounted for by hand each time. Treat it as a lab configuration, not a
+  deployment.
+</Warning>
+
+## Why 22434, and why `XOLLAMA_HOST` only
+
+11434 is registered to `ollama` in the IANA service-name registry. The whole
+22400–22499 block is unassigned, so taking 22434 costs nobody anything — and it
+is 11434 doubled, which is the only mnemonic worth having.
+
+The variable matters as much as the number. `OLLAMA_HOST` is what someone
+running a stock Ollama exports, often machine-wide. If xollama read it, the
+separate port would protect nothing: the moment that variable existed, both
+servers would claim one socket again. So the listen address is the **one**
+setting namespaced exclusively:
+
+| Variable | Read by xollama? |
+|---|---|
+| `XOLLAMA_HOST` | yes — this is the one to set |
+| `OLLAMA_HOST` | **no**, for the listen address |
+| `OLLAMA_*` (everything else) | yes, with `XOLLAMA_*` winning where both are set |
+
+Every other setting still falls back to its `OLLAMA_` spelling, because a cache
+type or a keep-alive is something two installations can share without fighting.
+An address is not.
+
+```shell
+XOLLAMA_HOST=127.0.0.1:11434 xollama serve   # if you mean to REPLACE a stock server
+```
+
+A client that hardcodes 11434 will not find xollama. Point it at 22434, or bind
+xollama to 11434 explicitly as above — having first stopped the Ollama that
+owns it.
+
+## What the `xollama` command itself connects to
+
+The port moved for the server. The **client** does not make you know that: when
+`XOLLAMA_HOST` is unset, `xollama` looks for a server on `127.0.0.1:22434`
+first, and then on `127.0.0.1:11434`.
+
+The second step is for the ordinary single-server install — you moved an
+existing xollama onto 11434, or you upgraded one that was already there — and it
+comes with one hard rule:
+
+<Warning>
+  **If what answers on 11434 is a stock Ollama, `xollama` refuses to use it.** It
+  does not connect and print a confusing error later; it stops and says so.
+
+  This is not fussiness about branding. `xollama pull`, `rm` and `tweak model`
+  all write, and they would write into the *other* server's model store —
+  fetching gigabytes into the wrong place, deleting from it, or failing on a
+  `xollama.json` layer that server has never heard of.
+
+  If you meant it, say so and the refusal goes away:
+
+  ```shell
+  XOLLAMA_HOST=127.0.0.1:11434 xollama list
+  ```
+</Warning>
+
+An explicit `XOLLAMA_HOST` is an instruction, not a hint: it is never probed and
+never overridden, so a command fails against the host you named rather than
+quietly succeeding against a different one.
+
+xollama identifies itself through `GET /api/xollama`, and, for builds older than
+that route, by its own name inside `/api/version`. A stock Ollama has neither.
+
+<Note>
+  This does not weaken **off means off**. That rule is about inference being
+  byte-identical under `XOLLAMA_ENGINE=llamacpp` — the port a server binds
+  changes no token it produces.
+</Note>

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -348,5 +349,63 @@ func TestCommandTranslatesLoadMode(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The two channels name artifacts differently and a finder that knows only one
+// ships an engine nothing can load. This was not hypothetical: the build staged
+// the dev channel's bare APE into the payload and Find skipped it for having no
+// extension, so the server fell back to stock llama-server with nothing in the
+// log to say a pin had moved.
+func TestFindTakesBothChannelsNamingOfAnArtifact(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		mode fs.FileMode
+		want bool
+	}{
+		{"opencoti-llamafile-0.10.5-c7-x86_64.llamafile", 0o644, true},   // release: the extension settles it
+		{"opencoti-llamafile-0.10.5-c7-win-x86_64-gpu.exe", 0o644, true}, // release, windows
+		{"opencoti-0.10.5-c7-2609221142001", 0o755, true},                // dev: the bare APE
+		{"opencoti-0.10.5-c7-2609221142001", 0o644, false},               // ...not executable, so not an engine
+		{"ggml-cuda.so", 0o644, false},                                   // the artifact's CUDA payload
+		{"opencoti-SHA256SUMS", 0o644, false},
+		{"opencoti-notes.txt", 0o644, false},
+		{"opencoti-llamafile-0.10.5-c7-x86_64.llamafile.MANIFEST.json", 0o755, false}, // executable, still data
+		{"opencoti-", 0o755, false},
+		{"llamafile", 0o755, false},
+	} {
+		if got := isArtifact(tt.name, tt.mode); got != tt.want {
+			t.Errorf("isArtifact(%q, %v) = %v, want %v", tt.name, tt.mode, got, tt.want)
+		}
+	}
+
+	// The trap this test exists for: the dev name's version dots make
+	// filepath.Ext return ".5-c7-2609221142001", so a check for an empty
+	// extension looks correct and never fires.
+	if ext := filepath.Ext("opencoti-0.10.5-c7-2609221142001"); ext == "" {
+		t.Error("filepath.Ext returned empty; the reasoning in isArtifact needs revisiting")
+	}
+}
+
+func TestFindPicksTheArtifactOutOfTheSplitPayload(t *testing.T) {
+	dir := t.TempDir()
+	// The exact layout the build stages: the APE executable, its CUDA payload
+	// beside it, and llama.cpp's own binary in the same directory.
+	for n, mode := range map[string]fs.FileMode{
+		"opencoti-0.10.5-c7-2609221142001": 0o755,
+		"ggml-cuda.so":                     0o644,
+		"llama-server":                     0o755,
+	} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("x"), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := Find("", []string{dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(got) != "opencoti-0.10.5-c7-2609221142001" {
+		t.Fatalf("Find = %q, want the artifact", got)
 	}
 }

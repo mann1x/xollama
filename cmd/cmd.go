@@ -42,6 +42,7 @@ import (
 	"github.com/ollama/ollama/cmd/config"
 	"github.com/ollama/ollama/cmd/launch"
 	"github.com/ollama/ollama/cmd/tui"
+	"github.com/ollama/ollama/cmd/tweak"
 	"github.com/ollama/ollama/create"
 	"github.com/ollama/ollama/discover"
 	"github.com/ollama/ollama/envconfig"
@@ -277,6 +278,16 @@ func safetensorsCreateOptions(modelfile *parser.Modelfile, filename, modelName s
 	}
 	if modelCount != 1 {
 		return createOptions{}, false, errors.New("safetensors imports require exactly one FROM source")
+	}
+	// xollama-hook: model-config — see docs/features/model-config.md
+	//
+	// Refused here rather than dropped. The safetensors import builds its
+	// layers through create.PipelineOptions, which carries no config layer, so
+	// an XOLLAMA line on this path would be silently discarded and the model
+	// served the default way -- the failure mode the layer exists to prevent.
+	// Say so instead, and name the way round.
+	if mfConfig.XollamaArgs != "" {
+		return createOptions{}, false, errors.New("XOLLAMA is not supported on a safetensors import; create the model first, then set its configuration with `xollama tweak model`")
 	}
 	if draftCount > 1 {
 		return createOptions{}, false, errors.New("safetensors imports support at most one DRAFT source")
@@ -1492,6 +1503,52 @@ func showInfo(resp *api.ShowResponse, verbose bool, w io.Writer) error {
 		})
 	}
 
+	// xollama-hook: model-config — a model's fork settings are part of how it
+	// is served, so they belong beside Parameters. Unstated settings are not
+	// listed: almost every model states none of these, and a block of blanks
+	// would be noise on every `show` in the tree.
+	if rows := tweak.SettingRows(resp.Xollama); len(rows) > 0 {
+		tableRender("xOllama", func() (out [][]string) {
+			for _, r := range rows {
+				out = append(out, []string{"", r[0], r[1]})
+			}
+			return
+		})
+	}
+
+	// xollama-hook: model-config — a drafter is a manifest layer or a handful
+	// of tensors, so it appears nowhere else in this output. Without this, a
+	// model could carry a 440 MiB drafter with no sign of it, and the
+	// draft.spec_type row above would name an override with nothing visible to
+	// override.
+	if d := resp.Drafter; d != nil {
+		tableRender("Drafter", func() (out [][]string) {
+			out = append(out, []string{"", "source", d.Source})
+			if d.Architecture != "" {
+				out = append(out, []string{"", "architecture", d.Architecture})
+			}
+			if d.ParameterSize != "" {
+				out = append(out, []string{"", "parameters", d.ParameterSize})
+			}
+			if d.QuantizationLevel != "" {
+				out = append(out, []string{"", "quantization", d.QuantizationLevel})
+			}
+			// Say where the answer came from, not just what it is: "pinned"
+			// is the difference between a setting someone chose and one the
+			// drafter's own metadata implied, and that is the whole reason
+			// draft.spec_type exists.
+			switch {
+			case d.SpecType == "":
+				out = append(out, []string{"", "spec type", "unresolved"})
+			case d.Pinned:
+				out = append(out, []string{"", "spec type", d.SpecType + " (pinned)"})
+			default:
+				out = append(out, []string{"", "spec type", d.SpecType + " (inferred)"})
+			}
+			return
+		})
+	}
+
 	if resp.ModelInfo != nil && verbose {
 		tableRender("Metadata", func() (rows [][]string) {
 			keys := make([]string, 0, len(resp.ModelInfo))
@@ -2173,6 +2230,10 @@ func initializeKeypair() error {
 }
 
 func checkServerHeartbeat(cmd *cobra.Command, _ []string) error {
+	// xollama-hook: host-fallback — see docs/xollama/default-port.mdx
+	if err := resolveServerHost(cmd.Context()); err != nil {
+		return err
+	}
 	client, err := api.ClientFromEnvironment()
 	if err != nil {
 		return err
@@ -2189,6 +2250,10 @@ func checkServerHeartbeat(cmd *cobra.Command, _ []string) error {
 }
 
 func versionHandler(cmd *cobra.Command, _ []string) {
+	// xollama-hook: host-fallback — see docs/xollama/default-port.mdx
+	// A refusal is not reported here: `--version` prints a warning when it
+	// cannot reach a server, and that is the right outcome either way.
+	_ = resolveServerHost(cmd.Context())
 	client, err := api.ClientFromEnvironment()
 	if err != nil {
 		return
@@ -2615,6 +2680,9 @@ func NewCLI() *cobra.Command {
 	}
 	gpuDiscoverCmd.Flags().StringArrayVar(&gpuDiscoverLibDirs, "lib-dir", nil, "xollama runtime library directory")
 
+	// xollama-hook: model-config
+	tweakCmd := tweak.Command(tweak.Options{Heartbeat: checkServerHeartbeat})
+
 	envVars := envconfig.AsMap()
 
 	envs := []envconfig.EnvVar{envVars["OLLAMA_HOST"]}
@@ -2631,6 +2699,10 @@ func NewCLI() *cobra.Command {
 		copyCmd,
 		deleteCmd,
 		serveCmd,
+		// xollama-hook: model-config — the settings `tweak` edits each fall
+		// through to one of these when the model states nothing, which is what
+		// the help has to say for "leave it unset" to mean anything.
+		tweakCmd,
 	} {
 		switch cmd {
 		case runCmd:
@@ -2662,6 +2734,8 @@ func NewCLI() *cobra.Command {
 				envVars["LLAMA_ARG_FIT_TARGET"],
 				envVars["OLLAMA_LOAD_TIMEOUT"],
 			})
+		case tweakCmd:
+			appendEnvDocs(cmd, append([]envconfig.EnvVar{envVars["OLLAMA_HOST"]}, tweak.FallbackEnvVars(envVars)...))
 		default:
 			appendEnvDocs(cmd, envs)
 		}
@@ -2686,6 +2760,9 @@ func NewCLI() *cobra.Command {
 		runnerCmd,
 		gpuDiscoverCmd,
 		launch.LaunchCmd(checkServerHeartbeat, runInteractiveTUI),
+		// xollama-hook: model-config — `tweak` edits the fork's own model
+		// settings; everything it does lives in cmd/tweak.
+		tweakCmd,
 	)
 
 	return rootCmd

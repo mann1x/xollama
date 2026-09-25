@@ -25,6 +25,7 @@ import (
 	"github.com/ollama/ollama/parser"
 	"github.com/ollama/ollama/progress"
 	"github.com/ollama/ollama/types/model"
+	"github.com/ollama/ollama/types/xollama"
 )
 
 func TestShowInfo(t *testing.T) {
@@ -376,7 +377,7 @@ func TestDeleteHandler(t *testing.T) {
 		}
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -425,7 +426,7 @@ func TestRunEmbeddingModel(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -517,7 +518,7 @@ func TestRunEmbeddingModelWithFlags(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -618,7 +619,7 @@ func TestRunEmbeddingModelPipedInput(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -693,7 +694,7 @@ func TestRunEmbeddingModelNoInput(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -744,7 +745,7 @@ func TestRunHandler_CloudAuthErrorOnShow_PrintsSigninMessage(t *testing.T) {
 		}
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -812,7 +813,7 @@ func TestRunHandler_CloudAuthErrorOnGenerate_PrintsSigninMessage(t *testing.T) {
 		}
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -896,7 +897,7 @@ func TestRunHandler_ExplicitCloudStubMissing_PullsNormalizedNameTEMP(t *testing.
 		}
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -967,7 +968,7 @@ func TestRunHandler_ExplicitCloudStubPresent_SkipsPullTEMP(t *testing.T) {
 		}
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -1034,7 +1035,7 @@ func TestRunHandler_ExplicitCloudStubPullFailure_IsBestEffortTEMP(t *testing.T) 
 		}
 	}))
 
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -1260,7 +1261,7 @@ func TestPushHandler(t *testing.T) {
 			}))
 			defer mockServer.Close()
 
-			t.Setenv("OLLAMA_HOST", mockServer.URL)
+			t.Setenv("XOLLAMA_HOST", mockServer.URL)
 			tmpDir := t.TempDir()
 			t.Setenv("HOME", tmpDir)
 			t.Setenv("USERPROFILE", tmpDir)
@@ -1370,7 +1371,7 @@ func TestListHandler(t *testing.T) {
 			}))
 			defer mockServer.Close()
 
-			t.Setenv("OLLAMA_HOST", mockServer.URL)
+			t.Setenv("XOLLAMA_HOST", mockServer.URL)
 
 			cmd := &cobra.Command{}
 			cmd.SetContext(t.Context())
@@ -1469,7 +1470,7 @@ func TestCreateHandler(t *testing.T) {
 				}
 				handler(w, r)
 			}))
-			t.Setenv("OLLAMA_HOST", mockServer.URL)
+			t.Setenv("XOLLAMA_HOST", mockServer.URL)
 			t.Cleanup(mockServer.Close)
 			tempFile, err := os.CreateTemp(t.TempDir(), "modelfile")
 			if err != nil {
@@ -1676,7 +1677,7 @@ func TestSharedBlobStore(t *testing.T) {
 	defer separate.Close()
 
 	t.Run("shared store", func(t *testing.T) {
-		t.Setenv("OLLAMA_HOST", shared.URL)
+		t.Setenv("XOLLAMA_HOST", shared.URL)
 		client, err := api.ClientFromEnvironment()
 		if err != nil {
 			t.Fatal(err)
@@ -1688,7 +1689,7 @@ func TestSharedBlobStore(t *testing.T) {
 	})
 
 	t.Run("separate store", func(t *testing.T) {
-		t.Setenv("OLLAMA_HOST", separate.URL)
+		t.Setenv("XOLLAMA_HOST", separate.URL)
 		client, err := api.ClientFromEnvironment()
 		if err != nil {
 			t.Fatal(err)
@@ -1700,7 +1701,7 @@ func TestSharedBlobStore(t *testing.T) {
 	})
 
 	t.Run("OLLAMA_CREATE_REMOTE forces upload", func(t *testing.T) {
-		t.Setenv("OLLAMA_HOST", shared.URL)
+		t.Setenv("XOLLAMA_HOST", shared.URL)
 		t.Setenv("OLLAMA_CREATE_REMOTE", "1")
 		client, err := api.ClientFromEnvironment()
 		if err != nil {
@@ -1758,7 +1759,7 @@ func TestCreateBlob(t *testing.T) {
 		}
 		server := httptest.NewServer(bs)
 		t.Cleanup(server.Close)
-		t.Setenv("OLLAMA_HOST", server.URL)
+		t.Setenv("XOLLAMA_HOST", server.URL)
 		client, err := api.ClientFromEnvironment()
 		if err != nil {
 			t.Fatal(err)
@@ -1840,7 +1841,7 @@ func TestCreateHandlerRejectsAdaptersBeforeUpload(t *testing.T) {
 }
 
 func TestCreateHandlerRejectsTypicalPBeforeUpload(t *testing.T) {
-	t.Setenv("OLLAMA_HOST", "127.0.0.1:0")
+	t.Setenv("XOLLAMA_HOST", "127.0.0.1:0")
 	dir := t.TempDir()
 	modelfile := filepath.Join(dir, "Modelfile")
 	if err := os.WriteFile(modelfile, []byte("FROM base\nPARAMETER typical_p 0.5\n"), 0o644); err != nil {
@@ -2541,6 +2542,50 @@ func TestShowInfoImageCapability(t *testing.T) {
 	}
 }
 
+// xollama-hook: model-config — a model's fork settings are shown beside its
+// parameters, and only when it states some. Almost every model states none,
+// and a block of blanks on every `show` in the tree would be noise.
+func TestShowInfoXollamaConfig(t *testing.T) {
+	yes := true
+	var b bytes.Buffer
+	err := showInfo(&api.ShowResponse{
+		Details: api.ModelDetails{Family: "qwen35", ParameterSize: "27.3B", QuantizationLevel: "Q4_K_M"},
+		Xollama: &xollama.Config{
+			Version: 1,
+			KV:      &xollama.KV{K: "q8_0", V: "q8_0"},
+			DCA:     &xollama.DCA{Enabled: &yes, ChunkSize: 32768},
+		},
+	}, false, &b)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expect := "  Model\n" +
+		"    architecture    qwen35    \n" +
+		"    parameters      27.3B     \n" +
+		"    quantization    Q4_K_M    \n" +
+		"\n" +
+		"  xOllama\n" +
+		"    kv.k              q8_0     \n" +
+		"    kv.v              q8_0     \n" +
+		"    dca.enabled       on       \n" +
+		"    dca.chunk_size    32768    \n" +
+		"\n"
+	if diff := cmp.Diff(expect, b.String()); diff != "" {
+		t.Errorf("unexpected output (-want +got):\n%s", diff)
+	}
+
+	b.Reset()
+	if err := showInfo(&api.ShowResponse{
+		Details: api.ModelDetails{Family: "qwen35", ParameterSize: "27.3B"},
+	}, false, &b); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), "xOllama") {
+		t.Errorf("a model with no config printed a section:\n%s", b.String())
+	}
+}
+
 func TestPushProgressMessage(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -2750,7 +2795,7 @@ func TestLoadOrUnloadModel_CloudModelAuth(t *testing.T) {
 			}))
 			defer mockServer.Close()
 
-			t.Setenv("OLLAMA_HOST", mockServer.URL)
+			t.Setenv("XOLLAMA_HOST", mockServer.URL)
 
 			cmd := &cobra.Command{}
 			cmd.SetContext(t.Context())
@@ -2815,7 +2860,7 @@ func TestIsLocalhost(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("OLLAMA_HOST", tt.host)
+			t.Setenv("XOLLAMA_HOST", tt.host)
 			got := isLocalhost()
 			if got != tt.expected {
 				t.Errorf("isLocalhost() with OLLAMA_HOST=%q = %v, want %v", tt.host, got, tt.expected)
@@ -2900,5 +2945,68 @@ func TestParseThinkFlag(t *testing.T) {
 				t.Errorf("parseThinkFlag(%q) = %v, want %v", tt.value, think.Value, tt.want)
 			}
 		})
+	}
+}
+
+// A drafter appears nowhere else in a show response, so the block has to carry
+// enough to identify it -- and has to say whether the driver was chosen or
+// inferred, which is the whole point of draft.spec_type.
+func TestShowInfoDrafter(t *testing.T) {
+	var b bytes.Buffer
+	err := showInfo(&api.ShowResponse{
+		Details: api.ModelDetails{Family: "gemma4", ParameterSize: "19.9B", QuantizationLevel: "Q4_K_M"},
+		Drafter: &api.DrafterInfo{
+			Source:            "attached",
+			Architecture:      "gemma4-assistant",
+			ParameterSize:     "419.71M",
+			QuantizationLevel: "Q8_0",
+			SpecType:          "draft-assistant",
+		},
+	}, false, &b)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expect := "  Model\n" +
+		"    architecture    gemma4    \n" +
+		"    parameters      19.9B     \n" +
+		"    quantization    Q4_K_M    \n" +
+		"\n" +
+		"  Drafter\n" +
+		"    source          attached                      \n" +
+		"    architecture    gemma4-assistant              \n" +
+		"    parameters      419.71M                       \n" +
+		"    quantization    Q8_0                          \n" +
+		"    spec type       draft-assistant (inferred)    \n" +
+		"\n"
+	if diff := cmp.Diff(expect, b.String()); diff != "" {
+		t.Errorf("unexpected output (-want +got):\n%s", diff)
+	}
+
+	// A built-in head has no file of its own to describe, and a pinned driver
+	// must not read as an inferred one.
+	b.Reset()
+	if err := showInfo(&api.ShowResponse{
+		Details: api.ModelDetails{Family: "qwen35"},
+		Drafter: &api.DrafterInfo{Source: "built-in", SpecType: "draft-simple", Pinned: true},
+	}, false, &b); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), "draft-simple (pinned)") {
+		t.Errorf("a pinned driver did not say so:\n%s", b.String())
+	}
+	if strings.Contains(b.String(), "architecture    \n") {
+		t.Errorf("a built-in head printed an empty architecture row:\n%s", b.String())
+	}
+
+	// A model with no drafter prints no section at all.
+	b.Reset()
+	if err := showInfo(&api.ShowResponse{
+		Details: api.ModelDetails{Family: "gemma4"},
+	}, false, &b); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(b.String(), "Drafter") {
+		t.Errorf("a model with no drafter printed a section:\n%s", b.String())
 	}
 }

@@ -511,12 +511,19 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 		if why := engine.SlidingWindowRingUnavailable(); why != "" {
 			return nil, 0, false, fmt.Errorf("kv.k_swa / kv.v_swa cannot be used: %s", why)
 		}
+		// Available is not the same as askable in this shape. An engine that
+		// has the ring still refuses combinations of it, during startup, which
+		// reaches the operator as a load that failed.
+		if why := kvTypes.ringShapeError(); why != "" {
+			return nil, 0, false, fmt.Errorf("this sliding-window ring configuration would be refused by the engine: %s", why)
+		}
 	}
 	args = appendKVCacheRingArgs(args, kvTypes, usedOpencoti)
+	args = appendKVResidencyArgs(args, kvTypes, usedOpencoti)
 
 	// xollama-hook: launch-config — dynamic slots. See docs/xollama/slots.mdx.
 	slots := resolveSlotPlan(launch.config, launch.numParallel, launch.config.SingleSequenceOnly)
-	args = appendSlotArgs(args, slots, effectivePoolCount(launch.config, len(launch.projectors) > 0), usedOpencoti)
+	args = appendSlotArgs(args, slots, effectivePoolCount(launch.config, len(launch.projectors) > 0), kvTypes.Unified, usedOpencoti)
 	args = appendSWABudgetArgs(args, slots, usedOpencoti)
 
 	// xollama-hook: launch-config — dual chunk attention. See docs/xollama/dca.mdx.
@@ -558,6 +565,22 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 		return nil, 0, false, err
 	}
 
+	// xollama-hook: engine-payload — a self-extracting engine unpacks its GPU
+	// payload into $HOME/.llamafile/v/<compile-time version>/, which two builds
+	// carrying one tag share. Give it a HOME of our own holding exactly the
+	// payload of the artifact about to run, so the operator's own opencoti
+	// builds and ours cannot reach each other. See llm/engine/payload.go.
+	// Nothing happens on the stock path: a llama-server binary extracts
+	// nothing and is launched with the environment it inherited.
+	envs := launch.extraEnvsForStart()
+	if usedOpencoti {
+		userHome, _ := os.UserHomeDir()
+		if payloadHome := engine.PreparePayloadHome(engine.ArtifactOf(name, args), engine.DefaultPayloadRoots(ml.LibOllamaPath, userHome)...); payloadHome != "" {
+			envs = cloneStringMap(envs)
+			envs["HOME"] = payloadHome
+		}
+	}
+
 	// Set up library paths for GPU backend discovery
 	cmd = exec.Command(name, args...)
 
@@ -567,7 +590,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 		cmd.Stderr = out
 	}
 	cmd.SysProcAttr = LlamaServerSysProcAttr
-	SetupLlamaServerCommandEnv(cmd, exe, launch.gpuLibs, launch.extraEnvsForStart())
+	SetupLlamaServerCommandEnv(cmd, exe, launch.gpuLibs, envs)
 
 	slog.Info("starting llama-server", "cmd", cmd)
 	slog.Debug("subprocess", "", filteredEnv(cmd.Env))
@@ -1011,6 +1034,25 @@ func appendDraftArgs(params []string, draftType, draftModelPath string, opts api
 	return params
 }
 
+// resolveDraftType settles the --spec-type for this load: what the model
+// explicitly pins, falling back to what the drafter's own metadata implies.
+//
+// The guard is the inferred type and not the presence of an attached drafter
+// file, which is the distinction this function exists to hold. A pin is
+// equally meaningful on a built-in head -- nextn_predict_layers, or qwen35's
+// mtp.* tensors -- and consulting it only on the external path was a silent
+// no-op: `tweak model --spec-type=...` wrote the layer and `xollama show`
+// printed it while the launch went on passing the inferred value. A model with
+// no drafter at all still states nothing, because a --spec-type with no
+// drafter behind it is not a preference, it is a broken command line.
+
+func resolveDraftType(inferred, override string) string {
+	if inferred == "" || override == "" {
+		return inferred
+	}
+	return override
+}
+
 // externalDraftType picks the --spec-type for an attached draft model.
 //
 // A drafter that declares <arch>.requires_target_arch is a head rather than a
@@ -1022,24 +1064,21 @@ func externalDraftType(path, targetArch string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("load draft model metadata: %w", err)
 	}
-	if f.KV().Architecture() == "dflash" {
-		return draftTypeDFlash, nil
-	}
 	// xollama-hook: draft-assistant — see docs/features/gemma4-drafter.md
-	if want := f.KV().String("requires_target_arch"); want != "" {
-		if targetArch != "" && want != targetArch {
-			return "", fmt.Errorf("draft model %s requires a %q target, but this model is %q", path, want, targetArch)
-		}
-		return draftTypeAssistant, nil
+	//
+	// The rule itself lives in DraftTypeFor so that `xollama show` reaches the
+	// same answer as the launch without restating it.
+	draftType, err := DraftTypeFor(f.KV().Architecture(), f.KV().String("requires_target_arch"), targetArch)
+	if err != nil {
+		return "", fmt.Errorf("draft model %s: %w", path, err)
 	}
-	return draftTypeMTP, nil
+	return draftType, nil
 }
 
 func hasMTPDraft(f *gguf.Model) bool {
-	if f.KV().Uint("nextn_predict_layers") > 0 {
-		return true
-	}
-	return hasLegacyQwenMTPDraft(f.KV().Architecture(), f.Tensors().Items("mtp."))
+	// xollama-hook: model-config — BuiltInDrafter holds the rule so `show` can
+	// ask the same question without a second reading of it.
+	return BuiltInDrafter(f.KV().Architecture(), f.KV().Uint("nextn_predict_layers"), f.Tensors().Items("mtp."))
 }
 
 func hasLegacyQwenMTPDraft(arch string, tensors []gguf.TensorInfo) bool {
@@ -1112,14 +1151,9 @@ func NewLlamaServerRunner(
 		if err != nil {
 			return nil, err
 		}
-		// xollama-hook: model-config — an explicit pin beats inference. It
-		// still goes through retargetSpecType, so pinning draft-assistant on
-		// llama.cpp resolves to that engine's spelling rather than a value it
-		// would reject.
-		if override := config.draftSpecTypeOverride(); override != "" {
-			draftType = override
-		}
 	}
+	// xollama-hook: model-config — see docs/features/model-config.md
+	draftType = resolveDraftType(draftType, config.draftSpecTypeOverride())
 	splitModel, err := materializeSplitModels(f.Files(), projectors, config)
 	if err != nil {
 		return nil, err
@@ -1727,7 +1761,13 @@ type llamaServerCompletionRequest struct {
 	// the sequence it forces from message+end_tag, and only does so when this
 	// field is present. A pointer keeps the empty string on the wire.
 	ReasoningBudgetMessage *string `json:"reasoning_budget_message,omitempty"`
-	GenerationPrompt       string  `json:"generation_prompt,omitempty"`
+	// ReasoningBudgetScope spends the budget across the whole response
+	// ("response") rather than re-arming it for every thinking block
+	// ("block", llama-server's default). ReasoningBudgetResetTag forgives what
+	// has been spent when it appears -- a tool call means progress, not a loop.
+	ReasoningBudgetScope    string `json:"reasoning_budget_scope,omitempty"`
+	ReasoningBudgetResetTag string `json:"reasoning_budget_reset_tag,omitempty"`
+	GenerationPrompt        string `json:"generation_prompt,omitempty"`
 
 	// xollama-hook: engine-session — opencoti-llamafile only. SessionID binds
 	// this request to the slot already holding that conversation's KV; PoolID
@@ -1967,6 +2007,15 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 		// the budget expires with nothing to force, the sampler logs its usual
 		// states, and the thinking block is left open.
 		lsReq.ReasoningBudgetMessage = &req.ThinkBudgetMessage
+
+		// Bound the response, not the block. Measured live on gemma4: six
+		// consecutive thinking blocks, each closed by the model just short of
+		// its 8,000-token window and each re-armed in full, consumed a 32,000
+		// token output cap without the budget ever expiring -- so the message
+		// that tells the model to wrap up was never injected and the turn
+		// ended with neither an answer nor a tool call.
+		lsReq.ReasoningBudgetScope = "response"
+		lsReq.ReasoningBudgetResetTag = req.ThinkBudgetResetTag
 
 		// The sampler only sees tokens the model generates, so a template that
 		// primes thinking by ending the prompt inside a thinking block would

@@ -44,9 +44,29 @@ fork uses it.
 
 | Field | Meaning |
 |---|---|
-| `version` | Required. A version **newer than the build** is an error, not a warning — these fields change how the model is served, so reading a v2 config as a v1 would serve it differently from how its publisher meant, silently. |
+| `version` | Required, and **computed rather than declared** — see below. A version newer than the build is an error, not a warning: these fields change how the model is served, so reading a v2 config as a v1 would serve it differently from how its publisher meant, silently. |
 | `engine` | `opencoti` or `llamacpp`. Empty means the model does not care and `XOLLAMA_ENGINE` decides, which is the normal case. Note `auto` is **not** valid: a model saying "auto" is a model saying nothing. |
 | `draft.spec_type` | Overrides the `--spec-type` otherwise inferred from the drafter's metadata. |
+| `devices.backend` / `devices.ids` | Pins the backend (`CUDA`, `Vulkan`, `ROCm`, `CPU`) and optionally the devices a model runs on, by PCI ID, device index, `integrated` or `discrete`. A missing device refuses the load. See [device-selection.md](device-selection.md). |
+
+### The version written is the lowest that is true
+
+`Marshal` recomputes `version` from the fields the config actually uses, and
+never from what the build knows. `SchemaVersion` is 3; `SchemaVersionBase` is 1;
+only `kv.unified` and `kv.residency_mode` force the 2, and a `devices` pin forces
+the 3 — an older build would read the pin as an unknown key and serve the model
+on whatever hardware it chose, which is exactly what the pin exists to prevent.
+
+Stamping the newest version unconditionally would have made every model this
+build touched unreadable to an older xollama, including models using nothing
+newer than v1 — because `Validate` treats a future version as an error, which is
+the right call for the reason in the table above. So a config states the oldest
+version that is true of it, and only a model actually using a v2 field pays the
+v2 floor. It is recomputed rather than defaulted, so a config that was v2 and
+has had its v2 fields cleared becomes readable by an older build again.
+
+`TestTheVersionWrittenIsTheLowestThatIsTrue` and
+`TestTheStoredVersionFollowsTheFieldsUsed` hold the two ends of that.
 
 Unknown **keys** are accepted, so a model mentioning a setting a newer build
 added is still servable. `draft_num_predict` is deliberately absent: it is
@@ -70,6 +90,60 @@ round-trips it.
 A model creating `FROM` a parent that already carries a config **replaces** it
 rather than inheriting — otherwise a child could never shed a stale engine pin.
 
+`create.ApplyModelfileLayers` reads the request's `Xollama` **pointer**, not
+`IsZero`, and the difference carries meaning. `nil` is "this request says
+nothing about the fork config", and the parent's layer is inherited untouched —
+that is every ordinary create. A non-nil config carrying no settings is "this
+request says the fork config is nothing", and removes the layer. `tweak model
+--clear` has no other way to say it, and neither does a Modelfile meaning to
+strip a parent's engine pin rather than add to it.
+
+### Or without a Modelfile
+
+```sh
+xollama tweak model qwen3.6:latest
+xollama tweak model qwen3.6:latest --dca=on
+xollama tweak model qwen3.6:latest --dca
+```
+
+`cmd/tweak` is additive, and everything it knows comes from one table
+(`cmd/tweak/fields.go`): the wizard, the flags, the review, the consistency pass
+and `--help` all derive from it, so a setting is added by adding a row and the
+five cannot disagree about what exists. It writes through the ordinary create
+path with `From` set to the model itself, so nothing but this layer changes.
+
+It reads the current config from `/api/show` — which is why `api.ShowResponse`
+gained an `Xollama` field — rather than from the manifest, so it works against a
+remote server.
+
+Two rules, kept apart deliberately:
+
+- A setting the config **cannot act on** is dropped and named: an opencoti-only
+  setting under `engine: "llamacpp"`, a `dca.chunk_size` under
+  `dca.enabled: false`. There is nothing to decide.
+- A combination where **only the operator knows which half they meant** is
+  refused: `kv.unified: false` beside `slots.dynamic: true` is a choice between
+  two features. Interactively the refusal re-asks exactly the settings it names
+  (`fieldsNamedIn`, which matches a setting by reference rather than by word —
+  "engine" appears in half these messages as prose). From a script it is an
+  error and a non-zero exit.
+
+The measured cache preconditions in `llm/engine_launch.go` (`ringShapeError`)
+are applied here too, through `llm.CacheShapeError`, so a ring without a KVarN
+base is refused at configuration time rather than at startup, where it reaches
+the operator as a model that will not load. `llm.CacheNeedsFlashAttention` adds
+the other one: a KVarN cache with `flash_attention: "off"` is refused, because
+the engine refuses the pair at init.
+
+`llm.KnownCacheTypes` is likewise a measurement, taken by asking the pinned
+artifact's own parser (`--cache-type-k BOGUS` prints its allowed values). It has
+**no kvarn7** — the run kvarn2, 3, 4, 5, 6, 8 invites the assumption and the
+engine answers "Unsupported cache type". The vendor confirms that is structural
+(`llama_kvarn_valid_bits()` admits those six bit widths and the type table is
+built from them), not a parser omission, so the hole is not going to fill in.
+
+[docs/xollama/tweak.mdx](../xollama/tweak.mdx) is the operator-facing page.
+
 ## What the fields do
 
 **`engine: "llamacpp"`** skips the engine hook entirely, which is the same path
@@ -86,6 +160,50 @@ drafter: it carries `masked_embd_*` tensors that upstream's loader rejects with 
 `retargetSpecType`, so pinning `draft-assistant` on llama.cpp resolves to
 `draft-mtp` — that engine's spelling for the same driver — rather than a value it
 would reject.
+
+It is consulted wherever the drafter came from. `resolveDraftType` takes the
+inferred type and the pin, and the guard is the inferred type, not whether a
+drafter file was attached: a head that ships *inside* the target — Qwen's
+`nextn_predict_layers`, or qwen35's `mtp.*` tensors — is just as much a drafter
+to pin. Reading the pin only on the attached-file path was a silent no-op
+(measured 2026-09-23 on `omnimerge-v4-mtp_tb:27b-q4km-128k`: the layer said
+`draft-simple`, `xollama show` printed `draft-simple`, and the engine was handed
+`--spec-type draft-mtp`). A model with no drafter at all still states nothing,
+because a `--spec-type` with no drafter behind it is a broken command line, not
+a preference.
+
+Attaching a drafter is a `DRAFT` line in the Modelfile and is not part of this
+layer — the layer says which *driver* to use, never which file. The two together
+on the worked gemma-4 vehicle:
+
+```
+FROM  gemma-4-A4B-98e-v9-agentic-it-Q4_K_M.gguf
+DRAFT gemma-4-26B-A4B-it-assistant-Q8_0.gguf
+PARAMETER draft_num_predict 3
+```
+
+The drafter declares `requires_target_arch = gemma4`, so `externalDraftType`
+resolves `draft-assistant` with no pin at all, and the launch carries
+`--spec-type draft-assistant --spec-draft-n-max 3 --spec-draft-model <blob>`.
+Pinning `draft-mtp` over that is accepted and reaches the engine, which then
+refuses the load with `Gemma4Assistant requires ctx_other to be set` — the pin
+is an override, so it is able to be wrong.
+
+**`kv.unified`** (v2) says whether the cells are one pool shared across
+sequences or a fixed per-slot split. Until v2 this was *derived*: the server
+passed `--kv-unified` exactly when it had parked slots or a shared prefix pool
+to admit into, and a model could not say otherwise. The derivation answers a
+different question from the one an operator sometimes has — a shared pool lets
+ONE long conversation use every cell, a fixed split guarantees each slot its
+share, and the total cell count is the same either way. `nil` keeps the
+derivation. Stating `false` while dynamic slots or session pooling are on is
+refused: both are shares of the same cells.
+
+**`kv.residency_mode`** (v2) is the rolling-KV tactic for a cache that does not
+fit in VRAM: `auto`, `head` or `window`. The set is the engine's own, read from
+its argument parser (`--kv-residency-mode must be auto|head|window`) rather than
+from documentation. It is an opencoti extension, so a config that pins
+`llamacpp` and also names a mode is refused rather than served without it.
 
 ## Off means off
 

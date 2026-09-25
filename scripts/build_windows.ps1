@@ -1032,20 +1032,81 @@ function sign {
     }
 }
 
-function installer {
+# payloadId is the identity of the engine payload the installer SHIPS, and it is
+# the whole delta mechanism: the full installer writes it to
+# lib\ollama\PAYLOAD_ID, the release publishes it as payload-id.txt, and
+# app/updater/fork.go compares the two to decide whether an update needs the
+# ~1.5 GB installer or the ~36 MB one.
+#
+# It hashes relative path + content digest for every file, sorted, over the same
+# set of files the [Files] section installs -- so the excluded backends
+# (cuda_v12, mlx_*) do NOT move it, or every release would look like a payload
+# change and the split would buy nothing. Paths are lowercased and normalised so
+# the id does not depend on enumeration order or on which drive it was built on.
+function payloadId {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $lines = New-Object System.Collections.Generic.List[string]
+    foreach ($arch in @("amd64", "arm64")) {
+        $root = "${script:SRC_DIR}\dist\windows-${arch}\lib\ollama"
+        if (-not (Test-Path -Path $root)) { continue }
+        $files = Get-ChildItem -Path $root -Recurse -File | Where-Object {
+            # Mirror the installer's Excludes. Keep these in step with the
+            # [Files] entries in app/xollama.iss or the id describes a payload
+            # nobody installs.
+            $rel = $_.FullName.Substring($root.Length).TrimStart('\')
+            ($rel -notlike "cuda_v12\*") -and ($rel -notlike "mlx_*\*") -and ($rel -ne "PAYLOAD_ID")
+        }
+        foreach ($f in ($files | Sort-Object FullName)) {
+            $rel = $f.FullName.Substring($root.Length).TrimStart('\').Replace('\','/').ToLowerInvariant()
+            $h = (Get-FileHash -Algorithm SHA256 -Path $f.FullName).Hash.ToLowerInvariant()
+            $lines.Add("${arch}/${rel} ${h}")
+        }
+    }
+    if ($lines.Count -eq 0) {
+        Write-Output "ERROR: no engine payload found under dist\windows-*\lib\ollama; build it before the installer"
+        exit 1
+    }
+    $joined = ($lines | Sort-Object) -join "`n"
+    $id = ($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($joined)) | ForEach-Object { $_.ToString("x2") }) -join ""
+    $out = "${script:SRC_DIR}\dist\payload-id.txt"
+    [System.IO.File]::WriteAllText($out, $id)
+    Write-Output "Engine payload id $id over $($lines.Count) files -> $out"
+    return $id
+}
+
+function runISCC($defines) {
     if ($null -eq ${script:INNO_SETUP_DIR}) {
         Write-Output "ERROR: missing Inno Setup installation directory - install from https://jrsoftware.org/isdl.php"
         exit 1
     }
-    Write-Output "Building Ollama Installer"
     cd "${script:SRC_DIR}\app"
     $env:PKG_VERSION=$script:PKG_VERSION
+    $env:PKG_PAYLOAD_ID=$script:PKG_PAYLOAD_ID
+    $args = @("/DARCH=$script:TARGET_ARCH") + $defines
     if ("${env:KEY_CONTAINER}") {
-        & "${script:INNO_SETUP_DIR}\ISCC.exe" /DARCH=$script:TARGET_ARCH /SMySignTool="${script:SignTool} sign /fd sha256 /t http://timestamp.digicert.com /f ${script:OLLAMA_CERT} /csp `$qGoogle Cloud KMS Provider`$q /kc ${env:KEY_CONTAINER} `$f" .\xollama.iss
-    } else {
-        & "${script:INNO_SETUP_DIR}\ISCC.exe" /DARCH=$script:TARGET_ARCH .\xollama.iss
+        $args += "/SMySignTool=${script:SignTool} sign /fd sha256 /t http://timestamp.digicert.com /f ${script:OLLAMA_CERT} /csp `$qGoogle Cloud KMS Provider`$q /kc ${env:KEY_CONTAINER} `$f"
     }
+    & "${script:INNO_SETUP_DIR}\ISCC.exe" @args .\xollama.iss
     if ($LASTEXITCODE -ne 0) { exit($LASTEXITCODE)}
+}
+
+function installer {
+    Write-Output "Building xOllama Installer"
+    $script:PKG_PAYLOAD_ID = payloadId
+    runISCC @()
+}
+
+# installerUpdate builds the executables-only installer. It must run AFTER
+# installer, because it reuses the payload id computed there -- and because a
+# release that published the update without the full installer it is an update
+# TO would be an update to nothing.
+function installerUpdate {
+    if (-not $script:PKG_PAYLOAD_ID) {
+        Write-Output "ERROR: run the installer step first; the update installer is built against its payload id"
+        exit 1
+    }
+    Write-Output "Building xOllama update-only Installer"
+    runISCC @("/DCORE=1")
 }
 
 function newZipJob($sourceDir, $destZip) {
