@@ -389,7 +389,7 @@ jobs:
           }
           $installPrefix = Join-Path $env:RUNNER_TEMP "ollama-local"
           cmake --install "${{ matrix.superbuild_dir }}" --component ollama-local --prefix "$installPrefix"
-          & "$installPrefix\bin\ollama.exe" --version
+          & "$installPrefix\bin\xollama.exe" --version # the superbuild names it xollama (cmake/local.cmake)
           & "$installPrefix\lib\ollama\llama-server.exe" --version
           if (!(Test-Path "$installPrefix\lib\ollama\llama-quantize.exe")) {
             throw "missing installed llama-quantize.exe"
