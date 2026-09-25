@@ -121,7 +121,11 @@ jobs:
             superbuild_args: '-DOLLAMA_MLX_BACKENDS=cuda_v13 -DCMAKE_CUDA_ARCHITECTURES=87 -DMLX_CUDA_ARCHITECTURES=80-virtual -DBLAS_INCLUDE_DIRS=/usr/include/x86_64-linux-gnu -DLAPACK_INCLUDE_DIRS=/usr/include/x86_64-linux-gnu'
             expected_payload: lib/ollama/mlx_cuda_v13/libmlx.so lib/ollama/mlx_cuda_v13/libollama_xgrammar.so
             install-go: true
-    runs-on: linux
+    # xollama-hook: hosted-ci -- upstream's self-hosted `linux` fleet on
+    # ollama/ollama, GitHub-hosted everywhere else. The fork has no runners;
+    # the job compiles and checks the payload, it needs no GPU. Upstream ran it
+    # on ubuntu-latest itself until 92b1a21f (2024-02-06).
+    runs-on: ${{ github.repository == 'ollama/ollama' && 'linux' || 'ubuntu-latest' }}
     container: ${{ matrix.container }}
     steps:
       - uses: actions/checkout@v4
@@ -239,7 +243,8 @@ jobs:
               - '"nvvm"'
               - '"nvptxcompiler"'
             cuda-version: '13.0'
-    runs-on: windows
+    # xollama-hook: hosted-ci -- see the linux job.
+    runs-on: ${{ github.repository == 'ollama/ollama' && 'windows' || 'windows-latest' }}
     # `windows` is a self-hosted runner LABEL, not a GitHub-hosted image, so
     # nothing can infer the OS from it and every run: step below was being
     # read as bash. Every one of them is PowerShell; saying so is a no-op at

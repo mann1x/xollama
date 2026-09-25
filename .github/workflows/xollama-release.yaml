@@ -12,11 +12,13 @@
 # or — against an OPEN PR — builds its head into a draft that nobody but the
 # repository's writers can see: the dry run.
 #
-# Everything native that is not built here is a pinned, published artifact:
-# the CUDA and Vulkan backends come from upstream's release of the same base,
-# guarded by LLAMA_CPP_VERSION; the opencoti engine comes from
-# llm/engine/pin.txt, SHA-256 enforced. Only the CPU runtime, the Go binaries,
-# the tray app and the installers are compiled.
+# Nothing native is compiled here. The CPU runtime is a pinned artifact built
+# once by xollama-runtime.yaml (llama/runtime-pin.txt), the CUDA and Vulkan
+# backends come from upstream's release of the same base, guarded by
+# LLAMA_CPP_VERSION, and the opencoti engine comes from llm/engine/pin.txt,
+# SHA-256 enforced. So the payload -- and the payload id the delta update keys
+# on -- changes only when one of those three pins moves. Only the Go binaries,
+# the tray app and the installers are built.
 #
 # No third-party actions, not even actions/checkout: git and gh are on every
 # hosted image, and a job that cannot run because an action was not allowed
@@ -59,6 +61,9 @@ jobs:
       tag: ${{ steps.plan.outputs.tag }}
       upstream: ${{ steps.plan.outputs.upstream }}
       engine: ${{ steps.plan.outputs.engine }}
+      runtime_tag: ${{ steps.plan.outputs.runtime_tag }}
+      runtime_asset: ${{ steps.plan.outputs.runtime_asset }}
+      runtime_sha256: ${{ steps.plan.outputs.runtime_sha256 }}
     steps:
       - name: plan
         id: plan
@@ -148,6 +153,23 @@ jobs:
             || fail "upstream v$upstream publishes no ollama-windows-amd64.zip"
           echo "llama.cpp $ours on both sides; GPU backends from upstream v$upstream"
 
+          # The CPU runtime is a pinned artifact (xollama-runtime.yaml), so the
+          # payload -- and with it the payload id the delta update keys on --
+          # only changes when a pin moves. Refuse a pin built from other inputs
+          # than this commit has: a llama/compat change must not ship on a
+          # runtime that predates it.
+          pin=$(git show "$sha:llama/runtime-pin.txt") \
+            || fail "no llama/runtime-pin.txt at $sha; run xollama-runtime.yaml and commit the pin (RELEASE.md)"
+          field() { awk -v k="$1" '$1==k {print $2}' <<< "$pin"; }
+          rtag=$(field tag); rasset=$(field asset); rsum=$(field sha256); rinputs=$(field inputs)
+          now=$(git ls-tree -r "$sha" -- LLAMA_CPP_VERSION llama/server llama/compat | sha256sum | cut -c1-64)
+          [ "$now" = "$rinputs" ] \
+            || fail "llama/runtime-pin.txt was built from inputs $rinputs, but this commit's are $now; run xollama-runtime.yaml on it and commit the new pin (RELEASE.md, 'Moving the runtime pin')"
+          gh release view "$rtag" --json assets --jq '.assets[].name' | grep -qx "$rasset" \
+            || fail "the pinned runtime $rtag/$rasset is not published"
+          out runtime_tag "$rtag"; out runtime_asset "$rasset"; out runtime_sha256 "$rsum"
+          echo "CPU runtime: $rtag (inputs match)"
+
           if git show "$sha:llm/engine/pin.txt" | grep -Eq '^[[:space:]]*bin[[:space:]]+win-x86_64-gpu[[:space:]]'; then
             out engine yes; echo "opencoti: the pin carries a Windows artifact"
           else
@@ -175,6 +197,9 @@ jobs:
       VERSION: ${{ needs.plan.outputs.version }}
       UPSTREAM: ${{ needs.plan.outputs.upstream }}
       ENGINE: ${{ needs.plan.outputs.engine }}
+      RUNTIME_TAG: ${{ needs.plan.outputs.runtime_tag }}
+      RUNTIME_ASSET: ${{ needs.plan.outputs.runtime_asset }}
+      RUNTIME_SHA256: ${{ needs.plan.outputs.runtime_sha256 }}
     defaults:
       run:
         shell: bash
@@ -189,39 +214,20 @@ jobs:
           git fetch -q --depth 1 origin "$SHA" && git checkout -q --detach FETCH_HEAD
           git log -1 --oneline
 
-      - name: install the clang64 toolchain
-        shell: pwsh
-        run: |
-          # The shipped CPU DLLs are MSYS2 clang64 builds (libc++.dll and
-          # libunwind.dll are the tell); match them, not the MSVC runtime.
-          & C:\msys64\usr\bin\pacman.exe -Sy --noconfirm --needed mingw-w64-clang-x86_64-clang
-          & C:\msys64\clang64\bin\clang.exe --version
-
-      - name: build the CPU runtime
-        shell: pwsh
+      # Downloaded, not built: see xollama-runtime.yaml for why. plan has
+      # already proved the pin matches this commit's llama/ inputs.
+      - name: take the pinned CPU runtime
         working-directory: repo
         run: |
-          # Native CMake and its ninja: MSYS2's cmake takes POSIX paths only.
-          $env:PATH = "C:\Program Files\CMake\bin;C:\msys64\clang64\bin;$env:PATH"
-          $env:CC  = 'C:/msys64/clang64/bin/clang.exe'
-          $env:CXX = 'C:/msys64/clang64/bin/clang++.exe'
-          $env:CMAKE_GENERATOR = 'Ninja'
-          $dist = Join-Path $PWD 'dist\windows-amd64'
-          # GGML_CCACHE picks up MSYS2's ccache, which cannot resolve a
-          # Windows-path compiler.
-          & cmake -S llama/server --preset cpu_windows -DGGML_CCACHE=OFF --install-prefix $dist
-          if ($LASTEXITCODE -ne 0) { throw "configure failed" }
-          # The compat patches must have reached the fetched source.
-          $rb = 'build/llama-server-cpu/_deps/llama_cpp-src/common/reasoning-budget.cpp'
-          foreach ($needle in @('WAITING_BOUNDARY', 'REASONING_BUDGET_SCOPE_RESPONSE', 'forced_end_pos')) {
-            if (-not (Select-String -Path $rb -Pattern $needle -Quiet)) { throw "compat patch did not bring $needle into $rb" }
-            Write-Output "patch applied: $needle present"
-          }
-          & cmake --build build/llama-server-cpu --parallel 4
-          if ($LASTEXITCODE -ne 0) { throw "build failed" }
-          & cmake --install build/llama-server-cpu --component llama-server --strip
-          if ($LASTEXITCODE -ne 0) { throw "install failed" }
-          if (-not (Test-Path "$dist\lib\ollama\llama-server.exe")) { throw "no llama-server.exe under $dist\lib\ollama" }
+          set -euo pipefail
+          gh release download "$RUNTIME_TAG" --pattern "$RUNTIME_ASSET" --dir runtime-pin --clobber
+          got=$(sha256sum "runtime-pin/$RUNTIME_ASSET" | cut -c1-64)
+          [ "$got" = "$RUNTIME_SHA256" ] || { echo "::error::$RUNTIME_ASSET is $got, the pin says $RUNTIME_SHA256"; exit 1; }
+          mkdir -p dist/windows-amd64/lib/ollama
+          # Expand-Archive, not unzip: Git Bash on the runner does not promise one.
+          pwsh -NoProfile -Command "Expand-Archive -Path 'runtime-pin\\$RUNTIME_ASSET' -DestinationPath 'dist\\windows-amd64\\lib\\ollama' -Force"
+          test -f dist/windows-amd64/lib/ollama/llama-server.exe
+          ./dist/windows-amd64/lib/ollama/llama-server.exe --version
 
       - name: take the GPU backends from upstream v${{ needs.plan.outputs.upstream }}
         shell: pwsh
@@ -384,6 +390,7 @@ jobs:
       MODE: ${{ needs.plan.outputs.mode }}
       UPSTREAM: ${{ needs.plan.outputs.upstream }}
       ENGINE: ${{ needs.plan.outputs.engine }}
+      RUNTIME_TAG: ${{ needs.plan.outputs.runtime_tag }}
     steps:
       - name: verify the asset set
         run: |
@@ -410,6 +417,16 @@ jobs:
           etag=$(git -C repo show "$SHA:llm/engine/pin.txt" | awk '$1=="tag"{print $2}')
           if [ "$ENGINE" = yes ]; then engine="opencoti-llamafile \`$etag\` on Windows and Linux"
           else engine="opencoti-llamafile \`$etag\` on Linux; **llama.cpp only on Windows** at this pin"; fi
+          # Whether updating to this release takes the small installer: only when
+          # the previous published release carried the same payload.
+          id=$(cat assets/payload-id.txt)
+          prev=$(gh release list --limit 20 --json tagName,isDraft --jq '.[] | select(.isDraft | not) | .tagName' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-xollama\.[0-9]+$' | grep -vx "$TAG" | sort -V | tail -1 || true)
+          if [ -z "$prev" ]; then delta="first release: every install takes \`xOllamaSetup.exe\`"
+          elif [ "$(gh release download "$prev" -p payload-id.txt -O - 2>/dev/null)" = "$id" ]; then
+            delta="payload unchanged since $prev: updating from it downloads \`xOllamaUpdate.exe\` only"
+          else delta="payload changed since $prev: updating from it downloads \`xOllamaSetup.exe\`"; fi
+          echo "delta: $delta"
           {
             echo
             echo "---"
@@ -419,9 +436,10 @@ jobs:
             echo "|---|---|"
             echo "| commit | \`$SHA\` |"
             echo "| upstream base | ollama v$UPSTREAM |"
-            echo "| llama.cpp | \`$llama\` (CPU runtime built here; CUDA 13 and Vulkan backends from upstream v$UPSTREAM) |"
+            echo "| llama.cpp | \`$llama\`: CPU runtime \`$RUNTIME_TAG\`, CUDA 13 and Vulkan backends from upstream v$UPSTREAM |"
             echo "| engine | $engine |"
-            echo "| payload id | \`$(cat assets/payload-id.txt)\` |"
+            echo "| payload id | \`$id\` |"
+            echo "| update | $delta |"
             echo
             echo "The installer is unsigned; SmartScreen warns on first run. Verify it against \`sha256sum.txt\`."
           } >> notes.md
