@@ -249,11 +249,12 @@ jobs:
               - '"nvvm"'
               - '"nvptxcompiler"'
             cuda-version: '13.0'
-    # xollama-hook: hosted-ci -- see the linux job. windows-2025, not
-    # windows-latest: -latest moved to Visual Studio 2026, whose MSVC CUDA 13.0
-    # refuses (host_config.h "unsupported Microsoft Visual Studio version") and
-    # whose STL ROCm 7.1's clang cannot compile. windows-2025 ships VS 2022 17.14.
-    runs-on: ${{ github.repository == 'ollama/ollama' && 'windows' || 'windows-2025' }}
+    # xollama-hook: hosted-ci -- see the linux job. windows-2022, because the
+    # windows-latest and windows-2025 labels both resolve to the
+    # windows-2025-vs2026 image (measured 2026-09-25): CUDA 13.0 refuses its
+    # MSVC 14.51 (host_config.h "unsupported Microsoft Visual Studio version")
+    # and ROCm 7.1's clang cannot compile its STL. windows-2022 ships VS 2022.
+    runs-on: ${{ github.repository == 'ollama/ollama' && 'windows' || 'windows-2022' }}
     # `windows` is a self-hosted runner LABEL, not a GitHub-hosted image, so
     # nothing can infer the OS from it and every run: step below was being
     # read as bash. Every one of them is PowerShell; saying so is a no-op at
@@ -361,9 +362,9 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           # xollama-hook: hosted-ci -- upstream's runner path when it exists, else
-          # wherever vswhere finds Visual Studio (the hosted image is not 2022 Enterprise).
+          # the Visual Studio 2022 vswhere finds -- 17.x only, never 2026 (see runs-on).
           $vsPath = 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise'
-          if (-not (Test-Path $vsPath)) { $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath }
+          if (-not (Test-Path $vsPath)) { $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -version '[17.0,18.0)' -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath }
           Write-Host "Visual Studio: $vsPath"
           Import-Module "$vsPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
           Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation  -DevCmdArguments '-arch=x64 -no_logo'
