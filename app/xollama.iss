@@ -268,8 +268,9 @@ begin
     exit;
   end;
   if not LoadStringFromFile(MarkerPath, InstalledID) then begin
-    MsgBox('Could not read the installed engine payload marker at' + #13#10 + MarkerPath +
-           #13#10#13#10 + 'Download xOllamaSetup.exe instead.', mbCriticalError, MB_OK);
+    // No continuation line may start with '#': ISPP reads it as a directive.
+    MsgBox('Could not read the installed engine payload marker at' + #13#10 + MarkerPath + #13#10#13#10 +
+           'Download xOllamaSetup.exe instead.', mbCriticalError, MB_OK);
     Result := False;
     exit;
   end;

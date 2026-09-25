@@ -162,8 +162,13 @@ are the ones that count.
 ### 3. Dry-run it (recommended, and required for the first release of a new upstream base)
 
 ```sh
-gh workflow run xollama-release.yaml --repo mann1x/xollama -f pr=<N>
+gh workflow run xollama-release.yaml --repo mann1x/xollama --ref dev -f pr=<N>
 ```
+
+`--ref dev` runs the workflow as `dev` has it. Without it GitHub uses `main`'s
+copy, and until the first release lands `main` has none, so the dispatch fails
+with HTTP 422 ("does not have 'workflow_dispatch' trigger"). The build itself
+always uses the PR's commit, whatever `--ref` says.
 
 A manual run against an **open** PR builds the PR's head and publishes the
 result as a **draft** release. Drafts are invisible to the updater and to
