@@ -2,6 +2,7 @@
 paths:
   - llm/engine/**
   - cmake/opencoti-fetch.cmake
+  - cmake/opencoti-engine.cmake
 ---
 
 # opencoti engine pin
@@ -35,7 +36,9 @@ paths:
   subset. It must be served by the pin or refused for a stated reason, which is
   what `TestEveryTestedPlatformIsServedOrRefused` in `llm/engine/pin_test.go`
   asserts: no `bin` row for a tested platform means `pinUncoveredIn` has to
-  return a reason, never route.
+  return a reason, never route. `cmake/opencoti-engine.cmake` matches it: no
+  `bin <arch>` row is a STATUS line and a llama.cpp-only package, not a
+  configure failure; more than one row is still fatal.
 - Asset rows are `bin` (the engine) or `dso` (a side-loadable GPU payload staged
   beside the binary); release bins embed their payloads, a dev snapshot is a bare
   APE that needs one. Address them with `pin.Asset` (bin rows only) and `pin.DSO`;
