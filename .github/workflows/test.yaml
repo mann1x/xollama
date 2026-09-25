@@ -249,8 +249,11 @@ jobs:
               - '"nvvm"'
               - '"nvptxcompiler"'
             cuda-version: '13.0'
-    # xollama-hook: hosted-ci -- see the linux job.
-    runs-on: ${{ github.repository == 'ollama/ollama' && 'windows' || 'windows-latest' }}
+    # xollama-hook: hosted-ci -- see the linux job. windows-2025, not
+    # windows-latest: -latest moved to Visual Studio 2026, whose MSVC CUDA 13.0
+    # refuses (host_config.h "unsupported Microsoft Visual Studio version") and
+    # whose STL ROCm 7.1's clang cannot compile. windows-2025 ships VS 2022 17.14.
+    runs-on: ${{ github.repository == 'ollama/ollama' && 'windows' || 'windows-2025' }}
     # `windows` is a self-hosted runner LABEL, not a GitHub-hosted image, so
     # nothing can infer the OS from it and every run: step below was being
     # read as bash. Every one of them is PowerShell; saying so is a no-op at
