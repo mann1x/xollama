@@ -1,6 +1,6 @@
 # Agentic Council Chat
 
-**Status:** ACTIVE · **Phase:** 4 — PolyKV path (Phase 3 done 2026-09-26) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
+**Status:** ACTIVE · **Phase:** 5 — surfaces and docs (Phase 4 done 2026-09-26) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
 
 In this chat mode, one model name is a *council*. A client connects to xollama
 the usual way: `/api/chat`, the OpenAI or Anthropic API, the CLI, or the
@@ -13,11 +13,11 @@ KV cache and prefills only its own role and turn.
 ## Progress
 
 - [x] Phase 0 on b65 (2026-09-25; results below)
-- [ ] Phase 0 re-measured on b111 (when on HF)
+- [x] Phase 0 re-measured on b111 (2026-09-26; notes under the Phase 4 results)
 - [x] Phase 1 — the council flow in each candidate library; **in-house errgroup chosen** (2026-09-25; results below)
 - [x] Phase 2 — config and tweak (2026-09-26; results below)
 - [x] Phase 3 — the runner (2026-09-26; live on b111, results below)
-- [ ] Phase 4 — PolyKV path
+- [x] Phase 4 — PolyKV path (2026-09-26; A/B on b111, results below)
 - [ ] Phase 5 — surfaces and docs
 
 ## What the user sees
@@ -546,6 +546,80 @@ upstream owns. Ideas worth borrowing:
   adds the PolyKV client: owner session, `/apply-template` pools, and
   `kv_pressure_v1` / `kv_resize_v1`, which b111 advertises.
 
+## Phase 4 results — the PolyKV path (2026-09-26)
+
+- **Where it lives.** `llm/engine_council.go` is the engine client: a
+  `Placement` on a completion (a pool to attach to, or a window to book), and
+  the `PolyKV` interface on the opencoti runner (pools, fork, release, session
+  close, `/kv`, resize). `server/council_polykv.go` is the tree. Both are
+  additive; the hunks in upstream files are listed in the `council` Registry
+  row.
+- **The tree, per turn.** The planner runs on the conversation's session as
+  the owner and books the window (`num_ctx`, `num_ctx_min` = the council's
+  floor). Each layer is built once, pinned to the owner and forked from the
+  longest prefix already built: P1 the conversation, P2r plus the plan for the
+  researchers, P2f plus the findings, P3s plus the critiques for the
+  synthesizer. A layer is the rendered prompt up to a sentinel message, checked
+  as a byte prefix of what the member will send. Workers attach by `pool_id`
+  on their own sessions, with no window, and are closed when they finish. The
+  pools are released newest first. A member on another model is not pooled.
+- **Pressure.** Before a turn the owner's grant is read from `/kv`; if the
+  engine had granted less than the ask and nobody is being refused, the owner
+  grows back (a 429 retries at `largest_admissible`). After a turn, if others
+  are being refused, the owner shrinks, deferred, to
+  `max(floor, used + reserve)` rounded to 256, but only when that gives back
+  at least 4096 cells or 10 %. The conversation is compacted into the system
+  message once it passes `compact_at` (0.85) of the grant: old turns become a
+  summary, and the last three stay verbatim.
+- **Seats.** A council on PolyKV launches with `2 + 2 × rounds` extra pool
+  seats (4 for one round); `polykv off`, or no council, launches exactly as
+  before. So a PolyKV council tag and its Phase 3 twin do not share a runner.
+- **A/B on b111** as `ollama`, isolated store, omnimerge v4 IQ2_M, `num_ctx`
+  16384, `-np 4`. Two tags over one blob, `polykv off` (Phase 3) and `on`,
+  in ABAB blocks of two council questions each. Raw data:
+  `/srv/ml/xollama-phase2/as-ollama/council-p4ab/` (`rows.tsv`, `/kv` trace
+  every 2 s in `kvtrace.tsv`). Every turn went to the full council (7 members).
+
+  | per council turn (n = 4 each) | Phase 3 | Phase 4 (PolyKV) |
+  |---|---|---|
+  | prompt tokens, all members | 5,906–6,416 | 5,804–6,556 |
+  | served from cache | 48–52 % | 89–94 % |
+  | **prefilled (computed)** | **2,974–3,253, mean 3,139** | **408–637, mean 525 (−83 %)** |
+  | peak KV cells in use | 4,277–4,378 | 2,393–2,823 (≈ −40 %) |
+  | pool seats in use during a turn | 0 | 4 of 4 |
+  | wall | 53.7–67.6 s, mean 60.2 | 49.2–66.8 s, mean 57.6 |
+  | wall per generated token | 26.5–27.6 ms | 26.4–28.4 ms |
+
+  After every Phase 4 turn `/polykv/pools` listed no pools and `/kv` no
+  unowned pools. No booking was refused. Only the owners held windows: one
+  per conversation, kept for the next turn.
+- **What that means.** PolyKV does what it is for: each member prefills only
+  what is new to it, and the cache holds one copy of the conversation instead
+  of seven. On this model and GPU the turn is decode-bound (about 2,000
+  generated tokens), and the 2,600 tokens saved are about 1–2 s of prefill,
+  inside the spread of the generation length. So latency is at parity here.
+  The savings grow with the conversation: every member re-prefills the whole
+  history in Phase 3, and none does in Phase 4. They also grow with the
+  number of members.
+- **Noise.** The user's `ollama.service` loaded its embedding models on the
+  3090 during the run (up to 3 runners, about 2.5 GB). That affects the wall
+  times, not the token counts.
+- **Phase 0 on b111 (llama3.1).** b111 advertises 31 features, including
+  `kv_pressure_v1`, `kv_resize_v1`, `kv_resize_deferred_v1`, `boot_id_v1`
+  and `stream_keepalive_v1`. Pools share as designed: researchers prefill
+  26–40 tokens, critics 37, the synthesizer 29. A council turn takes
+  14–18 s, and closing releases everything. The omnimerge probe runs came
+  back with empty findings, a probe artefact: a thinking model's text went to
+  `reasoning_content`, which the probe did not read.
+- **Found on the way:** the members saw the model's own `MESSAGE` turns twice
+  (bug-116, fixed and guarded by `TestTheModelsOwnMessagesReachEachMemberOnce`).
+  Separately, every runner swap waits about 2.3 s for a GPU-discovery
+  subprocess, then kills it and logs an ERROR. This happened in the Phase 3
+  run too (bug-117, open).
+- **Also in this change:** `/api/engine` now reaches every opencoti
+  management route, read and control, so a pool tree or a window can be
+  inspected and driven through xollama (`docs/xollama/introspection.mdx`).
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).
@@ -583,6 +657,14 @@ upstream owns. Ideas worth borrowing:
   links them.
 - 2026-09-26 — A council is request-side only. It is left out of the launch
   config, so the launch never sees it (it still has its own runner, as every
-  tag does; corrected in Phase 3).
+  tag does; corrected in Phase 3). Phase 4 adds one exception: on PolyKV the
+  launch reserves the council's pool seats.
 - 2026-09-26 — Schema v4 for the council, and no environment fallback: a
   council is a property of the model, never of the server.
+- 2026-09-26 — Phase 4 moves the shrink to after a turn and makes it
+  deferred. The owner gives back cells only when others are being refused,
+  and only when that frees at least 4096 cells or 10 %, so it does not shrink
+  on every turn and then grow straight back.
+- 2026-09-26 — `/api/engine` exposes every opencoti management route, reads
+  and controls, always (the owner's call; the risk on a non-localhost bind is
+  stated in the doc). Inference, `/cors-proxy` and `/tools` stay out.

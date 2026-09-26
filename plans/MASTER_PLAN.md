@@ -28,7 +28,7 @@ what happened is [`../STATE_SUMMARY.md`](../STATE_SUMMARY.md).
 
 | Plan | Status | Phase | Owner | Summary |
 |---|---|---|---|---|
-| [Agentic Council Chat](agentic-council-chat.md) | ACTIVE | 4 — PolyKV path (Phase 3 done: the runner, live on b111) | xollama | A model configured as a council (planner, researchers, critics, synthesizer) answers through the normal chat APIs, sharing KV through PolyKV |
+| [Agentic Council Chat](agentic-council-chat.md) | ACTIVE | 5 — surfaces and docs (Phase 4 done: PolyKV tree, −83 % prefill per council turn on b111) | xollama | A model configured as a council (planner, researchers, critics, synthesizer) answers through the normal chat APIs, sharing KV through PolyKV |
 | [Docker image](docker-image.md) | ACTIVE | runtime pin + assembly workflow done; first `:dev` image pending | xollama | Assemble the image on hosted runners from prebuilt artifacts (`scripts/docker-assemble.sh`, `llama/runtime-pin-linux.txt`) |
 
 ## How to use this document

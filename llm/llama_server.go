@@ -122,6 +122,9 @@ func boundedNumPredict(numPredict, numCtx int) int {
 // llamaServerRunner wraps an upstream llama-server process and implements the LlamaServer interface.
 // It communicates with llama-server over HTTP.
 type llamaServerRunner struct {
+	// xollama-hook: council -- the engine's feature set, read once per process.
+	polykvState
+
 	port               int
 	cmd                *exec.Cmd
 	done               chan struct{}
@@ -536,7 +539,8 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 
 	// xollama-hook: launch-config — dynamic slots. See docs/xollama/slots.mdx.
 	slots := resolveSlotPlan(launch.config, launch.numParallel, launch.config.singleSequence(usedOpencoti))
-	args = appendSlotArgs(args, slots, effectivePoolCount(launch.config, len(launch.projectors) > 0), kvTypes.Unified, usedOpencoti)
+	// xollama-hook: council -- the council's pool seats ride on the same flag.
+	args = appendSlotArgs(args, slots, enginePoolSeats(launch.config, len(launch.projectors) > 0), kvTypes.Unified, usedOpencoti)
 	args = appendSWABudgetArgs(args, slots, usedOpencoti)
 
 	// xollama-hook: launch-config — dual chunk attention. See docs/xollama/dca.mdx.
@@ -1788,6 +1792,10 @@ type llamaServerCompletionRequest struct {
 	// itself token-exactly. Omitted entirely on every other engine.
 	SessionID string `json:"session_id,omitempty"`
 	PoolID    *int   `json:"pool_id,omitempty"`
+	// xollama-hook: council -- the window a council owner books. Never set
+	// outside a council's placement, so every other body is unchanged.
+	NumCtx    int `json:"num_ctx,omitempty"`
+	NumCtxMin int `json:"num_ctx_min,omitempty"`
 }
 
 func llamaServerPreservedTokens(parserTokens []string, toolCallTag string) []string {
@@ -2043,6 +2051,15 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 		poolID = s.poolFor(req.PoolKey)
 	}
 	applySession(&lsReq, s.usedOpencoti, s.launch.config, req.SessionID, poolID)
+	// xollama-hook: council -- a placed call takes the council's pool and
+	// window, and teaches the automatic pools nothing.
+	if pool, n, nmin := placementFields(s.usedOpencoti, s.launch.config, req.Placement); pool != nil || n > 0 {
+		if pool != nil {
+			lsReq.PoolID = pool
+		}
+		lsReq.NumCtx, lsReq.NumCtxMin = n, nmin
+		pooled = poolSource{}
+	}
 	if poolID != nil {
 		// Already attached to a pool, so this request has nothing left to teach
 		// us about the prefix: it is the prefix, shared.
@@ -2678,6 +2695,16 @@ func (s *llamaServerRunner) llamaServerChatRequest(req ChatRequest, stream bool)
 		}
 		if pool != nil {
 			body["pool_id"] = *pool
+		}
+	}
+
+	// xollama-hook: council -- the chat path's copy of the placement.
+	if pool, n, nmin := placementFields(s.usedOpencoti, s.launch.config, req.Placement); pool != nil || n > 0 {
+		if pool != nil {
+			body["pool_id"] = *pool
+		}
+		if n > 0 {
+			body["num_ctx"], body["num_ctx_min"] = n, nmin
 		}
 	}
 

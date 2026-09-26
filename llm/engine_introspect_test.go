@@ -2,7 +2,13 @@ package llm
 
 import (
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"slices"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -64,39 +70,66 @@ func TestValidIntrospectEndpointRefusesAnythingElse(t *testing.T) {
 	}
 }
 
-// TestIntrospectEndpointsIsACopy guards the whitelist against a caller that
-// writes through the returned slice.
-//
-// Appending is not the hazard and would not catch this: the package-level slice
-// is a literal, so len == cap and append always reallocates. Assigning into it
-// is the one that reaches the original, and it is what turns a listing call
-// into a way to widen the whitelist.
-func TestIntrospectEndpointsIsACopy(t *testing.T) {
-	before := slices.Clone(introspectEndpoints)
-
-	got := IntrospectEndpoints()
-	got[0] = "completion"
-
-	if !slices.Equal(introspectEndpoints, before) {
-		t.Fatalf("the whitelist became %v, want it unchanged at %v", introspectEndpoints, before)
+// TestEveryOpencotiRouteIsReachable pins the table to the engine's own
+// registration (tools/server/server.cpp): each management route, by method.
+func TestEveryOpencotiRouteIsReachable(t *testing.T) {
+	for path, want := range map[string][]string{
+		"props":                      {"GET", "POST"},
+		"slots":                      {"GET"},
+		"metrics":                    {"GET"},
+		"kv":                         {"GET"},
+		"elastic":                    {"GET", "POST"},
+		"polykv/pools":               {"GET", "POST"},
+		"polykv/pools/{id}":          {"DELETE", "GET"},
+		"polykv/pools/{id}/capacity": {"GET"},
+		"polykv/pools/{id}/{action}": {"POST"},
+		"polykv/tps":                 {"GET"},
+		"polykv/sampling":            {"POST"},
+		"sessions/close":             {"POST"},
+		"sessions/{id}/close":        {"POST"},
+		"sessions/{id}":              {"DELETE"},
+		"sessions/resize":            {"POST"},
+		"sessions/{id}/resize":       {"POST"},
+		"kv/sessions/{id}/resize":    {"POST"},
+		"lock/status":                {"GET"},
+		"lock/acquire":               {"POST"},
+		"gpu/peers":                  {"GET"},
+		"apply-template":             {"POST"},
+		"tokenize":                   {"POST"},
+	} {
+		if got := engineRoutesFor(path); !slices.Equal(got, want) {
+			t.Errorf("%s: methods %v, want %v", path, got, want)
+		}
 	}
-	if _, err := ValidIntrospectEndpoint("completion"); err == nil {
-		t.Error("a caller writing through the returned slice widened the whitelist")
+	for _, e := range []struct{ method, endpoint string }{
+		{"GET", "kv"},
+		{"GET", "polykv/pools/0"},
+		{"GET", "polykv/pools/12/capacity"},
+		{"POST", "polykv/pools/0/fork"},
+		{"DELETE", "polykv/pools/7"},
+		{"POST", "sessions/chat-1~researcher-2/resize"},
+		{"DELETE", "sessions/chat.1"},
+	} {
+		if _, err := ValidEngineEndpoint(e.method, e.endpoint); err != nil {
+			t.Errorf("%s %s refused: %v", e.method, e.endpoint, err)
+		}
 	}
 }
 
-// TestIntrospectEndpointsCoverBothEngines documents why stock llama.cpp is not
-// excluded: three of the four endpoints are upstream's own, so the window is
-// useful there too, and the one that is not answers 404 — which is itself the
-// honest report that the feature is absent.
-func TestIntrospectEndpointsCoverBothEngines(t *testing.T) {
-	for _, upstream := range []string{"props", "slots", "metrics"} {
-		if !slices.Contains(introspectEndpoints, upstream) {
-			t.Errorf("%q is an upstream endpoint and should be readable on either engine", upstream)
+// TestInferenceStaysBehindTheScheduler: xollama serves inference itself, and a
+// request behind the scheduler's back is work it cannot account for.
+func TestInferenceStaysBehindTheScheduler(t *testing.T) {
+	for _, endpoint := range []string{
+		"completion", "completions", "v1/completions", "chat/completions", "v1/chat/completions",
+		"v1/responses", "v1/messages", "embedding", "embeddings", "v1/embeddings", "rerank", "infill",
+		"cors-proxy", "tools", "models", "models/load", "v1/streams/lookup",
+	} {
+		if _, err := ValidEngineEndpoint("POST", endpoint); !errors.Is(err, ErrUnknownIntrospectEndpoint) {
+			t.Errorf("POST %s: err %v, want a refusal", endpoint, err)
 		}
 	}
-	if !slices.Contains(introspectEndpoints, "polykv/pools") {
-		t.Error("the opencoti pool listing should be readable")
+	if !slices.Contains(IntrospectEndpoints(), "POST polykv/pools/{id}/{action}") {
+		t.Error("the listing must name the control routes with their methods")
 	}
 }
 
@@ -109,20 +142,57 @@ func TestEngineName(t *testing.T) {
 	}
 }
 
-// TestEngineGetBeforeTheEngineListens covers the window between a runner
+// TestEngineDoBeforeTheEngineListens covers the window between a runner
 // existing and its process being up.
-func TestEngineGetBeforeTheEngineListens(t *testing.T) {
-	if _, _, err := (&llamaServerRunner{}).EngineGet(t.Context(), "props"); err == nil {
-		t.Fatal("EngineGet() on a runner with no port = nil error, want a refusal")
+func TestEngineDoBeforeTheEngineListens(t *testing.T) {
+	res, err := (&llamaServerRunner{}).EngineDo(t.Context(), EngineCall{Endpoint: "props"})
+	if err == nil {
+		res.Body.Close()
+		t.Fatal("EngineDo() on a runner with no port = nil error, want a refusal")
 	}
 }
 
-// TestEngineGetValidatesBeforeDialing proves the refusal happens before any
+// TestEngineDoValidatesBeforeDialing proves the refusal happens before any
 // network work, so a bad path cannot reach the engine even in principle.
-func TestEngineGetValidatesBeforeDialing(t *testing.T) {
-	// Port 1 would fail to connect; the whitelist must reject first.
-	_, _, err := (&llamaServerRunner{port: 1}).EngineGet(t.Context(), "completion")
+func TestEngineDoValidatesBeforeDialing(t *testing.T) {
+	// Port 1 would fail to connect; the table must reject first.
+	res, err := (&llamaServerRunner{port: 1}).EngineDo(t.Context(), EngineCall{Method: "POST", Endpoint: "completion"})
+	if err == nil {
+		res.Body.Close()
+	}
 	if !errors.Is(err, ErrUnknownIntrospectEndpoint) {
-		t.Fatalf("error = %v, want the whitelist refusal rather than a dial failure", err)
+		t.Fatalf("error = %v, want the table's refusal rather than a dial failure", err)
+	}
+}
+
+// TestEngineDoOnTheWire: what the engine receives is the method, the path, the
+// caller's query and body, and a JSON content type.
+func TestEngineDoOnTheWire(t *testing.T) {
+	var got struct{ method, path, query, ct, body string }
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		got.method, got.path, got.query, got.ct, got.body = r.Method, r.URL.Path, r.URL.RawQuery, r.Header.Get("Content-Type"), string(b)
+		w.WriteHeader(http.StatusAccepted)
+		io.WriteString(w, `{"queued":true}`)
+	}))
+	defer srv.Close()
+	port, _ := strconv.Atoi(srv.URL[strings.LastIndex(srv.URL, ":")+1:])
+
+	s := &llamaServerRunner{port: port}
+	res, err := s.EngineDo(t.Context(), EngineCall{
+		Method: "POST", Endpoint: "/sessions/chat-1/resize",
+		Query: url.Values{"live": {"1"}}, Body: strings.NewReader(`{"num_ctx":8192}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusAccepted || string(body) != `{"queued":true}` {
+		t.Errorf("answer %d %s, want the engine's own", res.StatusCode, body)
+	}
+	if got.method != "POST" || got.path != "/sessions/chat-1/resize" || got.query != "live=1" ||
+		got.ct != "application/json" || got.body != `{"num_ctx":8192}` {
+		t.Errorf("engine received %+v", got)
 	}
 }

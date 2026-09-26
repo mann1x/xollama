@@ -101,6 +101,11 @@ type LlamaServerConfig struct {
 	// several sequences in flight, so on opencoti the rule is lifted. An
 	// embedding model never sets this. See singleSequence.
 	SingleSequenceStockOnly bool
+
+	// xollama-hook: council -- engine pool seats reserved for a council's pool
+	// tree, over and above the automatic prefix pools. Zero for a model that
+	// is not a council, or whose council does not use PolyKV.
+	CouncilPools int
 }
 
 // enginePin returns the engine this model says it needs, or "".
@@ -336,6 +341,12 @@ type CompletionRequest struct {
 	// none does, the first such request creates one for the rest. An explicit
 	// PoolID from the caller always wins.
 	PoolKey string
+
+	// xollama-hook: council -- a council member's place on the engine: the
+	// pool the council built for it and, for the owner, the window it books.
+	// Applied only where sessions exist (llm/engine_council.go); nil for every
+	// request that is not a council's.
+	Placement *Placement
 }
 
 type ChatRequest struct {
@@ -364,6 +375,12 @@ type ChatRequest struct {
 	// none does, the first such request creates one for the rest. An explicit
 	// PoolID from the caller always wins.
 	PoolKey string
+
+	// xollama-hook: council -- a council member's place on the engine: the
+	// pool the council built for it and, for the owner, the window it books.
+	// Applied only where sessions exist (llm/engine_council.go); nil for every
+	// request that is not a council's.
+	Placement *Placement
 }
 
 type ChatResponse struct {

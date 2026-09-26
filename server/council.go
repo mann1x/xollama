@@ -24,6 +24,7 @@ import (
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/internal/council"
+	"github.com/ollama/ollama/llm"
 )
 
 // councilMemberKey marks a chat request the council itself made. A member is
@@ -31,6 +32,19 @@ import (
 // council again. It is a gin context key, never a header, so no client can
 // set it.
 const councilMemberKey = "xollama.council.member"
+
+// councilPlacementKey carries a member's place on the engine (its pool, or the
+// owner's window) from the council to the completion ChatHandler builds.
+const councilPlacementKey = "xollama.council.placement"
+
+// councilPlacement is the placement the council gave this request, or nil.
+func councilPlacement(c *gin.Context) *llm.Placement {
+	if v, ok := c.Get(councilPlacementKey); ok {
+		p, _ := v.(*llm.Placement)
+		return p
+	}
+	return nil
+}
 
 // councilServes reports whether this chat turn goes to the council.
 //
@@ -67,6 +81,24 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		s:       s,
 		base:    req,
 		session: sessionIDForRequest(req.SessionID, m, conv, nil),
+	}
+
+	// PolyKV: the members share the conversation's KV through a pool tree
+	// when the engine can carry one; otherwise each prefills its own copy.
+	tree, err := s.councilTreeFor(c.Request.Context(), m, req, members.session)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	reserve := councilReserve(cfg)
+	if tree != nil {
+		members.tree = tree
+		// The conversation compacts when it would leave the turn less than its
+		// reserve below compact_at of the window the owner holds.
+		tree.begin(c.Request.Context())
+		budget := int(float64(max(tree.grant, tree.floor))*tree.compactAt) - reserve
+		conv = s.compactConversation(c.Request.Context(), members, conv, tree.tokens, budget)
+		defer tree.finish(reserve)
 	}
 
 	ch := make(chan any)
@@ -119,18 +151,20 @@ func councilTemperature(m *Model, req api.ChatRequest) float64 {
 	return float64(opts.Temperature)
 }
 
-// councilConversation is the conversation as every member sees it: one system
+// councilConversation is the conversation as every member sends it: one system
 // message holding the charter, after whatever system prompt the model or the
 // client stated, then the turns. Members are served through ChatHandler, which
-// adds the model's own messages and system prompt only when the conversation
-// states none -- so both are folded in here, where the charter can follow them.
+// adds the model's system prompt only when the conversation states none -- so
+// it is folded in here, where the charter can follow it. The model's own
+// MESSAGE turns are not: ChatHandler prepends those to every request, as
+// upstream does, and folding them in here too sent them twice.
 func councilConversation(charter string, m *Model, msgs []api.Message) []api.Message {
 	var system []string
 	if m.System != "" {
 		system = append(system, m.System)
 	}
 	var turns []api.Message
-	for _, msg := range append(append([]api.Message(nil), m.Messages...), msgs...) {
+	for _, msg := range msgs {
 		if msg.Role == "system" {
 			if len(turns) == 0 {
 				system = append(system[:0:0], msg.Content) // a client's system prompt replaces the model's
@@ -259,10 +293,14 @@ type councilMembers struct {
 	base    api.ChatRequest
 	session string
 
-	calls atomic.Int32
-	mu    sync.Mutex
-	m     api.Metrics
-	last  int // the HTTP status of the last member error
+	// tree places the members on PolyKV; nil runs every member on its own.
+	tree *councilTree
+
+	calls  atomic.Int32
+	mu     sync.Mutex
+	m      api.Metrics
+	cached int // prompt tokens served from cache or a pool, over all members
+	last   int // the HTTP status of the last member error
 }
 
 func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken func(string)) (string, error) {
@@ -294,6 +332,7 @@ func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken
 		req.Model = r.Model
 		req.Think = nil // another model may not think at all
 	}
+	placement, worker := cm.place(ctx, r, &req)
 	body, err := json.Marshal(req)
 	if err != nil {
 		return "", err
@@ -309,6 +348,12 @@ func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken
 	gc, _ := gin.CreateTestContext(w)
 	gc.Request = hr
 	gc.Set(councilMemberKey, true)
+	if placement != nil {
+		gc.Set(councilPlacementKey, placement)
+	}
+	if worker != "" {
+		defer cm.tree.closeWorker(worker)
+	}
 	go func() {
 		cm.s.ChatHandler(gc)
 		pw.Close()
@@ -339,6 +384,9 @@ func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken
 		if line.Done {
 			cm.mu.Lock()
 			cm.m.PromptEvalCount += line.PromptEvalCount
+			if line.PromptEvalCachedCount != nil {
+				cm.cached += *line.PromptEvalCachedCount
+			}
 			cm.m.PromptEvalDuration += line.PromptEvalDuration
 			cm.m.EvalCount += line.EvalCount
 			cm.m.EvalDuration += line.EvalDuration
@@ -372,6 +420,10 @@ func (cm *councilMembers) metrics(total time.Duration) api.Metrics {
 	defer cm.mu.Unlock()
 	m := cm.m
 	m.TotalDuration = total
+	if cm.cached > 0 {
+		cached := cm.cached
+		m.PromptEvalCachedCount = &cached
+	}
 	return m
 }
 

@@ -107,6 +107,10 @@ The ollama#4165 single-sequence deny-list binds only on stock llama.cpp:
 `server/sched.go` asks `llm.WouldUseOpencoti` before clamping, and
 `servedSequences` (`llm/engine_estimate.go`) drops a launch that lands on stock
 after all back to one — see `.claude/rules/dynamic-slots.md`.
+`/api/engine` (`server/routes_engine.go` + `llm/engine_introspect.go`, the
+`engine-introspect` hook) proxies the engine's own management routes — GET,
+POST and DELETE, by name from `engineRoutes`, inference excluded — see
+`.claude/rules/engine-introspect.md`.
 **Prompting**: `model/renderers/` (per-model `Render`) ↔ `model/parsers/`
 (streaming output), plus `template/`, `thinking/`, `harmony/`.
 **API shims**: `api/types.go`, `openai/openai.go`, `anthropic/anthropic.go`,
@@ -150,13 +154,16 @@ layer through `/api/show` (`api.ShowResponse.Xollama`), validates against
 `types/xollama/council.go`), and replaces only that layer — see
 `docs/xollama/tweak.mdx`. `xollama show` lists the stated settings in an
 `xOllama` table via `tweak.SettingRows` (same hook, in `showInfo`); unstated ones
-are omitted. A council is request-side only: `llamaServerConfigForModel` in
-`server/routes.go` passes `LaunchConfig()`, so the launch never sees the council
-(a council tag and its `FROM` base still swap the runner, as any two tags do:
-upstream's `ManifestDigest` is in the launch config). A council turn is served by `internal/council/` (the
+are omitted. A council's settings stay out of the launch: `llamaServerConfigForModel`
+in `server/routes.go` passes `LaunchConfig()`. The one thing a council adds to the
+launch is its PolyKV pool seats (`CouncilPools`, from `councilPoolSeats`), and
+only when `polykv` is not `off`. A council tag and its `FROM` base swap the
+runner anyway, as any two tags do: upstream's `ManifestDigest` is in the launch
+config. A council turn is served by `internal/council/` (the
 errgroup runner: route-only decision, researchers and critics in parallel,
 synthesizer) and `server/council.go` (members as in-process chat turns, each
-on its own engine session), reached from one `councilServes` line in
+on its own engine session; on opencoti with PolyKV, `server/council_polykv.go`
+builds the turn's pool tree and `llm/engine_council.go` is its client), reached from one `councilServes` line in
 `ChatHandler` (`council` hook); tools or a `format` bypass it — see
 `.claude/rules/model-config.md` and `.claude/rules/council.md`.
 **Device selection**: a model's device pin (`types/xollama/devices.go`) is

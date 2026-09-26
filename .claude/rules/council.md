@@ -3,6 +3,10 @@ paths:
   - internal/council/**
   - server/council.go
   - server/council_test.go
+  - server/council_polykv.go
+  - server/council_polykv_test.go
+  - llm/engine_council.go
+  - llm/engine_council_test.go
   - plans/agentic-council-chat.md
   - plans/council-eval/**
 ---
@@ -43,3 +47,23 @@ paths:
   `TestAModelWithoutACouncilIsUntouched`,
   `TestEveryParallelMemberHasItsOwnSession`. Prose: `docs/xollama/tweak.mdx`
   ("How a council turn runs").
+- **PolyKV (Phase 4).** `server/council_polykv.go` builds one tree per turn
+  when the runner implements `llm.PolyKV` (opencoti, `polykv_subpools_v1` +
+  `kv_status_v1`, `CouncilPools > 0`, affinity on). The planner is the owner:
+  it books the window on the conversation's session. P1 (the conversation),
+  P2r (+ plan), P2f (+ findings) and P3s (+ critiques) are each built once,
+  forked from the longest prefix already built, and pinned to the owner.
+  Workers attach with `pool_id` and no window, and are closed when done. Pools
+  are released newest first, and the owner is never closed.
+- A layer is the rendered prompt up to `councilSentinel`, and must be a byte
+  prefix of the member's own rendered prompt, or the member runs unpooled. Pool
+  id 0 is valid: `Placement.PoolID` is `*int` and never compared `> 0`.
+- The owner's window follows `/kv` pressure. `begin` grows it back when nothing
+  is refused. `finish` shrinks it, deferred, only under pressure and only if
+  that gives back at least 4096 cells or 10 %. Compaction folds the old turns
+  into the system message past `compact_at` of the grant.
+- The launch adds `councilPoolSeats` (`2 + 2 × rounds`) pool seats, and only
+  for a council whose `polykv` is not `off`. Guards:
+  `server/council_polykv_test.go` (a fake engine records the tree) and
+  `llm/engine_council_test.go`. Measured result: plan Phase 4.
+

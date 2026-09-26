@@ -27,10 +27,11 @@ import (
 type councilEngine struct {
 	route string
 
-	mu       sync.Mutex
-	roles    []string
-	sessions []string
-	prompts  []string
+	mu         sync.Mutex
+	roles      []string
+	sessions   []string
+	prompts    []string
+	placements []*llm.Placement
 }
 
 var councilMarkers = []string{`{"route":"direct"}`, "ROLE: PLANNER. The council", "ROLE: RESEARCHER", "ROLE: CRITIC", "ROLE: SYNTHESIZER"}
@@ -46,6 +47,7 @@ func (e *councilEngine) complete(_ context.Context, r llm.CompletionRequest, fn 
 	e.roles = append(e.roles, role)
 	e.sessions = append(e.sessions, r.SessionID)
 	e.prompts = append(e.prompts, r.Prompt)
+	e.placements = append(e.placements, r.Placement)
 	e.mu.Unlock()
 
 	reply := map[string]string{
@@ -91,8 +93,17 @@ func (r *councilRunner) Completion(ctx context.Context, req llm.CompletionReques
 
 func councilServer(t *testing.T, e *councilEngine, council *xollama.Council) *Server {
 	t.Helper()
+	return councilServerWith(t, e, council, nil)
+}
+
+func councilServerWith(t *testing.T, e *councilEngine, council *xollama.Council, messages []api.Message) *Server {
+	t.Helper()
+	return councilServerOn(t, &councilRunner{mockRunner: &mockRunner{contextLength: 32768}, e: e}, council, messages)
+}
+
+func councilServerOn(t *testing.T, mock llm.LlamaServer, council *xollama.Council, messages []api.Message) *Server {
+	t.Helper()
 	gin.SetMode(gin.TestMode)
-	mock := &councilRunner{mockRunner: &mockRunner{}, e: e}
 	s := &Server{sched: &Scheduler{
 		pendingReqCh:  make(chan *LlmRequest, 8),
 		finishedReqCh: make(chan *LlmRequest, 8),
@@ -136,8 +147,9 @@ func councilServer(t *testing.T, e *councilEngine, council *xollama.Council) *Se
 		Files: map[string]string{"test.gguf": digest},
 		Template: `{{- if .Tools }}{{ .Tools }}{{ end }}{{- range .Messages }}<{{ .Role }}>{{ .Content }}
 {{ end }}`,
-		Xollama: cfg,
-		Stream:  &no,
+		Xollama:  cfg,
+		Messages: messages,
+		Stream:   &no,
 	})
 	if w.Code != http.StatusOK {
 		t.Fatalf("create: %d %s", w.Code, w.Body.String())
@@ -327,5 +339,25 @@ func TestParallelMembersReadOneAtATime(t *testing.T) {
 	want := "### Researcher 1\na1\na2\na3\n\n### Researcher 2\nb1\nb2\n"
 	if out.String() != want {
 		t.Errorf("thinking:\n%q\nwant\n%q", out.String(), want)
+	}
+}
+
+// A Modelfile's MESSAGE turns reach each member once: ChatHandler prepends
+// them to every request, so the council must not fold them in as well.
+func TestTheModelsOwnMessagesReachEachMemberOnce(t *testing.T) {
+	e := &councilEngine{route: `{"route":"council"}`}
+	s := councilServerWith(t, e, councilOn(), []api.Message{
+		{Role: "user", Content: "PRIMER-QUESTION"}, {Role: "assistant", Content: "PRIMER-ANSWER"},
+	})
+	chatChunks(t, s, api.ChatRequest{
+		Model: "council", Options: map[string]any{"num_ctx": 8192},
+		Messages: []api.Message{{Role: "user", Content: "Why?"}},
+	})
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for i, p := range e.prompts {
+		if n := strings.Count(p, "PRIMER-QUESTION"); n != 1 {
+			t.Errorf("%s prompt carries the model's MESSAGE %d times", e.roles[i], n)
+		}
 	}
 }

@@ -25,7 +25,10 @@ paths:
   changes how a *turn is answered* (the council) must not. `Config.LaunchConfig`
   in `types/xollama/council.go` strips the council, and
   `llamaServerConfigForModel` in `server/routes.go` passes it (the
-  `model-config` hook), so the launch never sees the council. It does NOT make
+  `model-config` hook), so the launch never sees the council's settings. The one
+  exception is a count: a council on PolyKV adds its pool seats
+  (`CouncilPools`, from `councilPoolSeats`), because the engine sizes its pools
+  at launch. It does NOT make
   two tags share a runner: upstream's `ManifestDigest` is in the same config,
   so a council tag and its `FROM` base swap the runner like any two tags over
   one blob (measured on b111, 2026-09-26). Add a new request-side block to

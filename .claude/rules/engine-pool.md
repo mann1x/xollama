@@ -33,10 +33,13 @@ paths:
   `llm/engine_pool_arch.go`) are pooled only where the boundary was actually
   measured — either path will do, and without one they are skipped. Seats are
   sized by `resolvePoolCount` for every architecture, read through
-  `effectivePoolCount` by `llm/engine_launch.go`, `llm/engine_estimate.go` and
-  `startProcess` in `llm/llama_server.go`; it returns 0 on a multimodal load,
-  where the engine refuses the create outright (HTTP 501).
-- Pool ids are `*int` and the engine numbers its first pool `0`; see the
+  `effectivePoolCount` by `llm/engine_launch.go`; the launch flag is
+  `enginePoolSeats` (`llm/engine_council.go`), which adds a council's
+  `CouncilPools` on top, in `startLlamaServer` in `llm/llama_server.go` and
+  mirrored in `PredictServerSlotVRAM` (`llm/engine_estimate.go`); both return
+  0 on a multimodal load, where the engine refuses the create (HTTP 501).
+- Pool ids are `*int` and the engine numbers its first pool `0` — including
+  a council's `Placement.PoolID` (`llm/engine_council.go`); see the
   `engine-session` bullet in `.claude/rules/upstream-tree.md`.
 - Cover changes in `llm/engine_pool_test.go` and
   `llm/engine_pool_boundary_test.go`

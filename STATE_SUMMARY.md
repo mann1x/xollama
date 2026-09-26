@@ -5,6 +5,34 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Council Chat Phase 4: members share the conversation's KV
+> through PolyKV; `/api/engine` reaches every opencoti route.**
+> - `llm/engine_council.go` is the PolyKV client: a per-request `Placement`,
+>   plus pools, fork, release, session close, `/kv` and resize.
+>   `server/council_polykv.go` is the per-turn tree. The owner books the
+>   window; P1, P2r, P2f and P3s are each built once; workers attach and are
+>   closed; pools are released newest first. The owner's window shrinks,
+>   deferred, under `/kv` pressure and grows back when the pressure clears,
+>   and the conversation is compacted past `compact_at`. A PolyKV council
+>   launches with `2 + 2 × rounds` pool seats. Hunks: `council` Registry row.
+> - A/B on b111 (omnimerge v4 IQ2_M, 16k, `-np 4`, ABAB, 4 council turns per
+>   arm): computed prefill 3,139 → 525 tokens per turn (−83 %), cache hit
+>   48–52 % → 89–94 %, peak KV cells about −40 %, 4 of 4 pool seats used, no
+>   refusals, no pools left after a turn. Wall time at parity (60.2 s vs
+>   57.6 s): the turn is decode-bound. Plan Phase 4 has the table.
+> - `/api/engine` now serves GET, POST and DELETE over opencoti's whole
+>   management surface (`kv`, `elastic`, pools and their capacity, `tps` SSE,
+>   sessions close and resize, locks, `apply-template`…), from a route table
+>   mirrored from the engine's registration. Inference, `/cors-proxy` and
+>   `/tools` stay out. `?live=1` and other queries are forwarded.
+> - Fixed: the members saw the model's `MESSAGE` turns twice (bug-116). Open:
+>   every runner swap waits about 2.3 s for a discovery subprocess and logs an
+>   ERROR killing it (bug-117).
+> - Docker `:dev` run 36221348282 (the b111 image) succeeded.
+> - Left: Phase 5 (surfaces, `docs/xollama/council.mdx`); the paired
+>   interleaved re-run of b65 vs b111 multislot and 70B overflow that
+>   opencoti asked for in #329 (≥ 5 repeats, 3090 otherwise idle).
+
 > **2026-09-26 — Council Chat Phase 3: a council model answers through
 > every chat API.**
 > - `internal/council/` (the errgroup runner) and `server/council.go`
@@ -186,36 +214,41 @@ runs again on b111 once it is on the HF dev repo.
 
 ## In flight / waiting on others
 
-- **opencoti:** b111 is on HF; the engine pin moves once it is measured.
-  Also waiting on the spent-response port,
-  queued behind row K, and the E2B/E4B gate, which needs an HF repo@rev.
+- **opencoti:** the pin is on b111. b111 is slower than b65 on multislot and
+  on the 70B overflow in unpaired runs. opencoti (#329) names 0385, 0390 and
+  0391 as the candidates and asks for a paired, interleaved re-run first.
+  Their bisect (b84, b90, b108) is queued behind c8. The Linux Vulkan `.so`
+  comes in their next dev publish. Also waiting on the spent-response port
+  and the E2B/E4B gate, which needs an HF repo@rev.
 - **mann1x/ollama (fork):** the static `llama/compat/README.md` commit. When
   it lands, xollama takes it by sha.
 
 ## Known gaps
 
-- Docker image assembled and validated locally, but not published yet: no
-  `:dev` run has happened ([`plans/docker-image.md`](plans/docker-image.md)).
-  amd64 only.
+- The Docker image is published to `:dev` (run 36221348282). It is amd64
+  only, and b111 carries no Vulkan payload, so Vulkan loads go to llama.cpp.
 - Upstream's `Dockerfile` still sets `OLLAMA_HOST`/`EXPOSE 11434`, which
   xollama ignores; only `Dockerfile.xollama` makes a reachable image.
+- `/api/engine` control routes are unauthenticated, like the rest of the
+  Ollama API. On a server bound beyond localhost, anyone who can reach the
+  port can close sessions or release pools (stated in
+  `docs/xollama/introspection.mdx`).
+- Every runner swap spends about 2.3 s on a GPU-discovery subprocess that
+  times out and is killed with an ERROR in the log (bug-117).
 - Open fork-sync items: `docs/protocols/FORK-SYNC.md` § "Open items".
 - Carried upstream PRs: `docs/protocols/CARRIED-PATCHES.md`.
 - UI lockfile Dependabot alerts are inherited from upstream and not addressed.
 
 ## Immediate next steps (in order)
 
-1. Council Chat Phase 3:
-   - `server/council.go` and the `ChatHandler` hook;
-   - streaming as thinking plus content, and the OpenAI/Anthropic shims;
-   - member windows stated per call;
-   - decide on qwen35's single-sequence rule on opencoti, by measurement.
-2. When b111 is on HF: rerun `plans/council-eval/probe/` and
-   `cmd/council-run` on it, then move the pin on a measurement.
-3. Push `dev` and run
-   `gh workflow run docker-release.yaml --ref dev -f push=true -f channel=dev`
-   for the first `:dev` image. The first GHCR push leaves the package private,
-   so make it public (`docs/features/docker-release.md`, one-time setup).
+1. The paired, interleaved b65 vs b111 re-run for opencoti: multislot and
+   70B overflow, at least 5 repeats each, with nothing else on the 3090.
+   Send the medians and the spread.
+2. Council Chat Phase 5: `docs/xollama/council.mdx`, the feature doc, CLI
+   niceties, and the desktop toggle if wanted.
+3. bug-117: the discovery wait on every runner swap.
+4. Make the GHCR package public if the first push left it private
+   (`docs/features/docker-release.md`, one-time setup).
 
 ## Open decisions
 

@@ -2034,6 +2034,8 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.GET("/api/ps", s.PsHandler)
 	// xollama-hook: engine-introspect — see server/routes_engine.go
 	r.GET("/api/engine", s.EngineHandler)
+	r.POST("/api/engine", s.EngineHandler)
+	r.DELETE("/api/engine", s.EngineHandler)
 	r.POST("/api/generate", s.withInferenceRequestLogging("/api/generate", s.GenerateHandler)...)
 	r.POST("/api/chat", s.withInferenceRequestLogging("/api/chat", s.ChatHandler)...)
 	r.POST("/api/embed", s.EmbedHandler)
@@ -2664,6 +2666,9 @@ func llamaServerConfigForModel(m *Model) llm.LlamaServerConfig {
 		// xollama-hook: launch-config
 		SingleSequenceOnly:      singleSequenceOnly(m),
 		SingleSequenceStockOnly: parallelUnsafeArchitecture(m),
+
+		// xollama-hook: council -- pool seats for the council's pool tree.
+		CouncilPools: councilPoolSeats(m),
 	}
 }
 
@@ -3135,6 +3140,9 @@ func (s *Server) ChatHandler(c *gin.Context) {
 				ThinkingStartTag:           thinkStartTag,
 				ThinkingEndTag:             thinkEndTag,
 				ThinkBudgetResetTag:        thinkBudgetResetTagForCompletion(builtinParser),
+
+				// xollama-hook: council -- a council member's pool and window.
+				Placement: councilPlacement(c),
 			}, func(r llm.CompletionResponse) {
 				metrics := api.Metrics{
 					PromptEvalCount:       r.PromptEvalCount,
@@ -3402,6 +3410,8 @@ func (s *Server) handleNativeChat(c *gin.Context, req api.ChatRequest, m *Model,
 		TopLogprobs: req.TopLogprobs,
 		SessionID:   sessionIDForRequest(req.SessionID, m, msgs, req.Tools),
 		PoolKey:     poolKeyForRequest(m, msgs, req.Tools),
+		// xollama-hook: council -- a council member's pool and window.
+		Placement: councilPlacement(c),
 	}, truncate)
 	if err != nil {
 		slog.Error("chat template prompt error", "error", err)

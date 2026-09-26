@@ -114,7 +114,7 @@ func PredictServerSlotVRAM(f *gguf.Model, cfg LlamaServerConfig, gpus []ml.Devic
 	// never reserved and must not be planned for either -- otherwise the
 	// estimate carries memory the load will not use and the model is placed
 	// more conservatively than it needs to be.
-	seqs := plan.concurrency() + resolvePoolCount(cfg)
+	seqs := plan.concurrency() + resolvePoolCount(cfg) + max(cfg.CouncilPools, 0)
 
 	// A window budget sizes the short cache for fewer sequences than exist, and
 	// values above n_seq_max are clamped by the engine. Predicting without it

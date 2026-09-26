@@ -8,12 +8,13 @@ HTTP surface that would answer for it — but Ollama starts that engine on a
 private port it picks at random and never tells anyone, so "did my setting
 actually apply?" has had no answer short of digging the port out of a log.
 
-`GET /api/engine` is that answer.
+`/api/engine` is that answer, and the way to drive what the engine manages
+itself: its KV windows, shared pools, sessions and elastic budget.
 
 ## What is running, and on which engine
 
 ```sh
-curl -s localhost:11434/api/engine | jq
+curl -s localhost:22434/api/engine | jq
 ```
 
 ```json
@@ -22,7 +23,7 @@ curl -s localhost:11434/api/engine | jq
     { "model": "qwen3:8b",  "engine": "opencoti", "readable": true },
     { "model": "gemma3:4b", "engine": "llamacpp", "readable": true }
   ],
-  "endpoints": ["props", "slots", "metrics", "polykv/pools"]
+  "endpoints": ["GET props", "GET slots", "GET kv", "…", "POST polykv/pools/{id}/{action}", "DELETE sessions/{id}"]
 }
 ```
 
@@ -37,13 +38,14 @@ MLX runner, which has no HTTP surface to read.
 ## Asking one model what it is doing
 
 ```sh
-curl -s 'localhost:11434/api/engine?model=qwen3:8b' | jq
+curl -s 'localhost:22434/api/engine?model=qwen3:8b' | jq
 ```
 
 ```json
 {
   "model": "qwen3:8b",
   "engine": "opencoti",
+  "method": "GET",
   "endpoint": "props",
   "status": 200,
   "body": { "default_generation_settings": { "n_ctx": 8192 }, "…": "…" }
@@ -54,14 +56,63 @@ curl -s 'localhost:11434/api/engine?model=qwen3:8b' | jq
 reinterprets its fields, because a translation layer over somebody else's
 evolving schema goes stale without telling you.
 
-Pick a different endpoint with `&endpoint=`:
+Pick a different endpoint with `&endpoint=`. Every other query parameter is
+passed to the engine, so `&live=1` asks opencoti for its state as of now rather
+than its snapshot (at most 100 ms old):
 
 | Endpoint | What it tells you |
 |---|---|
 | `props` *(default)* | The effective settings — context, cache, sampling. On opencoti, `.opencoti.kv.effective` is the **only** authority on which cache tier was really used. |
 | `slots` | The live slots and what each is holding. This is where [dynamic slots](/xollama/slots) become visible. |
 | `metrics` | Prometheus counters — tokens, timings, cache hits. Returned as text, under `text` rather than `body`. |
-| `polykv/pools` | The shared prefix pools. opencoti only; stock answers 404. |
+| `kv` | Every session's window, what it uses, and the pressure: how many bookings were refused in the last minute. opencoti only. |
+| `polykv/pools`, `polykv/pools/{id}`, `polykv/pools/{id}/capacity` | The shared prefix pools, one pool, and what a pool could still admit. opencoti only. |
+| `polykv/tps` | Live generation speed per session, as a server-sent event stream, passed through as it comes; `&once=1` for one reading. |
+| `elastic`, `gpu/peers`, `lock/status`, `lora-adapters`, `health`, `models` | The engine's elastic budget, the other engines sharing the GPU, the coordination locks, adapters, liveness and the model it serves. |
+
+On stock `llama.cpp` the opencoti endpoints answer `404`: see below.
+
+## Driving the engine
+
+`POST` and `DELETE` on the same URL call the engine's control routes. The body
+is forwarded as sent, and the engine's answer comes back in the same envelope
+as a read:
+
+```sh
+# a pool from a prompt, pinned to a session
+curl -s 'localhost:22434/api/engine?model=qwen3:8b&endpoint=polykv/pools' \
+  -d '{"prompt":"You are a careful reviewer.","session_id":"review","pin":true}'
+
+# a child pool that extends it, then release both
+curl -s 'localhost:22434/api/engine?model=qwen3:8b&endpoint=polykv/pools/0/fork' -d '{"prompt":"…"}'
+curl -s -X DELETE 'localhost:22434/api/engine?model=qwen3:8b&endpoint=polykv/pools/1'
+
+# shrink a session's window when it is next idle, then close it
+curl -s 'localhost:22434/api/engine?model=qwen3:8b&endpoint=sessions/review/resize' -d '{"num_ctx":8192,"deferred":true}'
+curl -s -X DELETE 'localhost:22434/api/engine?model=qwen3:8b&endpoint=sessions/review'
+```
+
+| Method | Endpoint |
+|---|---|
+| `POST` | `polykv/pools`, `polykv/pools/{id}/{action}` (`fork`, `pin`, `unpin`, `release`…), `polykv/sampling` |
+| `DELETE` | `polykv/pools/{id}` |
+| `POST` | `sessions/{id}/close`, `sessions/{id}/resize`, `kv/sessions/{id}/resize`, and `sessions/close`, `sessions/resize` with the id in the body |
+| `DELETE` | `sessions/{id}` |
+| `POST` | `elastic`, `props`, `lora-adapters`, `slots/{id}`, `lock/acquire`, `lock/release`, `lock/renew` |
+| `POST` | `tokenize`, `detokenize`, `apply-template` — what a PolyKV client needs to build a prefix |
+
+An id in the path uses the engine's own alphabet: letters, digits, `.`, `_`,
+`~` and `-`. An id with any other character, a `/` for instance, goes in the
+body of `sessions/close` or `sessions/resize`.
+
+<Warning>
+  These are the engine's own controls, with no guard of ours in front of them.
+  Closing a session or releasing a pool that a running chat or a
+  [council](/xollama/tweak#making-a-model-a-council) is using takes its cache
+  away mid-turn. The Ollama API has no authentication, so on a server bound
+  beyond localhost (the container image binds `0.0.0.0`) anyone who can reach
+  the port can call them.
+</Warning>
 
 ## Reading the answers
 
@@ -76,18 +127,19 @@ only a running model has an engine to ask.
 
 ## What it will not do
 
-The endpoint is read-only, and the endpoint name is chosen from the list above
-rather than composed by the caller. That is deliberate and not paranoia:
-`llama-server` trusts whoever can reach it completely. Its surface includes
-`POST /completion`, `/apply-template`, and on some builds slot save and restore
-to file paths of the caller's choosing. Forwarding an arbitrary path would hand
-all of that to anyone who can reach the Ollama port — a much larger group than
-whoever can reach the engine's private one.
+Inference is not on the list: `/completion`, the OpenAI and Anthropic routes,
+embeddings, rerank and infill. xollama serves those itself, through the
+scheduler, and a request sent behind its back is work the scheduler cannot
+see. The engine's `/cors-proxy` and `/tools`, which fetch URLs of the caller's
+choosing when they are on at all, are not on it either.
 
-Anything outside the list is refused with a `400` before a connection is opened.
+The endpoint is a name from the lists above, never a path the caller composes.
+Anything else — another route, a method the route does not take, `..`, an
+encoded `/` — is refused with a `400` before a connection is opened.
 
 <Note>
-  This works on stock `llama.cpp` too. Three of the four endpoints are
+  This works on stock `llama.cpp` too. `props`, `slots`, `metrics`, `health`,
+  `models`, `lora-adapters`, `tokenize`, `detokenize` and `apply-template` are
   upstream's own, so the window is useful whichever engine answered — and it
   adds nothing to the inference path, which stays byte-identical to upstream.
 </Note>

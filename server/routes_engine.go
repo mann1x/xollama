@@ -3,7 +3,10 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -13,13 +16,15 @@ import (
 
 // xollama-hook: engine-introspect
 //
-// GET /api/engine — read back what the engine is actually doing.
+// /api/engine — the engine's own surface: read back what it is doing, and
+// drive its pools, sessions and windows.
 //
 // Every fork setting is written into the engine's argv at launch and then
 // vanishes. The engine answers for itself on its own HTTP surface, but that
 // surface is on a private port ollama picks at random, so the only way to see
-// it was to find the port in a log. This is that surface, read-only, through
-// the API a user already has.
+// it was to find the port in a log. This is that surface, through the API a
+// user already has: every management route the engine has, by name from the
+// table in llm/engine_introspect.go.
 //
 // It matters most where the engine decides something for itself. A cache type
 // can be accepted and still be served by a different tier; the engine's own
@@ -52,6 +57,7 @@ type engineListResponse struct {
 type engineReadResponse struct {
 	Model    string `json:"model"`
 	Engine   string `json:"engine"`
+	Method   string `json:"method"`
 	Endpoint string `json:"endpoint"`
 	// Status is the engine's own HTTP status. A 404 here is information: it is
 	// how stock llama.cpp says it has no such feature, and flattening it into
@@ -66,21 +72,22 @@ type engineReadResponse struct {
 	Text string `json:"text,omitempty"`
 }
 
-// EngineHandler serves GET /api/engine.
+// EngineHandler serves /api/engine: GET, POST and DELETE.
 //
-// With no model, it lists what is loaded and which engine is serving each.
-// With ?model=, it reads one whitelisted endpoint from that model's engine.
+// With no model (GET only), it lists what is loaded, which engine is serving
+// each, and the routes that may be called. With ?model= and ?endpoint=, it
+// makes one call from that table against that model's engine, forwarding the
+// request body and every other query parameter (?live=1, ?once=1).
 func (s *Server) EngineHandler(c *gin.Context) {
 	name := c.Query("model")
+	method := c.Request.Method
 
-	endpoint, err := llm.ValidIntrospectEndpoint(c.Query("endpoint"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	loaded := s.sched.loadedModels()
 	if name == "" {
+		if method != http.MethodGet {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "name the model whose engine to call with ?model="})
+			return
+		}
+		loaded := s.sched.loadedModels()
 		models := make([]engineModelResponse, 0, len(loaded))
 		for _, lm := range loaded {
 			engine, readable := engineFor(lm)
@@ -94,21 +101,36 @@ func (s *Server) EngineHandler(c *gin.Context) {
 		return
 	}
 
-	lm, ok := findLoadedModel(loaded, name)
+	endpoint, err := llm.ValidEngineEndpoint(method, c.Query("endpoint"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	lm, ok := findLoadedModel(s.sched.loadedModels(), name)
 	if !ok {
 		// Deliberately distinct from "no such model": a model that exists but
 		// is not loaded has no engine to ask, and saying so is the answer.
-		c.JSON(http.StatusNotFound, gin.H{"error": "model \"" + name + "\" is not loaded; only a running model has an engine to read"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "model \"" + name + "\" is not loaded; only a running model has an engine to call"})
 		return
 	}
 
 	reader, ok := lm.llama.(llm.EngineIntrospector)
 	if !ok {
-		c.JSON(http.StatusNotImplemented, gin.H{"error": "this model is not served by an engine with a readable surface"})
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "this model is not served by an engine with an HTTP surface"})
 		return
 	}
 
-	status, body, err := reader.EngineGet(c.Request.Context(), endpoint)
+	query := c.Request.URL.Query()
+	query.Del("model")
+	query.Del("endpoint")
+	call := llm.EngineCall{Method: method, Endpoint: endpoint, Query: query}
+	if method != http.MethodGet && c.Request.ContentLength != 0 {
+		call.Body = http.MaxBytesReader(c.Writer, c.Request.Body, engineBodyLimit)
+		call.ContentType = c.ContentType()
+	}
+
+	res, err := reader.EngineDo(c.Request.Context(), call)
 	if err != nil {
 		if errors.Is(err, llm.ErrUnknownIntrospectEndpoint) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -117,20 +139,55 @@ func (s *Server) EngineHandler(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
+	defer res.Body.Close()
 
-	res := engineReadResponse{
+	// A stream (/polykv/tps) is passed through as the engine sends it, event
+	// by event: wrapping it would mean waiting for an end that never comes.
+	if strings.HasPrefix(res.Header.Get("Content-Type"), "text/event-stream") {
+		c.Status(res.StatusCode)
+		c.Header("Content-Type", res.Header.Get("Content-Type"))
+		c.Header("Cache-Control", "no-cache")
+		buf := make([]byte, 32<<10)
+		for {
+			n, err := res.Body.Read(buf)
+			if n > 0 {
+				if _, werr := c.Writer.Write(buf[:n]); werr != nil {
+					return
+				}
+				c.Writer.Flush()
+			}
+			if err != nil {
+				return
+			}
+		}
+	}
+
+	// Bounded: /metrics on a long-lived server is the realistic large case
+	// and is far below this.
+	body, err := io.ReadAll(io.LimitReader(res.Body, 4<<20))
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("%s %s on the engine: %v", method, endpoint, err)})
+		return
+	}
+
+	out := engineReadResponse{
 		Model:    engineDisplayName(lm),
 		Engine:   reader.EngineName(),
+		Method:   method,
 		Endpoint: endpoint,
-		Status:   status,
+		Status:   res.StatusCode,
 	}
 	if json.Valid(body) {
-		res.Body = json.RawMessage(body)
+		out.Body = json.RawMessage(body)
 	} else {
-		res.Text = string(body)
+		out.Text = string(body)
 	}
-	c.JSON(http.StatusOK, res)
+	c.JSON(http.StatusOK, out)
 }
+
+// engineBodyLimit bounds a forwarded body. The largest real one is a pool
+// built from tokens: a long conversation as a JSON array of ids.
+const engineBodyLimit = 64 << 20
 
 // engineDisplayName renders a loaded model the way /api/ps does, so the name a
 // caller reads there is the name this accepts.
