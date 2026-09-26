@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/envconfig"
@@ -69,4 +71,72 @@ func councilHostAllowed(host, allowed string) (*url.URL, error) {
 		return u, nil
 	}
 	return nil, fmt.Errorf("host %s is not in XOLLAMA_COUNCIL_HOSTS; the server's operator allows the servers a council may send a conversation to", u.Host)
+}
+
+// councilTakesBudget reports whether a member's server accepts a think budget
+// as a token count. Only xollama does, and only for a model it serves itself:
+// a cloud model goes to ollama.com, which refuses one ("think must be a
+// boolean or string"), and a stock ollama has no budget at all. Everywhere
+// else the member is sent think true, and num_predict bounds it.
+func (cm *councilMembers) councilTakesBudget(ctx context.Context, r council.Request) bool {
+	if r.Host == "" {
+		return r.Model == "" || !councilModelIsCloud(r.Model)
+	}
+	u, err := url.Parse(r.Host)
+	if err != nil {
+		return false
+	}
+	return councilProbes.takesBudget(ctx, u, r.Model)
+}
+
+// councilModelIsCloud is whether this server serves name from the cloud: a
+// cloud reference ("…:cloud"), or a pulled tag whose manifest names a remote
+// host -- the discriminator, since a cloud tag need not say so in its name.
+var councilModelIsCloud = func(name string) bool {
+	if ref, err := parseAndValidateModelRef(name); err == nil && ref.Source == modelSourceCloud {
+		return true
+	}
+	m, err := GetModel(name)
+	return err == nil && (m.Config.RemoteHost != "" || m.Config.RemoteModel != "")
+}
+
+// councilProbes caches what another server said about itself and its models,
+// so a turn does not ask again for every member.
+var councilProbes = &hostProbes{ttl: 5 * time.Minute, entries: map[string]probeEntry{}}
+
+type hostProbes struct {
+	ttl     time.Duration
+	mu      sync.Mutex
+	entries map[string]probeEntry
+}
+
+type probeEntry struct {
+	ok bool
+	at time.Time
+}
+
+func (h *hostProbes) takesBudget(ctx context.Context, u *url.URL, model string) bool {
+	key := u.String() + "\x00" + model
+	h.mu.Lock()
+	if e, ok := h.entries[key]; ok && time.Since(e.at) < h.ttl {
+		h.mu.Unlock()
+		return e.ok
+	}
+	h.mu.Unlock()
+
+	ok := false
+	if api.IsXollama(ctx, u) {
+		show, err := api.NewClient(u, http.DefaultClient).Show(ctx, &api.ShowRequest{Model: model})
+		ok = err == nil && show.RemoteHost == "" && show.RemoteModel == ""
+	}
+	h.mu.Lock()
+	h.entries[key] = probeEntry{ok: ok, at: time.Now()}
+	h.mu.Unlock()
+	return ok
+}
+
+func (h *hostProbes) reset() {
+	h.mu.Lock()
+	h.entries = map[string]probeEntry{}
+	h.mu.Unlock()
 }

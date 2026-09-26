@@ -103,6 +103,14 @@ paths:
   The fallback rule lives in `internal/council` `call`: a researcher or critic
   that failed on another model or host is rerun on the council's model; a
   planner or synthesizer failure is the turn's. A canceled turn never retries.
+- **A token budget only where it is understood** (`councilTakesBudget`,
+  `server/council_remote.go`). ollama.com refuses a numeric `think` ("think
+  must be a boolean or string"), and stock ollama has no budget. Cloud is what
+  the server reports (`Config.RemoteHost`/`RemoteModel`, `/api/show`
+  `remote_host`), never the name alone: a pulled cloud tag can be called
+  anything (cline's rule). Another server is asked `/api/xollama`
+  (`api.IsXollama`) and `/api/show`, cached 5 min in `councilProbes`; any
+  doubt sends `think: true`, which every server accepts.
 - **`slots.live`** replaces `OLLAMA_NUM_PARALLEL` only when opencoti serves
   (`server/slots_live.go`, `slots-live` hook). Never set the parallel env for
   a council on opencoti: `-c` is `num_ctx × slots`, and 4 × 131k did not fit.

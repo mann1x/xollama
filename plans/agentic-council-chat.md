@@ -1,6 +1,6 @@
 # Agentic Council Chat
 
-**Status:** ACTIVE · **Phase:** 6 and 7 built, live tests wait for the next promoted opencoti build (phases 0–5 closed 2026-09-26) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
+**Status:** ACTIVE · **Phase:** 6 and 7 built; cloud roles tested live, remote host waits for eleven2go, `num_ctx 0` waits for the next promoted opencoti build (phases 0–5 closed 2026-09-26) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
 
 In this chat mode, one model name is a *council*. A client connects to xollama
 the usual way: `/api/chat`, the OpenAI or Anthropic API, the CLI, or the
@@ -845,9 +845,35 @@ a role to a different kind of model or to another machine on the network.
     `TestCouncilHostAllowed`;
   - the schema cases in `TestValidateCouncil`.
 
+**Live, 2026-09-26 (dev `22434`, b111, `gemma4:31b-cloud`, 3090).** Same
+hard question ("10 GB sort on 16 GB: quicksort or mergesort?"):
+
+| model | roles on cloud | turn | first token |
+|---|---|---|---|
+| `omni-council-cloud-research` | researchers | 46.0 s | 11.1 s |
+| `omni-council-cloud-critic` | critics | 48.8 s | 14.1 s |
+| `omni-council-cloud-ends` | planner, synthesizer | 39.0 s | 11.2 s |
+| `omni-council-cloud-all` | all four | 17.1 s | 10.7 s |
+| `omni-council-cloud-think` | researchers, thinking on | 54.1 s → 47.2 s after the fix | 11.1 s |
+| `omni-council-cloud-fallback` | researchers on a missing model | 59.0 s, 9 members, fallback noted | 10.9 s |
+
+`omni-council-think` (all roles `think: on`, local) on "Can you give me some
+help with math?": **2 min 11 s**. On the build before the 2048 default the
+same turn ran each researcher to its 32,768-token cap (32,889 and 32,986
+tokens at about 40 tok/s, 13.5 and 14 min); the owner took that for a hang.
+
+**Found live and fixed:** ollama.com refuses a numeric think ("think must be
+a boolean or string; supported values: [false,true]"), so a thinking role on
+a cloud model failed. The owner's rule: check whether the model is a cloud
+one, by what the server reports, as cerebriline does. Then check whether
+another host is xollama or ollama, and never send an unsupported field.
+`councilTakesBudget` sends a token budget only to this server's own models
+and to a model another xollama serves itself (`api.IsXollama` + `/api/show`,
+cached 5 min). Otherwise it sends `think: true`, with `num_predict` bounding
+it.
+
 **Left for the live test:**
-- a researcher on another ollama on the LAN;
-- a critic on a `:cloud` model through a signed-in server;
+- a researcher on another ollama on the LAN (eleven2go, when it is free);
 - a host taken down mid-turn, to check that the fallback note reads well in
   the CLI and the desktop app.
 

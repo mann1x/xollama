@@ -94,6 +94,11 @@ council turn 3,139 → 525 tokens, peak KV cells about −40 %, wall time at par
   critic on another model or host is rerun on the council's model, with a
   note in its deliberation; planner and synthesizer failures fail the turn.
 - `host` is in schema v4, which no release has shipped.
+- Think form: `councilTakesBudget` sends the token budget only to this
+  server's own models and to a model another xollama serves itself (probe
+  `api.IsXollama` + `/api/show`, cached 5 min); cloud (by manifest or
+  `remote_host`) and stock ollama get `think: true`, bounded by
+  `num_predict`.
 
 ## Invariants
 

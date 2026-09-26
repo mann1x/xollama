@@ -370,6 +370,12 @@ func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken
 	// read nowhere below; only the reply joins the deliberation.
 	if budget := council.ThinkBudget(r.Think, cm.window); budget > 0 {
 		req.Think = &api.ThinkValue{Value: budget}
+		// A cloud model or a stock ollama takes no token budget: ollama.com
+		// refuses one ("think must be a boolean or string"). There the member
+		// thinks, and num_predict, the reply cap plus the budget, bounds it.
+		if !cm.councilTakesBudget(ctx, r) {
+			req.Think = &api.ThinkValue{Value: true}
+		}
 		if r.MaxTokens > 0 {
 			opts["num_predict"] = r.MaxTokens + budget
 		}

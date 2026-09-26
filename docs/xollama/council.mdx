@@ -77,7 +77,7 @@ Every setting is optional; `xollama tweak model <name> --council` walks them.
 | `council.<role>.model` | `--council-<role>-model` | the council's model | Serves one role with another model, a cloud model (`…:cloud`) included. That role then shares no cache with the rest. |
 | `council.<role>.host` | `--council-<role>-host` | this server | Serves one role on another ollama or xollama server, such as `http://gpu2:11434`; needs `model`, named as that server names it. The server must allow the host (below). |
 | `council.<role>.max_tokens` | `--council-<role>-max-tokens` | 512 planner, 384 researcher, 256 critic, 1024 synthesizer | Caps one member's reply. |
-| `council.<role>.think` | `--council-<role>-think` | off | Lets that role reason before it replies: `on` (a 2048-token budget), a token budget such as `4096`, or a level (`minimal` … `max`, a share of the council's context: `medium` at 131k is 32k tokens per member). The budget comes on top of `max_tokens`. The reasoning is never shown, and the model's own `think_budget_message` closes it at the cap. |
+| `council.<role>.think` | `--council-<role>-think` | off | Lets that role reason before it replies: `on` (a 2048-token budget), a token budget such as `4096`, or a level (`minimal` … `max`, a share of the council's context: `medium` at 131k is 32k tokens per member). The budget comes on top of `max_tokens`. The reasoning is never shown, and the model's own `think_budget_message` closes it at the cap. A cloud model or a stock ollama takes no budget: that role is sent `think: true`, and only its reply cap (`max_tokens` + budget) bounds it. |
 | `council.charter` | `--council-charter` | built in | The system prompt every member shares. |
 | `council.temperature_jitter` | `--council-jitter` | 0.02 | Researchers and critics each draw a temperature within ±2 % of the model's, so parallel members do not say the same thing. |
 | `council.seed` | `--council-seed` | random | A fixed seed makes a council reproducible; every member's seed is derived from it. |
@@ -116,7 +116,12 @@ can be pulled from a registry, and a host it names receives every conversation
 the council serves. A host that is not listed is never called.
 
 A member on another model or server shares no cache with the rest. It gets the
-same reply cap, thinking budget, seed and temperature as a local member.
+same reply cap, seed and temperature as a local member. A thinking budget goes
+only where it is understood: this server's own models, and a model another
+xollama serves itself. A cloud model (by what the server reports about it, not
+by its name) and a stock ollama are sent `think: true`, with the budget only
+as room in the reply cap. The council asks the other server once every five
+minutes what it is and whether the model is a cloud one.
 
 **When one fails.** A researcher or a critic that fails there (the host is down,
 not allowed, or lacks the model) is answered by the council's own model in its

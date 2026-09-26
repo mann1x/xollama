@@ -5,6 +5,26 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Cloud roles tested live; think budgets only where understood.**
+> - `gemma4:31b-cloud` as researchers, critics, planner and synthesizer,
+>   and in all four roles: every turn answered, 17–54 s. The all-cloud
+>   council took 17 s. A researcher on a missing model fell back to the
+>   council's model and said so (59 s, 9 members).
+> - The owner's "hang" on `omni-council-think` was the pre-2048 build.
+>   `on` was `medium`, 32,768 tokens per member, and each researcher ran to
+>   the cap at about 40 tok/s (13.5 and 14 min). The same question on the
+>   current build takes 2 min 11 s.
+> - Found live: ollama.com refuses a numeric `think`. `councilTakesBudget`
+>   now sends a token budget only to this server's own models and to a model
+>   another xollama serves itself. Cloud is decided by manifest or
+>   `remote_host`, as cerebriline does, never by name. Everything else gets
+>   `think: true`. Retest: 47 s, no error.
+> - The dev home's unregistered key is linked to the service's signed-in key
+>   (the old one kept as `id_ed25519.dev-unregistered`), at the owner's
+>   request.
+> - opencoti #353: 0408 does not fix #349. b125 fails the 4 × 131k launch
+>   the same way, and they are investigating.
+
 > **2026-09-26 — Council Phase 7 built: roles on cloud models and other servers.**
 > - The owner decided the open points. A researcher or critic that fails on
 >   another model or host is answered by the council's own model, and the
@@ -354,8 +374,8 @@ build.
   reproduce the overflow deficit, and multislot is at most −7.6 % median,
   inside the spread; no bisect, agreed with opencoti (#339). Also waiting
   on: an HF dev publish
-  of patch 0406 (`continue_pool`, #343), and 0408 (the rs-window reserve
-  that fixes #349). The Linux Vulkan `.so`
+  of patch 0406 (`continue_pool`, #343). #349 is still open: 0408 did not
+  fix it (#353). The Linux Vulkan `.so`
   comes in their next dev publish. Also waiting on the spent-response port
   and the E2B/E4B gate, which needs an HF repo@rev.
 - **mann1x/ollama (fork):** the static `llama/compat/README.md` commit. When
@@ -386,8 +406,8 @@ build.
 1. Test council Phase 6 live on the next promoted opencoti build (0406
    unowned pools, 0408 rs-window reserve): `num_ctx 0`, idle compaction, and
    `omni-council-think` with `think: on` (now 2048).
-2. Test council Phase 7 live: a researcher on another ollama on the LAN
-   (`XOLLAMA_COUNCIL_HOSTS`), a critic on a `:cloud` model, and a host
+2. Test council Phase 7 on another server: eleven2go when it is free
+   (`XOLLAMA_COUNCIL_HOSTS`), stock ollama and xollama both, and a host
    stopped mid-turn.
 3. Try the council badge and the Deliberation toggle in the running desktop
    app, which needs a Windows or macOS build.

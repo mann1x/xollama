@@ -1,5 +1,10 @@
 package api
 
+import (
+	"context"
+	"net/url"
+)
+
 // The fork's identity endpoint.
 //
 // xollama listens on its own port (22434) precisely so it can coexist with a
@@ -20,4 +25,12 @@ const XollamaIdentityPath = "/api/xollama"
 type XollamaIdentity struct {
 	Xollama bool   `json:"xollama"`
 	Version string `json:"version,omitempty"`
+}
+
+// IsXollama reports whether the server at base is this fork, by the identity
+// route and, for builds older than it, by the fork's name in /api/version --
+// the same answer ResolveHost acts on. Nothing answering is not xollama.
+func IsXollama(ctx context.Context, base *url.URL) bool {
+	_, x := probeHost(ctx, base)
+	return x
 }
