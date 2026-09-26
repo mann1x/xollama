@@ -5,6 +5,18 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — opencoti fixed #349 (b128); `num_ctx 0` and `slots.live` tested live on it.**
+> - opencoti b128 `2609261427001` (dev, local only) builds the recurrent
+>   state before the attention window and reserves the MTP draft context.
+>   Their gate: b125 fails our `-c 524288 -np 4` launch, and b128 loads it.
+> - Our councils on b128 (a copy in `/srv/ml/xollama-phase2/engines/`, dev
+>   launcher `council-b128.sh`):
+>   - `num_ctx 0` → `-c 262144`, the trained context, 22.9 GB. The pools
+>     were created `owner ''` (unowned), and the turn took 74 s.
+>   - `slots.live: 4` at 131k → `-c 524288 -np 4`, 23.0 GB, turn 86 s.
+> - The pin stays on b111 until opencoti publishes to the HF dev repo and it
+>   is measured. Left: idle compaction on a long conversation.
+
 > **2026-09-26 — Council roles on eleven2go tested live; three bugs fixed.**
 > - Researchers ran on eleven2go's ollama (the think-budget fork, `:11434`,
 >   treated as stock: `think=true`, 56 s), on its xollama through an SSH
@@ -391,8 +403,8 @@ build.
   reproduce the overflow deficit, and multislot is at most −7.6 % median,
   inside the spread; no bisect, agreed with opencoti (#339). Also waiting
   on: an HF dev publish
-  of patch 0406 (`continue_pool`, #343). #349: cause found (#356), b126
-  fixes the main context, and the draft-aware sizer is in progress. The Linux Vulkan `.so`
+  of patch 0406 (`continue_pool`, #343), and of the #349 fix (b128,
+  verified locally). The Linux Vulkan `.so`
   comes in their next dev publish. Also waiting on the spent-response port
   and the E2B/E4B gate, which needs an HF repo@rev.
 - **mann1x/ollama (fork):** the static `llama/compat/README.md` commit. When
@@ -423,8 +435,9 @@ build.
 1. Test council Phase 6 live on the next promoted opencoti build (0406
    unowned pools, 0408 rs-window reserve): `num_ctx 0`, idle compaction, and
    `omni-council-think` with `think: on` (now 2048).
-2. When opencoti's draft-aware sizer build lands (#349), give it the card and
-   re-measure a 4-slot 131k launch.
+2. When b128 (or later) is on the HF dev repo, measure it with
+   `scripts/phase2-engine-ab.py` and move the pin; then retire the #349
+   workaround notes (a 4 × 131k launch loads on b128).
 3. Try the council badge and the Deliberation toggle in the running desktop
    app, which needs a Windows or macOS build.
 4. Move the engine pin only on a measurement. The `rs` question (#345) is

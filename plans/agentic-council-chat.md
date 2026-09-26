@@ -1,6 +1,6 @@
 # Agentic Council Chat
 
-**Status:** ACTIVE · **Phase:** 6 and 7 built; cloud roles and remote hosts tested live, `num_ctx 0` waits for the next promoted opencoti build (phases 0–5 closed 2026-09-26) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
+**Status:** ACTIVE · **Phase:** 6 and 7 built and tested live (`num_ctx 0` and `slots.live` on the b128 dev build); idle compaction on a long conversation left, `num_ctx 0` waits for the next promoted opencoti build (phases 0–5 closed 2026-09-26) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
 
 In this chat mode, one model name is a *council*. A client connects to xollama
 the usual way: `/api/chat`, the OpenAI or Anthropic API, the CLI, or the
@@ -793,10 +793,21 @@ configurable per role. `num_ctx 0` builds **unowned pools** (opencoti patch
   not the MTP context. The fix is patch 0408 (`rs-window-reserve`), due in
   the next dev build after the one on bs2.
 
-**Left for the live test:** a council with `num_ctx 0` on the promoted build
-(unowned pools accepted, no refusals, `/kv` shows no held owner window); idle
-compaction on a long conversation (the second message's time to first token
-with and without it).
+**Live on b128, 2026-09-26** (opencoti dev build `2609261427001`, DSO
+`d8e69a48`, which carries the #349 fix and advertises `pool_unowned_v1`; a
+local dev build, so the pin stays on b111):
+
+| model | launch | VRAM | turn |
+|---|---|---|---|
+| `omni-council-wholepool` (`PARAMETER num_ctx 0`) | `-c 262144 -np 1 --max-parallel 4` (the trained context) | 22.9 GB | 74 s |
+| `omni-council-live4` (`slots.live: 4`, 131k) | `-c 524288 -np 4`, the launch that failed in #349 | 23.0 GB | 86 s (34 s load) |
+
+The whole-pool turn built its pools with `owner ''`, as the engine logged:
+`created pool 0 … owner ''` and `forked pool 1 from 0 … owner ''`. They were
+released newest first. Members decoded at 25–38 tok/s on the 4-slot launch.
+
+**Left for the live test:** idle compaction on a long conversation (the
+second message's time to first token with and without it).
 
 ## Phase 7 — roles on other models and other instances (built 2026-09-26)
 
