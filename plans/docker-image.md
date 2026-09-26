@@ -1,6 +1,6 @@
 # Docker image
 
-**Status:** ACTIVE — assembly workflow built and validated locally (2026-09-26); first `:dev` image pending · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
+**Status:** ACTIVE — first `:dev` image published (run 36221348282) and GHCR public (2026-09-26); user testing open · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
 
 The owner wants a container image so users can test xollama and so the image
 path gets exercised. Publishing mechanics (registries, channels, environments)
@@ -74,4 +74,4 @@ opencoti publishes b111 to HF and it is measured. Then:
 - [x] Design agreed (2026-09-25)
 - [x] b111 on HF and measured; engine pin moved to it (2026-09-26)
 - [x] Runtime pin + assembly workflow (2026-09-26: `llama/runtime-pin-linux.txt`, `scripts/docker-assemble.sh`, `Dockerfile.xollama`, `docker-release.yaml` on `ubuntu-latest`)
-- [ ] First `:dev` image, user testing
+- [ ] First `:dev` image, user testing (image published 2026-09-26, run 36221348282; `ghcr.io/mann1x/xollama` public, verified anonymously; testing open)

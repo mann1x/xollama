@@ -5,6 +5,18 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — `continue_pool` planned, waiting for an HF dev publish.**
+> - New plan [`plans/council-continue-pool.md`](plans/council-continue-pool.md)
+>   (WAITING). It starts when an opencoti build carrying patch 0406
+>   (`continue_pool`, unowned pools; b124 is local only) is published to
+>   the HF dev repo, as the owner decided. Phase 0 measures turn-over-turn
+>   prefill, dense and hybrid, at 16k and 131k.
+> - The Docker image plan's row is brought up to date: the first `:dev`
+>   image is published and GHCR is public; user testing remains.
+> - The installed service (`/usr/local/bin/xollama`, `05c16dfa`, 11434)
+>   predates the council and refuses a council model. Councils are tested
+>   with the `dev` build on 22434 against the isolated store.
+
 > **2026-09-26 — Desktop app shows councils (option C); GHCR confirmed public.**
 > - A council model gets a *council* badge in the model picker, and a
 >   **Deliberation** toggle in place of the Think button. The toggle is on
@@ -271,7 +283,9 @@ runs again on b111 once it is on the HF dev repo.
 
 - **opencoti:** the pin is on b111. The paired re-run (#336) did not
   reproduce the overflow deficit, and multislot is at most −7.6 % median,
-  inside the spread. Whether to bisect 0385/0391 for it is opencoti's call. The Linux Vulkan `.so`
+  inside the spread; no bisect, agreed with opencoti (#339). Also waiting
+  on: their answer on the `rs` cache at 131k (#345), and an HF dev publish
+  of patch 0406 (`continue_pool`, #343). The Linux Vulkan `.so`
   comes in their next dev publish. Also waiting on the spent-response port
   and the E2B/E4B gate, which needs an HF repo@rev.
 - **mann1x/ollama (fork):** the static `llama/compat/README.md` commit. When
@@ -301,8 +315,8 @@ runs again on b111 once it is on the HF dev repo.
    app, which needs a Windows or macOS build.
 2. Move the engine pin when opencoti answers on the `rs` cache (#345), and
    only on a measurement.
-3. Plan a council's use of `continue_pool` (b124) once a build carrying it is
-   published.
+3. When an opencoti build with patch 0406 is on the HF dev repo, start
+   `plans/council-continue-pool.md` Phase 0.
 
 ## Open decisions
 

@@ -742,6 +742,8 @@ upstream owns. Ideas worth borrowing:
 - 2026-09-26 — Desktop: option C (the owner's call). A council badge and a
   Deliberation toggle that sends `think`; no per-chat council switch (A), and
   no write of the model's config from the UI (B).
-- 2026-09-26 — Follow-up, not planned yet: opencoti b124 adds
-  `continue_pool` and unowned pools (patch 0406, #343). A council's next
-  turn could continue the conversation's pool instead of rebuilding P1.
+- 2026-09-26 — Follow-up: opencoti b124 adds `continue_pool` and unowned
+  pools (patch 0406, #343). A council's next turn could continue the
+  conversation's pool instead of rebuilding P1. Its own plan,
+  [council-continue-pool.md](council-continue-pool.md), waits for a build
+  with 0406 on the HF dev repo (the owner's call).
