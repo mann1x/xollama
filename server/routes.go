@@ -2954,6 +2954,7 @@ func (s *Server) ChatHandler(c *gin.Context) {
 	// xollama-hook: council -- a model whose config makes it a council answers
 	// the turn with its members (server/council.go); everything else, and every
 	// member's own turn, continues below unchanged.
+	clientPlacement(c, req)
 	if councilServes(c, m, req) {
 		s.councilChat(c, req, m)
 		return

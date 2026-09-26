@@ -1381,6 +1381,41 @@ none. Agreed with the Cerebriline session in mails #379–#384. Guarded by
 and `TestTheIdentityNamesTheFeatures`; two compiling mutants (no tag, the
 speaker's tag instead of the floor's) each fail a test.
 
+**9.2 built (2026-09-26): client placement.** `placement {pool_id, num_ctx,
+num_ctx_min}` on `/api/chat` (`api.Placement`, `client_placement_v1`). A plain
+turn hands it to the engine (`clientPlacement`, through the member's key, so
+`placementFields` still drops it off opencoti). A council turn reads only
+`pool_id`: `createRoot` forks the conversation root from the client's pool,
+and falls back to a root of its own when the engine refuses the fork. The
+council never releases the client's pool, and releases rather than extends a
+kept root built under a different named pool, so the client can release its
+old one. The fake engine now enforces the contiguous-prefix contract on every
+fork. Tests: `TestAPlainTurnCarriesTheClientsPlacement`,
+`TestACouncilRootStandsOnTheClientsPool`,
+`TestAClientPoolThatDoesNotMatchIsLeftAlone` and
+`TestANewClientPoolLetsTheOldRootGo`. Three compiling mutants (no fork, no
+release on a new pool, placement dropped) each fail a test.
+Live on b133:
+- **Plain turn.** A pool of the system prompt (285 tokens, via `/api/engine`
+  apply-template + `polykv/pools`), then a chat naming it on a fresh session:
+  285 of 316 prompt tokens came from the pool. Needs the model's engine to
+  have pools (`XOLLAMA_SESSION_POOL=1`; without them the pool create answers
+  400 "pools are disabled").
+- **The render must match exactly.** A trailing space in the system prompt,
+  which the chat path trims and apply-template keeps, left 283 of 286 tokens
+  matching, and a hybrid model shares only the whole pool, so nothing was
+  shared.
+- **Council turn** naming a pool its prompt does not start with: the engine
+  answered 400 "child prefix shorter than branch_pos", the council built its
+  own root and answered, and the client's pool was untouched.
+- **On a council model** the client's pool must belong to the conversation's
+  session. An unowned one found only 256 unbooked cells.
+
+Sharing on council turns depends on the layout. Today the charter is inside
+the system message, so a client's P0 of the system prompt cannot be a prefix.
+It becomes possible with 9.3 (empty system, then tools), and the question of
+what P0 holds went to Cerebriline in mail #389.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).

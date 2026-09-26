@@ -86,6 +86,10 @@ type councilTree struct {
 	reserve int
 	// numCtx is the conversation's num_ctx, the loaded context for num_ctx 0.
 	numCtx int
+	// clientPool is the pool the client named (client_placement_v1). The
+	// conversation's root forks from it when the council's prompt starts
+	// with the pool's tokens; it is never released here.
+	clientPool *int
 	// refusing is set when /kv reports the engine refusing others.
 	refusing bool
 
@@ -126,6 +130,9 @@ type councilLayer struct {
 	// from, oldest first.
 	keep  bool
 	chain []int
+	// clientPool is the pool the client named when this root was built
+	// (client_placement_v1), whether or not the root could stand on it.
+	clientPool *int
 }
 
 // councilRoot is a conversation's root pool, kept between turns. kv is the
@@ -135,6 +142,16 @@ type councilRoot struct {
 	text  string
 	kv    llm.PolyKV
 	chain []int
+	// clientPool is the pool the client named when the root was built. The
+	// root is never extended under another: a root forked from a client's
+	// pool is its child, and the engine releases no pool with a child, so
+	// holding it would keep the client from letting its old pool go.
+	clientPool *int
+}
+
+// samePool reports whether two named pools are the same, none being one.
+func samePool(a, b *int) bool {
+	return a == nil && b == nil || a != nil && b != nil && *a == *b
 }
 
 // councilRoots holds each conversation's kept root, by owner session.
@@ -321,6 +338,9 @@ func (t *councilTree) buildRoot(ctx context.Context, conv []api.Message) error {
 	var chain []int
 	built := false
 	switch {
+	case prev != nil && !samePool(prev.clientPool, t.clientPool):
+		// The client named another pool: the old root goes (below), so the
+		// client can let its old pool go.
 	case prev != nil && prev.text == text:
 		p, chain, built = llm.PoolInfo{ID: prev.id, Len: len(text)}, prev.chain, true
 		prev = nil // the same pool: nothing to let go
@@ -343,12 +363,12 @@ func (t *councilTree) buildRoot(ctx context.Context, conv []api.Message) error {
 	}
 	var refused error
 	if !built {
-		if p, refused = t.kv.CreatePool(ctx, owner, nil, text); refused != nil {
+		if p, refused = t.createRoot(ctx, owner, text); refused != nil {
 			slog.Info("council: conversation root not built; the planner holds its own copy", "error", refused)
 			return refused
 		}
 	}
-	l := &councilLayer{text: text, ready: make(chan struct{}), id: p.ID, root: true, keep: live, chain: chain}
+	l := &councilLayer{text: text, ready: make(chan struct{}), id: p.ID, root: true, keep: live, chain: chain, clientPool: t.clientPool}
 	close(l.ready)
 	t.mu.Lock()
 	if !live && !t.unowned && t.promoted == nil {
@@ -363,6 +383,21 @@ func (t *councilTree) buildRoot(ctx context.Context, conv []api.Message) error {
 	t.mu.Unlock()
 	slog.Debug("council: conversation root", "pool", p.ID, "len", p.Len, "own", p.OwnLen, "kept", live)
 	return nil
+}
+
+// createRoot makes a conversation root. It forks the client's pool when the
+// client named one and the conversation starts with it -- the engine checks
+// that token for token, and refuses a fork that does not -- and otherwise
+// builds the root from nothing, beside the client's pool.
+func (t *councilTree) createRoot(ctx context.Context, owner, text string) (llm.PoolInfo, error) {
+	if t.clientPool != nil {
+		p, err := t.kv.CreatePool(ctx, owner, t.clientPool, text)
+		if err == nil {
+			return p, nil
+		}
+		slog.Info("council: the conversation root could not stand on the client's pool; building its own", "pool", *t.clientPool, "error", err)
+	}
+	return t.kv.CreatePool(ctx, owner, nil, text)
 }
 
 // releaseRoot lets a kept root go, and the older roots it was forked from,
@@ -625,7 +660,7 @@ func (t *councilTree) release() {
 	t.order, t.layers = nil, map[string]*councilLayer{}
 	if keep != nil {
 		// The idle council summarises on it; the next turn extends it.
-		t.kept = &councilRoot{id: keep.id, text: keep.text, kv: t.kv, chain: keep.chain}
+		t.kept = &councilRoot{id: keep.id, text: keep.text, kv: t.kv, chain: keep.chain, clientPool: keep.clientPool}
 		t.keepRootLocked(ctx)
 	} else if t.root != nil && !t.unowned {
 		// A first turn's root had no owner and goes with the turn; promote
@@ -673,13 +708,13 @@ func (t *councilTree) promoteRoot(ctx context.Context) {
 	if a, ok := t.learnGrant(k); !ok || a.Window <= 0 {
 		return
 	}
-	p, err := t.kv.CreatePool(ctx, t.owner, nil, text)
+	p, err := t.createRoot(ctx, t.owner, text)
 	if err != nil {
 		slog.Debug("council: could not give the owner its root", "error", err)
 		return
 	}
 	t.mu.Lock()
-	t.kept = &councilRoot{id: p.ID, text: text, kv: t.kv}
+	t.kept = &councilRoot{id: p.ID, text: text, kv: t.kv, clientPool: t.clientPool}
 	t.keepRootLocked(ctx)
 	t.mu.Unlock()
 	slog.Debug("council: conversation root kept for the owner", "session", t.owner, "pool", p.ID, "len", p.Len)
@@ -853,7 +888,12 @@ func (s *Server) councilTreeFor(ctx context.Context, m *Model, req api.ChatReque
 	// keeps the owner, booking the context the load took -- the whole pool.
 	canUnown := kv.Features(ctx)["pool_unowned_v1"]
 	unowned := councilWholePool(m.Options, req.Options) && canUnown
+	var clientPool *int
+	if req.Placement != nil && req.Placement.PoolID != nil && *req.Placement.PoolID >= 0 {
+		clientPool = req.Placement.PoolID
+	}
 	return &councilTree{
+		clientPool:    clientPool,
 		unowned:       unowned,
 		canUnown:      canUnown,
 		numCtx:        opts.NumCtx,

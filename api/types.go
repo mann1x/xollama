@@ -209,6 +209,9 @@ type ChatRequest struct {
 	// each with an associated log probability. Only applies when Logprobs is true.
 	// Valid values are 0-20. Default is 0 (only return the selected token's logprob).
 	TopLogprobs int `json:"top_logprobs,omitempty"`
+
+	// xollama-hook: council — see plans/agentic-council-chat.md
+	Placement *Placement `json:"placement,omitempty"`
 }
 
 type Tools []Tool

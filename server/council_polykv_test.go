@@ -72,6 +72,13 @@ func (f *fakeKV) CreatePool(_ context.Context, session string, parent *int, prom
 		f.full--
 		return llm.PoolInfo{}, fmt.Errorf("%w: session allocation full, compact the session", llm.ErrSessionFull)
 	}
+	if parent != nil {
+		// The engine's contiguous-prefix contract: a fork's prompt is its
+		// whole prefix, and must start with the parent's, token for token.
+		if *parent < 0 || *parent >= len(f.pools) || !strings.HasPrefix(prompt, f.pools[*parent].text) {
+			return llm.PoolInfo{}, fmt.Errorf("fork of %d: contiguous-prefix contract violation", *parent)
+		}
+	}
 	id := len(f.pools) // the first pool is 0, as on the engine
 	f.pools = append(f.pools, fakePool{id: id, parent: parent, session: session, text: prompt})
 	return llm.PoolInfo{ID: id, Len: len(prompt)}, nil
@@ -844,5 +851,124 @@ func TestTheNextTurnWaitsForTheOwnersRoot(t *testing.T) {
 	case <-began:
 	case <-time.After(5 * time.Second):
 		t.Fatal("the turn did not begin once the root was built")
+	}
+}
+
+// clientRootText is the root the council builds for req with no client pool.
+func clientRootText(t *testing.T, req api.ChatRequest) string {
+	t.Helper()
+	councilRoots.reset()
+	e := &councilEngine{route: `{"route":"council"}`}
+	kv := &fakeKV{grant: 16384, used: 900, session: req.SessionID}
+	chatChunks(t, polykvCouncil(t, e, kv, councilOn()), req)
+	councilIdle.Wait()
+	for _, p := range kv.pools {
+		if p.parent == nil {
+			return p.text
+		}
+	}
+	t.Fatal("no root was built")
+	return ""
+}
+
+func named(id int) *api.Placement { return &api.Placement{PoolID: &id} }
+
+// A council turn that names the client's pool forks its root from it when
+// the conversation starts with it, and never lets it go.
+func TestACouncilRootStandsOnTheClientsPool(t *testing.T) {
+	req := api.ChatRequest{Model: "council", SessionID: "conv-client", Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}}}
+	root := clientRootText(t, req)
+	councilRoots.reset()
+	e := &councilEngine{route: `{"route":"council"}`}
+	kv := &fakeKV{grant: 16384, used: 900, session: "conv-client", pools: []fakePool{{id: 0, session: "cline", text: root[:len(root)/2]}}}
+	s := polykvCouncil(t, e, kv, councilOn())
+	req.Placement = named(0)
+	chatChunks(t, s, req)
+	councilIdle.Wait()
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	stood := false
+	for _, p := range kv.pools[1:] {
+		if p.parent == nil {
+			t.Errorf("a root %d was built from nothing beside the client's pool", p.id)
+		}
+		if p.parent != nil && *p.parent == 0 && p.text == root {
+			stood = true
+		}
+	}
+	if !stood {
+		t.Errorf("no root forked from the client's pool; pools %+v", kv.pools)
+	}
+	if slices.Contains(kv.released, 0) {
+		t.Error("the council released the client's pool")
+	}
+}
+
+// A client pool the conversation does not start with is refused by the
+// engine; the council builds its own root beside it and answers.
+func TestAClientPoolThatDoesNotMatchIsLeftAlone(t *testing.T) {
+	councilRoots.reset()
+	e := &councilEngine{route: `{"route":"council"}`}
+	kv := &fakeKV{grant: 16384, used: 900, session: "conv-other", pools: []fakePool{{id: 0, session: "cline", text: "<something else entirely>"}}}
+	s := polykvCouncil(t, e, kv, councilOn())
+	_, content := joined(chatChunks(t, s, api.ChatRequest{Model: "council", SessionID: "conv-other", Placement: named(0), Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}}}))
+	councilIdle.Wait()
+	if content == "" {
+		t.Fatal("no answer")
+	}
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	own := false
+	for _, p := range kv.pools[1:] {
+		own = own || p.parent == nil
+	}
+	if !own || slices.Contains(kv.released, 0) {
+		t.Errorf("own root %v, released %v: want a root of its own and the client's pool kept", own, kv.released)
+	}
+}
+
+// When the client names another pool, the root forked from the old one is
+// released rather than extended, so the client can let its old pool go.
+func TestANewClientPoolLetsTheOldRootGo(t *testing.T) {
+	req := api.ChatRequest{Model: "council", SessionID: "conv-move", Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}}}
+	root := clientRootText(t, req)
+	councilRoots.reset()
+	e := &councilEngine{route: `{"route":"council"}`}
+	kv := &fakeKV{grant: 16384, used: 900, session: "conv-move", pools: []fakePool{
+		{id: 0, session: "cline", text: root[:len(root)/2]},
+		{id: 1, session: "cline", text: root[:len(root)/3]},
+	}}
+	s := polykvCouncil(t, e, kv, councilOn())
+	req.Placement = named(0)
+	chatChunks(t, s, req)
+	councilIdle.Wait()
+	first := -1
+	kv.mu.Lock()
+	for _, p := range kv.pools[2:] {
+		if p.parent != nil && *p.parent == 0 {
+			first = p.id
+		}
+	}
+	before := len(kv.pools)
+	kv.mu.Unlock()
+	if first < 0 {
+		t.Fatalf("the first turn's root did not stand on pool 0: %+v", kv.pools)
+	}
+	next := nextTurn(req, "And sunsets?")
+	next.Placement = named(1)
+	chatChunks(t, s, next)
+	councilIdle.Wait()
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	if !slices.Contains(kv.released, first) {
+		t.Errorf("the root %d on the old client pool was kept; released %v", first, kv.released)
+	}
+	for _, p := range kv.pools[before:] {
+		if p.parent != nil && *p.parent == first {
+			t.Errorf("pool %d extends the old root under the new client pool", p.id)
+		}
+	}
+	if slices.Contains(kv.released, 0) || slices.Contains(kv.released, 1) {
+		t.Errorf("released a client pool: %v", kv.released)
 	}
 }

@@ -43,6 +43,10 @@ const (
 	// ChatResponse.Council, naming the one member it holds. Content chunks,
 	// the answer, carry none.
 	FeatureCouncilTags = "council_tags_v1"
+	// FeatureClientPlacement: ChatRequest.Placement is honoured -- passed to
+	// the engine on a plain turn, and the pool a council turn's root forks
+	// from when the conversation starts with it.
+	FeatureClientPlacement = "client_placement_v1"
 )
 
 // IsXollama reports whether the server at base is this fork, by the identity

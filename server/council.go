@@ -47,6 +47,21 @@ func councilPlacement(c *gin.Context) *llm.Placement {
 	return nil
 }
 
+// clientPlacement carries a client's placement (client_placement_v1) to the
+// engine on a plain turn, through the same key a member's placement takes. A
+// member's own turn keeps the council's; a council turn reads only the pool,
+// in its tree (councilTreeFor). placementFields drops all of it where the
+// engine has no sessions.
+func clientPlacement(c *gin.Context, req api.ChatRequest) {
+	if req.Placement == nil || c.GetBool(councilMemberKey) {
+		return
+	}
+	if _, set := c.Get(councilPlacementKey); set {
+		return
+	}
+	c.Set(councilPlacementKey, &llm.Placement{PoolID: req.Placement.PoolID, NumCtx: req.Placement.NumCtx, NumCtxMin: req.Placement.NumCtxMin})
+}
+
 // councilServes reports whether this chat turn goes to the council.
 //
 // Tools and a response format are the client driving the model's output

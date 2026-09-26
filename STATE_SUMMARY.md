@@ -5,6 +5,21 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Phase 9.2: client placement (`client_placement_v1`).**
+> - `placement {pool_id, num_ctx, num_ctx_min}` on `/api/chat`. A plain turn
+>   hands all three to the engine. A council turn forks its conversation root
+>   from the named pool when its prompt starts with it, else builds its own.
+>   It never releases the client's pool.
+> - Live on b133: a plain turn served 285 of 316 prompt tokens from a client
+>   pool. A council turn with a pool it does not start with fell back cleanly
+>   (engine 400), and the pool was left alone. Findings for clients: the model
+>   needs pools on (`XOLLAMA_SESSION_POOL`), the pool must be rendered from the
+>   exact text sent, and on a council model it must belong to the conversation's
+>   session.
+> - Left: sharing on council turns needs 9.3's layout (mail #389 asks
+>   Cerebriline what its P0 holds); the compact-writer A/B waits for opencoti
+>   0412.
+
 > **2026-09-26 — Phase 9.1: `/api/xollama` lists features; council thinking is tagged per member.**
 > - `features: ["council", "council_compaction_v1", "council_tags_v1"]` on
 >   `/api/xollama`. Cerebriline gates each piece on these names.

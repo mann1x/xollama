@@ -567,9 +567,33 @@ func TestTheIdentityNamesTheFeatures(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &id); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"council", "council_compaction_v1", "council_tags_v1"} {
+	for _, f := range []string{"council", "council_compaction_v1", "council_tags_v1", "client_placement_v1"} {
 		if !slices.Contains(id.Features, f) {
 			t.Errorf("features %v lack %q", id.Features, f)
 		}
+	}
+}
+
+// A plain turn's placement goes to the engine as it came
+// (client_placement_v1); a turn without one sends none.
+func TestAPlainTurnCarriesTheClientsPlacement(t *testing.T) {
+	e := &councilEngine{}
+	s := councilServer(t, e, nil)
+	pool := 0
+	chatChunks(t, s, api.ChatRequest{
+		Model: "council", Messages: []api.Message{{Role: "user", Content: "Hello"}},
+		Placement: &api.Placement{PoolID: &pool, NumCtx: 8192, NumCtxMin: 4096},
+	})
+	chatChunks(t, s, api.ChatRequest{Model: "council", Messages: []api.Message{{Role: "user", Content: "Hello"}}})
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if len(e.placements) != 2 {
+		t.Fatalf("%d calls", len(e.placements))
+	}
+	if p := e.placements[0]; p == nil || p.PoolID == nil || *p.PoolID != 0 || p.NumCtx != 8192 || p.NumCtxMin != 4096 {
+		t.Errorf("placement %+v, want pool 0 at 8192/4096", p)
+	}
+	if e.placements[1] != nil {
+		t.Errorf("a turn without a placement sent %+v", e.placements[1])
 	}
 }

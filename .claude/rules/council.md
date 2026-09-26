@@ -73,6 +73,21 @@ paths:
   `server/identity.go`), never on a version — a dev build is `0.0.0`. A name
   never changes meaning; a changed contract is a new `…_v2`. Guards:
   `TestEveryThinkingChunkNamesItsMember`, `TestTheIdentityNamesTheFeatures`.
+- **Client placement (`client_placement_v1`).** `ChatRequest.Placement`
+  (`api.Placement` in `api/xollama_placement.go`, `council` hook in
+  `api/types.go`) is for a client that builds its own pools through
+  `/api/engine`. `clientPlacement(c, req)`, the line before `councilServes`
+  in `server/routes.go`, hands a plain turn's `pool_id`/`num_ctx`/`num_ctx_min`
+  to the engine through `councilPlacementKey`; a member's own turn keeps the
+  council's. A council turn reads only `PoolID`: `createRoot` forks the
+  conversation root from it when the prompt starts with the pool's tokens,
+  else builds its own beside it, and never releases the client's pool. A
+  different pool next turn lets the old root go (`samePool`), since the
+  engine releases no pool with a child. Guards:
+  `TestAPlainTurnCarriesTheClientsPlacement`,
+  `TestACouncilRootStandsOnTheClientsPool`,
+  `TestAClientPoolThatDoesNotMatchIsLeftAlone`,
+  `TestANewClientPoolLetsTheOldRootGo`.
 - Parallel members need parallel slots: on stock llama.cpp the ollama#4165
   architectures take turns, on opencoti they run at once — see
   `.claude/rules/dynamic-slots.md`.

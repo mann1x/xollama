@@ -165,6 +165,23 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
   it yourself) and `council_tags_v1` (the tag above). Gate on these names, not
   on the version: a development build reports `0.0.0`. A name never changes
   meaning; a changed contract gets a new name.
+- **Driving PolyKV yourself** (`client_placement_v1`). A client that builds
+  its own pools through `/api/engine` names one with `placement` on
+  `/api/chat`: `{"pool_id": 0, "num_ctx": 16384, "num_ctx_min": 8192}`. On a
+  plain turn all three go to the engine. On a council turn only `pool_id` is
+  read: the council forks its conversation root from that pool when its prompt
+  starts with the pool's tokens (the engine checks this token for token), and
+  otherwise builds its own root beside it. It never releases your pool, and
+  when you name a different one it lets go of the root it forked from the old
+  one, so you can release that. Three things decide whether it shares:
+  - The model's engine must have pools: `session.pool` on for the model, or
+    `XOLLAMA_SESSION_POOL=1`. A council model always has them.
+  - The pool must be rendered from exactly what the chat sends. Whitespace
+    matters: the chat path trims a system prompt's trailing space and
+    `apply-template` does not, and on a hybrid model the prompt must match
+    the whole pool or nothing is shared.
+  - On a council model, create the pool with the conversation's `session_id`.
+    Its window holds the pool, and an unowned pool finds no room there.
 
 ## On opencoti: members share the conversation
 
