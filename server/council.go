@@ -99,6 +99,10 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		return
 	}
 
+	// Tools (9.5): the members carry the client's and the council's own
+	// evidence lookup, one list for all, so the shared prefix holds it once.
+	req.Tools = council.WithEvidence(req.Tools)
+
 	conv, system := councilConversation(m, req.Messages)
 	cfg.System = system
 	members := &councilMembers{

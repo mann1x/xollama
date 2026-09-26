@@ -5,6 +5,19 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — Council tools: narrated calls stopped; long results travel by ref (`council_evidence`).**
+> - A researcher's first reply that names a tool without calling it is dropped
+>   and asked again once. With the stronger note it never fired: live 10+10,
+>   council 10/10, plain 8/10.
+> - Results over 1,500 characters travel in findings as a ref plus ten lines;
+>   members read ranges or patterns back with the council's own
+>   `council_evidence` tool, answered in the server. A member's own older
+>   results fold to refs past 12,000 characters.
+> - Live, 20 KB log + 8 KB config: every completed run right and byte-exact on
+>   both sides (council 9/9, plain 12/12). Three council runs never completed:
+>   a member whose own results outgrew the owner's window, waited out for 2
+>   minutes, then 503. Open, with the owner.
+
 > **2026-09-27 — A council worker with no pool layer runs inside the owner's window.**
 > - Booked on its own session it could wait out admission beside an owner
 >   holding the whole cache. It now runs on the owner, inside its window, one

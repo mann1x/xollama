@@ -291,8 +291,18 @@ paths:
   `MemberKey + ":" + id`; ChatHandler gives parsed calls random ids, so tests
   match the prefix. A step's resume points are read under the lock before it
   launches (bug-143). A researcher's or critic's reply carries its evidence
-  (calls and results, capped): the members after it must read what it read,
-  or the synthesizer edits blind. A worker's PolyKV layer is everything
+  (calls and results): the members after it must read what it read, or the
+  synthesizer edits blind. A result over `inlineEvidence` travels as its ref
+  (the forwarded id, a key of `cfg.Results`) with a preview, read back with
+  `council_evidence` (`internal/council/evidence.go`), which `WithEvidence`
+  appends to `req.Tools` once, in `councilChat`, so every member and the
+  renderer carry the same list. It is answered in `transcript`, never
+  forwarded (`local`), and a turn of lookups only loops in-process, bounded by
+  `maxLookups`. A member's own older results fold to refs past `ownBudget`
+  (`folded`; its last turn's stay whole), or a member that read two big files
+  outgrows the owner's window. A researcher whose first reply names a tool but calls none is
+  nudged once and its narration dropped (`narrated`); critics are not, since
+  they name the tools the findings used. A worker's PolyKV layer is everything
   before its own instruction (the last user message), never before its last
   message: a resumed member ends in tool results. Debug a turn with
   `OLLAMA_DEBUG=1` and the `council member` lines. Live A/Bs compare against

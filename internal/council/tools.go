@@ -97,14 +97,20 @@ func (cfg Config) may(r Role, c api.ToolCall) (bool, string) {
 // assistant turns, then one result per call -- the client's, or the refusal.
 func (cfg Config) transcript(r Role, key string, turns []api.Message) []api.Message {
 	var out []api.Message
+	folded := cfg.folded(r, key, turns)
 	for _, t := range turns {
 		out = append(out, t)
 		for _, c := range t.ToolCalls {
 			res := noResult
 			if ok, why := cfg.may(r, c); !ok {
 				res = why
+			} else if local(c) {
+				res = cfg.lookup(c)
 			} else if s, ok := cfg.Results[ForwardedID(key, c.ID)]; ok {
 				res = s
+				if folded[c.ID] {
+					res = indexed(ForwardedID(key, c.ID), s)
+				}
 			}
 			out = append(out, api.Message{Role: "tool", Content: res, ToolName: c.Function.Name, ToolCallID: c.ID})
 		}
@@ -135,7 +141,7 @@ func (cfg Config) forwarded(r Role, key string, turns []api.Message) []api.ToolC
 	}
 	var out []api.ToolCall
 	for _, c := range turns[len(turns)-1].ToolCalls {
-		if ok, _ := cfg.may(r, c); ok {
+		if ok, _ := cfg.may(r, c); ok && !local(c) {
 			c.ID = ForwardedID(key, c.ID)
 			out = append(out, c)
 		}
@@ -176,11 +182,11 @@ func (cfg Config) toolNote(r Role) string {
 	if writes(r) {
 		// Measured live: a synthesizer after the plan's JSON once answered
 		// with a plan of its own and changed nothing.
-		return " Make the changes the user asked for by calling the tools, then write the answer for the user. The plan above is the council's, not a format to follow."
+		return " Make the changes the user asked for by calling the tools, then write the answer for the user. The plan above is the council's, not a format to follow." + cfg.lookupNote(r)
 	}
 	var ro []string
 	for _, t := range cfg.Tools {
-		if t.Function.ReadOnly {
+		if t.Function.ReadOnly && t.Function.Name != EvidenceTool {
 			ro = append(ro, t.Function.Name)
 		}
 	}
@@ -189,12 +195,12 @@ func (cfg Config) toolNote(r Role) string {
 	if len(ro) == 0 {
 		return " Do not call tools: they change things, and only the synthesizer calls them." + prose
 	}
-	note := fmt.Sprintf(" You may call these tools, which only read: %s. Call them for the facts you need. The others change things, and only the synthesizer calls them.%s", strings.Join(ro, ", "), prose)
+	note := fmt.Sprintf(" You may call these tools, which only read: %s. Call them first, for the facts you need, and write your report only once their results are in. The others change things, and only the synthesizer calls them.%s", strings.Join(ro, ", "), prose)
 	if r == Critic {
 		// Measured live: critics re-read every file the researchers had read.
 		note += " The findings carry the tool results the researchers read; call a tool only for what they lack."
 	}
-	return note
+	return note + cfg.lookupNote(r)
 }
 
 // replyText is a member's reply over its turns: its last text, or -- when
@@ -229,15 +235,18 @@ func (cfg Config) evidence(r Role, key string, turns []api.Message) string {
 			continue
 		}
 		for _, c := range m.ToolCalls {
-			res, ok := cfg.Results[ForwardedID(key, c.ID)]
-			if ok2, _ := cfg.may(r, c); !ok || !ok2 {
+			ref := ForwardedID(key, c.ID)
+			res, ok := cfg.Results[ref]
+			if ok2, _ := cfg.may(r, c); !ok || !ok2 || local(c) {
 				continue
 			}
 			if b.Len() == 0 {
 				b.WriteString("\n\nEvidence (the tools called and what they returned):")
 			}
-			if n := len(res); n > maxEvidence {
-				res = res[:maxEvidence] + fmt.Sprintf("\n[... %d more characters]", n-maxEvidence)
+			if len(res) > inlineEvidence && cfg.canLookup() {
+				res = indexed(ref, res)
+			} else if n := len(res); n > maxEvidence {
+				res = truncate(res, maxEvidence) + fmt.Sprintf("\n[... %d more characters]", n-len(truncate(res, maxEvidence)))
 			}
 			fmt.Fprintf(&b, "\n- %s %s returned:\n%s", c.Function.Name, c.Function.Arguments.String(), res)
 		}
@@ -245,13 +254,31 @@ func (cfg Config) evidence(r Role, key string, turns []api.Message) string {
 	return b.String()
 }
 
+// narrated reports whether a reply describes calling a tool the member may
+// call without calling it: measured live on b137, 6 of 72 researchers'
+// first replies wrote "I have listed the files ... list_files returned ..."
+// and invented the result, and the synthesizer answered from the invention.
+// A plain chat of the same model never did.
+func (cfg Config) narrated(r Role, reply string) bool {
+	for _, t := range cfg.Tools {
+		if (t.Function.ReadOnly || writes(r)) && strings.Contains(reply, t.Function.Name) {
+			return true
+		}
+	}
+	return false
+}
+
+// narratedNudge is what a member that narrated a call is told, once.
+const narratedNudge = "You wrote about calling tools without calling them, so their results are not in your report. Call the tools now; write the report only from results you received."
+
 // callTools runs one member that may call tools, from its turns so far. It
 // returns the reply, or -- when the member calls a tool it may call -- its
 // turns, to be suspended until the client's results come back.
 func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns []api.Message, onToken func(string)) (string, []api.Message, error) {
 	key := MemberKey(req.Role, req.Index, req.Round)
 	own := req.Messages
-	refusals := 0
+	refusals, lookups := 0, 0
+	nudged := false
 	for {
 		req.Messages = append(clone(own), cfg.transcript(req.Role, key, turns)...)
 		rep, err := tm.StreamTools(ctx, req, onToken)
@@ -265,6 +292,15 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 		if err != nil {
 			return "", nil, err
 		}
+		// Researchers only: a critic names the tools the findings used, and
+		// answers from their evidence without calling any.
+		if len(rep.Calls) == 0 && len(turns) == 0 && !nudged && req.Role == Researcher && cfg.narrated(req.Role, rep.Content) {
+			// The narration is dropped: only the calls and their results
+			// travel on, so the invention never reaches the findings.
+			nudged = true
+			own = append(clone(own), api.Message{Role: "assistant", Content: rep.Content}, user(narratedNudge))
+			continue
+		}
 		if len(rep.Calls) == 0 {
 			out := replyText(turns, rep.Content)
 			if !writes(req.Role) {
@@ -275,6 +311,13 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 		turns = append(slices.Clone(turns), api.Message{Role: "assistant", Content: rep.Content, ToolCalls: named(rep.Calls, len(turns))})
 		if len(cfg.forwarded(req.Role, key, turns)) > 0 {
 			return "", turns, nil
+		}
+		// A turn that only read evidence back is answered here, at once.
+		if slices.ContainsFunc(rep.Calls, local) && cfg.canLookup() {
+			if lookups++; lookups > maxLookups {
+				return replyText(turns, ""), nil, nil
+			}
+			continue
 		}
 		if refusals++; refusals > maxRefusals {
 			return replyText(turns, ""), nil, nil

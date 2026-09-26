@@ -1638,6 +1638,39 @@ to collide with. Guarded by `TestAWorkerWithNoLayerRunsInsideTheOwner` (every
 fork refused; the mutant without the branch fails it). Live: 3 runs, 0
 unpooled members, 0 admission waits.
 
+**9.5 follow-up 2 (2026-09-27): narrated calls, and evidence by ref.**
+- **Narrated calls.** About 8% of researchers' first replies (6 of 72) described
+  a call they had not made, with an invented result. The rendered path was
+  checked and is not the cause (qwen3.5 renderer and parser, as the official v4
+  manifests; 0 of 467 replies with leftover tool syntax). The researcher note
+  now says to call first and report once the results are in. A deterministic
+  guard (`narrated`) drops a researcher's first reply that names a callable tool
+  without calling one, and asks once more; critics are exempt, since they name
+  the tools the findings used (`TestANarratedCallIsNeverAFinding`; both
+  mutants fail it). Live 10+10 interleaved (notes scenario): council 10/10 in
+  26–44 s, plain 8/10 in 4–7 s (both misses claimed an edit never made). The
+  nudge fired 0 times: the note alone removed the narration.
+- **`council_evidence`** (the owner's design: "so we don't bloat the
+  context"). A result over 1,500 characters travels in the findings as its ref
+  (the forwarded id, already a key of the client's results), size and first ten
+  lines; any member reads a range or a pattern back with `council_evidence`,
+  which the server appends to the client's tools once (`WithEvidence`, same list
+  for every member and the root) and answers itself, never forwarding it. A
+  member's own older results fold to refs past 12,000 characters
+  (`folded`); its newest stay whole. `internal/council/evidence.go`; five tests,
+  five compiling mutants each failing one.
+- **Live, evidence scenario** (`council-evidence.py`: a 20 KB `build.log` with
+  two facts deep inside, an 8 KB `config.py` where one value changes and
+  nothing else): every completed run was fully right on both sides, `config.py`
+  byte-exact (council 9/9 completed, plain 12/12, 25–43 s plain vs 69–106 s
+  council). Critics used `council_evidence` 33 times over the two batches.
+  **Three council runs did not complete** (2 before `folded`, 1 after): a member
+  whose own results outgrew the owner's window (15,264 cells needed of at most
+  15,235) was refused, and admission waited it out for 2 minutes before a 503.
+  Open: a member whose newest turn alone fills the window (the last case: three
+  files read in one turn), and the admission wait on a request that can never
+  fit.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).

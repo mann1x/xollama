@@ -231,6 +231,21 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
     The council resumes where it stopped: finished members are not asked
     again, and each waiting member continues from its own calls. The calls and
     results stay out of the conversation the other members read.
+  - **What the others read of a result.** A researcher's or critic's report
+    carries the calls it made and what came back. A result up to 1,500
+    characters travels whole. A longer one travels as its ref, its size and
+    its first ten lines, and every member can read the rest with the
+    council's own tool, `council_evidence`: a ref plus a line range or a
+    pattern. The council adds that tool after yours on every tool turn and
+    answers it itself; it never reaches you. So a 20 KB log one researcher
+    read costs the critics and the synthesizer a few hundred characters, plus
+    the lines they ask for. A member's own results are held the same way once
+    they outgrow 12,000 characters: its older ones, oldest first, by ref; the
+    ones it has not answered yet always whole. Do not name a tool of your own `council_evidence`:
+    yours would stay, and the lookup would be gone.
+  - **A report that describes a call it did not make** ("I read notes.txt,
+    it says…") is dropped: the researcher is told once to make the call, and
+    the invented result never reaches the others.
 
   ```json
   {"model":"my-council","council_chat_state":"<newest state>","tools":[…],

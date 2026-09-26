@@ -14,6 +14,11 @@ import (
 type toolStub struct {
 	stub
 	call map[string]string
+	// narrate has the named members first describe a call in prose, with an
+	// invented result, instead of making it -- until they are told off.
+	narrate map[string]bool
+	// args are the arguments of the named members' calls.
+	args map[string]map[string]any
 }
 
 func (s *toolStub) StreamTools(ctx context.Context, req Request, onToken func(string)) (Reply, error) {
@@ -26,8 +31,18 @@ func (s *toolStub) StreamTools(ctx context.Context, req Request, onToken func(st
 			results = append(results, m.Content)
 		}
 	}
-	if name := s.call[MemberKey(req.Role, req.Index, req.Round)]; name != "" && len(results) == 0 {
-		return Reply{Content: "let me look", Calls: []api.ToolCall{{Function: api.ToolCallFunction{Name: name}}}}, nil
+	key := MemberKey(req.Role, req.Index, req.Round)
+	if s.narrate[key] && len(results) == 0 && req.Messages[len(req.Messages)-1].Content != narratedNudge {
+		out := "I called read_files and it returned INVENTED-DATA."
+		onToken(out)
+		return Reply{Content: out}, nil
+	}
+	if name := s.call[key]; name != "" && len(results) == 0 {
+		args := api.NewToolCallFunctionArguments()
+		for k, v := range s.args[key] {
+			args.Set(k, v)
+		}
+		return Reply{Content: "let me look", Calls: []api.ToolCall{{Function: api.ToolCallFunction{Name: name, Arguments: args}}}}, nil
 	}
 	out := string(req.Role) + " says " + strings.Join(results, "|")
 	onToken(out)
@@ -238,5 +253,46 @@ func TestTheCharterLetsResearchersReadOnlyWithTools(t *testing.T) {
 	cfg.Tools = testTools
 	if c := cfg.charter(); strings.Contains(c, charterNoTools) || !strings.Contains(c, charterWithTools) {
 		t.Fatalf("charter with tools: %q", c)
+	}
+}
+
+// A researcher that describes a call instead of making it is told once, and
+// its narration -- with the result it invented -- never reaches the findings.
+// A critic naming a tool is not a narration: it answers from the evidence.
+func TestANarratedCallIsNeverAFinding(t *testing.T) {
+	s := &toolStub{stub: stub{route: `{"route":"council"}`}, call: map[string]string{"r1": "read_files"}, narrate: map[string]bool{"r1": true, "c1": true}}
+	cfg := FromModel(nil, 0.7)
+	cfg.Tools = testTools
+	res, err := Run(t.Context(), cfg, s, conv, func(Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(callIDs(res.Calls), " "); got != "r1:call_0_0=read_files" {
+		t.Fatalf("the nudged researcher forwarded %s", got)
+	}
+	cfg.Results = map[string]string{"r1:call_0_0": "REAL-DATA"}
+	_, err = RunFrom(t.Context(), cfg, s, conv, res.Progress, nil, func(Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var synth Request
+	critics := 0
+	for _, c := range s.calls {
+		if c.Role == Synthesizer {
+			synth = c
+		}
+		if c.Role == Critic {
+			critics++
+		}
+	}
+	all := ""
+	for _, m := range synth.Messages {
+		all += m.Content
+	}
+	if !strings.Contains(all, "FINDINGS OF RESEARCHER 1:\nresearcher says REAL-DATA") || strings.Contains(all, "FINDINGS OF RESEARCHER 1:\nI called read_files") {
+		t.Fatalf("the synthesizer read: %q", all)
+	}
+	if critics != 2 {
+		t.Fatalf("critics were asked %d times; a critic naming a tool is not nudged", critics)
 	}
 }

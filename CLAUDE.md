@@ -174,7 +174,9 @@ seals the `council_chat_state` resume point a client sends back), reached from o
 `councilServes` line in
 `ChatHandler` (`council` hook); a `format` bypasses it, and tools reach it only
 with `council_chat_state` (`internal/council/tools.go`: read-only tools for
-researchers and critics, writes by the synthesizer; `server/council_tools.go`), and a one-shot
+researchers and critics, writes by the synthesizer; `internal/council/evidence.go`:
+the server-answered `council_evidence` tool that reads a large result back by ref;
+`server/council_tools.go`), and a one-shot
 `xollama run <council> "…"` goes through chat (`cmd/council_run.go`) — see
 `.claude/rules/model-config.md` and `.claude/rules/council.md`.
 **Device selection**: a model's device pin (`types/xollama/devices.go`) is
