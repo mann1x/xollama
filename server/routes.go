@@ -237,6 +237,11 @@ func (s *Server) scheduleRunner(ctx context.Context, model *Model, caps []model.
 		return nil, nil, nil, err
 	}
 
+	// xollama-hook: polykv-window — a whole-pool load answers with the context
+	// it took, so prompt truncation never reads the stated 0.
+	if opts.NumCtx == 0 && model.ModelPath != "" && llm.WantsWholePool(llamaServerConfigForModel(model)) {
+		opts.NumCtx = runner.llama.ContextLength()
+	}
 	return runner.llama, model, &opts, nil
 }
 

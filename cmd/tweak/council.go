@@ -172,11 +172,12 @@ func roleFields(name, what string) []field {
 			name:  flag + "-think",
 			path:  "council." + name + ".think",
 			title: "Council " + name + " thinking — let it reason before it replies",
-			help: "Unset or off: no reasoning, the tested default. on is medium. A level\n" +
-				"(minimal, low, medium, high, max) caps the reasoning at that share of the\n" +
-				"council's context; a number is a token budget. The cap comes on top of the\n" +
-				"reply cap, the reasoning is never shown, and the model's own\n" +
-				"think_budget_message closes it at the cap. Every member takes longer.",
+			help: "Unset or off: no reasoning, the tested default. on is a 2048-token\n" +
+				"budget. A level (minimal, low, medium, high, max) caps the reasoning at\n" +
+				"that share of the council's context; a number is a token budget. The cap\n" +
+				"comes on top of the reply cap, the reasoning is never shown, and the\n" +
+				"model's own think_budget_message closes it at the cap. Every member\n" +
+				"takes longer.",
 			kind:    kindText,
 			quiet:   true,
 			blocked: councilOff,
@@ -211,7 +212,7 @@ func councilFields() []field {
 				"variable for this -- a council is a property of the model.",
 			kind:  kindTri,
 			head:  true,
-			group: []string{"council", "council-researchers", "council-critics", "council-jitter", "council-seed", "council-max-rounds", "council-show-deliberation", "council-polykv", "council-window", "council-floor", "council-compact-at"},
+			group: []string{"council", "council-researchers", "council-critics", "council-jitter", "council-seed", "council-max-rounds", "council-show-deliberation", "council-polykv", "council-window", "council-floor", "council-compact-at", "council-idle-compact-at"},
 			get: func(c *xollama.Config) string {
 				return councilGet(c, func(k *xollama.Council) string { return tri(k.Enabled) })
 			},
@@ -375,9 +376,10 @@ func councilFields() []field {
 			name:  "council-compact-at",
 			path:  "council.context.compact_at",
 			title: "Compact at — the share of the window that compacts the conversation",
-			help: "Once the conversation fills this share of the council's window, it is\n" +
-				"compacted before the next turn: the oldest turns summarised, the last three\n" +
-				"kept. Unset is 0.85. A number between 0 and 1.",
+			help: "On PolyKV, once the owner session's pressure (its share of the window in\n" +
+				"use) reaches this, the conversation is compacted before the turn: the oldest\n" +
+				"turns summarised, the last three kept. Unset is 0.85. A number between 0\n" +
+				"and 1.",
 			kind:    kindFloat,
 			quiet:   true,
 			blocked: councilOff,
@@ -385,6 +387,22 @@ func councilFields() []field {
 				return orEmpty(c.Council != nil && c.Council.Context != nil, func() string { return showFloat(c.Council.Context.CompactAt) })
 			},
 			set: func(c *xollama.Config, v string) error { return setFloat(v, &councilContext(c).CompactAt) },
+		},
+		{
+			name:  "council-idle-compact-at",
+			path:  "council.context.idle_compact_at",
+			title: "Idle compact at — compact after an answer, before the next message",
+			help: "On PolyKV, once the owner session fills this share of its window, the\n" +
+				"council summarises the older turns right after answering, while it waits,\n" +
+				"so the next message starts from the short conversation. Unset is 0.75.\n" +
+				"A number between 0 and 1, not above compact-at.",
+			kind:    kindFloat,
+			quiet:   true,
+			blocked: councilOff,
+			get: func(c *xollama.Config) string {
+				return orEmpty(c.Council != nil && c.Council.Context != nil, func() string { return showFloat(c.Council.Context.IdleCompactAt) })
+			},
+			set: func(c *xollama.Config, v string) error { return setFloat(v, &councilContext(c).IdleCompactAt) },
 		},
 		{
 			name:  "council-charter",

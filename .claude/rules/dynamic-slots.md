@@ -5,6 +5,8 @@ paths:
   - llm/server.go
   - server/sched.go
   - server/sched_single_sequence_test.go
+  - server/slots_live.go
+  - server/slots_live_test.go
   - docs/xollama/slots.mdx
 ---
 
@@ -23,6 +25,14 @@ paths:
 - The scheduler (`server/sched.go`) clamps to one only when
   `llm.WouldUseOpencoti` says stock will serve — a prediction made before the
   process exists.
+- **`slots.live`** (`types/xollama/config.go`, `xollama tweak model`
+  `slots-live`) is the count a load starts with: `liveSlots` in
+  `server/slots_live.go` (`slots-live` hook, one line in `load()` after the
+  ollama#4165 cap) replaces `OLLAMA_NUM_PARALLEL` with it only for a
+  completion model `llm.WouldUseOpencoti` says opencoti will serve. Stock
+  llama.cpp reserves a KV copy per slot at launch, so there the operator's
+  count stands. `slots.live` above `slots.max` is refused by `Validate`.
+  Guard: `server/slots_live_test.go`; Registry row `slots-live`.
 - **A prediction is not the launch.** `servedSequences` in `startLlamaServer`
   (`llm/llama_server.go`) drops back to one and relaunches when stock served
   after all: the artifact was missing, or the opt-in fallback retried. Fewer

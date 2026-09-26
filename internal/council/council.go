@@ -245,7 +245,8 @@ func (c Config) Validate() error {
 }
 
 // ThinkBudget resolves a role's think setting to the tokens a member may spend
-// reasoning, or 0 for none. "on" is "medium"; a level is its share of window,
+// reasoning, or 0 for none. "on" is xollama.DefaultCouncilThinkBudget; a
+// level is its share of window,
 // the member's context, by the same table a chat request's think level uses;
 // a positive integer is a budget as it stands.
 func ThinkBudget(setting string, window int) int {
@@ -253,7 +254,7 @@ func ThinkBudget(setting string, window int) int {
 	case "", xollama.CouncilThinkOff:
 		return 0
 	case xollama.CouncilThinkOn:
-		setting = "medium"
+		return xollama.DefaultCouncilThinkBudget
 	}
 	if n, err := strconv.Atoi(setting); err == nil {
 		return max(n, 0)

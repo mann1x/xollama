@@ -76,14 +76,15 @@ Every setting is optional; `xollama tweak model <name> --council` walks them.
 | `council.<role>.prompt` | `--council-<role>-prompt` | built in | Replaces one role's instruction. `@file` reads it from a file. |
 | `council.<role>.model` | `--council-<role>-model` | the council's model | Serves one role with another model. That role then shares no cache with the rest. |
 | `council.<role>.max_tokens` | `--council-<role>-max-tokens` | 512 planner, 384 researcher, 256 critic, 1024 synthesizer | Caps one member's reply. |
-| `council.<role>.think` | `--council-<role>-think` | off | Lets that role reason before it replies: `on` (= `medium`), a level (`minimal` … `max`, a share of the council's context), or a token budget. The budget comes on top of `max_tokens`. The reasoning is never shown, and the model's own `think_budget_message` closes it at the cap. |
+| `council.<role>.think` | `--council-<role>-think` | off | Lets that role reason before it replies: `on` (a 2048-token budget), a token budget such as `4096`, or a level (`minimal` … `max`, a share of the council's context: `medium` at 131k is 32k tokens per member). The budget comes on top of `max_tokens`. The reasoning is never shown, and the model's own `think_budget_message` closes it at the cap. |
 | `council.charter` | `--council-charter` | built in | The system prompt every member shares. |
 | `council.temperature_jitter` | `--council-jitter` | 0.02 | Researchers and critics each draw a temperature within ±2 % of the model's, so parallel members do not say the same thing. |
 | `council.seed` | `--council-seed` | random | A fixed seed makes a council reproducible; every member's seed is derived from it. |
 | `council.max_rounds` | `--council-max-rounds` | 1 | Lets the critics send the research back, up to 4 rounds in all. |
 | `council.show_deliberation` | `--council-show-deliberation` | on | Off sends the answer alone. |
 | `council.polykv` | `--council-polykv` | `auto` | Shares the conversation's cache between members on opencoti (below). `on` refuses to serve without it, `off` never uses it. |
-| `council.context.window`, `.floor`, `.compact_at` | `--council-window`, `--council-floor`, `--council-compact-at` | the model's context, all or nothing, 0.85 | The conversation's window on opencoti, the least it accepts, and when to compact. |
+| `council.context.window`, `.floor`, `.compact_at` | `--council-window`, `--council-floor`, `--council-compact-at` | the model's context, all or nothing, 0.85 | The conversation's window on opencoti, the least it accepts, and the context pressure at which a turn compacts. |
+| `council.context.idle_compact_at` | `--council-idle-compact-at` | 0.75 | The pressure at which the council compacts while it waits for your next message, so that message starts sooner. Not above `compact_at`. |
 
 `<role>` is `planner`, `researcher`, `critic` or `synthesizer`. The planner's
 `think` also covers a direct answer; its routing decision never reasons. The defaults
@@ -137,9 +138,42 @@ number of members.
 The window follows the engine. When other requests are being refused for
 lack of cache, an idle council gives back the part of its window it is not
 using, down to `council.context.floor`, and takes it back on a later turn once
-the pressure is gone. Past `council.context.compact_at` of the window, the
-older turns are summarised into the system prompt and the last three are kept
-word for word.
+the pressure is gone.
+
+The council compacts on the engine's own measure of the conversation, its
+context pressure. When a turn starts at `council.context.compact_at` (0.85)
+or above, the older turns are summarised into the system prompt and the last
+three are kept word for word. The council also uses the time between your
+messages: once it has answered, if the pressure is at
+`council.context.idle_compact_at` (0.75) or above, it writes that summary
+then, and your next message uses it instead of waiting for it.
+
+### `num_ctx 0`: the whole pool
+
+On opencoti with PolyKV, a council model (or a request) that states
+`num_ctx 0` asks for no window of its own. The model loads with its whole
+trained context as one pool, the planner sends no `num_ctx`, and the shared
+parts of a turn belong to no session: the engine books each request from the
+pool as it arrives. This needs an engine that advertises `pool_unowned_v1`.
+On one that does not, the council keeps its window, which is then the whole
+context the model loaded with.
+
+```dockerfile
+FROM omnimerge-v4-mtp:IQ2_M
+PARAMETER num_ctx 0
+XOLLAMA {"version": 4, "council": {"enabled": true}}
+```
+
+`num_ctx 0` means this only on PolyKV. On stock `llama.cpp`, and on opencoti
+without pools, it keeps upstream's meaning.
+
+### Three engines, one council
+
+| | members | `num_ctx` |
+|---|---|---|
+| stock `llama.cpp` | each reads the conversation itself; parallel members need `OLLAMA_NUM_PARALLEL` slots | the model's, per slot, as upstream |
+| opencoti, PolyKV off | as on `llama.cpp`, with slots that grow on demand (`slots.live`, `slots.max`) | the model's, per slot, as upstream |
+| opencoti, PolyKV | share the conversation's cache in one session tree | a window on the conversation, or `0` for the whole pool |
 
 A council on PolyKV reserves a few pool seats when its model loads (four for
 one round), so its runner is its own even among tags that share weights.

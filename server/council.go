@@ -92,14 +92,29 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	}
 	members.window = councilMemberWindow(m, req, tree)
 	reserve := councilReserve(cfg)
+	full := conv // the conversation as the client sent it
+	// answer is set by the turn and read once the response is written; a
+	// client that left may leave the turn still running, hence atomic.
+	var answer atomic.Pointer[string]
 	if tree != nil {
 		members.tree = tree
-		// The conversation compacts when it would leave the turn less than its
-		// reserve below compact_at of the window the owner holds.
-		tree.begin(c.Request.Context())
+		// The conversation compacts on the owner's pressure (guide §6.5), and
+		// on its rendered size when there is no allocation to read yet.
+		pressure := tree.begin(c.Request.Context())
 		budget := int(float64(max(tree.grant, tree.floor))*tree.compactAt) - reserve
-		conv = s.compactConversation(c.Request.Context(), members, conv, tree.tokens, budget)
-		defer tree.finish(reserve)
+		conv = s.compactConversation(c.Request.Context(), members, conv, tree.tokens, compaction{
+			pressure: pressure, compactAt: tree.compactAt, idleCompactAt: tree.idleCompactAt, budget: budget,
+		})
+		defer func() {
+			tree.finish(reserve)
+			if a := answer.Load(); a != nil {
+				councilIdle.Add(1)
+				go func() {
+					defer councilIdle.Done()
+					s.councilIdleCompact(members, tree, full, *a)
+				}()
+			}
+		}()
 	}
 
 	ch := make(chan any)
@@ -130,6 +145,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 			ch <- gin.H{"error": err.Error(), "status": members.status(err)}
 			return
 		}
+		answer.Store(&res.Answer)
 		slog.Info("council turn", "model", req.Model, "route", res.Route, "rounds", res.Rounds,
 			"members", members.calls.Load(), "duration", time.Since(start),
 			"seeds", councilSeeds(res.Draws))

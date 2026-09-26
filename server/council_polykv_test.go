@@ -28,6 +28,13 @@ type fakeKV struct {
 	pressure *llm.KVPressure
 	// recurrent answers /kv with an rs block, as a hybrid model does.
 	recurrent bool
+	// session, when set, is the owner's id and sessPressure its raw
+	// pressure, readable before the first request (the test states the
+	// session).
+	session      string
+	sessPressure float64
+	// unowned advertises pool_unowned_v1.
+	unowned bool
 }
 
 type fakePool struct {
@@ -39,7 +46,7 @@ type fakePool struct {
 
 func (f *fakeKV) PolyKV(context.Context) bool { return true }
 func (f *fakeKV) Features(context.Context) map[string]bool {
-	return map[string]bool{"polykv_subpools_v1": true, "kv_status_v1": true}
+	return map[string]bool{"polykv_subpools_v1": true, "kv_status_v1": true, "pool_unowned_v1": f.unowned}
 }
 
 func (f *fakeKV) CreatePool(_ context.Context, session string, parent *int, prompt string) (llm.PoolInfo, error) {
@@ -72,7 +79,11 @@ func (f *fakeKV) KV(context.Context) (llm.KVStatus, error) {
 		k.RS = &llm.KVRecurrent{CellsCommitted: 4, CellsCap: 8}
 	}
 	if f.grant > 0 {
-		k.Allocations = []llm.KVAllocation{{SessionID: f.ownerLocked(), Window: f.grant, Used: f.used}}
+		id := f.session
+		if id == "" {
+			id = f.ownerLocked()
+		}
+		k.Allocations = []llm.KVAllocation{{SessionID: id, Window: f.grant, Used: f.used, Pressure: f.sessPressure}}
 	}
 	return k, nil
 }
@@ -263,6 +274,195 @@ func TestCouncilSeatsFollowTheRounds(t *testing.T) {
 		m := &Model{Xollama: &xollama.Config{Version: 4, Council: tc.c}}
 		if got := councilPoolSeats(m); got != tc.want {
 			t.Errorf("%+v: seats %d, want %d", tc.c, got, tc.want)
+		}
+	}
+}
+
+// summaries counts the summary calls the engine saw, and whether any member
+// was sent the compacted conversation.
+func (e *councilEngine) summaries() (calls int, compacted bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, p := range e.prompts {
+		if strings.Contains(p, "Summarise this earlier part") {
+			calls++
+		}
+		if strings.Contains(p, "Summary of the earlier conversation") {
+			compacted = true
+		}
+	}
+	return calls, compacted
+}
+
+// A conversation long enough to compact: three earlier turns and a new one.
+func longCouncilReq(session, last string) api.ChatRequest {
+	return api.ChatRequest{
+		Model: "council", SessionID: session,
+		Options: map[string]any{"num_ctx": 16384},
+		Messages: []api.Message{
+			{Role: "user", Content: "What is Rayleigh scattering?"},
+			{Role: "assistant", Content: "Light scattered by particles smaller than its wavelength."},
+			{Role: "user", Content: "Does it depend on wavelength?"},
+			{Role: "assistant", Content: "Yes, strongly: the fourth power."},
+			{Role: "user", Content: last},
+		},
+	}
+}
+
+func TestATurnCompactsOnTheOwnersPressure(t *testing.T) {
+	for _, tt := range []struct {
+		pressure float64
+		want     bool
+		calls    int // the turn's own, and the idle council's after it
+	}{{0.9, true, 2}, {0.85, true, 2}, {0.5, false, 0}} {
+		councilSummaries.reset()
+		e := &councilEngine{route: `{"route":"council"}`}
+		kv := &fakeKV{grant: 16384, used: 900, session: "conv-1", sessPressure: tt.pressure}
+		s := polykvCouncil(t, e, kv, councilOn())
+		chatChunks(t, s, longCouncilReq("conv-1", "Why is the sky blue?"))
+		councilIdle.Wait()
+		calls, compacted := e.summaries()
+		if compacted != tt.want || calls != tt.calls {
+			t.Errorf("pressure %v: %d summary calls, compacted %v; want %d, %v", tt.pressure, calls, compacted, tt.calls, tt.want)
+		}
+	}
+}
+
+func TestAnIdleCouncilSummarisesForTheNextMessage(t *testing.T) {
+	councilSummaries.reset()
+	e := &councilEngine{route: `{"route":"council"}`}
+	// Past idle_compact_at (0.75), below compact_at (0.85): this turn does not
+	// compact, but the council summarises once it has answered.
+	kv := &fakeKV{grant: 16384, used: 900, session: "conv-1", sessPressure: 0.8}
+	s := polykvCouncil(t, e, kv, councilOn())
+	req := longCouncilReq("conv-1", "Why is the sky blue?")
+	_, answer := joined(chatChunks(t, s, req))
+	if _, compacted := e.summaries(); compacted {
+		t.Fatal("the turn compacted below compact_at")
+	}
+	councilIdle.Wait()
+	if calls, _ := e.summaries(); calls != 1 {
+		t.Fatalf("summary calls after the answer = %d, want the idle council's one", calls)
+	}
+
+	// The next message: the same conversation, the answer and a new question.
+	next := req
+	next.Messages = append(slices.Clone(req.Messages),
+		api.Message{Role: "assistant", Content: answer},
+		api.Message{Role: "user", Content: "And why are sunsets red?"})
+	chatChunks(t, s, next)
+	councilIdle.Wait()
+	if _, compacted := e.summaries(); !compacted {
+		t.Error("the next message did not start from the idle summary")
+	}
+	// The earlier turns were summarised once, while idle. (After the second
+	// answer the idle council summarises again, for a longer conversation:
+	// that one carries the first question.)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	same := 0
+	for _, p := range e.prompts {
+		if strings.Contains(p, "Summarise this earlier part") && !strings.Contains(p, "Why is the sky blue?") {
+			same++
+		}
+	}
+	if same != 1 {
+		t.Errorf("the earlier turns were summarised %d times, want once", same)
+	}
+}
+
+func wholePoolReq() api.ChatRequest {
+	r := polykvReq
+	r.Options = map[string]any{"num_ctx": 0}
+	return r
+}
+
+// num_ctx 0 on an engine with unowned pools: the planner books no window and
+// no pool is anyone's.
+func TestNumCtxZeroBuildsUnownedPools(t *testing.T) {
+	e := &councilEngine{route: `{"route":"council"}`}
+	// A per-request booking smaller than the load: an owned tree would grow it.
+	kv := &fakeKV{unowned: true, grant: 2, session: "conv-1"}
+	s := polykvCouncil(t, e, kv, councilOn())
+	req := wholePoolReq()
+	req.SessionID = "conv-1"
+	chatChunks(t, s, req)
+	if len(kv.pools) == 0 {
+		t.Fatal("no pools were built")
+	}
+	for _, p := range kv.pools {
+		if p.session != "" {
+			t.Errorf("pool %d is owned by %q", p.id, p.session)
+		}
+	}
+	for i, r := range e.roles {
+		if r == "route" && e.placements[i] != nil {
+			t.Errorf("the planner stated a window: %+v", e.placements[i])
+		}
+	}
+	if len(kv.resized) != 0 {
+		t.Errorf("an unowned tree resized the owner: %v", kv.resized)
+	}
+}
+
+// Under pressure, an owned idle council gives back what it does not use; an
+// unowned one has no window of its own to give.
+func TestAnUnownedCouncilShrinksNothingUnderPressure(t *testing.T) {
+	e := &councilEngine{route: `{"route":"council"}`}
+	kv := &fakeKV{
+		unowned: true, grant: 65536, used: 900, session: "conv-1",
+		pressure: &llm.KVPressure{WindowS: 60, Refused60s: 2, LastRefusalAgeS: 3},
+	}
+	s := polykvCouncil(t, e, kv, councilOn())
+	req := wholePoolReq()
+	req.SessionID = "conv-1"
+	chatChunks(t, s, req)
+	councilIdle.Wait()
+	if len(kv.resized) != 0 {
+		t.Errorf("an unowned tree resized the owner: %v", kv.resized)
+	}
+}
+
+// Without pool_unowned_v1, or with a stated window, the pools stay the owner's.
+func TestTheOwnerKeepsItsPoolsWithoutUnownedPools(t *testing.T) {
+	for name, tc := range map[string]struct {
+		unowned bool
+		req     api.ChatRequest
+	}{
+		"no feature":    {false, wholePoolReq()},
+		"stated window": {true, polykvReq},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := &councilEngine{route: `{"route":"council"}`}
+			kv := &fakeKV{unowned: tc.unowned}
+			s := polykvCouncil(t, e, kv, councilOn())
+			chatChunks(t, s, tc.req)
+			if len(kv.pools) == 0 {
+				t.Fatal("no pools were built")
+			}
+			for _, p := range kv.pools {
+				if p.session == "" {
+					t.Errorf("pool %d has no owner", p.id)
+				}
+			}
+		})
+	}
+}
+
+func TestCouncilWholePoolReadsTheRequestFirst(t *testing.T) {
+	for _, tc := range []struct {
+		model, req map[string]any
+		want       bool
+	}{
+		{nil, nil, false},
+		{map[string]any{"num_ctx": 0}, nil, true},
+		{map[string]any{"num_ctx": 0}, map[string]any{"num_ctx": 8192}, false},
+		{map[string]any{"num_ctx": 8192}, map[string]any{"num_ctx": float64(0)}, true},
+		{nil, map[string]any{"num_ctx": int64(0)}, true},
+		{nil, map[string]any{"num_ctx": "0"}, false},
+	} {
+		if got := councilWholePool(tc.model, tc.req); got != tc.want {
+			t.Errorf("councilWholePool(%v, %v) = %v, want %v", tc.model, tc.req, got, tc.want)
 		}
 	}
 }

@@ -159,6 +159,10 @@ func supportsContextShift(m *Model) bool {
 // prediction below sizes the cache from this number, so a clamp here and no
 // clamp at launch would under-count the cache by whatever the unlock bought.
 func effectiveModelContext(numCtx int, f *gguf.Model, unlocked bool) int {
+	// xollama-hook: polykv-window — the whole pool is the model's own context.
+	if numCtx == llm.NumCtxWholePool {
+		numCtx = llm.ResolveWholePool(numCtx, modelTrainContext(f), true)
+	}
 	if unlocked {
 		return numCtx
 	}
@@ -182,6 +186,11 @@ func effectiveContext(numCtx, trainCtx int) int {
 }
 
 func (s *Scheduler) getRunner(c context.Context, m *Model, opts api.Options, sessionDuration *api.Duration, numCtxAuto bool, numBatchAuto bool, shift *bool) (chan *runnerRef, chan error) {
+	// xollama-hook: polykv-window — a stated num_ctx 0 on a PolyKV model asks
+	// for the whole pool; see llm/engine_window.go.
+	if opts.NumCtx == 0 && m.ModelPath != "" && llm.WantsWholePool(llamaServerConfigForModel(m)) {
+		opts.NumCtx = llm.NumCtxWholePool
+	}
 	if opts.NumCtx < 4 {
 		opts.NumCtx = 4
 	}
@@ -543,6 +552,9 @@ func (s *Scheduler) load(req *LlmRequest, systemInfo ml.SystemInfo, gpus []ml.De
 		numParallel = 1
 		slog.Warn("model architecture does not currently support parallel requests", "architecture", req.model.Config.ModelFamily)
 	}
+
+	// xollama-hook: slots-live
+	numParallel = liveSlots(req.model, gpus, completion, numParallel)
 
 	sessionDuration := envconfig.KeepAlive()
 	if req.sessionDuration != nil {

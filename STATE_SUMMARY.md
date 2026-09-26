@@ -5,6 +5,30 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Council Phase 6 built: think 2048, pressure and idle compaction, `num_ctx 0` as unowned pools, `slots.live`; Phase 7 proposed.**
+> - The owner approved Phase 6. A role's `think: on` is now a 2048-token
+>   budget (`DefaultCouncilThinkBudget`), and mode and budget stay per role.
+> - Compaction follows the owner's raw `/kv` pressure: at `compact_at`
+>   (0.85) before a turn, and at the new `council.context.idle_compact_at`
+>   (0.75, tweak `--council-idle-compact-at`) in the background after the
+>   answer, so the next message finds the summary ready. Without a pressure
+>   reading, the token budget still decides.
+> - `num_ctx 0` under PolyKV only (hook `polykv-window`,
+>   `llm/engine_window.go`): the launch takes the trained context as the
+>   pool, and with `pool_unowned_v1` the council's pools are unowned and the
+>   planner sends no `num_ctx`. Stock llama.cpp and opencoti without pools
+>   keep upstream's clamp to 4.
+> - `slots.live` (hook `slots-live`): the slots a model loads with, in place
+>   of `OLLAMA_NUM_PARALLEL`, on opencoti only.
+> - Unit tests at every layer, each mutation-checked. No live run: the owner
+>   tests it on the next promoted build. Not built: warming the owner session
+>   with the compacted prefix after an idle summary.
+> - opencoti #350 on #349: the fit bug is the main context's two-pass window
+>   re-size ignoring its recurrent-state cells, not the MTP context. Fix
+>   0408 comes in the next dev build.
+> - Phase 7 proposed: a role on another model **or another ollama instance**
+>   (a cloud model, or another machine), via `council.<role>.host`.
+
 > **2026-09-26 — Council members can think; the MTP IQ2_M runs councils at 131k; Phase 6 proposed.**
 > - `council.<role>.think` (`off` | `on` = medium | level | token count), with
 >   `tweak --council-<role>-think`. The council resolves the level against the
@@ -291,9 +315,10 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 ## Where we are
 
 `v0.34.2-xollama.1` is the latest release. The Agentic Council Chat has
-finished Phases 0 (on b65), 1 (in-house `errgroup` runner) and 2 (schema v4
-and `tweak`). Phase 3, the runner on the llama.cpp path, is next. Phase 0
-runs again on b111 once it is on the HF dev repo.
+closed Phases 0–5 and built Phase 6 (PolyKV sizing, pressure and idle
+compaction, `num_ctx 0`, `slots.live`), whose live test waits for the next
+promoted opencoti build. Phase 7 (roles on other models and instances) is
+proposed.
 
 ## What exists today
 
@@ -313,7 +338,8 @@ runs again on b111 once it is on the HF dev repo.
   reproduce the overflow deficit, and multislot is at most −7.6 % median,
   inside the spread; no bisect, agreed with opencoti (#339). Also waiting
   on: an HF dev publish
-  of patch 0406 (`continue_pool`, #343). The Linux Vulkan `.so`
+  of patch 0406 (`continue_pool`, #343), and 0408 (the rs-window reserve
+  that fixes #349). The Linux Vulkan `.so`
   comes in their next dev publish. Also waiting on the spent-response port
   and the E2B/E4B gate, which needs an HF repo@rev.
 - **mann1x/ollama (fork):** the static `llama/compat/README.md` commit. When
@@ -341,21 +367,23 @@ runs again on b111 once it is on the HF dev repo.
 
 ## Immediate next steps (in order)
 
-1. Agree Phase 6 of the council plan and the default thinking budget for
-   members; then build it.
-2. Try the council badge and the Deliberation toggle in the running desktop
+1. Test council Phase 6 live on the next promoted opencoti build (0406
+   unowned pools, 0408 rs-window reserve): `num_ctx 0`, idle compaction, and
+   `omni-council-think` with `think: on` (now 2048).
+2. Agree Phase 7's open decisions (failure policy per role, host groups,
+   schema v5), then build it.
+3. Try the council badge and the Deliberation toggle in the running desktop
    app, which needs a Windows or macOS build.
-3. Move the engine pin only on a measurement. The `rs` question (#345) is
+4. Move the engine pin only on a measurement. The `rs` question (#345) is
    answered: working as intended.
-4. When an opencoti build with patch 0406 is on the HF dev repo, start
+5. When an opencoti build with patch 0406 is on the HF dev repo, start
    `plans/council-continue-pool.md` Phase 0.
 
 ## Open decisions
 
-- The default thinking budget for council members. `medium` of the member's
-  context is 32k tokens at 131k, which proved far too long live.
-- Phase 6 of the council plan (proposed), including how `num_ctx 0` and an
-  owner allocation fit together under PolyKV.
+- Council Phase 7: whether a failed remote role fails the turn or is
+  dropped; whether `host` names a server-side host group rather than a URL;
+  whether `host` raises the schema to v5.
 
 ## Maintenance protocol
 

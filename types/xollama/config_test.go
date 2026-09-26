@@ -275,6 +275,10 @@ func TestValidateSlots(t *testing.T) {
 		{"a rate floor with the mechanism off", &Slots{Dynamic: &off, TPSFloor: 10}, true},
 		{"a reserve with the mechanism off", &Slots{Dynamic: &off, VRAMReserveMiB: 512}, true},
 		{"a negative ceiling", &Slots{Max: -1}, true},
+		{"negative live slots", &Slots{Live: -1}, true},
+		{"live slots above the ceiling", &Slots{Dynamic: &on, Max: 2, Live: 3}, true},
+		{"live slots at the ceiling", &Slots{Dynamic: &on, Max: 3, Live: 3}, false},
+		{"live slots without a ceiling", &Slots{Live: 3}, false},
 		{"a negative rate floor", &Slots{TPSFloor: -1}, true},
 		{"a negative reserve", &Slots{VRAMReserveMiB: -1}, true},
 	} {

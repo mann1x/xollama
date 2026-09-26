@@ -1,6 +1,6 @@
 # Agentic Council Chat
 
-**Status:** ACTIVE · **Phase:** 6 proposed (phases 0–5 closed 2026-09-26) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
+**Status:** ACTIVE · **Phase:** 6 built, live test waits for the next promoted opencoti build (phases 0–5 closed 2026-09-26); 7 proposed · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
 
 In this chat mode, one model name is a *council*. A client connects to xollama
 the usual way: `/api/chat`, the OpenAI or Anthropic API, the CLI, or the
@@ -19,7 +19,8 @@ KV cache and prefills only its own role and turn.
 - [x] Phase 3 — the runner (2026-09-26; live on b111, results below)
 - [x] Phase 4 — PolyKV path (2026-09-26; A/B on b111, results below)
 - [x] Phase 5 — surfaces and docs (2026-09-26; results below)
-- [ ] Phase 6 — PolyKV sizing and pressure-driven compaction (proposed 2026-09-26; below)
+- [ ] Phase 6 — PolyKV sizing and pressure-driven compaction (approved and built 2026-09-26, unit-tested; the live test waits for the next promoted opencoti build; below)
+- [ ] Phase 7 — roles on other models and other ollama instances, cloud models included (proposed 2026-09-26; below)
 
 ## What the user sees
 - `xollama create my-council -f Modelfile` (or `xollama tweak model my-council`)
@@ -688,7 +689,7 @@ upstream owns. Ideas worth borrowing:
   Linux and compile for Windows. Not yet exercised in the running desktop
   app.
 
-## Phase 6 — PolyKV sizing and pressure-driven compaction (proposed 2026-09-26)
+## Phase 6 — PolyKV sizing and pressure-driven compaction (built 2026-09-26)
 
 The owner's direction (2026-09-26), after the MTP IQ2_M failed to load at
 131k:
@@ -750,6 +751,90 @@ sub-session workers match point 1. `begin` reads the owner's `/kv` row.
   environment variable is needed; `slots.max` exists.
 - **Docs.** The three paths side by side: what each sends and launches.
 
+**Approved (2026-09-26), with two additions from the owner:** a role's think
+default is a 2048-token budget, and the thinking mode and budget stay
+configurable per role. `num_ctx 0` builds **unowned pools** (opencoti patch
+0406, `pool_unowned_v1`).
+
+**Built (2026-09-26, unit-tested; live test on the next promoted build):**
+
+- **Think.** `council.<role>.think: on` is `DefaultCouncilThinkBudget` (2048)
+  tokens; a number is a token budget; a level stays a share of the window.
+- **Trigger.** `compactConversation` compacts on the owner's raw pressure at
+  `compact_at`, then on a ready idle summary at `idle_compact_at`, then (no
+  pressure reading) on the token budget. Guard:
+  `TestATurnCompactsOnTheOwnersPressure`.
+- **Idle compaction.** `council.context.idle_compact_at` (default 0.75, not
+  above `compact_at`; tweak `--council-idle-compact-at`). After the answer,
+  `councilIdleCompact` reads `/kv` and summarises the old turns into the
+  cache (`singleflight`); the next turn takes it. Guard:
+  `TestAnIdleCouncilSummarisesForTheNextMessage`. **Not built:** warming the
+  owner session with the compacted prefix. The next turn builds P1 from the
+  summary itself; warm it if the live test shows the first token waiting on it.
+- **`num_ctx 0`** (hook `polykv-window`, `llm/engine_window.go`). Under PolyKV
+  only, a stated 0 becomes a whole-pool mark before upstream clamps it to 4.
+  The launch resolves it to the model's **trained context**, not `-c 0`:
+  xollama's memory estimate and VRAM fit need a number, and opencoti's
+  `-c 0` means the same thing. With `pool_unowned_v1` the council's tree is
+  unowned: pools are created with `"unowned": true`, the planner sends no
+  `num_ctx`, and the owner is never resized. Without the feature the owner
+  books the loaded context, as before. Guards: `llm/engine_window_test.go`,
+  `TestNumCtxZeroBuildsUnownedPools`,
+  `TestAnUnownedCouncilShrinksNothingUnderPressure`,
+  `TestTheOwnerKeepsItsPoolsWithoutUnownedPools`.
+- **Parallel.** `slots.live` (hook `slots-live`, `server/slots_live.go`)
+  replaces `OLLAMA_NUM_PARALLEL` only when opencoti serves the load. It must
+  not exceed `slots.max`. Guard: `TestLiveSlotsBindOnlyOnOpencoti`.
+- **Split.** Stock llama.cpp and opencoti without pools: `WantsWholePool` is
+  false, `liveSlots` returns the server's count, and the tree is nil, so
+  nothing changes.
+- opencoti answered #349 (#350): the fit bug is real, but it is the main
+  context's rolling-KV two-pass re-size ignoring its recurrent-state cells,
+  not the MTP context. The fix is patch 0408 (`rs-window-reserve`), due in
+  the next dev build after the one on bs2.
+
+**Left for the live test:** a council with `num_ctx 0` on the promoted build
+(unowned pools accepted, no refusals, `/kv` shows no held owner window); idle
+compaction on a long conversation (the second message's time to first token
+with and without it).
+
+## Phase 7 — roles on other models and other instances (proposed 2026-09-26)
+
+The owner's direction: a role may run on another model **and on another
+ollama instance**, so a council can seat a cloud model in a role, or offload
+a role to a different kind of model or to another machine on the network.
+
+Today `council.<role>.model` serves a role with another *local* model through
+the same in-process `ChatHandler`; that role shares no cache.
+
+**Proposed:**
+
+- `council.<role>.host` (a URL, e.g. `http://gpu2:22434` or an ollama.com
+  cloud model through the local server's existing cloud passthrough). Empty
+  means this server, as today.
+- A remote role is an HTTP `/api/chat` call through `api.Client`, streaming,
+  with the same `think`, `max_tokens`, seed and temperature the local member
+  gets. It takes no placement and no pool: remote members never share the
+  tree.
+- Identity: the remote may be a stock ollama or another xollama. Unlike the
+  CLI's `ResolveHost`, a council role only *reads* (it chats), so a stock
+  ollama is acceptable. Its models are named as that host names them.
+- Credentials: a cloud model needs the signed-in key of *this* server
+  (`auth/`), never a key in the model's config. A config layer is published
+  with the model and must never carry a secret.
+- Failure: an unreachable host fails that member, which fails the turn with
+  the member's error (the runner's first-error rule), naming the host.
+  Whether a failed researcher should instead be dropped, and the turn carried
+  on with the rest, is open.
+- Schema: `host` is a new council field and a model that uses it needs a
+  build that knows it. Decide whether it raises the schema to v5.
+- Validation: `tweak` checks the host answers `/api/version` and has the
+  model, as a warning (the host may be down while the model is edited).
+
+**Open decisions:** the per-role failure policy; whether `host` can name a
+host group from the server's environment rather than a literal URL (so a
+published model does not carry an internal address); v5 or not.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).
@@ -795,6 +880,13 @@ sub-session workers match point 1. `begin` reads the owner's `/kv` row.
   deferred. The owner gives back cells only when others are being refused,
   and only when that frees at least 4096 cells or 10 %, so it does not shrink
   on every turn and then grow straight back.
+- 2026-09-26 — Phase 6 approved as proposed. `think: on` is 2048 tokens per
+  role, configurable per role. `num_ctx 0` under PolyKV builds unowned pools;
+  the launch takes the trained context. `slots.live` replaces the parallel
+  environment variable on opencoti only. Stock llama.cpp and opencoti without
+  pools are untouched.
+- 2026-09-26 — Phase 7 added: roles on other models and other ollama
+  instances (cloud models, another machine), at the owner's request.
 - 2026-09-26 — `/api/engine` exposes every opencoti management route, reads
   and controls, always (the owner's call; the risk on a non-localhost bind is
   stated in the doc). Inference, `/cors-proxy` and `/tools` stay out.

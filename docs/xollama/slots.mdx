@@ -108,10 +108,19 @@ XOLLAMA {"version": 1, "slots": {"max": 8, "tps_floor": 15}}
 |---|---|---|---|
 | On or off | `XOLLAMA_DYNAMIC_SLOTS` | `slots.dynamic` | on |
 | Ceiling | `XOLLAMA_MAX_PARALLEL` | `slots.max` | 4 |
+| Slots at load (opencoti) | `OLLAMA_NUM_PARALLEL` | `slots.live` | the server's count |
 | Speed floor | `XOLLAMA_SLOTS_TPS_FLOOR` | `slots.tps_floor` | unset |
 | Memory reserve | `XOLLAMA_SLOTS_VRAM_RESERVE` | `slots.vram_reserve_mib` | engine default |
 
 The model's setting wins over the server's, as everywhere else.
+
+**Slots at load** are the slots a model starts with; on opencoti they grow up
+to the ceiling as requests arrive. `slots.live` sets them for one model in
+place of `OLLAMA_NUM_PARALLEL`, and only when opencoti serves it. On stock
+`llama.cpp` every slot is a KV copy reserved at launch, so the server's count
+stands there. Remember that the launch context is `num_ctx` × the slots at
+load: `OLLAMA_NUM_PARALLEL=4` on a 131k model asks the engine for 524k cells
+before anyone has sent a request.
 
 **The speed floor** is the more useful of the two brakes. It is the decode rate,
 in tokens per second, that each request should keep: another slot is not

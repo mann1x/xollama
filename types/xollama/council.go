@@ -84,10 +84,11 @@ type CouncilRole struct {
 	MaxTokens int `json:"max_tokens,omitempty"`
 
 	// Think lets the role's members reason before they reply. Empty or "off"
-	// is the default: no reasoning. "on" means "medium". A level (minimal,
-	// low, medium, high, max) caps the reasoning at that share of the
-	// member's context window, as a think level does for a chat request; a
-	// positive integer is a token budget. The cap is added to max_tokens, so
+	// is the default: no reasoning. "on" is a budget of
+	// DefaultCouncilThinkBudget tokens. A level (minimal, low, medium, high,
+	// max) caps the reasoning at that share of the member's context window, as
+	// a think level does for a chat request; a positive integer is a token
+	// budget. The cap is added to max_tokens, so
 	// the reply keeps its own room. The reasoning is never shown: only the
 	// reply joins the deliberation. The planner's routing call never reasons.
 	// When the cap is reached, the model's own think_budget_message closes
@@ -113,6 +114,13 @@ type CouncilContext struct {
 	// is compacted before the next turn, in (0, 1). Zero means the default
 	// 0.85.
 	CompactAt float64 `json:"compact_at,omitempty"`
+
+	// IdleCompactAt is the owner pressure at which the conversation is
+	// summarised after an answer, while the council waits for the next
+	// message, so that message starts from the short conversation. In (0, 1)
+	// and not above compact_at; zero means the default 0.75. PolyKV only: it
+	// reads the owner's /kv row.
+	IdleCompactAt float64 `json:"idle_compact_at,omitempty"`
 }
 
 // Council role names, the keys a tool or a message uses for them.
@@ -138,6 +146,19 @@ const (
 	CouncilThinkOff = "off"
 	CouncilThinkOn  = "on"
 )
+
+// Compaction thresholds a council takes when its context states none: the
+// owner session's pressure at which a turn compacts, and at which an idle
+// council compacts after its answer.
+const (
+	DefaultCouncilCompactAt     = 0.85
+	DefaultCouncilIdleCompactAt = 0.75
+)
+
+// DefaultCouncilThinkBudget is what `think: on` gives a member. A level would
+// be a share of the council's context, and at 131k "medium" is 32,768 tokens
+// per member: measured live, a researcher looped past 29k of them.
+const DefaultCouncilThinkBudget = 2048
 
 var validCouncilThink = []string{CouncilThinkOff, CouncilThinkOn, "minimal", "low", "medium", "high", "max"}
 
@@ -267,6 +288,16 @@ func (c *Council) validate(engine string) error {
 		}
 		if x.CompactAt < 0 || x.CompactAt >= 1 {
 			return fmt.Errorf("xollama config: council.context.compact_at %v must be in (0, 1); it is the share of the council's window at which the conversation is compacted", x.CompactAt)
+		}
+		if x.IdleCompactAt < 0 || x.IdleCompactAt >= 1 {
+			return fmt.Errorf("xollama config: council.context.idle_compact_at %v must be in (0, 1); it is the share of the council's window at which an idle council compacts", x.IdleCompactAt)
+		}
+		compactAt := x.CompactAt
+		if compactAt == 0 {
+			compactAt = DefaultCouncilCompactAt
+		}
+		if x.IdleCompactAt > compactAt {
+			return fmt.Errorf("xollama config: council.context.idle_compact_at %v is above compact_at; the idle council compacts earlier than a turn does, not later", x.IdleCompactAt)
 		}
 	}
 	return nil

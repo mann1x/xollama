@@ -28,7 +28,7 @@ what happened is [`../STATE_SUMMARY.md`](../STATE_SUMMARY.md).
 
 | Plan | Status | Phase | Owner | Summary |
 |---|---|---|---|---|
-| [Agentic Council Chat](agentic-council-chat.md) | ACTIVE | 6 proposed: PolyKV sizing and pressure-driven compaction (5 of 5 closed 2026-09-26) | xollama | A model configured as a council (planner, researchers, critics, synthesizer) answers through the normal chat APIs, sharing KV through PolyKV |
+| [Agentic Council Chat](agentic-council-chat.md) | ACTIVE | 6 built (live test on the next promoted build): PolyKV sizing, pressure and idle compaction, `num_ctx 0`, `slots.live`; 7 proposed: roles on other models and instances (5 of 5 closed 2026-09-26) | xollama | A model configured as a council (planner, researchers, critics, synthesizer) answers through the normal chat APIs, sharing KV through PolyKV |
 | [Council: continue the conversation's pool](council-continue-pool.md) | WAITING | not started: waits for an opencoti build with patch 0406 (`continue_pool`, unowned pools) on the HF dev repo | xollama | Keep and continue the conversation's pool across council turns instead of rebuilding it |
 | [Docker image](docker-image.md) | ACTIVE | first `:dev` image published (run 36221348282), GHCR public (2026-09-26); user testing open | xollama | Assemble the image on hosted runners from prebuilt artifacts (`scripts/docker-assemble.sh`, `llama/runtime-pin-linux.txt`) |
 

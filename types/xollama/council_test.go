@@ -114,6 +114,9 @@ func TestValidateCouncil(t *testing.T) {
 		{"floor above window", `{"council":{"enabled":true,"context":{"window":8192,"floor":16384}}}`, "floor 16384 is above window 8192"},
 		{"compact_at of 1", `{"council":{"enabled":true,"context":{"compact_at":1}}}`, "compact_at 1"},
 		{"negative window", `{"council":{"enabled":true,"context":{"window":-1}}}`, "must not be negative"},
+		{"idle above compact_at", `{"council":{"enabled":true,"context":{"compact_at":0.8,"idle_compact_at":0.82}}}`, "idle_compact_at 0.82 is above compact_at"},
+		{"idle above the default compact_at", `{"council":{"enabled":true,"context":{"idle_compact_at":0.9}}}`, "idle_compact_at 0.9 is above compact_at"},
+		{"idle of 1", `{"council":{"enabled":true,"context":{"idle_compact_at":1}}}`, "idle_compact_at 1"},
 		{"unknown think", `{"council":{"enabled":true,"critic":{"think":"maybe"}}}`, `council.critic.think "maybe"`},
 		{"a think budget of 0", `{"council":{"enabled":true,"researcher":{"think":"0"}}}`, "council.researcher.think"},
 		{"a negative think budget", `{"council":{"enabled":true,"planner":{"think":"-5"}}}`, "council.planner.think"},
@@ -136,6 +139,8 @@ func TestValidateCouncil(t *testing.T) {
 		`{"council":{"enabled":true,"context":{"floor":8192}}}`,
 		`{"council":{"enabled":true,"researcher":{"count":8},"critic":{"count":8},"max_rounds":4,"temperature_jitter":0.5}}`,
 		`{"council":{"enabled":false}}`,
+		`{"council":{"enabled":true,"context":{"idle_compact_at":0.7}}}`,
+		`{"council":{"enabled":true,"context":{"compact_at":0.9,"idle_compact_at":0.88}}}`,
 		`{"council":{"enabled":true,"planner":{"think":"on"},"researcher":{"think":"medium"},"critic":{"think":"off"},"synthesizer":{"think":"2048"}}}`,
 	} {
 		if _, err := Parse([]byte(`{"version":4,` + in[1:])); err != nil {

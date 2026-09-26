@@ -266,7 +266,7 @@ func TestACanceledTurnReturnsPromptly(t *testing.T) {
 func TestThinkBudgetResolvesARoleSetting(t *testing.T) {
 	for setting, want := range map[string]int{
 		"": 0, "off": 0,
-		"on":     4096, // medium
+		"on":     2048, // DefaultCouncilThinkBudget, whatever the window
 		"medium": 4096,
 		"high":   8192,
 		"low":    2048,

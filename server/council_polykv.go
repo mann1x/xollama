@@ -32,6 +32,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/internal/council"
 	"github.com/ollama/ollama/llm"
@@ -44,9 +46,13 @@ import (
 // turn that differs.
 const councilSentinel = "\u2063COUNCIL-SENTINEL\u2063"
 
-// defaultCompactAt is the owner pressure at which the conversation is
-// compacted before a turn (Cerebriline's threshold, guide §6.5).
-const defaultCompactAt = 0.85
+// The owner pressures at which the conversation is compacted: before a turn
+// (Cerebriline's threshold, guide §6.5), and after an answer while the
+// council waits for the next message.
+const (
+	defaultCompactAt     = xollama.DefaultCouncilCompactAt
+	defaultIdleCompactAt = xollama.DefaultCouncilIdleCompactAt
+)
 
 // councilReserve is the room a turn needs on top of the conversation, in
 // tokens, for the plan and the members' replies to live in the owner's window.
@@ -65,6 +71,10 @@ type councilTree struct {
 	// window and floor are the ask; grant is what the engine gave, once known.
 	window, floor int
 	compactAt     float64
+	idleCompactAt float64
+	// unowned is the whole-pool council (num_ctx 0, pool_unowned_v1): the
+	// planner books no window, and the layers belong to no session.
+	unowned bool
 
 	mu     sync.Mutex
 	grant  int
@@ -92,6 +102,9 @@ type councilLayer struct {
 // the grant is known it asks [floor, window]; afterwards it states the grant,
 // which is how a resumed booking continues rather than re-negotiating.
 func (t *councilTree) ownerPlacement() *llm.Placement {
+	if t.unowned {
+		return nil
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.grant > 0 {
@@ -192,7 +205,11 @@ func (t *councilTree) layer(ctx context.Context, text string, msgs []api.Message
 	if parent != nil {
 		pid = &parent.id
 	}
-	p, err := t.kv.CreatePool(ctx, t.owner, pid, text)
+	owner := t.owner
+	if t.unowned {
+		owner = ""
+	}
+	p, err := t.kv.CreatePool(ctx, owner, pid, text)
 	l.id, l.err = p.ID, err
 	if err == nil {
 		t.mu.Lock()
@@ -349,7 +366,8 @@ func (t *councilTree) begin(ctx context.Context) (pressure float64) {
 	if !ok {
 		return 0
 	}
-	if a.Window < t.window && !k.Pressure.Active() {
+	// An unowned tree's owner books per request; there is no window to grow.
+	if !t.unowned && a.Window < t.window && !k.Pressure.Active() {
 		r, err := t.kv.Resize(ctx, t.owner, t.window, false)
 		if err == nil && r.Refusal != "" && r.LargestAdmissible > a.Window {
 			r, err = t.kv.Resize(ctx, t.owner, r.LargestAdmissible, false)
@@ -371,6 +389,9 @@ func (t *councilTree) finish(reserve int) {
 	t.release()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	if t.unowned {
+		return
+	}
 	k, err := t.kv.KV(ctx)
 	if err != nil || !k.Pressure.Active() {
 		return
@@ -411,22 +432,93 @@ func councilWindow(cc *xollama.CouncilContext, numCtx int) (window, floor int, c
 	return window, floor, compactAt
 }
 
+// councilWholePool reports a stated num_ctx 0, the request's over the model's.
+func councilWholePool(model, request map[string]any) bool {
+	for _, o := range []map[string]any{request, model} {
+		if v, ok := o["num_ctx"]; ok {
+			switch n := v.(type) {
+			case int:
+				return n == 0
+			case int64:
+				return n == 0
+			case float64:
+				return n == 0
+			default:
+				return false
+			}
+		}
+	}
+	return false
+}
+
+// councilIdleCompactAt is the idle threshold for a council's context.
+func councilIdleCompactAt(cc *xollama.CouncilContext, compactAt float64) float64 {
+	idle := defaultIdleCompactAt
+	if cc != nil && cc.IdleCompactAt > 0 {
+		idle = cc.IdleCompactAt
+	}
+	return min(idle, compactAt)
+}
+
+// compaction says when a turn compacts. On PolyKV the trigger is the owner
+// session's raw pressure from /kv (guide §6.5): compact at compactAt, or
+// already past idleCompactAt when the idle council has the summary ready, so
+// using it costs nothing. budget is the safety net for a conversation with no
+// allocation to read yet -- the first turn of a long pasted history.
+type compaction struct {
+	pressure, compactAt, idleCompactAt float64
+	budget                             int
+}
+
+// councilKeep is how many messages stay verbatim: the last exchange and the
+// new message.
+const councilKeep = 3
+
 // compactConversation replaces the oldest turns with a summary when the
-// conversation would not leave the turn its room in the owner's window. The
-// last exchange and the new message stay verbatim; the summary joins the
-// system message, so the turns still alternate.
-func (s *Server) compactConversation(ctx context.Context, members council.Model, conv []api.Message, tokens func(context.Context, []api.Message) (int, error), budget int) []api.Message {
-	n, err := tokens(ctx, conv)
-	if err != nil || n <= budget || len(conv) < 5 {
+// compaction says so. The last exchange and the new message stay verbatim;
+// the summary joins the system message, so the turns still alternate.
+func (s *Server) compactConversation(ctx context.Context, members council.Model, conv []api.Message, tokens func(context.Context, []api.Message) (int, error), c compaction) []api.Message {
+	if len(conv) < 5 {
 		return conv
 	}
-	keep := 3 // the last exchange and the new message
-	old := conv[1 : len(conv)-keep]
-	if len(old) == 0 {
+	old := conv[1 : len(conv)-councilKeep]
+	_, ready := councilSummaries.get(old)
+	why := ""
+	switch {
+	case c.pressure >= c.compactAt:
+		why = "pressure"
+	case ready && c.pressure >= c.idleCompactAt:
+		why = "idle summary"
+	default:
+		if n, err := tokens(ctx, conv); err == nil && n > c.budget {
+			why = "budget"
+		}
+	}
+	if why == "" {
 		return conv
 	}
-	summary, ok := councilSummaries.get(old)
+	summary, ok := summariseOld(ctx, members, conv[0], old)
 	if !ok {
+		return conv
+	}
+	sys := conv[0]
+	sys.Content += "\n\nSummary of the earlier conversation:\n" + summary
+	out := append([]api.Message{sys}, conv[len(conv)-councilKeep:]...)
+	slog.Info("council: conversation compacted", "trigger", why, "pressure", c.pressure, "turns_summarised", len(old))
+	return out
+}
+
+// summariseOld returns the summary of old, from the cache or made now. A
+// summary already being made -- by the idle council, or a parallel turn -- is
+// waited for rather than made twice.
+func summariseOld(ctx context.Context, members council.Model, system api.Message, old []api.Message) (string, bool) {
+	if summary, ok := councilSummaries.get(old); ok {
+		return summary, true
+	}
+	v, err, _ := councilSummarising.Do(councilSummaries.key(old), func() (any, error) {
+		if summary, ok := councilSummaries.get(old); ok {
+			return summary, nil
+		}
 		var b strings.Builder
 		for _, m := range old {
 			fmt.Fprintf(&b, "%s: %s\n\n", strings.ToUpper(m.Role), m.Content)
@@ -434,21 +526,61 @@ func (s *Server) compactConversation(ctx context.Context, members council.Model,
 		out, err := members.Stream(ctx, council.Request{
 			Role: council.Planner, Temperature: 0.2, MaxTokens: 1024,
 			Messages: []api.Message{
-				conv[0],
-				{Role: "user", Content: "ROLE: PLANNER. Summarise this earlier part of the conversation for the council: keep every fact, decision, number and open question; drop pleasantries.\n\n" + b.String()},
+				system,
+				{Role: "user", Content: councilSummaryPrompt + b.String()},
 			},
 		}, func(string) {})
-		if err != nil || strings.TrimSpace(out) == "" {
-			return conv
+		if err != nil {
+			return "", err
 		}
-		summary = strings.TrimSpace(out)
+		summary := strings.TrimSpace(out)
+		if summary == "" {
+			return "", errors.New("empty summary")
+		}
 		councilSummaries.put(old, summary)
+		return summary, nil
+	})
+	if err != nil {
+		slog.Debug("council: no summary", "error", err)
+		return "", false
 	}
-	sys := conv[0]
-	sys.Content += "\n\nSummary of the earlier conversation:\n" + summary
-	out := append([]api.Message{sys}, conv[len(conv)-keep:]...)
-	slog.Info("council: conversation compacted", "tokens", n, "budget", budget, "turns_summarised", len(old))
-	return out
+	return v.(string), true
+}
+
+const councilSummaryPrompt = "ROLE: PLANNER. Summarise this earlier part of the conversation for the council: keep every fact, decision, number and open question; drop pleasantries.\n\n"
+
+// councilSummarising joins callers asking for the same summary.
+var councilSummarising singleflight.Group
+
+// councilIdle tracks the idle compactions still running after their turn, so
+// a test can wait for them.
+var councilIdle sync.WaitGroup
+
+// councilIdleCompact runs after an answer, while the council waits for the
+// next message. Past idleCompactAt of the owner's window it summarises what
+// the next turn will summarise -- the conversation up to this answer, less
+// the last exchange -- so the next message starts from the short
+// conversation instead of waiting for the summary.
+func (s *Server) councilIdleCompact(members council.Model, t *councilTree, conv []api.Message, answer string) {
+	// The next turn is conv, this answer and a new message; it keeps the last
+	// three, so it summarises conv less its last message.
+	if len(conv)+2 < 5 || strings.TrimSpace(answer) == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	k, err := t.kv.KV(ctx)
+	if err != nil {
+		return
+	}
+	a, ok := k.Session(t.owner)
+	if !ok || a.Pressure < t.idleCompactAt {
+		return
+	}
+	old := slices.Clone(conv[1 : len(conv)-1])
+	if _, ok := summariseOld(ctx, members, conv[0], old); ok {
+		slog.Info("council: summarised while idle", "session", t.owner, "pressure", a.Pressure, "turns_summarised", len(old))
+	}
 }
 
 // councilSummaries remembers summaries, so a conversation past its budget is
@@ -470,6 +602,13 @@ func (c *summaryCache) key(msgs []api.Message) string {
 		h.Write([]byte{0})
 	}
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// reset empties the cache.
+func (c *summaryCache) reset() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.m, c.order = map[string]string{}, nil
 }
 
 func (c *summaryCache) get(msgs []api.Message) (string, bool) {
@@ -515,15 +654,21 @@ func (s *Server) councilTreeFor(ctx context.Context, m *Model, req api.ChatReque
 		return nil, nil
 	}
 	window, floor, compactAt := councilWindow(cc.Context, opts.NumCtx)
+	// num_ctx 0 asks for the whole pool: no window for the planner, and pools
+	// no session owns, where the engine can hold them. An engine without them
+	// keeps the owner, booking the context the load took -- the whole pool.
+	unowned := councilWholePool(m.Options, req.Options) && kv.Features(ctx)["pool_unowned_v1"]
 	return &councilTree{
-		kv:        kv,
-		render:    councilRenderer(m2, r, opts),
-		tokenize:  r.Tokenize,
-		owner:     session,
-		window:    window,
-		floor:     floor,
-		compactAt: compactAt,
-		layers:    map[string]*councilLayer{},
+		unowned:       unowned,
+		kv:            kv,
+		render:        councilRenderer(m2, r, opts),
+		tokenize:      r.Tokenize,
+		owner:         session,
+		window:        window,
+		floor:         floor,
+		compactAt:     compactAt,
+		idleCompactAt: councilIdleCompactAt(cc.Context, compactAt),
+		layers:        map[string]*councilLayer{},
 	}, nil
 }
 

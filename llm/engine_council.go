@@ -198,7 +198,15 @@ func (s *llamaServerRunner) CreatePool(ctx context.Context, session string, pare
 	if err != nil {
 		return PoolInfo{}, err
 	}
-	body, err := json.Marshal(map[string]any{"tokens": tokens, "session_id": session, "pin": true})
+	fields := map[string]any{"tokens": tokens, "pin": true}
+	if session != "" {
+		fields["session_id"] = session
+	} else {
+		// No owner (pool_unowned_v1): charged to the base, and each request
+		// that attaches books its own window.
+		fields["unowned"] = true
+	}
+	body, err := json.Marshal(fields)
 	if err != nil {
 		return PoolInfo{}, err
 	}

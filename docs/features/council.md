@@ -64,8 +64,17 @@ and `kv_status_v1`, `CouncilPools > 0`, affinity on) a turn builds one tree:
 - before a turn the owner grows back toward its ask when nothing is refused;
   after a turn, under pressure, it shrinks (deferred) to
   `max(floor, used + reserve)`, only if that frees at least 4096 cells or 10 %;
-- past `compact_at` of the grant, the older turns are summarised into the
-  system message (the last three stay).
+- compaction follows the owner's raw `/kv` pressure: at `compact_at` (0.85)
+  a turn summarises the older turns into the system message before it runs
+  (the last three stay); after the answer an idle goroutine (`councilIdle`)
+  writes the summary at `idle_compact_at` (0.75), deduplicated by
+  `singleflight`, and the next turn takes it from the cache. With no
+  pressure reading, the token budget (`compact_at` of the grant) decides;
+- `num_ctx 0` (the `polykv-window` hook): the load takes the trained context
+  as the pool; with `pool_unowned_v1` the tree is `unowned` — pools created
+  with `"unowned": true`, the planner sends no placement, and the owner is
+  never grown or shrunk. Without the feature the owner books the loaded
+  context.
 
 A PolyKV council launches with `councilPoolSeats` = `2 + 2 × rounds` pool
 seats, so it is not launch-neutral; `polykv off` is.

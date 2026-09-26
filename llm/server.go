@@ -181,6 +181,9 @@ func NewLlamaServer(systemInfo ml.SystemInfo, gpus []ml.DeviceInfo, modelPath st
 	// the one thing that makes a longer context safe. The clamp is otherwise
 	// upstream's, warning and all. See docs/xollama/dca.mdx.
 	trainCtx := f.KV().ContextLength()
+	// xollama-hook: polykv-window — the whole-pool mark becomes the trained
+	// context where the load runs PolyKV, upstream's minimum elsewhere.
+	opts.NumCtx = ResolveWholePool(opts.NumCtx, int(trainCtx), WouldUseOpencoti(config, gpus) && enginePoolSeats(config, len(projectors) > 0) > 0)
 	if opts.NumCtx > int(trainCtx) && trainCtx > 0 {
 		if DCAUnlocksContext(config, gpus, f) {
 			slog.Info("serving past the model's trained context with dual chunk attention",

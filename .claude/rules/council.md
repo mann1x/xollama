@@ -7,6 +7,8 @@ paths:
   - server/council_polykv_test.go
   - llm/engine_council.go
   - llm/engine_council_test.go
+  - llm/engine_window.go
+  - llm/engine_window_test.go
   - cmd/council_run.go
   - cmd/council_run_test.go
   - app/ui/council.go
@@ -44,6 +46,8 @@ paths:
   and no member can convene the council again.
 - Every member is an ordinary chat turn served in process through
   `ChatHandler`, thinking off unless its role states `council.<role>.think`.
+  `on` is `xollama.DefaultCouncilThinkBudget` (2048) tokens, never a level:
+  `medium` at 131k let a member loop past 29k tokens live.
   A thinking role is sent an explicit **token** budget
   (`council.ThinkBudget(setting, cm.window)`), never a level: a level is a
   share of `num_predict`, which for a member is its reply cap. `num_predict`
@@ -76,8 +80,21 @@ paths:
   id 0 is valid: `Placement.PoolID` is `*int` and never compared `> 0`.
 - The owner's window follows `/kv` pressure. `begin` grows it back when nothing
   is refused. `finish` shrinks it, deferred, only under pressure and only if
-  that gives back at least 4096 cells or 10 %. Compaction folds the old turns
-  into the system message past `compact_at` of the grant.
+  that gives back at least 4096 cells or 10 %.
+- **Compaction follows pressure** (Phase 6): the owner's raw `/kv` pressure at
+  `compact_at` (0.85) compacts before a turn; after the answer,
+  `councilIdleCompact` summarises at `idle_compact_at` (0.75) for the next
+  message. Idle goroutines join `councilIdle`; a test that serves a council
+  must `councilIdle.Wait()` before it reads the fake, or `-race` fires.
+  Summaries go through `singleflight`, never twice for one conversation.
+- **`num_ctx 0` is the whole pool on PolyKV only** (`polykv-window` hook,
+  `llm/engine_window.go`). With `pool_unowned_v1` the tree is `unowned`: pools
+  carry `"unowned": true`, the planner no placement, and `begin`/`finish`
+  never resize the owner. Never let 0 mean this on stock llama.cpp or on
+  opencoti without pools: there upstream clamps it to 4.
+- **`slots.live`** replaces `OLLAMA_NUM_PARALLEL` only when opencoti serves
+  (`server/slots_live.go`, `slots-live` hook). Never set the parallel env for
+  a council on opencoti: `-c` is `num_ctx × slots`, and 4 × 131k did not fit.
 - **Recurrent-state models.** When `/kv` reports an `rs` block (`begin` reads
   it on every turn, including the first, before any booking exists) each
   pool holds one of a few state cells. Building a new layer first releases
@@ -114,4 +131,3 @@ paths:
   on Linux. Never a per-chat council switch or a write of the model's config
   from the UI: those were options A and B, and the owner chose C. Do not
   Prettier-format upstream's `ChatForm.tsx`; it rewrites about 160 lines.
-

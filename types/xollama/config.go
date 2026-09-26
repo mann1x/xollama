@@ -121,6 +121,14 @@ type Slots struct {
 	// Max is the ceiling on concurrent requests. Zero means unstated.
 	Max int `json:"max,omitempty"`
 
+	// Live is the slots the model loads with, in place of
+	// OLLAMA_NUM_PARALLEL, and only when opencoti serves it: its slots grow
+	// past this to Max as requests arrive. Stock llama.cpp sizes one KV copy
+	// per slot at launch, so there the operator's count stands. Zero means
+	// unstated. It needs no newer schema: a build that ignores it serves the
+	// same model with the server's count.
+	Live int `json:"live,omitempty"`
+
 	// TPSFloor is the per-slot decode rate to protect: another slot is not
 	// admitted if the projected rate would fall below it. Zero means unstated,
 	// which leaves the engine to admit on memory headroom alone.
@@ -371,6 +379,12 @@ func (c *Config) Validate() error {
 		if c.Slots.Max < 0 {
 			return fmt.Errorf("xollama config: slots.max %d must not be negative", c.Slots.Max)
 		}
+		if c.Slots.Live < 0 {
+			return fmt.Errorf("xollama config: slots.live %d must not be negative", c.Slots.Live)
+		}
+		if c.Slots.Max > 0 && c.Slots.Live > c.Slots.Max {
+			return fmt.Errorf("xollama config: slots.live %d is above slots.max %d; the model would load with more slots than it may ever serve", c.Slots.Live, c.Slots.Max)
+		}
 		if c.Slots.TPSFloor < 0 {
 			return fmt.Errorf("xollama config: slots.tps_floor %v must not be negative", c.Slots.TPSFloor)
 		}
@@ -492,7 +506,7 @@ func (c *Config) IsZero() bool {
 		(c.Draft == nil || c.Draft.SpecType == "") &&
 		(c.KV == nil || (c.KV.K == "" && c.KV.V == "" && c.KV.KSWA == "" && c.KV.VSWA == "" &&
 			c.KV.Unified == nil && c.KV.ResidencyMode == "")) &&
-		(c.Slots == nil || (c.Slots.Dynamic == nil && c.Slots.Max == 0 && c.Slots.TPSFloor == 0 &&
+		(c.Slots == nil || (c.Slots.Dynamic == nil && c.Slots.Max == 0 && c.Slots.Live == 0 && c.Slots.TPSFloor == 0 &&
 			c.Slots.VRAMReserveMiB == 0 && c.Slots.SWASeqBudget == 0)) &&
 		(c.DCA == nil || (c.DCA.Enabled == nil && c.DCA.ChunkSize == 0)) &&
 		(c.Session == nil || (c.Session.Affinity == nil && c.Session.Pool == nil && c.Session.MaxPools == 0)) &&
