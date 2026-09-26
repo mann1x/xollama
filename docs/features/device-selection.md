@@ -129,6 +129,8 @@ Routing is the tested matrix intersected with what the pinned artifact actually
 ships — see `pinUncovered`. A dev snapshot is a bare APE that accelerates only
 what its `dso` rows provide, so Vulkan reached opencoti for the first time with
 snapshot `2609242056001`, the first to publish `ggml-vulkan-x86_64.so`.
+The current pin, `2609252051001` (b111), carries CUDA only, so Vulkan loads
+route to llama.cpp again until a snapshot publishes the Vulkan payload.
 
 Coverage is **derived from the `dso` rows themselves**: a bare `x86_64` label is
 CUDA, and `<arch>-vulkan` names Vulkan for that arch. Explicit `accel` rows are

@@ -72,6 +72,6 @@ opencoti publishes b111 to HF and it is measured. Then:
 ## Progress
 
 - [x] Design agreed (2026-09-25)
-- [ ] b111 on HF and measured
+- [x] b111 on HF and measured; engine pin moved to it (2026-09-26)
 - [x] Runtime pin + assembly workflow (2026-09-26: `llama/runtime-pin-linux.txt`, `scripts/docker-assemble.sh`, `Dockerfile.xollama`, `docker-release.yaml` on `ubuntu-latest`)
 - [ ] First `:dev` image, user testing

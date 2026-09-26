@@ -5,6 +5,19 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Engine pin moved to b111 (2609252051001).**
+> - `llm/engine/pin.txt`: rev `1d0f1dcd`, bin `a66e9e27`, CUDA dso
+>   `f32ebf54`. b111 brings `kv_pressure_v1`, `kv_resize_v1` and
+>   `kv_resize_deferred_v1`, the surface Council Chat Phase 4 builds on.
+> - Cost: **no Linux Vulkan payload** in these bytes, so the Vulkan dso and
+>   accel rows are retired and Vulkan loads route to llama.cpp again.
+> - Measured as `ollama` beside b65: compat 8/8, throughput and gemma4 parsing
+>   equal; argv surface unchanged. Medians lower on b111 for multislot
+>   (485 vs 595 tok/s) and the 70B overflow (2.17 vs 3.18 tok/s), spreads
+>   overlapping, reported to opencoti. No engine-defect row changes.
+>
+> Next: Council Phase 3 live on b111; the `:dev` image picks this pin up.
+
 > **2026-09-26 — ollama#4165's single-sequence rule binds only stock
 > llama.cpp.**
 > - Qwen3.5, Qwen3-Next, Qwen3-VL, LFM2, Nemotron-H and mllama now take
