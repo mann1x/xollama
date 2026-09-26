@@ -148,6 +148,23 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
 - **Usage counts** (`prompt_eval_count`, `eval_count`) are the sum over every
   member, and `prompt_eval_cached_count` is the part of the prompts that came
   from the cache.
+- **Which member is speaking.** Every thinking chunk of a council turn carries
+  a `council` object naming the one member it holds: `role` (`planner`,
+  `researcher`, `critic`, `synthesizer`), `index` and `round`, both counted
+  from 0. The heading stays in the text for clients that do not read the tag.
+  Content chunks, which carry the answer, never have a tag. The answer is the
+  synthesizer's, or the planner's on a turn it answers directly.
+
+  ```json
+  {"message":{"role":"assistant","thinking":"The scattering goes with…"},
+   "council":{"role":"researcher","index":1,"round":0},"done":false}
+  ```
+- **Feature detection.** `GET /api/xollama` lists what the server supports in
+  `features`: `council`, `council_compaction_v1` (the council compacts its own
+  conversation, so send the history as the user sees it and do not compact
+  it yourself) and `council_tags_v1` (the tag above). Gate on these names, not
+  on the version: a development build reports `0.0.0`. A name never changes
+  meaning; a changed contract gets a new name.
 
 ## On opencoti: members share the conversation
 

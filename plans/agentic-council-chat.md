@@ -1320,12 +1320,21 @@ drives PolyKV itself against a bare opencoti.
 
 **The owner's decisions (2026-09-26).**
 
-- **Council state travels in-band.** The done chunk carries `council_state`,
-  an opaque, versioned blob sealed with a key the server keeps: the
-  compaction record, and a suspended deliberation (below). The client sends
-  the latest one back; the server uses it when its memory lacks the record
-  or holds an older generation, after checking the seal and the hash. No
-  snapshot endpoint.
+- **Council state travels in-band, to resume.** `council_chat_state`, on
+  the response and on the request alike: a protobuf message sealed with a
+  key the server keeps, sent as an opaque base64 blob. Its only purpose is
+  to resume the council after a reconnection (the owner, mail #379), so it
+  is emitted at every checkpoint where the council could resume (after the
+  route, the plan, each research round, the critics, and at a tool-call
+  suspend), each on its own chunk, not only on the done chunk. It holds the
+  compaction record and the deliberation in flight, bound to a hash of the
+  history and the user turn it was made for. Same history and the same
+  retried user turn: skip the spans it records as complete and continue.
+  A different last user turn: drop the deliberation, keep the folded
+  history. No blob, a bad seal, an unknown version or a history it does
+  not prefix: a fresh start (or the server's memory), never an error. No
+  deliberation replay: the client never sends the council's thinking back.
+  No snapshot endpoint.
 - **The council compacts.** Cerebriline turns its own compaction off for a
   council model and sends the history as the user sees it.
 - **PolyKV driven by the client** on plain turns, as against a bare
@@ -1351,12 +1360,26 @@ drives PolyKV itself against a bare opencoti.
   prefix better, and it is re-measured against the Phase 0 layout on b133
   before it replaces it.
 - **Deliberation tags.** `council: {role, index, round}` on each thinking
-  chunk and on a forwarded tool call.
+  chunk and on a forwarded tool call. Content is the final answer (the
+  synthesizer's, or the planner's on a direct turn) and carries no tag.
 - **Detection.** `/api/xollama` gains `features: [...]`, named per feature
-  as it ships.
+  as it ships; the state is `council_chat_state_v1`.
 
 **Order.** Features list and tags; client placement; the shared-P layout,
 measured; the sealed state; tools with suspend and resume.
+
+**9.1 built (2026-09-26): features list and tags.** `/api/xollama` answers
+`features: ["council", "council_compaction_v1", "council_tags_v1"]`
+(`api/xollama_identity.go`, `xollamaFeatures` in `server/identity.go`); a
+name never changes meaning, a changed contract is a new name. Every thinking
+chunk of a council turn carries `council: {role, index, round}` (counted from
+0; `api.CouncilTag`, the `council` hook in `api/types.go`), and holds one
+member only: `thinkingTags` releases per-member segments. The headings stay in
+the text for clients that do not read the tag. Content and the done chunk carry
+none. Agreed with the Cerebriline session in mails #379–#384. Guarded by
+`TestEveryThinkingChunkNamesItsMember`, `TestParallelMembersReadOneAtATime`
+and `TestTheIdentityNamesTheFeatures`; two compiling mutants (no tag, the
+speaker's tag instead of the floor's) each fail a test.
 
 ## Decision log
 

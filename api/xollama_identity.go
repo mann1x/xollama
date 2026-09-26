@@ -25,7 +25,25 @@ const XollamaIdentityPath = "/api/xollama"
 type XollamaIdentity struct {
 	Xollama bool   `json:"xollama"`
 	Version string `json:"version,omitempty"`
+	// Features names what this build serves, so a client gates each piece on
+	// its name rather than on a version: a dev build's version is "0.0.0".
+	// A name is added when its feature ships and never changes meaning; a
+	// changed contract is a new name (…_v2).
+	Features []string `json:"features,omitempty"`
 }
+
+// The names XollamaIdentity.Features carries.
+const (
+	// FeatureCouncil: a model can be a council (plans/agentic-council-chat.md).
+	FeatureCouncil = "council"
+	// FeatureCouncilCompaction: a council compacts its own conversation, so
+	// a client sends the history as the user sees it and does not compact it.
+	FeatureCouncilCompaction = "council_compaction_v1"
+	// FeatureCouncilTags: every thinking chunk of a council turn carries
+	// ChatResponse.Council, naming the one member it holds. Content chunks,
+	// the answer, carry none.
+	FeatureCouncilTags = "council_tags_v1"
+)
 
 // IsXollama reports whether the server at base is this fork, by the identity
 // route and, for builds older than it, by the fork's name in /api/version --

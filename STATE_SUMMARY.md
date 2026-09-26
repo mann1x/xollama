@@ -5,6 +5,19 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Phase 9.1: `/api/xollama` lists features; council thinking is tagged per member.**
+> - `features: ["council", "council_compaction_v1", "council_tags_v1"]` on
+>   `/api/xollama`. Cerebriline gates each piece on these names.
+> - Every thinking chunk of a council turn carries `council: {role, index,
+>   round}` and holds one member only. Content (the answer) and the done chunk
+>   are untagged; the text headings stay for clients that do not read tags.
+> - Cerebriline decisions recorded in the plan (mails #379–#384): the state is
+>   `council_chat_state`, a sealed protobuf blob for resume only, emitted at
+>   every checkpoint; Cerebriline sends `placement.pool_id` on council turns.
+> - Left: the compact-writer A/B on b133 (running; compaction changes held
+>   back until it is measured), the opencoti 500 on pool create (#385, fix in
+>   a new build), then 9.2 client placement.
+
 > **2026-09-26 — Council compaction live on b133: five faults fixed, six turns clean of stalls.**
 > - Live runs (six turns, 16k council, ~9.5k tokens of history) found and
 >   fixed bug-134…138: the writer is asked only when it fits, the text path

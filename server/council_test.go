@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"sync"
@@ -432,7 +434,17 @@ func TestParallelMembersReadOneAtATime(t *testing.T) {
 	th := newThinkingTags()
 	var out strings.Builder
 	ev := func(i int, text string, done bool) {
-		out.WriteString(th.add(council.Event{Role: council.Researcher, Index: i, Kind: council.Thinking, Text: text, Done: done}))
+		for _, seg := range th.add(council.Event{Role: council.Researcher, Index: i, Kind: council.Thinking, Text: text, Done: done}) {
+			// A segment is one member's: its tag names the member whose
+			// lines it holds.
+			if want := fmt.Sprintf("Researcher %d", seg.tag.Index+1); seg.tag.Role != "researcher" || strings.Contains(seg.text, "### ") && !strings.Contains(seg.text, "### "+want+"\n") {
+				t.Errorf("segment %q tagged %+v", seg.text, seg.tag)
+			}
+			if strings.Contains(seg.text, "a1") && seg.tag.Index != 0 || strings.Contains(seg.text, "b1") && seg.tag.Index != 1 {
+				t.Errorf("segment %q tagged %+v", seg.text, seg.tag)
+			}
+			out.WriteString(seg.text)
+		}
 	}
 	ev(0, "a1\n", false)
 	ev(1, "b1\n", false)
@@ -504,6 +516,60 @@ func TestAThinkingRoleReasonsWithinItsBudgetAndHidesIt(t *testing.T) {
 	for i, role := range e.roles {
 		if got := [2]int{e.budgets[i], e.predicts[i]}; got != want[role] {
 			t.Errorf("%s: budget, num_predict = %v, want %v", role, got, want[role])
+		}
+	}
+}
+
+// Every thinking chunk names the one member it holds; the answer names none
+// (council_tags_v1).
+func TestEveryThinkingChunkNamesItsMember(t *testing.T) {
+	e := &councilEngine{route: `{"route":"council"}`}
+	s := councilServer(t, e, councilOn())
+	chunks := chatChunks(t, s, api.ChatRequest{
+		Model:    "council",
+		Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}},
+	})
+	seen := map[api.CouncilTag]bool{}
+	for _, c := range chunks {
+		switch {
+		case c.Message.Content != "" && c.Council != nil:
+			t.Errorf("an answer chunk is tagged %+v", *c.Council)
+		case c.Message.Thinking != "" && c.Council == nil:
+			t.Errorf("a thinking chunk is untagged: %q", c.Message.Thinking)
+		case c.Message.Thinking != "":
+			seen[*c.Council] = true
+			heading := strings.ToUpper(c.Council.Role[:1]) + c.Council.Role[1:]
+			if c.Council.Role == "researcher" || c.Council.Role == "critic" {
+				heading = fmt.Sprintf("%s %d", heading, c.Council.Index+1)
+			}
+			if strings.Contains(c.Message.Thinking, "### ") && !strings.Contains(c.Message.Thinking, "### "+heading+"\n") {
+				t.Errorf("chunk tagged %+v holds %q", *c.Council, c.Message.Thinking)
+			}
+		case c.Done && c.Council != nil:
+			t.Errorf("the done chunk is tagged %+v", *c.Council)
+		}
+	}
+	for _, want := range []api.CouncilTag{{Role: "planner"}, {Role: "researcher"}, {Role: "researcher", Index: 1}, {Role: "critic"}, {Role: "critic", Index: 1}} {
+		if !seen[want] {
+			t.Errorf("no thinking tagged %+v; saw %v", want, seen)
+		}
+	}
+}
+
+// /api/xollama names the features this build serves.
+func TestTheIdentityNamesTheFeatures(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, api.XollamaIdentityPath, nil)
+	XollamaIdentityHandler(c)
+	var id api.XollamaIdentity
+	if err := json.Unmarshal(w.Body.Bytes(), &id); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"council", "council_compaction_v1", "council_tags_v1"} {
+		if !slices.Contains(id.Features, f) {
+			t.Errorf("features %v lack %q", id.Features, f)
 		}
 	}
 }

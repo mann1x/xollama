@@ -146,12 +146,13 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	go func() {
 		defer close(ch)
 		th := newThinkingTags()
-		send := func(msg api.Message) {
+		sendTagged := func(msg api.Message, tag *api.CouncilTag) {
 			select {
-			case ch <- api.ChatResponse{Model: req.Model, CreatedAt: time.Now().UTC(), Message: msg}:
+			case ch <- api.ChatResponse{Model: req.Model, CreatedAt: time.Now().UTC(), Message: msg, Council: tag}:
 			case <-c.Request.Context().Done():
 			}
 		}
+		send := func(msg api.Message) { sendTagged(msg, nil) }
 		res, err := council.Run(c.Request.Context(), cfg, members, conv, func(e council.Event) {
 			if e.Kind == council.Content {
 				if e.Text != "" {
@@ -159,8 +160,8 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 				}
 				return
 			}
-			if text := th.add(e); text != "" {
-				send(api.Message{Role: "assistant", Thinking: text})
+			for _, seg := range th.add(e) {
+				sendTagged(api.Message{Role: "assistant", Thinking: seg.text}, &seg.tag)
 			}
 		})
 		if err != nil {
@@ -262,7 +263,12 @@ func councilSeeds(d council.Draws) []int64 {
 // Parallel members speak at once, so one member holds the floor: its text is
 // released a line at a time as it arrives, while the others are held back and
 // released whole, each under its own heading, once the floor is free.
+//
+// Each piece released is one member's (thinkingSegment), so every thinking
+// chunk names its member in ChatResponse.Council; the headings stay for the
+// clients that read thinking as text.
 type thinkingTags struct {
+	tags  map[string]api.CouncilTag
 	floor string
 	order []string // members waiting for the floor, in the order they spoke
 	buf   map[string]*strings.Builder
@@ -271,11 +277,18 @@ type thinkingTags struct {
 }
 
 func newThinkingTags() *thinkingTags {
-	return &thinkingTags{buf: map[string]*strings.Builder{}, done: map[string]bool{}}
+	return &thinkingTags{buf: map[string]*strings.Builder{}, done: map[string]bool{}, tags: map[string]api.CouncilTag{}}
 }
 
-func (t *thinkingTags) add(e council.Event) string {
+// thinkingSegment is thinking text released for one member.
+type thinkingSegment struct {
+	tag  api.CouncilTag
+	text string
+}
+
+func (t *thinkingTags) add(e council.Event) []thinkingSegment {
 	key := memberName(e)
+	t.tags[key] = api.CouncilTag{Role: string(e.Role), Index: e.Index, Round: e.Round}
 	b := t.buf[key]
 	if b == nil {
 		b = &strings.Builder{}
@@ -292,9 +305,11 @@ func (t *thinkingTags) add(e council.Event) string {
 		t.take()
 	}
 
-	var out strings.Builder
+	var out []thinkingSegment
 	for t.floor != "" {
-		out.WriteString(t.release(t.floor, t.done[t.floor]))
+		if text := t.release(t.floor, t.done[t.floor]); text != "" {
+			out = append(out, thinkingSegment{tag: t.tags[t.floor], text: text})
+		}
 		if !t.done[t.floor] {
 			break
 		}
@@ -302,7 +317,7 @@ func (t *thinkingTags) add(e council.Event) string {
 		t.floor = ""
 		t.take()
 	}
-	return out.String()
+	return out
 }
 
 // take hands the floor to the member that has waited longest.
@@ -343,6 +358,7 @@ func (t *thinkingTags) release(key string, all bool) string {
 func (t *thinkingTags) forget(key string) {
 	delete(t.buf, key)
 	delete(t.done, key)
+	delete(t.tags, key)
 }
 
 func memberName(e council.Event) string {

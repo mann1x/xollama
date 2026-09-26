@@ -26,9 +26,15 @@ import (
 // server that turns out to be somebody else's.
 func XollamaIdentityHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, api.XollamaIdentity{
-		Xollama: true,
-		Version: version.Version,
+		Xollama:  true,
+		Version:  version.Version,
+		Features: xollamaFeatures(),
 	})
+}
+
+// xollamaFeatures is what this build serves, in the order the features shipped.
+func xollamaFeatures() []string {
+	return []string{api.FeatureCouncil, api.FeatureCouncilCompaction, api.FeatureCouncilTags}
 }
 
 // XollamaDevicesHandler lists the devices a model can be pinned to.

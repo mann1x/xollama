@@ -64,6 +64,15 @@ paths:
   chat. Deliberation streams as thinking, the answer as content, through
   `writeChatResponse`; `think: false` or `council.show_deliberation off` sends
   the answer alone.
+- **Member tags (`council_tags_v1`).** Every thinking chunk carries
+  `ChatResponse.Council` (`api.CouncilTag` in `api/xollama_council.go`,
+  `council` hook in `api/types.go`): role, index, round of the one member it
+  holds, from `thinkingTags.add` in `server/council.go`. Content chunks carry
+  none; the headings stay for clients that read thinking as text. Clients gate
+  on `XollamaIdentity.Features` (`/api/xollama`, `xollamaFeatures` in
+  `server/identity.go`), never on a version — a dev build is `0.0.0`. A name
+  never changes meaning; a changed contract is a new `…_v2`. Guards:
+  `TestEveryThinkingChunkNamesItsMember`, `TestTheIdentityNamesTheFeatures`.
 - Parallel members need parallel slots: on stock llama.cpp the ollama#4165
   architectures take turns, on opencoti they run at once — see
   `.claude/rules/dynamic-slots.md`.

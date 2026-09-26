@@ -588,6 +588,9 @@ type ChatResponse struct {
 	// apart from one caused by the response cap.
 	ThinkBudgetTokens int `json:"think_budget_tokens,omitempty"`
 
+	// xollama-hook: council — see plans/agentic-council-chat.md
+	Council *CouncilTag `json:"council,omitempty"`
+
 	DebugInfo *DebugInfo `json:"_debug_info,omitempty"`
 
 	// Logprobs contains log probability information for the generated tokens,
