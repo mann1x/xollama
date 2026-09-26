@@ -36,8 +36,11 @@ paths:
   `effectivePoolCount` by `llm/engine_launch.go`; the launch flag is
   `enginePoolSeats` (`llm/engine_council.go`), which adds a council's
   `CouncilPools` on top, in `startLlamaServer` in `llm/llama_server.go` and
-  mirrored in `PredictServerSlotVRAM` (`llm/engine_estimate.go`); both return
-  0 on a multimodal load, where the engine refuses the create (HTTP 501).
+  counted again in `PredictServerSlotVRAM` (`llm/engine_estimate.go`). The
+  launch reserves no seats on a multimodal load, where the engine refuses the
+  create (HTTP 501). The estimate cannot tell a multimodal load (it gets no
+  projector), so it counts the seats anyway: it over-plans there, never
+  under-plans.
 - Pool ids are `*int` and the engine numbers its first pool `0` — including
   a council's `Placement.PoolID` (`llm/engine_council.go`); see the
   `engine-session` bullet in `.claude/rules/upstream-tree.md`.
