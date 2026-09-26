@@ -23,6 +23,8 @@ type stub struct {
 	peak    atomic.Int32
 	blockAt Role
 	release chan struct{}
+	// away fails every member served on another model or host.
+	away bool
 }
 
 func (s *stub) Stream(ctx context.Context, req Request, onToken func(string)) (string, error) {
@@ -40,7 +42,7 @@ func (s *stub) Stream(ctx context.Context, req Request, onToken func(string)) (s
 			return "", ctx.Err()
 		}
 	}
-	if req.Role == s.fail {
+	if req.Role == s.fail || (s.away && (req.Model != "" || req.Host != "")) {
 		return "", errors.New("member failed")
 	}
 	var out string
@@ -308,5 +310,63 @@ func TestEachRoleCarriesItsThinkButNeverTheRoute(t *testing.T) {
 	}
 	if last := s.calls[len(s.calls)-1]; last.Think != "on" {
 		t.Errorf("direct answer think %q, want the planner's", last.Think)
+	}
+}
+
+// A researcher or critic that fails on its own host or model is answered by
+// the council's model, and the turn goes on; the one planner or synthesizer
+// fails the turn.
+func TestAFailedRemoteMemberFallsBackOnlyWhereItIsOneOfSeveral(t *testing.T) {
+	yes := true
+	remote := &xollama.CouncilRole{Model: "qwen3:4b", Host: "http://gpu2:11434"}
+	cfg := FromModel(&xollama.Council{Enabled: &yes, Researcher: remote, Critic: remote}, 0.7)
+	s := &stub{route: `{"route":"council"}`, away: true}
+	var text strings.Builder
+	res, err := Run(t.Context(), cfg, s, conv, func(e Event) { text.WriteString(e.Text) })
+	if err != nil {
+		t.Fatalf("a failed remote researcher failed the turn: %v", err)
+	}
+	if res.Answer == "" {
+		t.Error("no answer")
+	}
+	local, away := 0, 0
+	for _, c := range s.calls {
+		if c.Role == Researcher || c.Role == Critic {
+			if c.Host == "" && c.Model == "" {
+				local++
+			} else {
+				away++
+			}
+		}
+	}
+	if away != 4 || local != 4 {
+		t.Errorf("%d calls elsewhere and %d on the council's model, want 4 and 4", away, local)
+	}
+	if !strings.Contains(text.String(), "qwen3:4b at http://gpu2:11434 failed") {
+		t.Errorf("the deliberation does not say a member fell back: %q", text.String())
+	}
+
+	for _, role := range []Role{Planner, Synthesizer} {
+		c := &xollama.Council{Enabled: &yes}
+		if role == Planner {
+			c.Planner = remote
+		} else {
+			c.Synthesizer = remote
+		}
+		s := &stub{route: `{"route":"council"}`, away: true}
+		if _, err := Run(t.Context(), FromModel(c, 0.7), s, conv, func(Event) {}); err == nil {
+			t.Errorf("a failed remote %s did not fail the turn", role)
+		}
+	}
+}
+
+func TestACanceledTurnDoesNotFallBack(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if fallsBack(ctx, Request{Role: Researcher, Host: "http://gpu2:11434", Model: "m"}) {
+		t.Error("a canceled turn retried its member")
+	}
+	if fallsBack(t.Context(), Request{Role: Researcher}) {
+		t.Error("a member on the council's own model retried on itself")
 	}
 }

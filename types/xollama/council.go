@@ -2,6 +2,7 @@ package xollama
 
 import (
 	"fmt"
+	"net/url"
 	"slices"
 	"strconv"
 )
@@ -76,6 +77,16 @@ type CouncilRole struct {
 	// the council's model, which is the case PolyKV can share: members on a
 	// different model share nothing with the rest.
 	Model string `json:"model,omitempty"`
+
+	// Host serves this role on another ollama or xollama server, as a URL
+	// ("http://gpu2:11434"), with Model named as that server names it. Empty
+	// means this server, which also reaches cloud models (a Model ending in
+	// ":cloud"). The server serves a host only when XOLLAMA_COUNCIL_HOSTS
+	// allows it: a council model can be pulled, and its host would receive
+	// every conversation. A remote member shares no cache. A researcher or
+	// critic whose host (or other model) fails is answered by the council's own
+	// model instead; a planner or synthesizer that fails fails the turn.
+	Host string `json:"host,omitempty"`
 
 	// Prompt replaces the role's built-in instruction.
 	Prompt string `json:"prompt,omitempty"`
@@ -254,6 +265,17 @@ func (c *Council) validate(engine string) error {
 		}
 		if r.role.Count > 0 && (r.name == RolePlanner || r.name == RoleSynthesizer) {
 			return fmt.Errorf("xollama config: council.%s.count: there is one %s; count applies to researchers and critics", r.name, r.name)
+		}
+		if r.role.Host != "" {
+			u, err := url.Parse(r.role.Host)
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+				return fmt.Errorf("xollama config: council.%s.host %q: want an http or https URL, such as http://gpu2:11434", r.name, r.role.Host)
+			}
+			// The council's own name on another xollama could be a council
+			// too, and would convene there; the remote model must be named.
+			if r.role.Model == "" {
+				return fmt.Errorf("xollama config: council.%s.host needs council.%s.model, the model as %s names it", r.name, r.name, u.Host)
+			}
 		}
 		if !ValidCouncilThinkValue(r.role.Think) {
 			return fmt.Errorf("xollama config: council.%s.think %q: want one of %v or a positive token count", r.name, r.role.Think, validCouncilThink)

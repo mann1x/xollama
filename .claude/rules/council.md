@@ -5,6 +5,8 @@ paths:
   - server/council_test.go
   - server/council_polykv.go
   - server/council_polykv_test.go
+  - server/council_remote.go
+  - server/council_remote_test.go
   - llm/engine_council.go
   - llm/engine_council_test.go
   - llm/engine_window.go
@@ -92,6 +94,15 @@ paths:
   carry `"unowned": true`, the planner no placement, and `begin`/`finish`
   never resize the owner. Never let 0 mean this on stock llama.cpp or on
   opencoti without pools: there upstream clamps it to 4.
+- **Roles elsewhere (Phase 7).** `council.<role>.model` reaches a cloud model
+  through `ChatHandler`'s own cloud branch; `council.<role>.host` (needs
+  `model`) is served by `server/council_remote.go` over `api.Client`, with no
+  session, placement or pool. A host is called only when
+  `XOLLAMA_COUNCIL_HOSTS` lists it: a pulled council would otherwise send every
+  conversation to whatever it names. Never relax that to "any" by default.
+  The fallback rule lives in `internal/council` `call`: a researcher or critic
+  that failed on another model or host is rerun on the council's model; a
+  planner or synthesizer failure is the turn's. A canceled turn never retries.
 - **`slots.live`** replaces `OLLAMA_NUM_PARALLEL` only when opencoti serves
   (`server/slots_live.go`, `slots-live` hook). Never set the parallel env for
   a council on opencoti: `-c` is `num_ctx × slots`, and 4 × 131k did not fit.

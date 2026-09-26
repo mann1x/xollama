@@ -5,6 +5,22 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Council Phase 7 built: roles on cloud models and other servers.**
+> - The owner decided the open points. A researcher or critic that fails on
+>   another model or host is answered by the council's own model, and the
+>   turn goes on; a planner or synthesizer failure fails the turn. A literal
+>   host URL is fine. `host` joins schema v4, which no release has shipped.
+> - A cloud role already worked: `council.<role>.model: …:cloud` goes
+>   through `ChatHandler`'s cloud proxy.
+> - New `council.<role>.host` (needs `model`; tweak
+>   `--council-<role>-host`). It is served by `server/council_remote.go`
+>   over `api.Client`, with no session and no pool.
+> - Hosts are gated by the operator's `XOLLAMA_COUNCIL_HOSTS` (default
+>   none): a pulled council model could otherwise send every conversation to
+>   the host it names.
+> - Unit tests with a stub ollama over HTTP; every guard fails under a
+>   mutation. The live test is pending.
+
 > **2026-09-26 — Council Phase 6 built: think 2048, pressure and idle compaction, `num_ctx 0` as unowned pools, `slots.live`; Phase 7 proposed.**
 > - The owner approved Phase 6. A role's `think: on` is now a 2048-token
 >   budget (`DefaultCouncilThinkBudget`), and mode and budget stay per role.
@@ -316,9 +332,9 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
 `v0.34.2-xollama.1` is the latest release. The Agentic Council Chat has
 closed Phases 0–5 and built Phase 6 (PolyKV sizing, pressure and idle
-compaction, `num_ctx 0`, `slots.live`), whose live test waits for the next
-promoted opencoti build. Phase 7 (roles on other models and instances) is
-proposed.
+compaction, `num_ctx 0`, `slots.live`) and Phase 7 (roles on cloud models
+and other servers). Their live tests wait for the next promoted opencoti
+build.
 
 ## What exists today
 
@@ -370,8 +386,9 @@ proposed.
 1. Test council Phase 6 live on the next promoted opencoti build (0406
    unowned pools, 0408 rs-window reserve): `num_ctx 0`, idle compaction, and
    `omni-council-think` with `think: on` (now 2048).
-2. Agree Phase 7's open decisions (failure policy per role, host groups,
-   schema v5), then build it.
+2. Test council Phase 7 live: a researcher on another ollama on the LAN
+   (`XOLLAMA_COUNCIL_HOSTS`), a critic on a `:cloud` model, and a host
+   stopped mid-turn.
 3. Try the council badge and the Deliberation toggle in the running desktop
    app, which needs a Windows or macOS build.
 4. Move the engine pin only on a measurement. The `rs` question (#345) is
@@ -381,9 +398,7 @@ proposed.
 
 ## Open decisions
 
-- Council Phase 7: whether a failed remote role fails the turn or is
-  dropped; whether `host` names a server-side host group rather than a URL;
-  whether `host` raises the schema to v5.
+- None open on the council; the next choices come from the live tests.
 
 ## Maintenance protocol
 

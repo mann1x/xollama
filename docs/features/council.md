@@ -82,6 +82,19 @@ seats, so it is not launch-neutral; `polykv off` is.
 Measured on b111 (omnimerge v4 IQ2_M, 16k, `-np 4`): computed prefill per
 council turn 3,139 → 525 tokens, peak KV cells about −40 %, wall time at parity.
 
+## Roles on other models and servers (Phase 7)
+
+- `council.<role>.model` alone: an in-process `ChatHandler` turn, so a
+  `…:cloud` model takes upstream's cloud proxy; no placement.
+- `council.<role>.host` (+ `model`): `councilMembers.remote`
+  (`server/council_remote.go`) posts to that server's `/api/chat` through
+  `api.Client`, streaming; the session id is dropped. `councilHostAllowed`
+  checks `XOLLAMA_COUNCIL_HOSTS` (host or host:port, `*`) before any call.
+- Failure (`internal/council/steps.go` `call`/`fallsBack`): a researcher or
+  critic on another model or host is rerun on the council's model, with a
+  note in its deliberation; planner and synthesizer failures fail the turn.
+- `host` is in schema v4, which no release has shipped.
+
 ## Invariants
 
 - **Off means off.** No council, or `XOLLAMA_ENGINE=llamacpp` with no council:

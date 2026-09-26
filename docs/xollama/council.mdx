@@ -74,7 +74,8 @@ Every setting is optional; `xollama tweak model <name> --council` walks them.
 | `council.enabled` | `--council` | off | The switch. |
 | `council.researcher.count`, `council.critic.count` | `--council-researchers`, `--council-critics` | 2, 2 | How many run in parallel. |
 | `council.<role>.prompt` | `--council-<role>-prompt` | built in | Replaces one role's instruction. `@file` reads it from a file. |
-| `council.<role>.model` | `--council-<role>-model` | the council's model | Serves one role with another model. That role then shares no cache with the rest. |
+| `council.<role>.model` | `--council-<role>-model` | the council's model | Serves one role with another model, a cloud model (`…:cloud`) included. That role then shares no cache with the rest. |
+| `council.<role>.host` | `--council-<role>-host` | this server | Serves one role on another ollama or xollama server, such as `http://gpu2:11434`; needs `model`, named as that server names it. The server must allow the host (below). |
 | `council.<role>.max_tokens` | `--council-<role>-max-tokens` | 512 planner, 384 researcher, 256 critic, 1024 synthesizer | Caps one member's reply. |
 | `council.<role>.think` | `--council-<role>-think` | off | Lets that role reason before it replies: `on` (a 2048-token budget), a token budget such as `4096`, or a level (`minimal` … `max`, a share of the council's context: `medium` at 131k is 32k tokens per member). The budget comes on top of `max_tokens`. The reasoning is never shown, and the model's own `think_budget_message` closes it at the cap. |
 | `council.charter` | `--council-charter` | built in | The system prompt every member shares. |
@@ -90,6 +91,37 @@ Every setting is optional; `xollama tweak model <name> --council` walks them.
 `think` also covers a direct answer; its routing decision never reasons. The defaults
 are the ones measured while the feature was built; the prompts, in particular,
 are tuned to the planner's routing decision, so change them one at a time.
+
+## Roles on other models and other servers
+
+A role can run on a model other than the council's, including a cloud model,
+which this server reaches as it does for any chat:
+
+```dockerfile
+XOLLAMA {"version": 4, "council": {"enabled": true,
+  "critic": {"model": "gpt-oss:120b-cloud"}}}
+```
+
+It can also run on another ollama or xollama server on your network, for a
+different kind of model or to take load off this machine:
+
+```dockerfile
+XOLLAMA {"version": 4, "council": {"enabled": true,
+  "researcher": {"model": "qwen3.6:27b", "host": "http://gpu2:11434"}}}
+```
+
+The server sends a conversation only to hosts its operator lists in
+`XOLLAMA_COUNCIL_HOSTS` (`gpu2`, `gpu2:11434`, or `*` for any). A council model
+can be pulled from a registry, and a host it names receives every conversation
+the council serves. A host that is not listed is never called.
+
+A member on another model or server shares no cache with the rest. It gets the
+same reply cap, thinking budget, seed and temperature as a local member.
+
+**When one fails.** A researcher or a critic that fails there (the host is down,
+not allowed, or lacks the model) is answered by the council's own model in its
+place. The deliberation says so, and the turn goes on. The planner and the
+synthesizer are one of a kind: if either fails, the turn fails with its error.
 
 ## What a client sees
 

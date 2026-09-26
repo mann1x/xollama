@@ -1,6 +1,6 @@
 # Agentic Council Chat
 
-**Status:** ACTIVE · **Phase:** 6 built, live test waits for the next promoted opencoti build (phases 0–5 closed 2026-09-26); 7 proposed · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
+**Status:** ACTIVE · **Phase:** 6 and 7 built, live tests wait for the next promoted opencoti build (phases 0–5 closed 2026-09-26) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
 
 In this chat mode, one model name is a *council*. A client connects to xollama
 the usual way: `/api/chat`, the OpenAI or Anthropic API, the CLI, or the
@@ -20,7 +20,7 @@ KV cache and prefills only its own role and turn.
 - [x] Phase 4 — PolyKV path (2026-09-26; A/B on b111, results below)
 - [x] Phase 5 — surfaces and docs (2026-09-26; results below)
 - [ ] Phase 6 — PolyKV sizing and pressure-driven compaction (approved and built 2026-09-26, unit-tested; the live test waits for the next promoted opencoti build; below)
-- [ ] Phase 7 — roles on other models and other ollama instances, cloud models included (proposed 2026-09-26; below)
+- [ ] Phase 7 — roles on other models and other ollama instances, cloud models included (decided and built 2026-09-26, unit-tested; live test pending; below)
 
 ## What the user sees
 - `xollama create my-council -f Modelfile` (or `xollama tweak model my-council`)
@@ -798,42 +798,58 @@ configurable per role. `num_ctx 0` builds **unowned pools** (opencoti patch
 compaction on a long conversation (the second message's time to first token
 with and without it).
 
-## Phase 7 — roles on other models and other instances (proposed 2026-09-26)
+## Phase 7 — roles on other models and other instances (built 2026-09-26)
 
 The owner's direction: a role may run on another model **and on another
 ollama instance**, so a council can seat a cloud model in a role, or offload
 a role to a different kind of model or to another machine on the network.
 
-Today `council.<role>.model` serves a role with another *local* model through
-the same in-process `ChatHandler`; that role shares no cache.
+**Decided (the owner, 2026-09-26):**
 
-**Proposed:**
+1. A failed remote member does not fail the turn when it is a researcher or
+   a critic: the council's own model answers in its place. The planner and
+   the synthesizer are one of a kind, and their failure is the turn's.
+2. A literal URL in the model is fine. An internal address in a published
+   model is little risk, and the likely use is cloud models, served by the
+   same xollama.
+3. No schema question: v4 exists only on `dev` (`main` and
+   `v0.34.2-xollama.1` are v3), so `host` joins v4.
 
-- `council.<role>.host` (a URL, e.g. `http://gpu2:22434` or an ollama.com
-  cloud model through the local server's existing cloud passthrough). Empty
-  means this server, as today.
-- A remote role is an HTTP `/api/chat` call through `api.Client`, streaming,
-  with the same `think`, `max_tokens`, seed and temperature the local member
-  gets. It takes no placement and no pool: remote members never share the
-  tree.
-- Identity: the remote may be a stock ollama or another xollama. Unlike the
-  CLI's `ResolveHost`, a council role only *reads* (it chats), so a stock
-  ollama is acceptable. Its models are named as that host names them.
-- Credentials: a cloud model needs the signed-in key of *this* server
-  (`auth/`), never a key in the model's config. A config layer is published
-  with the model and must never carry a secret.
-- Failure: an unreachable host fails that member, which fails the turn with
-  the member's error (the runner's first-error rule), naming the host.
-  Whether a failed researcher should instead be dropped, and the turn carried
-  on with the rest, is open.
-- Schema: `host` is a new council field and a model that uses it needs a
-  build that knows it. Decide whether it raises the schema to v5.
-- Validation: `tweak` checks the host answers `/api/version` and has the
-  model, as a warning (the host may be down while the model is edited).
+**Built:**
 
-**Open decisions:** the per-role failure policy; whether `host` can name a
-host group from the server's environment rather than a literal URL (so a
-published model does not carry an internal address); v5 or not.
+- **Cloud models needed nothing new.** `council.<role>.model: …:cloud` is an
+  in-process `ChatHandler` turn, which takes upstream's cloud proxy.
+- `council.<role>.host` (schema v4, `types/xollama/council.go`): an http(s)
+  URL, which **needs `model`**. The council's own name on another xollama
+  could be a council too, and would convene there. Tweak
+  `--council-<role>-host`.
+- `server/council_remote.go`: the member is `/api/chat` on that server
+  through `api.Client`, streaming. It carries the same think budget, reply
+  cap, seed and temperature as a local member, but no session, placement or
+  pool. Its counts join the turn's metrics.
+- **Operator allow-list, `XOLLAMA_COUNCIL_HOSTS`** (host or host:port, comma
+  separated, `*`; default none). This is not about leaking an address. A
+  council model can be *pulled*, and a host it names would receive every
+  conversation the council serves. A host that is not listed is never
+  called; a researcher or critic there falls back, and a planner or
+  synthesizer fails, naming the variable.
+- **Fallback** in `internal/council` `call` (`fallsBack`): researchers and
+  critics on another model or host, only while the turn is live. The
+  deliberation notes the fallback.
+- Guards (each fails under a mutation):
+  - `TestAFailedRemoteMemberFallsBackOnlyWhereItIsOneOfSeveral` and
+    `TestACanceledTurnDoesNotFallBack`;
+  - `TestARoleOnAnAllowedHostIsServedThere`: a stub ollama over HTTP, with
+    no session sent;
+  - `TestAHostTheOperatorHasNotAllowedIsNeverCalled` and
+    `TestCouncilHostAllowed`;
+  - the schema cases in `TestValidateCouncil`.
+
+**Left for the live test:**
+- a researcher on another ollama on the LAN;
+- a critic on a `:cloud` model through a signed-in server;
+- a host taken down mid-turn, to check that the fallback note reads well in
+  the CLI and the desktop app.
 
 ## Decision log
 
@@ -887,6 +903,11 @@ published model does not carry an internal address); v5 or not.
   pools are untouched.
 - 2026-09-26 — Phase 7 added: roles on other models and other ollama
   instances (cloud models, another machine), at the owner's request.
+- 2026-09-26 — Phase 7 decided: a researcher or critic that fails elsewhere
+  falls back to the council's model; a planner or synthesizer failure fails
+  the turn. A literal host URL is fine, and `host` stays in v4 (unreleased).
+  Hosts are gated by the operator's `XOLLAMA_COUNCIL_HOSTS`, because a pulled
+  model could otherwise send conversations anywhere.
 - 2026-09-26 — `/api/engine` exposes every opencoti management route, reads
   and controls, always (the owner's call; the risk on a non-localhost bind is
   stated in the doc). Inference, `/cors-proxy` and `/tools` stay out.

@@ -374,6 +374,9 @@ func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken
 			opts["num_predict"] = r.MaxTokens + budget
 		}
 	}
+	if r.Host != "" {
+		return cm.remote(ctx, r, req, onToken)
+	}
 	placement, worker := cm.place(ctx, r, &req)
 	body, err := json.Marshal(req)
 	if err != nil {

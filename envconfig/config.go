@@ -303,6 +303,11 @@ var (
 	// setting is inert and nothing is sent, so the off path stays upstream's.
 	// A model's xollama.json overrides this for that model.
 	SessionAffinity = func() bool { return BoolWithDefault("XOLLAMA_SESSION_AFFINITY")(true) }
+	// CouncilHosts are the servers a council role may be served on
+	// (council.<role>.host), as host names or host:port, comma separated; "*"
+	// allows any. Empty allows none. Operator-side only: a council model can be
+	// pulled, and the host it names receives every conversation it serves.
+	CouncilHosts = String("XOLLAMA_COUNCIL_HOSTS")
 	// SessionPool opts in to sharing one physical copy of a common prefix --
 	// a system prompt and tool definitions -- between the conversations of a
 	// model, instead of one copy each. Off by default: it changes how KV is
@@ -457,6 +462,7 @@ func AsMap() map[string]EnvVar {
 		"XOLLAMA_ENGINE_ARGS":         {"XOLLAMA_ENGINE_ARGS", EngineArgs(), "Extra llama-server arguments appended to the engine command line, for flags with no env twin"},
 		"XOLLAMA_SESSION_AFFINITY":    {"XOLLAMA_SESSION_AFFINITY", SessionAffinity(), "Return a conversation to the slot holding its KV, on the opencoti engine (default true)"},
 		"XOLLAMA_SESSION_POOL":        {"XOLLAMA_SESSION_POOL", SessionPool(), "Share one copy of a common prefix between conversations, on the opencoti engine (default false)"},
+		"XOLLAMA_COUNCIL_HOSTS":       {"XOLLAMA_COUNCIL_HOSTS", CouncilHosts(), "Servers a council role may run on (council.<role>.host): host or host:port, comma separated, * for any (default none)"},
 		"XOLLAMA_K_CACHE_TYPE":        {"XOLLAMA_K_CACHE_TYPE", KCacheType(), "KV cache type for keys, overriding OLLAMA_KV_CACHE_TYPE for that half"},
 		"XOLLAMA_V_CACHE_TYPE":        {"XOLLAMA_V_CACHE_TYPE", VCacheType(), "KV cache type for values, overriding OLLAMA_KV_CACHE_TYPE for that half"},
 		"XOLLAMA_UPDATE_FEED":         {"XOLLAMA_UPDATE_FEED", UpdateFeed(), "Where the desktop app looks for updates (default: this fork's GitHub releases)"},

@@ -121,7 +121,7 @@ func roleGet(name string, f func(*xollama.CouncilRole) string) func(*xollama.Con
 	}
 }
 
-// roleFields are the three settings every role has.
+// roleFields are the settings every role has.
 func roleFields(name, what string) []field {
 	flag := "council-" + name
 	return []field{
@@ -138,6 +138,22 @@ func roleFields(name, what string) []field {
 			get:     roleGet(name, func(r *xollama.CouncilRole) string { return r.Model }),
 			set: func(c *xollama.Config, v string) error {
 				return setText(v, &councilRole(c, name).Model)
+			},
+		},
+		{
+			name:  flag + "-host",
+			path:  "council." + name + ".host",
+			title: "Council " + name + " host — serve the " + name + " on another ollama server",
+			help: "A URL such as http://gpu2:11434, with the " + name + " model named as that server\n" +
+				"names it. Unset is this server, which also reaches cloud models (a model\n" +
+				"ending in :cloud). The server must list the host in XOLLAMA_COUNCIL_HOSTS.\n" +
+				"A researcher or critic that fails there is answered by the council's own model.",
+			kind:    kindText,
+			quiet:   true,
+			blocked: councilOff,
+			get:     roleGet(name, func(r *xollama.CouncilRole) string { return r.Host }),
+			set: func(c *xollama.Config, v string) error {
+				return setText(v, &councilRole(c, name).Host)
 			},
 		},
 		{

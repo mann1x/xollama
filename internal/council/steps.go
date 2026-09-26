@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 
@@ -73,14 +74,39 @@ func maxTok(cfg Config, r Role) int {
 // call makes one member's call, sending its tokens to emit as k -- unless it
 // is deliberation and that is hidden -- and closing them with a Done event.
 func call(ctx context.Context, m Model, cfg Config, emit Emit, req Request, k Kind) (string, error) {
-	if k == Thinking && !cfg.ShowDeliberation {
-		return m.Stream(ctx, req, func(string) {})
+	onToken := func(string) {}
+	if k != Thinking || cfg.ShowDeliberation {
+		onToken = func(s string) {
+			emit(Event{Role: req.Role, Index: req.Index, Round: req.Round, Kind: k, Text: s})
+		}
+		defer emit(Event{Role: req.Role, Index: req.Index, Round: req.Round, Kind: k, Done: true})
 	}
-	out, err := m.Stream(ctx, req, func(s string) {
-		emit(Event{Role: req.Role, Index: req.Index, Round: req.Round, Kind: k, Text: s})
-	})
-	emit(Event{Role: req.Role, Index: req.Index, Round: req.Round, Kind: k, Done: true})
+	out, err := m.Stream(ctx, req, onToken)
+	if err != nil && fallsBack(ctx, req) {
+		// One of several researchers or critics: the council's own model
+		// answers in its place, and the turn goes on.
+		slog.Warn("council: member failed on its own model, answered by the council's", "role", req.Role, "index", req.Index, "model", req.Model, "host", req.Host, "error", err)
+		onToken(fmt.Sprintf("\n\n(%s on %s failed; the council's model answers instead)\n\n", req.Role, memberWhere(req)))
+		req.Model, req.Host = "", ""
+		return m.Stream(ctx, req, onToken)
+	}
 	return out, err
+}
+
+// fallsBack reports whether a failed member is retried on the council's own
+// model: a researcher or critic that ran elsewhere, while the turn is live. A
+// planner or a synthesizer is the one of its kind, and its failure is the
+// turn's.
+func fallsBack(ctx context.Context, req Request) bool {
+	return ctx.Err() == nil && (req.Model != "" || req.Host != "") &&
+		(req.Role == Researcher || req.Role == Critic)
+}
+
+func memberWhere(req Request) string {
+	if req.Host == "" {
+		return req.Model
+	}
+	return req.Model + " at " + req.Host
 }
 
 // Decide is the route-only decision. Anything but a clean "direct" is the
@@ -120,7 +146,7 @@ func planMsg(cfg Config) api.Message {
 // MakePlan writes the plan and one brief per researcher.
 func MakePlan(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, emit Emit) (Plan, error) {
 	out, err := call(ctx, m, cfg, emit, Request{
-		Role: Planner, Model: cfg.Models[Planner], Messages: append(clone(conv), planMsg(cfg)),
+		Role: Planner, Model: cfg.Models[Planner], Host: cfg.Hosts[Planner], Messages: append(clone(conv), planMsg(cfg)),
 		Seed: d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Planner), Think: cfg.Think[Planner],
 		Format: planSchema(cfg.Researchers),
 	}, Thinking)
@@ -153,7 +179,7 @@ func Research(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Mess
 	msgs = append(msgs, user(fmt.Sprintf("ROLE: RESEARCHER %d. Your brief: %s\n%s", i+1, p.Briefs[i], prompt(cfg, Researcher))))
 	dr := d.Researchers[round][i]
 	return call(ctx, m, cfg, emit, Request{
-		Role: Researcher, Index: i, Round: round, Model: cfg.Models[Researcher], Messages: msgs,
+		Role: Researcher, Index: i, Round: round, Model: cfg.Models[Researcher], Host: cfg.Hosts[Researcher], Messages: msgs,
 		Seed: dr.Seed, Temperature: dr.Temperature, MaxTokens: maxTok(cfg, Researcher), Think: cfg.Think[Researcher],
 	}, Thinking)
 }
@@ -168,7 +194,7 @@ func Critique(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Mess
 		user(fmt.Sprintf("ROLE: CRITIC %d. %s", i+1, instr)))
 	dc := d.Critics[round][i]
 	return call(ctx, m, cfg, emit, Request{
-		Role: Critic, Index: i, Round: round, Model: cfg.Models[Critic], Messages: msgs,
+		Role: Critic, Index: i, Round: round, Model: cfg.Models[Critic], Host: cfg.Hosts[Critic], Messages: msgs,
 		Seed: dc.Seed, Temperature: dc.Temperature, MaxTokens: maxTok(cfg, Critic), Think: cfg.Think[Critic],
 	}, Thinking)
 }
@@ -192,7 +218,7 @@ func Synthesize(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Me
 		user(joinNumbered("CRITIQUE", critiques)),
 		user("ROLE: SYNTHESIZER. "+prompt(cfg, Synthesizer)))
 	return call(ctx, m, cfg, emit, Request{
-		Role: Synthesizer, Model: cfg.Models[Synthesizer], Messages: msgs,
+		Role: Synthesizer, Model: cfg.Models[Synthesizer], Host: cfg.Hosts[Synthesizer], Messages: msgs,
 		Seed: d.Synth.Seed, Temperature: d.Synth.Temperature, MaxTokens: maxTok(cfg, Synthesizer), Think: cfg.Think[Synthesizer],
 	}, Content)
 }

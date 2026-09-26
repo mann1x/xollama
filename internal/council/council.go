@@ -42,7 +42,9 @@ type Request struct {
 	Index int
 	Round int
 	// Model is the role's own model, or "" for the council's.
-	Model       string
+	Model string
+	// Host is the server that serves Model, or "" for this one.
+	Host        string
 	Messages    []api.Message
 	Seed        int64
 	Temperature float64
@@ -103,6 +105,8 @@ type Config struct {
 	// another model.
 	Prompts map[Role]string
 	Models  map[Role]string
+	// Hosts serve a role on another server (with its model in Models).
+	Hosts map[Role]string
 	// Think is each role's think setting; absent means no reasoning.
 	Think map[Role]string
 }
@@ -123,7 +127,7 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 		Temperature: temperature, Jitter: DefaultJitter,
 		MaxRounds: 1, ShowDeliberation: true,
 		MaxTokens: map[Role]int{}, Prompts: map[Role]string{}, Models: map[Role]string{},
-		Think: map[Role]string{},
+		Hosts: map[Role]string{}, Think: map[Role]string{},
 	}
 	for r, n := range defaultMaxTokens {
 		cfg.MaxTokens[r] = n
@@ -162,6 +166,9 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 		}
 		if role.Model != "" {
 			cfg.Models[r] = role.Model
+		}
+		if role.Host != "" {
+			cfg.Hosts[r] = role.Host
 		}
 		if role.Think != "" {
 			cfg.Think[r] = role.Think

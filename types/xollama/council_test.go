@@ -26,7 +26,7 @@ func TestAFullCouncilRoundTrips(t *testing.T) {
 		Enabled:           on(),
 		Charter:           "You are a council.",
 		Planner:           &CouncilRole{MaxTokens: 512},
-		Researcher:        &CouncilRole{Count: 3, Model: "qwen3:4b", Prompt: "Dig.", MaxTokens: 384},
+		Researcher:        &CouncilRole{Count: 3, Model: "qwen3:4b", Host: "http://gpu2:11434", Prompt: "Dig.", MaxTokens: 384},
 		Critic:            &CouncilRole{Count: 2, MaxTokens: 256},
 		Synthesizer:       &CouncilRole{Prompt: "Answer."},
 		TemperatureJitter: &jitter,
@@ -120,6 +120,9 @@ func TestValidateCouncil(t *testing.T) {
 		{"unknown think", `{"council":{"enabled":true,"critic":{"think":"maybe"}}}`, `council.critic.think "maybe"`},
 		{"a think budget of 0", `{"council":{"enabled":true,"researcher":{"think":"0"}}}`, "council.researcher.think"},
 		{"a negative think budget", `{"council":{"enabled":true,"planner":{"think":"-5"}}}`, "council.planner.think"},
+		{"a host that is not a URL", `{"council":{"enabled":true,"critic":{"model":"m","host":"gpu2:11434"}}}`, "council.critic.host"},
+		{"a host on another scheme", `{"council":{"enabled":true,"critic":{"model":"m","host":"ftp://gpu2"}}}`, "council.critic.host"},
+		{"a host without a model", `{"council":{"enabled":true,"researcher":{"host":"http://gpu2:11434"}}}`, "council.researcher.host needs council.researcher.model"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
