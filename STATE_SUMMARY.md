@@ -5,6 +5,19 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — b65 vs b111 re-measured, paired and interleaved (opencoti
+> #329): the pin stays on b111.**
+> - Five repeats per cell, order alternating, never more than one compute
+>   app on the 3090 in any cell (sampled every second).
+> - Multislot aggregate: b65 median 541.9, b111 500.8 tok/s (−7.6 %). Each
+>   build's range is about 18 %; b111 was lower in 3 of 5 pairs. At most a
+>   small effect.
+> - 70B overflow: b65 median 1.39, b111 1.87 gen tok/s; b111 faster in 4 of
+>   5. The earlier deficit does not reproduce. Both builds follow load time
+>   (host page cache), not the build.
+> - Sent to opencoti (#336). Raw data:
+>   `/srv/ml/xollama-phase2/as-ollama/regress-paired/`.
+
 > **2026-09-26 — Council Chat Phase 4: members share the conversation's KV
 > through PolyKV; `/api/engine` reaches every opencoti route.**
 > - `llm/engine_council.go` is the PolyKV client: a per-request `Placement`,
@@ -29,9 +42,7 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >   every runner swap waits about 2.3 s for a discovery subprocess and logs an
 >   ERROR killing it (bug-117).
 > - Docker `:dev` run 36221348282 (the b111 image) succeeded.
-> - Left: Phase 5 (surfaces, `docs/xollama/council.mdx`); the paired
->   interleaved re-run of b65 vs b111 multislot and 70B overflow that
->   opencoti asked for in #329 (≥ 5 repeats, 3090 otherwise idle).
+> - Left: Phase 5 (surfaces, `docs/xollama/council.mdx`).
 
 > **2026-09-26 — Council Chat Phase 3: a council model answers through
 > every chat API.**
@@ -214,10 +225,9 @@ runs again on b111 once it is on the HF dev repo.
 
 ## In flight / waiting on others
 
-- **opencoti:** the pin is on b111. b111 is slower than b65 on multislot and
-  on the 70B overflow in unpaired runs. opencoti (#329) names 0385, 0390 and
-  0391 as the candidates and asks for a paired, interleaved re-run first.
-  Their bisect (b84, b90, b108) is queued behind c8. The Linux Vulkan `.so`
+- **opencoti:** the pin is on b111. The paired re-run (#336) did not
+  reproduce the overflow deficit, and multislot is at most −7.6 % median,
+  inside the spread. Whether to bisect 0385/0391 for it is opencoti's call. The Linux Vulkan `.so`
   comes in their next dev publish. Also waiting on the spent-response port
   and the E2B/E4B gate, which needs an HF repo@rev.
 - **mann1x/ollama (fork):** the static `llama/compat/README.md` commit. When
@@ -241,13 +251,10 @@ runs again on b111 once it is on the HF dev repo.
 
 ## Immediate next steps (in order)
 
-1. The paired, interleaved b65 vs b111 re-run for opencoti: multislot and
-   70B overflow, at least 5 repeats each, with nothing else on the 3090.
-   Send the medians and the spread.
-2. Council Chat Phase 5: `docs/xollama/council.mdx`, the feature doc, CLI
+1. Council Chat Phase 5: `docs/xollama/council.mdx`, the feature doc, CLI
    niceties, and the desktop toggle if wanted.
-3. bug-117: the discovery wait on every runner swap.
-4. Make the GHCR package public if the first push left it private
+2. bug-117: the discovery wait on every runner swap.
+3. Make the GHCR package public if the first push left it private
    (`docs/features/docker-release.md`, one-time setup).
 
 ## Open decisions
