@@ -34,6 +34,12 @@ import (
 // when it is shorter, which it usually is.
 const admissionRetryBudget = 2 * time.Minute
 
+// errNoAdmission is the engine refusing for longer than admissionRetryBudget.
+// It is a busy server, not a crashed one, and callers say so.
+var errNoAdmission = errors.New("the engine has had no room for this request for " +
+	admissionRetryBudget.String() + "; it is refusing new work rather than queueing it, " +
+	"which usually means the context or the slot ceiling is too large for the memory available")
+
 // admissionRetryFallback is how long to wait when the engine refuses without
 // saying for how long.
 const admissionRetryFallback = 250 * time.Millisecond
@@ -95,9 +101,7 @@ func (s *llamaServerRunner) postWaitingForAdmission(ctx context.Context, endpoin
 		res.Body.Close()
 
 		if time.Now().Add(wait).After(deadline) {
-			return nil, errors.New("the engine has had no room for this request for " +
-				admissionRetryBudget.String() + "; it is refusing new work rather than queueing it, " +
-				"which usually means the context or the slot ceiling is too large for the memory available")
+			return nil, errNoAdmission
 		}
 
 		attempt++

@@ -165,6 +165,7 @@
           {
             "group": "Features",
             "pages": [
+              "/xollama/council",
               "/xollama/think-budget",
               "/xollama/tokenize",
               "/xollama/gemma4-drafter"

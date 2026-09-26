@@ -84,20 +84,22 @@ type CouncilRole struct {
 }
 
 // CouncilContext is the council's window and its compaction trigger. The
-// engine grants windows and reports pressure (session_pressure_v1); these say
-// what to ask for and when the pressure means compact.
+// engine grants windows and reports pressure (/kv, kv_pressure_v1); these say
+// what to ask for and when to compact.
 type CouncilContext struct {
 	// Window is the num_ctx the council's owner session asks for. Zero means
-	// the model's own context length. A grant is sticky for the life of the
-	// session, so this is asked once.
+	// the model's own context length. The engine may grant less; under
+	// kv_pressure_v1 an idle owner gives some back and asks again once the
+	// pressure is gone (kv_resize_v1).
 	Window int `json:"window,omitempty"`
 
 	// Floor is the smallest window the council accepts (num_ctx_min). Zero
 	// means all or nothing.
 	Floor int `json:"floor,omitempty"`
 
-	// CompactAt is the session pressure at which the conversation is
-	// compacted before the next turn, in (0, 1). Zero means the default 0.85.
+	// CompactAt is the share of the granted window at which the conversation
+	// is compacted before the next turn, in (0, 1). Zero means the default
+	// 0.85.
 	CompactAt float64 `json:"compact_at,omitempty"`
 }
 
@@ -227,7 +229,7 @@ func (c *Council) validate(engine string) error {
 			return fmt.Errorf("xollama config: council.context.floor %d is above window %d; the engine grants a window in [floor, window]", x.Floor, x.Window)
 		}
 		if x.CompactAt < 0 || x.CompactAt >= 1 {
-			return fmt.Errorf("xollama config: council.context.compact_at %v must be in (0, 1); it is the session pressure that triggers compaction", x.CompactAt)
+			return fmt.Errorf("xollama config: council.context.compact_at %v must be in (0, 1); it is the share of the council's window at which the conversation is compacted", x.CompactAt)
 		}
 	}
 	return nil

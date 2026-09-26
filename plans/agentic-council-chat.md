@@ -1,6 +1,6 @@
 # Agentic Council Chat
 
-**Status:** ACTIVE · **Phase:** 5 — surfaces and docs (Phase 4 done 2026-09-26) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
+**Status:** DONE · **Phase:** all five closed 2026-09-26 (desktop toggle open, see STATE_SUMMARY) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
 
 In this chat mode, one model name is a *council*. A client connects to xollama
 the usual way: `/api/chat`, the OpenAI or Anthropic API, the CLI, or the
@@ -18,7 +18,7 @@ KV cache and prefills only its own role and turn.
 - [x] Phase 2 — config and tweak (2026-09-26; results below)
 - [x] Phase 3 — the runner (2026-09-26; live on b111, results below)
 - [x] Phase 4 — PolyKV path (2026-09-26; A/B on b111, results below)
-- [ ] Phase 5 — surfaces and docs
+- [x] Phase 5 — surfaces and docs (2026-09-26; results below; desktop toggle an open decision)
 
 ## What the user sees
 - `xollama create my-council -f Modelfile` (or `xollama tweak model my-council`)
@@ -125,6 +125,16 @@ negotiation, compaction on raw pressure) and §10 (bookings).
 - **Config** (Phase 2): `context.window`, `context.floor` (→ `num_ctx_min`)
   and `context.compact_at` (default 0.85). Per-role `max_tokens` sets each
   member's output room.
+- **As built (Phase 4, b111).** The grant is read from `/kv`
+  `allocations[]` by the owner's session id, not from `X-Context-Window`.
+  Before a turn the conversation is compacted when its rendered tokens pass
+  `compact_at` of the grant (or the floor, if larger). The sticky-grant
+  premise no longer holds on b111: the owner grows back toward its ask when
+  nothing is refused, and after a turn under global pressure (`refused_60s`)
+  it shrinks, deferred, to what it uses plus a reserve. **Not built:**
+  condensing the findings or critiques within a turn, and compaction driven by
+  the per-session `pressure` field. Neither has been needed so far: a turn's
+  layers are a few thousand tokens against a 16k grant.
 
 ## Where it lives (researched)
 - **Definition**: new `Council` sub-struct in `types/xollama/config.go`
@@ -620,6 +630,58 @@ upstream owns. Ideas worth borrowing:
   management route, read and control, so a pool tree or a window can be
   inspected and driven through xollama (`docs/xollama/introspection.mdx`).
 
+## Phase 5 results — surfaces and docs (2026-09-26)
+
+- **Docs.** `docs/xollama/council.mdx` is the user's page: making a council
+  (`cp` + `tweak`, or a Modelfile `XOLLAMA` block), every setting with its flag
+  and default, what a client sees, PolyKV with the Phase 4 numbers, and the
+  limits. It is linked from the index and the navigation. `tweak.mdx` keeps
+  the how-to and points there. `docs/features/council.md` is the maintainers'
+  page: where each piece lives, the hooks, the invariants and the tests.
+- **CLI, walked live** as `ollama` on b111 with the model's own context
+  (131k, `-c 524288` at `-np 4`): `cp`, `tweak --council=on` and `show` work as
+  written. The walk found two defects:
+  - **One-shot `xollama run <council> "…"` never reached the council.**
+    Upstream sends a one-shot prompt to `/api/generate`, and the council is
+    chat-only, so the plain model answered with no error. `RunHandler` now sends
+    it through `chat()` when `/api/show` says the council is on; `--format`
+    keeps generate (`cmd/council_run.go`, one `council` hook line). Live:
+    "Hello!" answered on the direct path, `--verbose` prints the council's
+    summed counts, and `--hidethinking` prints the answer alone.
+  - **A refused critic failed the turn and expired the model (bug-118).** At
+    131k the engine's elastic recurrent-state cache stayed at 4 committed cells
+    (of 8 reserved) and refused a critic with 429. Council members use the
+    native chat path, which did not wait out a 429 as the completion path does.
+    The error then carried ggml's routine `failed to allocate graph,
+    reserving` line, which upstream's out-of-memory heuristic matches, so the
+    scheduler expired every loaded model. Both are fixed: the chat path queues
+    on 429, and on opencoti that line is not an error.
+  - **With those fixed, the turn deadlocked instead.** Every sequence on
+    this hybrid model, pool or slot, holds one recurrent-state cell. The owner
+    and the four pinned layers already held more than the four cells the
+    engine would commit at 131k, so the synthesizer waited out its whole 2-minute
+    admission budget three turns in a row (188 refusals). On a recurrent engine
+    (`/kv` reports an `rs` block) the tree now releases a stage's layer once
+    its workers are closed and a later stage no longer needs it. Each new layer
+    then forks the conversation's own pool: P2r goes when P2f is built, and
+    P2f when P3s is. Live, same model and context: three full council turns
+    in 115, 66 and 54 s, with 0 refusals, 0 errors, no model expiry, and six
+    early releases. The cost is re-reading the plan and the findings
+    once per stage. A non-recurrent model keeps the whole tree
+    (`TestARecurrentModelReleasesEachStageItHasFinished`,
+    `TestACouncilOnPolyKVBuildsItsTreeOnce`).
+- **Also fixed on the way:** bug-117. A model swap waited about 9 s on
+  free-memory refreshes that could never finish; it now takes about 1 s, and
+  the log has no false ERROR.
+- **Stale wording corrected:** `compact_at` is the share of the granted window,
+  not a "session pressure", in the schema comments, the `tweak` help and the
+  validation error. The plan's pressure section gains an as-built note.
+- **Desktop toggle: not built; an open decision.** The app already serves a
+  council tag with no change: it lists it like any model, and the
+  deliberation arrives as thinking, which the Thinking panel shows. The Think
+  button's "off" sends `think: false`, which gets the answer alone. What a
+  toggle could add is set out under "Open decisions" in `STATE_SUMMARY.md`.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).
@@ -668,3 +730,7 @@ upstream owns. Ideas worth borrowing:
 - 2026-09-26 — `/api/engine` exposes every opencoti management route, reads
   and controls, always (the owner's call; the risk on a non-localhost bind is
   stated in the doc). Inference, `/cors-proxy` and `/tools` stay out.
+- 2026-09-26 — A council answers chat only. `/api/generate` and
+  `/v1/completions` are prompt completion and serve the plain model. The CLI's
+  one-shot `run` is moved onto chat for a council, rather than teaching
+  generate about councils.

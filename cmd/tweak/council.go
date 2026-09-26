@@ -348,10 +348,10 @@ func councilFields() []field {
 		{
 			name:  "council-compact-at",
 			path:  "council.context.compact_at",
-			title: "Compact at — the session pressure that compacts the conversation",
-			help: "PolyKV reports how full the council's session is. At this pressure the\n" +
-				"conversation is compacted before the next turn: the oldest turns summarised,\n" +
-				"the latest kept. Unset is 0.85. A number between 0 and 1.",
+			title: "Compact at — the share of the window that compacts the conversation",
+			help: "Once the conversation fills this share of the council's window, it is\n" +
+				"compacted before the next turn: the oldest turns summarised, the last three\n" +
+				"kept. Unset is 0.85. A number between 0 and 1.",
 			kind:    kindFloat,
 			quiet:   true,
 			blocked: councilOff,

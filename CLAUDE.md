@@ -52,7 +52,8 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
 - `docs/features/engine-opencoti-llamafile.md` · `docs/features/rebrand.md` ·
   `docs/features/store-ownership.md` · `docs/features/windows-installer.md` ·
   `docs/features/model-config.md` · `docs/features/modelfile-roundtrip.md` ·
-  `docs/features/docker-release.md` · `docs/features/device-selection.md`
+  `docs/features/docker-release.md` · `docs/features/device-selection.md` ·
+  `docs/features/council.md`
 - `docs/evaluations/phase0-engine-compat.md` — measured engine-compat baseline.
 
 Remotes: `origin` = mann1x/xollama · `upstream` = ollama/ollama ·
@@ -164,7 +165,8 @@ errgroup runner: route-only decision, researchers and critics in parallel,
 synthesizer) and `server/council.go` (members as in-process chat turns, each
 on its own engine session; on opencoti with PolyKV, `server/council_polykv.go`
 builds the turn's pool tree and `llm/engine_council.go` is its client), reached from one `councilServes` line in
-`ChatHandler` (`council` hook); tools or a `format` bypass it — see
+`ChatHandler` (`council` hook); tools or a `format` bypass it, and a one-shot
+`xollama run <council> "…"` goes through chat (`cmd/council_run.go`) — see
 `.claude/rules/model-config.md` and `.claude/rules/council.md`.
 **Device selection**: a model's device pin (`types/xollama/devices.go`) is
 applied by `selectModelDevices` in `server/device_select.go`, hooked from
@@ -173,7 +175,8 @@ and unpinned models are kept off an integrated Vulkan GPU when a discrete GPU
 exists. `/api/xollama/devices` (`api/xollama_devices.go`, `XollamaDevicesHandler`
 in `server/identity.go`) feeds the `tweak` device menu (`cmd/tweak/devices.go`)
 with the server's view. Where opencoti serves a backend, discovery takes the
-engine's own device list (`discover/opencoti.go`, `llm/engine/enumerate.go`) —
+engine's own device list (`discover/opencoti.go`, `llm/engine/enumerate.go`),
+and refreshes free memory from it before a load (`discover/refresh_opencoti.go`) —
 see `docs/features/device-selection.md`.
 **Desktop UI**: `app/ui/app/src/routes/` (React 19 + TanStack Router + Vite),
 sibling to the `app` workspace (`vite.config.ts`, `vitest.config.ts`).

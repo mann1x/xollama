@@ -7,6 +7,10 @@ paths:
   - server/council_polykv_test.go
   - llm/engine_council.go
   - llm/engine_council_test.go
+  - cmd/council_run.go
+  - cmd/council_run_test.go
+  - docs/xollama/council.mdx
+  - docs/features/council.md
   - plans/agentic-council-chat.md
   - plans/council-eval/**
 ---
@@ -45,8 +49,9 @@ paths:
   `.claude/rules/dynamic-slots.md`.
 - Guards in `server/council_test.go`: `TestToolsAndFormatBypassTheCouncil`,
   `TestAModelWithoutACouncilIsUntouched`,
-  `TestEveryParallelMemberHasItsOwnSession`. Prose: `docs/xollama/tweak.mdx`
-  ("How a council turn runs").
+  `TestEveryParallelMemberHasItsOwnSession`. Prose: `docs/xollama/council.mdx`
+  (users), `docs/features/council.md` (maintainers), `docs/xollama/tweak.mdx`
+  (setting it).
 - **PolyKV (Phase 4).** `server/council_polykv.go` builds one tree per turn
   when the runner implements `llm.PolyKV` (opencoti, `polykv_subpools_v1` +
   `kv_status_v1`, `CouncilPools > 0`, affinity on). The planner is the owner:
@@ -62,8 +67,24 @@ paths:
   is refused. `finish` shrinks it, deferred, only under pressure and only if
   that gives back at least 4096 cells or 10 %. Compaction folds the old turns
   into the system message past `compact_at` of the grant.
+- **Recurrent-state models.** When `/kv` reports an `rs` block (`begin` reads
+  it on every turn, including the first, before any booking exists) each
+  pool holds one of a few state cells. Building a new layer first releases
+  every layer that has no worker on it, no child and is not the
+  conversation's; the new layer then forks P1. Without this a 131k turn
+  deadlocked on its synthesizer (bug-118). Guard:
+  `TestARecurrentModelReleasesEachStageItHasFinished`. A released layer is
+  never a parent and never released again at the turn's end.
 - The launch adds `councilPoolSeats` (`2 + 2 × rounds`) pool seats, and only
   for a council whose `polykv` is not `off`. Guards:
   `server/council_polykv_test.go` (a fake engine records the tree) and
   `llm/engine_council_test.go`. Measured result: plan Phase 4.
+- **Chat only.** The hook is in `ChatHandler`; `/api/generate` and
+  `/v1/completions` serve a council model as the plain model. Upstream's
+  one-shot `xollama run <model> "…"` uses `/api/generate`, so `RunHandler`
+  sends it through `chat()` when `/api/show` says the council is on
+  (`runsAsCouncil` / `runCouncilOnce` in `cmd/council_run.go`, one `council`
+  hook line in `cmd/cmd.go`); `--format` keeps generate. Guarded by
+  `cmd/council_run_test.go`. Found by the Phase 5 CLI walkthrough, where the
+  one-shot run silently answered without the council.
 

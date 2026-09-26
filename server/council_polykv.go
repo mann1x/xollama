@@ -70,6 +70,11 @@ type councilTree struct {
 	grant  int
 	layers map[string]*councilLayer
 	order  []*councilLayer // creation order, for release and for parents
+	// recurrent is set when the engine keeps a recurrent state per sequence
+	// (/kv reports an rs block). Every pool then holds one of a handful of
+	// state cells, so a stage's layer is released once its members are done.
+	recurrent bool
+	workers   map[string]*councilLayer // worker session -> the layer it attached to
 }
 
 type councilLayer struct {
@@ -77,6 +82,10 @@ type councilLayer struct {
 	ready chan struct{}
 	id    int
 	err   error
+	// Guarded by the tree's mu.
+	users    int  // workers attached and not yet closed
+	root     bool // the conversation's own layer, kept for the whole turn
+	released bool
 }
 
 // ownerPlacement is the planner's: the owner session and its window. Before
@@ -91,12 +100,8 @@ func (t *councilTree) ownerPlacement() *llm.Placement {
 	return &llm.Placement{NumCtx: t.window, NumCtxMin: t.floor}
 }
 
-// learnGrant reads the owner's booking from the engine.
-func (t *councilTree) learnGrant(ctx context.Context) (llm.KVAllocation, bool) {
-	k, err := t.kv.KV(ctx)
-	if err != nil {
-		return llm.KVAllocation{}, false
-	}
+// learnGrant reads the owner's booking from a /kv answer.
+func (t *councilTree) learnGrant(k llm.KVStatus) (llm.KVAllocation, bool) {
 	a, ok := k.Session(t.owner)
 	if ok && a.Window > 0 {
 		t.mu.Lock()
@@ -108,7 +113,7 @@ func (t *councilTree) learnGrant(ctx context.Context) (llm.KVAllocation, bool) {
 
 // workerPlacement attaches a worker to the pool of its layer. Nil means the
 // worker could not be pooled and runs on its own, sized booking.
-func (t *councilTree) workerPlacement(ctx context.Context, msgs []api.Message) *llm.Placement {
+func (t *councilTree) workerPlacement(ctx context.Context, msgs []api.Message, session string) *llm.Placement {
 	if len(msgs) < 2 {
 		return nil
 	}
@@ -129,6 +134,13 @@ func (t *councilTree) workerPlacement(ctx context.Context, msgs []api.Message) *
 		slog.Info("council: pool not built, member runs unpooled", "error", err)
 		return nil
 	}
+	t.mu.Lock()
+	l.users++
+	if t.workers == nil {
+		t.workers = map[string]*councilLayer{}
+	}
+	t.workers[session] = l
+	t.mu.Unlock()
 	id := l.id
 	return &llm.Placement{PoolID: &id}
 }
@@ -164,6 +176,10 @@ func (t *councilTree) layer(ctx context.Context, text string, msgs []api.Message
 	}
 	l := &councilLayer{text: text, ready: make(chan struct{})}
 	t.layers[key] = l
+	idle := t.idleLeavesLocked(text)
+	t.mu.Unlock()
+	t.releaseLayers(ctx, idle)
+	t.mu.Lock()
 	parent := t.parentLocked(text)
 	t.mu.Unlock()
 
@@ -203,6 +219,9 @@ func (t *councilTree) conversationLayer(ctx context.Context, msgs []api.Message,
 	if err != nil {
 		return nil
 	}
+	t.mu.Lock()
+	l.root = true
+	t.mu.Unlock()
 	return l
 }
 
@@ -217,10 +236,53 @@ func conversationEnd(msgs []api.Message) int {
 	return -1
 }
 
+// idleLeavesLocked is, on a recurrent-state engine, every layer a new one
+// makes redundant: built, not the conversation's, no worker on it, and no
+// child (the engine refuses to release a parent). Its members are done, and
+// holding it would keep one of the engine's few state cells from the next
+// stage: at 131k on the 3090 the elastic cache stayed at 4 cells, and a turn
+// that kept all four layers could never seat its synthesizer (bug-118).
+func (t *councilTree) idleLeavesLocked(text string) []*councilLayer {
+	if !t.recurrent {
+		return nil
+	}
+	var out []*councilLayer
+	for _, l := range t.order {
+		if l.err != nil || l.released || l.root || l.users > 0 || l.text == text {
+			continue
+		}
+		if t.hasChildLocked(l) {
+			continue
+		}
+		l.released = true
+		out = append(out, l)
+	}
+	return out
+}
+
+func (t *councilTree) hasChildLocked(p *councilLayer) bool {
+	for _, l := range t.order {
+		if l != p && !l.released && len(l.text) > len(p.text) && strings.HasPrefix(l.text, p.text) {
+			return true
+		}
+	}
+	return false
+}
+
+func (t *councilTree) releaseLayers(ctx context.Context, ls []*councilLayer) {
+	for _, l := range ls {
+		if err := t.kv.ReleasePool(ctx, l.id); err != nil {
+			slog.Debug("council: could not release a finished layer", "pool", l.id, "error", err)
+			continue
+		}
+		slog.Debug("council: released a finished layer", "pool", l.id)
+	}
+}
+
 func (t *councilTree) parentLocked(text string) *councilLayer {
 	var best *councilLayer
 	for _, l := range t.order {
-		if l.err == nil && len(l.text) < len(text) && strings.HasPrefix(text, l.text) {
+		if l.err == nil && !l.released && len(l.text) < len(text) && strings.HasPrefix(text, l.text) {
 			if best == nil || len(l.text) > len(best.text) {
 				best = l
 			}
@@ -239,7 +301,12 @@ func (t *councilTree) release() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	t.mu.Lock()
-	order := slices.Clone(t.order)
+	var order []*councilLayer
+	for _, l := range t.order {
+		if !l.released {
+			order = append(order, l)
+		}
+	}
 	t.order, t.layers = nil, map[string]*councilLayer{}
 	t.mu.Unlock()
 	for i := len(order) - 1; i >= 0; i-- {
@@ -252,6 +319,12 @@ func (t *councilTree) release() {
 // closeWorker ends a worker's session. The guide's rule: every session a
 // council opens is closed when its member is done.
 func (t *councilTree) closeWorker(id string) {
+	t.mu.Lock()
+	if l, ok := t.workers[id]; ok {
+		l.users--
+		delete(t.workers, id)
+	}
+	t.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := t.kv.CloseSession(ctx, id); err != nil {
@@ -263,11 +336,19 @@ func (t *councilTree) closeWorker(id string) {
 // back toward the ask when nobody is being refused, and reports the pressure
 // the conversation is under, so the caller can compact.
 func (t *councilTree) begin(ctx context.Context) (pressure float64) {
-	a, ok := t.learnGrant(ctx)
+	k, err := t.kv.KV(ctx)
+	if err != nil {
+		return 0
+	}
+	// Read before the booking check: the first turn has no booking yet, and on
+	// a recurrent model it is the turn whose layers must be pruned.
+	t.mu.Lock()
+	t.recurrent = k.RS != nil && k.RS.CellsCap > 0
+	t.mu.Unlock()
+	a, ok := t.learnGrant(k)
 	if !ok {
 		return 0
 	}
-	k, _ := t.kv.KV(ctx)
 	if a.Window < t.window && !k.Pressure.Active() {
 		r, err := t.kv.Resize(ctx, t.owner, t.window, false)
 		if err == nil && r.Refusal != "" && r.LargestAdmissible > a.Window {
@@ -486,7 +567,7 @@ func (cm *councilMembers) place(ctx context.Context, r council.Request, req *api
 		return p, ""
 	}
 	req.SessionID = cm.memberSession(r)
-	if p := t.workerPlacement(ctx, r.Messages); p != nil {
+	if p := t.workerPlacement(ctx, r.Messages, req.SessionID); p != nil {
 		return p, req.SessionID
 	}
 	// Unpooled: state a window sized to this member, never the engine's

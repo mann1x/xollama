@@ -5,6 +5,35 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Council Chat Phase 5 closed: docs, the one-shot CLI turn,
+> councils at 131k on a hybrid model; bug-117 fixed.**
+> - Docs: `docs/xollama/council.mdx` (users, in the navigation and the index)
+>   and `docs/features/council.md` (maintainers). `compact_at` wording
+>   corrected in the schema, `tweak` and the validation error.
+> - CLI walked live as `ollama` on b111. One-shot `xollama run <council> "…"`
+>   went to `/api/generate` and silently skipped the council; it is now sent
+>   as a chat turn (`cmd/council_run.go`, `council` hook in `cmd/cmd.go`).
+> - bug-118, at the model's own 131k (`-c 524288`, `-np 4`). The engine's
+>   elastic recurrent-state cache stayed at 4 committed cells and refused a
+>   critic with 429. Three things went wrong in turn, each fixed. The chat path did not wait out a 429,
+>   as the completion path does, and now it does (503 after 2 min). ggml's
+>   routine `failed to allocate graph, reserving` line read as a runtime OOM
+>   and expired every model; on opencoti it is no longer an error. And the
+>   tree's four pinned layers held every cell, so the synthesizer could never
+>   be seated. On a recurrent engine the tree now releases each finished
+>   stage's layer. Live: 3 of 3 full council turns (115, 66, 54 s), 0
+>   refusals, 0 errors, no expiry.
+> - bug-117: a runner swap no longer waits on stock-llama-server discovery
+>   for devices opencoti serves (`discover/refresh_opencoti.go`; timed-out
+>   dirs cool down 15 min). The reaper no longer logs a stop it asked for as
+>   an ERROR. Refresh-to-load went from 9.3 s to about 1 s, and a swap's
+>   round trip from 15.8–20.2 s to 10.1–11.8 s.
+> - Desktop toggle not built. The app already serves a council tag, with
+>   the deliberation shown as thinking; the options are under Open
+>   decisions.
+> - Sent to opencoti: the elastic `rs` cache grew 4 → 8 at 16k but not at
+>   `-c 524288`.
+
 > **2026-09-26 — b65 vs b111 re-measured, paired and interleaved (opencoti
 > #329): the pin stays on b111.**
 > - Five repeats per cell, order alternating, never more than one compute
@@ -243,23 +272,34 @@ runs again on b111 once it is on the HF dev repo.
   Ollama API. On a server bound beyond localhost, anyone who can reach the
   port can close sessions or release pools (stated in
   `docs/xollama/introspection.mdx`).
-- Every runner swap spends about 2.3 s on a GPU-discovery subprocess that
-  times out and is killed with an ERROR in the log (bug-117).
+- On a hybrid model at a large context (b111, `-c 524288`) the engine's
+  elastic recurrent-state cache does not grow past 4 committed cells; it
+  refuses instead. A council copes by releasing finished layers, and
+  other parallel work queues. Reported to opencoti.
 - Open fork-sync items: `docs/protocols/FORK-SYNC.md` § "Open items".
 - Carried upstream PRs: `docs/protocols/CARRIED-PATCHES.md`.
 - UI lockfile Dependabot alerts are inherited from upstream and not addressed.
 
 ## Immediate next steps (in order)
 
-1. Council Chat Phase 5: `docs/xollama/council.mdx`, the feature doc, CLI
-   niceties, and the desktop toggle if wanted.
-2. bug-117: the discovery wait on every runner swap.
+1. Decide the desktop toggle (Open decisions).
+2. Move the engine pin when opencoti answers on the `rs` cache, and only on
+   a measurement.
 3. Make the GHCR package public if the first push left it private
    (`docs/features/docker-release.md`, one-time setup).
 
 ## Open decisions
 
-- Whether the desktop UI gets a council toggle (Phase 5).
+- The desktop council toggle. The app needs nothing to serve a council tag.
+  The options are:
+  (A) a per-chat "council off" switch. It needs a request field, and
+  contradicts "a council is a property of the model".
+  (B) a model-level switch that writes the model's config layer from the
+  chat UI. It changes the model for every client, and the app backend
+  proxies only reads today.
+  (C) cosmetics only: a council badge in the model picker (from `/api/show`
+  `xollama.council.enabled`) and the Think button labelled "Deliberation"
+  for a council. Recommended: C, or nothing.
 
 ## Maintenance protocol
 

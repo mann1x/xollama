@@ -124,6 +124,9 @@ func boundedNumPredict(numPredict, numCtx int) int {
 type llamaServerRunner struct {
 	// xollama-hook: council -- the engine's feature set, read once per process.
 	polykvState
+	// xollama-hook: engine-select -- set by stopProcess, so a stop xollama
+	// asked for is not reported as the engine crashing.
+	stopping atomic.Bool
 
 	port               int
 	cmd                *exec.Cmd
@@ -1292,6 +1295,9 @@ func (s *llamaServerRunner) startProcess() error {
 	s.cmd = cmd
 	s.port = port
 	s.usedOpencoti = usedOpencoti
+	if s.status != nil { // xollama-hook: engine-select -- see llm/engine_status.go
+		s.status.opencoti.Store(usedOpencoti)
+	}
 	// xollama-hook: engine-session — the pool registry is sized to the same
 	// number the engine was given seats for, and is rebuilt per process: pool
 	// ids belong to the engine that issued them.
@@ -1321,6 +1327,7 @@ func (s *llamaServerRunner) startProcess() error {
 	}
 	s.done = make(chan struct{})
 	s.doneErr = nil
+	s.stopping.Store(false) // xollama-hook: engine-select
 	s.loadStart = time.Now()
 	s.startLoadTracking(s.loadStart)
 
@@ -1329,7 +1336,15 @@ func (s *llamaServerRunner) startProcess() error {
 		err := cmd.Wait()
 		s.doneErr = err
 		if msg := s.lastErrMsg(); err != nil && msg != "" {
-			slog.Error("llama-server terminated", "error", err, "exit", ExitStatusFromError(err))
+			// xollama-hook: engine-select -- at load, opencoti prints a benign
+			// "Error: Jinja Exception: No messages provided." while probing the
+			// chat template. That line is the runner's last "error", so every
+			// unload was logged as a crash (bug-117).
+			if s.usedOpencoti && s.stopping.Load() {
+				slog.Debug("llama-server stopped as asked", "error", err)
+			} else {
+				slog.Error("llama-server terminated", "error", err, "exit", ExitStatusFromError(err))
+			}
 			s.doneErr = errors.New(msg)
 		}
 		close(done)
@@ -2119,6 +2134,9 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return err
 		}
+		if errors.Is(err, errNoAdmission) {
+			return api.StatusError{StatusCode: http.StatusServiceUnavailable, ErrorMessage: err.Error()}
+		}
 		slog.Error("llama-server completion error", "error", err)
 		if msg := s.lastErrMsg(); msg != "" {
 			return fmt.Errorf("model runner has unexpectedly stopped, this may be due to resource limitations or an internal error, check xollama server logs for details: %s", msg)
@@ -2433,16 +2451,17 @@ func (s *llamaServerRunner) Chat(ctx context.Context, req ChatRequest, fn func(C
 	}
 
 	endpoint := fmt.Sprintf("http://127.0.0.1:%d/v1/chat/completions", s.port)
-	serverReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, buffer)
-	if err != nil {
-		return fmt.Errorf("error creating chat request: %v", err)
-	}
-	serverReq.Header.Set("Content-Type", "application/json")
-
-	res, err := s.httpClient().Do(serverReq)
+	// xollama-hook: launch-config — as on the completion path: an engine with
+	// an admission gate refuses with 429 and Retry-After instead of queueing,
+	// and a busy server queues. Council members and every native-template
+	// chat come this way (bug-118).
+	res, err := s.postWaitingForAdmission(ctx, endpoint, buffer.Bytes())
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return err
+		}
+		if errors.Is(err, errNoAdmission) {
+			return api.StatusError{StatusCode: http.StatusServiceUnavailable, ErrorMessage: err.Error()}
 		}
 		slog.Error("llama-server chat error", "error", err)
 		if msg := s.lastErrMsg(); msg != "" {
@@ -3147,6 +3166,7 @@ func (s *llamaServerRunner) stopProcess() error {
 			return nil
 		}
 		slog.Debug("stopping llama-server", "pid", s.Pid())
+		s.stopping.Store(true) // xollama-hook: engine-select
 		if err := s.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			return err
 		}

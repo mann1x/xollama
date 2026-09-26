@@ -317,6 +317,62 @@ func TestCompletionWaitsForAdmission(t *testing.T) {
 	}
 }
 
+// The native chat path waits the same way. A council's members come this way,
+// and a refused critic used to fail the whole turn -- and, through upstream's
+// out-of-memory heuristic, expire the model (bug-118).
+func TestChatWaitsForAdmission(t *testing.T) {
+	var refusals atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/health":
+			fmt.Fprint(w, `{"status":"ok"}`)
+		case "/v1/chat/completions":
+			if refusals.Add(1) <= 2 {
+				w.Header().Set("Retry-After", "0.01")
+				w.WriteHeader(http.StatusTooManyRequests)
+				fmt.Fprint(w, `{"error":{"code":429,"message":"admission rejected: rs pool exhausted","type":"rate_limit_error"}}`)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprintln(w, `data: {"choices":[{"delta":{"content":"seated"}}]}`)
+			fmt.Fprintln(w, `data: {"choices":[{"delta":{},"finish_reason":"stop"}]}`)
+			fmt.Fprintln(w, `data: [DONE]`)
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	parts := strings.Split(srv.URL, ":")
+	var port int
+	fmt.Sscanf(parts[len(parts)-1], "%d", &port)
+
+	runner := &llamaServerRunner{
+		port:         port,
+		cmd:          fakeRunningCmd(),
+		sem:          semaphore.NewWeighted(1),
+		options:      api.Options{Runner: api.Runner{NumCtx: 2048}},
+		usedOpencoti: true,
+	}
+
+	opts := api.DefaultOptions()
+	var got string
+	err := runner.Chat(t.Context(), ChatRequest{
+		Messages: []api.Message{{Role: "user", Content: "hi"}},
+		Options:  &opts,
+	}, func(r ChatResponse) { got += r.Message.Content })
+	if err != nil {
+		t.Fatalf("a refused chat should have been waited out, not returned: %v", err)
+	}
+	if got != "seated" {
+		t.Errorf("content = %q, want %q", got, "seated")
+	}
+	if n := refusals.Load(); n != 3 {
+		t.Errorf("expected two refusals then a seat, got %d attempts", n)
+	}
+}
+
 // The wait is the caller's to cancel. A request whose context ends while the
 // engine is still refusing must come back promptly, not sit out the budget.
 func TestAdmissionWaitHonoursTheCaller(t *testing.T) {

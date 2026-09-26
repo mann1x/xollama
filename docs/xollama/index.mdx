@@ -3,10 +3,12 @@ title: What xollama adds
 ---
 
 xollama is a soft fork of Ollama. It runs everything Ollama runs, the same way,
-and adds four things on top: a way to **bound how long a model thinks**, a
-**tokenizer endpoint**, **speculative decoding with a Gemma-4 assistant
-drafter**, and the option to serve GGUF models on a **different inference
-engine**, opencoti-llamafile, instead of stock `llama-server`.
+and adds a few things on top: **council chat**, where one model name answers
+with a planner, researchers, critics and a synthesizer; a way to **bound how
+long a model thinks**; a **tokenizer endpoint**; **speculative decoding with a
+Gemma-4 assistant drafter**; and the option to serve GGUF models on a
+**different inference engine**, opencoti-llamafile, instead of stock
+`llama-server`.
 
 <Note>
   **Off means off.** With `XOLLAMA_ENGINE=llamacpp` and no fork settings,
@@ -14,18 +16,19 @@ engine**, opencoti-llamafile, instead of stock `llama-server`.
   feature on this page is something you switch on.
 </Note>
 
-## The four additions
+## The additions
 
 | | What it is | Where |
 |---|---|---|
+| **Council chat** | One model name that answers each turn by planning, researching and critiquing in parallel, then synthesizing — through every chat API, with the deliberation shown as thinking | [Council chat](/xollama/council) |
 | **Think budget** | Cap the tokens a reasoning model may spend inside its thinking block, per request or per model, so it answers instead of looping until the context is gone | [Bounding thinking](/xollama/think-budget) |
 | **`/api/tokenize`** | Count or inspect tokens with the model's own tokenizer, without generating | [Tokenizer endpoints](/xollama/tokenize) |
 | **Gemma-4 drafters** | Speculative decoding using a Gemma-4 assistant head as the drafter | [Gemma-4 drafters](/xollama/gemma4-drafter) |
 | **opencoti engine** | Serve GGUF on opencoti-llamafile instead of `llama-server`, for its KV-capacity and long-context work | [Choosing an engine](/xollama/engines) · [Tuning opencoti](/xollama/opencoti-tuning) |
 
-The first two are staged as pull requests against upstream Ollama and are
-written to behave exactly as they would if upstream took them. The third and
-fourth are fork features.
+The think budget and the tokenizer are staged as pull requests against
+upstream Ollama and are written to behave exactly as they would if upstream
+took them. The others are fork features.
 
 ## Environment variables
 
@@ -56,6 +59,10 @@ can override most of them for itself — see
 ## Which pages to read
 
 <CardGroup cols={2}>
+<Card title="Council chat" icon="users" href="/xollama/council">
+  One model name, several minds: a planner, researchers, critics and a
+  synthesizer, sharing one cache on opencoti.
+</Card>
 <Card title="Bounding thinking" icon="brain" href="/xollama/think-budget">
   The one to read first if you use a reasoning model in a coding agent.
 </Card>

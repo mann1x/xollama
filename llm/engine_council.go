@@ -83,6 +83,17 @@ type PoolInfo struct {
 type KVStatus struct {
 	Allocations []KVAllocation `json:"allocations"`
 	Pressure    *KVPressure    `json:"pressure"`
+	// RS is the recurrent-state cache, on a model that keeps one per
+	// sequence (hybrids: Qwen3.5, Qwen3-Next, LFM2, Nemotron-H). Nil otherwise.
+	RS *KVRecurrent `json:"rs"`
+}
+
+// KVRecurrent is /kv's rs block: every live sequence, pool or slot, holds one
+// state cell, and an elastic cache commits them in chunks up to its cap.
+type KVRecurrent struct {
+	CellsCommitted int `json:"cells_committed"`
+	CellsCap       int `json:"cells_cap"`
+	CellsFree      int `json:"cells_free"`
 }
 
 // KVAllocation is one session's booking.

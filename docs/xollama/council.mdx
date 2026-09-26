@@ -1,0 +1,163 @@
+---
+title: Council chat
+description: One model name that answers every turn with a planner, researchers, critics and a synthesizer, through the chat APIs you already use.
+---
+
+A **council** is a model that answers each chat turn by consulting itself
+several times before it replies:
+
+1. a **planner** decides whether the message needs the council at all. A
+   greeting or a trivial fact it answers directly, in one short call;
+2. otherwise it writes a plan, and **researchers** work on it in parallel;
+3. **critics** review the plan and the findings in parallel, looking for
+   errors, gaps and disagreements;
+4. a **synthesizer** writes the one answer the client receives.
+
+The council runs inside the server. A client asks for the council's model name
+the way it asks for any model — `/api/chat`, the OpenAI and Anthropic
+endpoints, `xollama run`, the desktop app — and gets one streamed answer. The
+deliberation (the plan, the findings, the critiques) streams as **thinking**,
+so every client that shows a reasoning model's thinking shows it with no
+change.
+
+## Making one
+
+A council is a setting on a model, so make a tag for it and switch it on there.
+The weights are shared with the model you copy, so this costs no disk:
+
+```sh
+xollama cp qwen3.6:27b qwen3.6-council:27b
+xollama tweak model qwen3.6-council:27b --council=on
+```
+
+`--council=on` alone takes the tested defaults. `xollama show` lists what is
+set:
+
+```
+  xOllama
+    council.enabled    on
+```
+
+From a Modelfile, the same thing is the `XOLLAMA` directive (see
+[Settings that belong to the model](/xollama/model-settings)):
+
+```dockerfile
+FROM qwen3.6:27b
+
+XOLLAMA {
+  "version": 4,
+  "council": { "enabled": true, "researcher": { "count": 3 } }
+}
+```
+
+Then use it like any model:
+
+```sh
+xollama run qwen3.6-council:27b "Hello!"                      # answered directly
+xollama run qwen3.6-council:27b "Should a 10 GB sort use quicksort or mergesort on a 16 GB machine?"
+xollama run qwen3.6-council:27b --hidethinking "…"            # the answer only
+```
+
+<Note>
+  Use the council tag for plain turns too. It answers a greeting directly, in
+  one extra short call. Switching between the council tag and the tag it was
+  copied from swaps the runner, as it does between any two tags, and a swap
+  reloads the model.
+</Note>
+
+## The settings
+
+Every setting is optional; `xollama tweak model <name> --council` walks them.
+
+| Setting | Flag | Default | What it does |
+|---|---|---|---|
+| `council.enabled` | `--council` | off | The switch. |
+| `council.researcher.count`, `council.critic.count` | `--council-researchers`, `--council-critics` | 2, 2 | How many run in parallel. |
+| `council.<role>.prompt` | `--council-<role>-prompt` | built in | Replaces one role's instruction. `@file` reads it from a file. |
+| `council.<role>.model` | `--council-<role>-model` | the council's model | Serves one role with another model. That role then shares no cache with the rest. |
+| `council.<role>.max_tokens` | `--council-<role>-max-tokens` | 512 planner, 384 researcher, 256 critic, 1024 synthesizer | Caps one member's reply. |
+| `council.charter` | `--council-charter` | built in | The system prompt every member shares. |
+| `council.temperature_jitter` | `--council-jitter` | 0.02 | Researchers and critics each draw a temperature within ±2 % of the model's, so parallel members do not say the same thing. |
+| `council.seed` | `--council-seed` | random | A fixed seed makes a council reproducible; every member's seed is derived from it. |
+| `council.max_rounds` | `--council-max-rounds` | 1 | Lets the critics send the research back, up to 4 rounds in all. |
+| `council.show_deliberation` | `--council-show-deliberation` | on | Off sends the answer alone. |
+| `council.polykv` | `--council-polykv` | `auto` | Shares the conversation's cache between members on opencoti (below). `on` refuses to serve without it, `off` never uses it. |
+| `council.context.window`, `.floor`, `.compact_at` | `--council-window`, `--council-floor`, `--council-compact-at` | the model's context, all or nothing, 0.85 | The conversation's window on opencoti, the least it accepts, and when to compact. |
+
+`<role>` is `planner`, `researcher`, `critic` or `synthesizer`. The defaults
+are the ones measured while the feature was built; the prompts, in particular,
+are tuned to the planner's routing decision, so change them one at a time.
+
+## What a client sees
+
+- **Streaming.** The deliberation arrives as thinking, one member at a time
+  under a `### Researcher 2`-style heading, then the answer as content.
+  Parallel members run at once, and a member's text follows whole once the
+  member before it has finished.
+- **`think: false`**, or `--hidethinking` in the CLI, gets the answer only. So
+  does `council.show_deliberation off`.
+- **Tools or a `format`** in the request mean the client is steering the output
+  itself. That turn is answered as a plain chat, without the council.
+- **Usage counts** (`prompt_eval_count`, `eval_count`) are the sum over every
+  member, and `prompt_eval_cached_count` is the part of the prompts that came
+  from the cache.
+
+## On opencoti: members share the conversation
+
+On the opencoti engine the members do not each read the conversation from
+scratch. The conversation is cached once; the researchers share it plus the
+plan, and the critics and the synthesizer each share the step before theirs.
+Every member computes only what is new to it. On a hybrid model, whose every
+cached sequence also holds a recurrent state, each stage's shared part is freed
+as soon as its members are done, so a turn fits in the few state slots the
+engine keeps. When the turn ends, those shared
+parts are freed and the members' sessions are closed. The conversation keeps
+its window for the next turn.
+
+Measured on a 27B model, 16k context, four council turns each way:
+
+| per council turn | members read everything | members share (PolyKV) |
+|---|---|---|
+| prompt tokens computed | 3,139 | **525** |
+| served from the cache | about half | about nine tenths |
+| KV cache in use at the peak | 4,300 cells | 2,400–2,800 cells |
+
+The turn itself took as long either way: about 2,000 generated tokens
+dominate it. The saving is in what the cache has to hold and in prompt
+processing, and it grows with the length of the conversation and with the
+number of members.
+
+The window follows the engine. When other requests are being refused for
+lack of cache, an idle council gives back the part of its window it is not
+using, down to `council.context.floor`, and takes it back on a later turn once
+the pressure is gone. Past `council.context.compact_at` of the window, the
+older turns are summarised into the system prompt and the last three are kept
+word for word.
+
+A council on PolyKV reserves a few pool seats when its model loads (four for
+one round), so its runner is its own even among tags that share weights.
+
+To watch it: `GET /api/engine?model=<council>&endpoint=kv` shows the window
+and the pressure, and `endpoint=polykv/pools` the shared parts while a turn
+runs. See [Seeing what the engine did](/xollama/introspection).
+
+On stock `llama.cpp` a council runs the same flow; each member simply reads
+the conversation itself.
+
+## Limits
+
+- A council answers **chat** turns: `/api/chat`, `/v1/chat/completions`,
+  `/v1/messages`, `/v1/responses`. `/api/generate` and `/v1/completions` are
+  prompt completion, and a council model answers them as the plain model.
+  `xollama run` sends a one-shot prompt to a council as a chat turn, so it
+  goes through the council either way.
+- A council is a property of the model, never of the server or the request:
+  there is no environment variable and no request field that turns it on.
+- A turn is several calls to the model, so it takes longer than a plain one:
+  about a minute for a 27B model on one GPU, against a second or two for a
+  greeting answered directly.
+- Parallel members need parallel slots. On opencoti they run at once, including
+  on the architectures upstream limits to one sequence; on stock `llama.cpp`
+  those take turns (see [Concurrent requests](/xollama/slots)).
+- A model written with a council needs an xollama that reads config schema v4.
+  An older one refuses the model instead of serving it without its council.

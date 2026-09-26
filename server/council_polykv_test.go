@@ -26,6 +26,8 @@ type fakeKV struct {
 	grant    int
 	used     int
 	pressure *llm.KVPressure
+	// recurrent answers /kv with an rs block, as a hybrid model does.
+	recurrent bool
 }
 
 type fakePool struct {
@@ -66,6 +68,9 @@ func (f *fakeKV) KV(context.Context) (llm.KVStatus, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	k := llm.KVStatus{Pressure: f.pressure}
+	if f.recurrent {
+		k.RS = &llm.KVRecurrent{CellsCommitted: 4, CellsCap: 8}
+	}
 	if f.grant > 0 {
 		k.Allocations = []llm.KVAllocation{{SessionID: f.ownerLocked(), Window: f.grant, Used: f.used}}
 	}
@@ -159,6 +164,35 @@ func TestACouncilOnPolyKVBuildsItsTreeOnce(t *testing.T) {
 	}
 	if !slices.Equal(kv.released, []int{3, 2, 1, 0}) {
 		t.Errorf("released %v, want [3 2 1 0]", kv.released)
+	}
+}
+
+func TestARecurrentModelReleasesEachStageItHasFinished(t *testing.T) {
+	e := &councilEngine{route: `{"route":"council"}`}
+	kv := &fakeKV{recurrent: true}
+	s := polykvCouncil(t, e, kv, councilOn())
+	_, content := joined(chatChunks(t, s, polykvReq))
+	if !strings.HasPrefix(content, "The sky is blue") {
+		t.Fatalf("answer %q", content)
+	}
+
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	if len(kv.pools) != 4 {
+		t.Fatalf("pools built = %d, want 4: %+v", len(kv.pools), kv.pools)
+	}
+	// Each stage forks the conversation, not the stage before it, which it
+	// released once that stage's members were done: every pool holds one of
+	// the engine's few state cells.
+	for i := 1; i < 4; i++ {
+		if p := kv.pools[i]; p.parent == nil || *p.parent != 0 {
+			t.Errorf("pool %d parent %v, want the conversation's pool 0", i, p.parent)
+		}
+	}
+	// P2r goes when P2f is built, P2f when P3s is; the turn's end frees the
+	// rest, newest first, and nothing twice.
+	if !slices.Equal(kv.released, []int{1, 2, 3, 0}) {
+		t.Errorf("released %v, want [1 2 3 0]", kv.released)
 	}
 }
 
