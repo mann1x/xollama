@@ -128,7 +128,11 @@ paths:
   Workers attach with `pool_id` and no window, and are closed when done. Pools
   are released newest first, and the owner is never closed.
 - A layer is the rendered prompt up to `councilSentinel`, and must be a byte
-  prefix of the member's own rendered prompt, or the member runs unpooled. Pool
+  prefix of the member's own rendered prompt, or the member has no layer. On
+  an owned tree it then runs on the owner's session inside its window
+  (`ownerWindow`), one at a time under `councilTree.onOwner` (`place` returns
+  the unlock); booked on its own session it is never admitted beside a full
+  owner (b137). Only an unowned tree runs it unpooled. Pool
   id 0 is valid: `Placement.PoolID` is `*int` and never compared `> 0`.
 - The owner's window follows `/kv` pressure. `begin` grows it back when nothing
   is refused. `finish` shrinks it, deferred, only under pressure and only if

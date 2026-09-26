@@ -68,6 +68,10 @@ func councilReserve(cfg council.Config) int {
 
 // councilTree places one council turn's calls on the engine.
 type councilTree struct {
+	// onOwner runs, one at a time, the workers that had no layer to attach
+	// to and so run on the owner's session, inside its window (place).
+	onOwner sync.Mutex
+
 	kv       llm.PolyKV
 	render   func(ctx context.Context, msgs []api.Message) (string, error)
 	tokenize func(ctx context.Context, s string) ([]int, error)
@@ -965,14 +969,15 @@ func (t *councilTree) tokens(ctx context.Context, msgs []api.Message) (int, erro
 // runs on the owner; every other member on the council's model is a worker on
 // its own session, pooled when its layer could be built and otherwise booked
 // at its own size. A role on another model is left alone: it shares nothing.
-func (cm *councilMembers) place(ctx context.Context, r council.Request, req *api.ChatRequest) (*llm.Placement, string) {
+func (cm *councilMembers) place(ctx context.Context, r council.Request, req *api.ChatRequest) (*llm.Placement, string, func()) {
 	t := cm.tree
+	none := func() {}
 	if t == nil || r.Model != "" {
-		return nil, ""
+		return nil, "", none
 	}
 	if r.Role == council.Planner || r.Role == roleCompactWriter {
 		req.SessionID = t.owner
-		return t.ownerPlacement(ctx, r.Messages), ""
+		return t.ownerPlacement(ctx, r.Messages), "", none
 	}
 	if compactionUnpooled(r.Role) && !t.unowned {
 		// A compaction call that shares nothing with the tree still belongs to
@@ -982,13 +987,24 @@ func (cm *councilMembers) place(ctx context.Context, r council.Request, req *api
 		// b133: a 4,608-cell text piece waited out admission beside a
 		// 16,384-cell owner).
 		req.SessionID = t.owner
-		return t.ownerWindow(), ""
+		return t.ownerWindow(), "", none
 	}
 	req.SessionID = cm.memberSession(r)
 	if !compactionUnpooled(r.Role) {
 		if p := t.workerPlacement(ctx, r.Messages, req.SessionID); p != nil {
-			return p, req.SessionID
+			return p, req.SessionID, none
 		}
+	}
+	if !t.unowned {
+		// No layer to attach to: the member runs on the owner, inside its
+		// window, as a compaction call does -- booked on a session of its
+		// own it waits out admission beside an owner that has grown to the
+		// whole pool (measured on b137: a resumed researcher refused, "base
+		// 0/16384 free"). One at a time, so the owner never has two requests
+		// in flight; the owner is not closed after it.
+		t.onOwner.Lock()
+		req.SessionID = t.owner
+		return t.ownerWindow(), "", t.onOwner.Unlock
 	}
 	// Unpooled: state a window sized to this member, never the engine's
 	// default, which books the whole session_ctx_max per request.
@@ -997,7 +1013,7 @@ func (cm *councilMembers) place(ctx context.Context, r council.Request, req *api
 		n = t.window / 2
 	}
 	size := min(roundUp(n+r.MaxTokens+512, 256), t.window)
-	return &llm.Placement{NumCtx: size, NumCtxMin: size}, req.SessionID
+	return &llm.Placement{NumCtx: size, NumCtxMin: size}, req.SessionID, none
 }
 
 // councilPoolSeats is the engine pool seats a council's tree needs: the

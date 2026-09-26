@@ -1628,8 +1628,15 @@ when every step needs tools) is the owner's call.
 The same live A/B after the fixes, 6 council and 6 plain runs interleaved:
 council 6/6 fully right in 27–38 s over 4–6 round trips; plain 6/6 in 5–7 s.
 Critics made no tool calls, and no member ran unpooled or waited on
-admission. Still open: a member with no layer at all still books beside the
-owner and can wait out admission.
+admission.
+
+Closed the same night: a worker with no layer on an owned tree now runs on the
+owner's session, inside its window, one at a time (`councilTree.onOwner`), as
+compaction calls already did. It never books beside an owner holding the whole
+pool. An unowned tree keeps its per-request booking, since there is no window
+to collide with. Guarded by `TestAWorkerWithNoLayerRunsInsideTheOwner` (every
+fork refused; the mutant without the branch fails it). Live: 3 runs, 0
+unpooled members, 0 admission waits.
 
 ## Decision log
 

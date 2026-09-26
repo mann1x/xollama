@@ -528,7 +528,8 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 		return out, nil, err
 	}
 	req.Tools = cm.tools
-	placement, worker := cm.place(ctx, r, &req)
+	placement, worker, done := cm.place(ctx, r, &req)
+	defer done()
 	body, err := json.Marshal(req)
 	if err != nil {
 		return "", nil, err

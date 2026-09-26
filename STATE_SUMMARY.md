@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — A council worker with no pool layer runs inside the owner's window.**
+> - Booked on its own session it could wait out admission beside an owner
+>   holding the whole cache. It now runs on the owner, inside its window, one
+>   at a time, as compaction calls do. The test fails without the branch.
+
 > **2026-09-27 — 9.5 fixed: the council is as reliable with tools as the plain model.**
 > - The owner rejected "less reliable" as a finding. A per-member debug trace
 >   found three faults of ours, with compaction and thinking both ruled out:

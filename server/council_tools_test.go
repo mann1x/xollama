@@ -261,3 +261,34 @@ func TestAResumedMemberReattachesToItsStage(t *testing.T) {
 		}
 	}
 }
+
+// A worker with no layer to attach to runs on the owner, inside its window:
+// never booked on a session of its own beside an owner that may hold the
+// whole pool, where it waits out admission. The owner is never closed for it.
+func TestAWorkerWithNoLayerRunsInsideTheOwner(t *testing.T) {
+	councilRoots.reset()
+	e := &councilEngine{route: `{"route":"council"}`}
+	kv := &fakeKV{noForks: true}
+	s := polykvCouncil(t, e, kv, councilOn())
+	_, content := joined(chatChunks(t, s, polykvReq))
+	if !strings.HasPrefix(content, "The sky is blue") {
+		t.Fatalf("answer %q", content)
+	}
+	kv.mu.Lock()
+	owner := kv.ownerLocked()
+	closed := slices.Clone(kv.closed)
+	kv.mu.Unlock()
+	workers := 0
+	for i, role := range e.roles {
+		if role != "researcher" && role != "critic" && role != "synthesizer" {
+			continue
+		}
+		workers++
+		if pl := e.placements[i]; e.sessions[i] != owner || pl == nil || pl.PoolID != nil || pl.NumCtx != 16384 {
+			t.Errorf("%s: session %q placement %+v, want the owner's window", role, e.sessions[i], pl)
+		}
+	}
+	if workers != 5 || slices.Contains(closed, owner) {
+		t.Fatalf("%d workers; closed %v (the owner must stay)", workers, closed)
+	}
+}
