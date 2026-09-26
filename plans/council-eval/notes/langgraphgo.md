@@ -1,5 +1,10 @@
 # langgraphgo (github.com/smallnest/langgraphgo v0.8.5, `graph` package)
 
+> The implementation this note describes was removed on 2026-09-26, after
+> Phase 1 chose the in-house `errgroup` runner. The `impl/…` paths and
+> commands below refer to commit `5271cdf4`.
+
+
 Files: `langgraphgo.go` (runner, 225 lines), `langgraphgo_test.go` (suite shim),
 `cmd/main.go` (size probe), `probe/probe_test.go` (library-only probes behind
 every claim below; `go test -v ./impl/langgraphgo/probe/`). Library paths are
@@ -198,5 +203,5 @@ request path.
 `StreamingRunnable.Stream` closes the channel (`graph/streaming.go:218`) while
 `StreamingListener.emitEvent` is still sending on it (`graph/streaming.go:101`).
 This is the close race described above, now confirmed by the race detector.
-The probe passes without `-race`, and it is excluded from the suite command
-in `../../README.md`.
+The probe passed without `-race`. It was removed with the implementation on
+2026-09-26 and can be found in git history at `5271cdf4`.

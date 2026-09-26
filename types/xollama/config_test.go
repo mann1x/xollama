@@ -2,6 +2,7 @@ package xollama
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -69,7 +70,7 @@ func TestParseRejects(t *testing.T) {
 			// schema as if it were this one would serve the model differently
 			// from how its publisher meant, and say nothing.
 			name:    "newer schema",
-			in:      `{"version":4}`,
+			in:      fmt.Sprintf(`{"version":%d}`, SchemaVersion+1),
 			wantErr: "newer than this build understands",
 		},
 		{name: "unknown engine", in: `{"version":1,"engine":"vllm"}`, wantErr: `unknown engine "vllm"`},

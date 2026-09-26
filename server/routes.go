@@ -2657,8 +2657,10 @@ func llamaServerConfigForModel(m *Model) llm.LlamaServerConfig {
 		ManifestDigest:       m.Digest,
 		DraftModelPath:       m.DraftPath,
 		DraftModelShardPaths: slices.Clone(m.DraftShardPaths),
-		// xollama-hook: model-config
-		Xollama: m.Xollama,
+		// xollama-hook: model-config -- the launch part only: a council changes
+		// how a turn is answered, not how the model loads, and must not give a
+		// council tag its own runner (types/xollama LaunchConfig).
+		Xollama: m.Xollama.LaunchConfig(),
 		// xollama-hook: launch-config
 		SingleSequenceOnly: singleSequenceOnly(m),
 	}

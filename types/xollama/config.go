@@ -33,10 +33,10 @@ const MediaTypeImageJSON = "application/vnd.ollama.image.json"
 
 // SchemaVersion is the newest schema this build can read. It is NOT
 // necessarily what it writes: see requiredVersion.
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 // SchemaVersionBase is the version that expresses everything except the fields
-// added in v2 (kv.unified, kv.residency_mode) and v3 (devices).
+// added in v2 (kv.unified, kv.residency_mode), v3 (devices) and v4 (council).
 const SchemaVersionBase = 1
 
 // Config is the contents of the xollama.json layer.
@@ -97,6 +97,9 @@ type Config struct {
 
 	// Devices pins the backend and devices this model runs on. See Devices.
 	Devices *Devices `json:"devices,omitempty"`
+
+	// Council makes this model a council. See Council. Schema v4.
+	Council *Council `json:"council,omitempty"`
 }
 
 // Slots holds this model's serving-capacity settings.
@@ -314,6 +317,9 @@ func (c *Config) Validate() error {
 			return err
 		}
 	}
+	if err := c.Council.validate(c.Engine); err != nil {
+		return err
+	}
 	if c.Engine != "" && !slices.Contains(validEngines, c.Engine) {
 		return fmt.Errorf("xollama config: unknown engine %q (want one of %v)", c.Engine, validEngines)
 	}
@@ -439,6 +445,12 @@ func Parse(data []byte) (*Config, error) {
 // version that is true of it, and only a model that actually uses a v2 field
 // pays the v2 floor.
 func (c *Config) requiredVersion() int {
+	// An older build would read a council as an unknown field and serve the
+	// model as a plain chat: one model call where the publisher meant a
+	// council. Refusing is the honest answer here too.
+	if !c.Council.IsZero() {
+		return 4
+	}
 	// An older build would read a device pin as an unknown field and serve
 	// the model wherever it pleased -- on the discrete card the pin exists to
 	// keep it off. Refusing is the honest answer, so the pin raises the floor.
@@ -484,7 +496,8 @@ func (c *Config) IsZero() bool {
 			c.Slots.VRAMReserveMiB == 0 && c.Slots.SWASeqBudget == 0)) &&
 		(c.DCA == nil || (c.DCA.Enabled == nil && c.DCA.ChunkSize == 0)) &&
 		(c.Session == nil || (c.Session.Affinity == nil && c.Session.Pool == nil && c.Session.MaxPools == 0)) &&
-		c.Devices.IsZero()
+		c.Devices.IsZero() &&
+		c.Council.IsZero()
 }
 
 // The closed sets, exported so a tool that ASKS for one of these values offers

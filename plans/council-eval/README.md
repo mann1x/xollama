@@ -12,21 +12,16 @@ plan.
 | `stub/` | A model that costs a fixed time per token. It records every call plus in-flight, peak and per-role concurrency, and can inject a failure. |
 | `suite/` | The one test and benchmark suite every runner passes. It covers the routes, call counts, event tagging, researcher order, hidden deliberation, seeds and jitter, parallel widths 3 and 8, the bounded loop, cancellation with goleak, sibling cancellation on failure, and a slow consumer. |
 | `engine/` | `council.Model` over an opencoti `/v1/chat/completions` endpoint. Each member states its own `num_ctx`, a 429 is waited out, and the planner's calls share one session. |
-| `impl/baseline/` | The council on `errgroup`: the bar every library must clear. |
-| `impl/eino/`, `impl/langgraphgo/`, `impl/trpcagent/` | The candidates. Each has a `NOTES.md` with its findings, plus `cmd/` for measuring size and dependencies. |
-| `cmd/council-run/` | Runs every runner against a real engine, one council and one "Hello!" each. |
+| `impl/baseline/` | The council on `errgroup`, the runner Phase 1 chose. |
+| `notes/` | The findings for eino, langgraphgo and trpc-agent-go, with file:line evidence in each library's source. Their implementations were removed after the decision (2026-09-26), so the repo holds no `go.mod` that would link them. They are in git history at `5271cdf4`. |
+| `cmd/council-run/` | Runs the runner against a real engine: one council and one "Hello!". It records every close answer and any leaked session. |
 | `probe/` | The Phase 0 Python probes (PolyKV pool tree, routing, direct-path cost). |
 
 ```sh
-go test -race -count=3 $(go list ./impl/... | grep -v /probe)  # the suite, per runner
+go test -race -count=3 ./impl/...                              # the suite
 go test -run '^$' -bench . -benchtime 2s ./impl/<runner>/      # overhead, fan-out, TTFT
 go run ./cmd/council-run -url http://127.0.0.1:38311 -doc <file> -out <json>
 ```
-
-`impl/langgraphgo/probe/` checks the library's own behaviour, not the
-council's. It passes without `-race`, and under `-race` it fails by design
-on the library's close race (langgraphgo v0.8.5 `graph/streaming.go:87-101`,
-reported by the race detector at `streaming.go:218` against `:101`).
 
 Run engines as the `ollama` user and write results under
 `/srv/ml/xollama-phase2/as-ollama/` (`.claude/rules/solidpc-testing.md`).

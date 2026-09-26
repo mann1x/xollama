@@ -1,5 +1,10 @@
 # trpc-agent-go v1.11.2: council bake-off notes
 
+> The implementation this note describes was removed on 2026-09-26, after
+> Phase 1 chose the in-house `errgroup` runner. The `impl/…` paths and
+> commands below refer to commit `5271cdf4`.
+
+
 Files: `trpcagent.go` (301 lines, 244 of them code), `trpcagent_test.go`, `cmd/main.go`.
 Measured 2026-09-25 on an AMD Ryzen 5 5600G (12 threads) with go1.26.0. Library paths are
 relative to `$GOMODCACHE/trpc.group/trpc-go/trpc-agent-go@v1.11.2/`.

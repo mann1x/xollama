@@ -1,6 +1,6 @@
 # Agentic Council Chat
 
-**Status:** ACTIVE · **Phase:** 2 — config and tweak (Phase 0 re-measure on b111 pending) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
+**Status:** ACTIVE · **Phase:** 3 — the runner, llama.cpp path (Phase 0 re-measure on b111 pending) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
 
 In this chat mode, one model name is a *council*. A client connects to xollama
 the usual way: `/api/chat`, the OpenAI or Anthropic API, the CLI, or the
@@ -15,7 +15,7 @@ KV cache and prefills only its own role and turn.
 - [x] Phase 0 on b65 (2026-09-25; results below)
 - [ ] Phase 0 re-measured on b111 (when on HF)
 - [x] Phase 1 — the council flow in each candidate library; **in-house errgroup chosen** (2026-09-25; results below)
-- [ ] Phase 2 — config and tweak
+- [x] Phase 2 — config and tweak (2026-09-26; results below)
 - [ ] Phase 3 — the runner, llama.cpp path
 - [ ] Phase 4 — PolyKV path
 - [ ] Phase 5 — surfaces and docs
@@ -82,6 +82,49 @@ owner session "<chat>~council"  (num_ctx = window, num_ctx_min = floor)
 ```
 Each role prefills only what is new to it; the conversation is prefilled
 once per turn. Closing the owner releases the whole tree.
+
+## Context, pressure and compaction
+
+Every member states its context, and PolyKV reports the pressure, so each
+member's window and the conversation's compaction are driven by what the
+engine says, not by fixed sizes. Sources:
+`/shared/dev/docs/cerebriline-polykv-integration.md` §6.5 (window
+negotiation, compaction on raw pressure) and §10 (bookings).
+
+- **Unpooled (llama.cpp path, or PolyKV off):** each member call states
+  `num_ctx` sized to its own prompt plus `max_tokens` plus headroom. Phase 1
+  measured the alternative: without `num_ctx` each member books the whole
+  `session_ctx_max`, and the second parallel member is refused.
+- **Pooled (PolyKV):** the council's **owner** session states the window
+  once, with `num_ctx` and `num_ctx_min`. A grant is sticky for the life of
+  the session (§10.3), so the ask must be right the first time. Members are
+  workers: they send `pool_id` and their own `session_id`, and **no**
+  `num_ctx`, and are charged `peak − pool_len` against the owner's window.
+- **Pressure is read per session.** The owner's raw `pressure` comes from
+  `GET /kv` `allocations[]`, by the wire session id (`session_pressure_v1`),
+  with the pool's own `pressure` as the fallback. This is the signal
+  Cerebriline compacts on (`polykvSaysCompact`, threshold 0.85).
+- **What compacts.** Members are single-turn, so their context never grows
+  across turns. What grows is the **conversation** in the owner's P1 layer,
+  plus, within one turn, the findings (P2f) and critiques (P3s) layers.
+  - Before a turn: if the owner's pressure is at or above the threshold,
+    compact the conversation (summarise the oldest turns, keep the latest
+    verbatim), then re-root the tree on the compacted P1.
+  - Within a turn: if forking P2f or P3s would push the owner past the
+    threshold, condense the findings or critiques first, rather than let a
+    worker hit `session allocation full`.
+- **Grant, not configuration.** Triggers, targets and output room are sized
+  against the granted window (`X-Context-Window`), never the configured one.
+  A response without the header means the grant is unknown, not unchanged.
+- **On b111** (`kv_pressure_v1`, `kv_resize_v1`, patches 0394/0396):
+  - compact on **global** pressure too: others are being refused
+    (`refused_60s`) while this council is not full;
+  - **shrink** the owner's booking after a compaction (`POST
+    /sessions/{id}/resize`, between requests only). Until then a compacted
+    session keeps its full booking (§10.1).
+- **Config** (Phase 2): `context.window`, `context.floor` (→ `num_ctx_min`)
+  and `context.compact_at` (default 0.85). Per-role `max_tokens` sets each
+  member's output room.
 
 ## Where it lives (researched)
 - **Definition**: new `Council` sub-struct in `types/xollama/config.go`
@@ -153,8 +196,9 @@ just prefill their own copies.
   ChatHandler hook + Registry row, streaming as `thinking` + `content`, the
   OpenAI/Anthropic shims verified; integration test.
 - **Phase 4 — PolyKV path.** The engine client, the pool tree, sharing proven
-  with `n_pool_shared` and `/kv`; A/B against Phase 3 (prefill, latency,
-  cells).
+  with `n_pool_shared` and `/kv`, and compaction on the owner's pressure
+  (section above), with resize and global pressure once b111 is published.
+  A/B against Phase 3 (prefill, latency, cells).
 - **Phase 5 — surfaces and docs.** CLI niceties, desktop UI toggle if wanted,
   `docs/xollama/council.mdx`, feature doc, STATE_SUMMARY/MASTER_PLAN update.
 
@@ -409,6 +453,56 @@ upstream owns. Ideas worth borrowing:
   with preallocated slices;
 - a checkpoint/interrupt model (eino), if human-in-the-loop is ever wanted.
 
+## Phase 2 results — config and tweak (2026-09-26)
+
+- **Schema v4:** `types/xollama/council.go` holds `Council`, `CouncilRole`,
+  `CouncilContext`, validation, `Clone`, `Prune` and `LaunchConfig`.
+  `Config.Council` raises the schema to v4: an older build would read it as
+  an unknown field and serve a plain chat, so it must refuse instead.
+  `council.enabled` is the only thing a council needs. Settings stated
+  without the switch are refused, except `enabled: false` alone, which says
+  "not a council" over a parent that is one. Validation also refuses:
+  - a count on the planner or the synthesizer;
+  - a width above 8 (Phase 1's widest), more than 4 rounds, or a jitter
+    outside [0, 0.5];
+  - `polykv: on` on a model that pins llamacpp;
+  - a floor above the window, or `compact_at` outside (0, 1).
+- **`xollama tweak model`:** 23 rows in `cmd/tweak/council.go`, appended to
+  the one field table.
+  - `--council` walks the core settings. `--council-charter` walks the
+    charter and every role's prompt.
+  - A new `kindText` keeps prompts as written, and takes `@path` to read one
+    from a file.
+  - A new `quiet` row attribute skips council questions without a word in the
+    full walk while the council is off. Named by a flag, they say why.
+  - A stated `temperature_jitter: 0` means "no spread", and a stated seed
+    means "reproducible". Both are pointers, so "unset" stays distinct.
+  - Dry-run on the live server: `--council=on --council-researchers=3
+    --council-jitter=0` gives the v4 JSON expected.
+- **`xollama show`:** the rows come from the same table (`SettingRows`), so
+  they need no extra code (tested). **Modelfile:** a council with multi-line,
+  quoted prompts survives the whole chain, from `show --modelfile` through
+  the parser to the create request (`TestAModelfileCarriesACouncilThroughCreate`).
+- **Found and fixed: a council would have forced its own runner.** The
+  launch config carried the whole xollama config, and the scheduler compares
+  it with `reflect.DeepEqual`. So a council tag `FROM` a plain model would
+  have loaded a second copy of the weights, and an edited prompt would have
+  reloaded the model. `llamaServerConfigForModel` now uses
+  `Config.LaunchConfig()`, which is the config without the council, nil when
+  nothing else is stated, and at the rest's own version. This is inside the
+  existing `model-config` hook, and the Registry row says so. The new
+  `TestSchedNeedsReloadOnXollamaConfig` cases fail without the fix.
+- **Open for Phase 3: qwen35 is single-sequence in xollama.** Upstream's
+  `parallelUnsafeArchitectures` (ollama#4165) includes qwen35, qwen35moe,
+  qwen3next and others, so through xollama omnimerge serves one sequence at
+  a time, and the council's parallel members would run one after another.
+  Phase 1's engine runs bypassed xollama with `--parallel 6` and ran four
+  members concurrently. Phase 3 must decide whether opencoti is exempt:
+  whether its multi-sequence path for these architectures is correct, which
+  has to be measured, not assumed.
+- **Deploy note:** a server older than this build refuses a v4 config (by
+  design), so writing a council needs the new build serving.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).
@@ -438,3 +532,13 @@ upstream owns. Ideas worth borrowing:
 - 2026-09-25 — Every council member states its own `num_ctx`. The planner's
   decision, direct answer and plan share one engine session, closed when the
   run ends.
+- 2026-09-26 — Every member states its context, and compaction follows the
+  engine's pressure: the owner's raw `pressure` from `/kv` at 0.85, plus
+  global pressure and resize on b111 (see "Context, pressure and
+  compaction"). The library implementations were removed from the repo
+  (notes kept in `plans/council-eval/notes/`), so no `go.mod` in the tree
+  links them.
+- 2026-09-26 — A council is request-side only. It is left out of the launch
+  config, so it never gets its own runner.
+- 2026-09-26 — Schema v4 for the council, and no environment fallback: a
+  council is a property of the model, never of the server.

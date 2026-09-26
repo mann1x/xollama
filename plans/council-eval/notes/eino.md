@@ -1,5 +1,10 @@
 # eino v0.9.21: council bake-off notes
 
+> The implementation this note describes was removed on 2026-09-26, after
+> Phase 1 chose the in-house `errgroup` runner. The `impl/…` paths and
+> commands below refer to commit `5271cdf4`.
+
+
 Files: `eino.go` (candidate, closure streaming; 301 lines including the native hooks),
 `native.go` (native-stream experiment, 88 lines), `eino_test.go` (the suite, in the required
 shape), `native_test.go` (the same suite on the native variant), `compile_test.go`

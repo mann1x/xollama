@@ -5,6 +5,24 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Council Chat Phase 2: a council is a model setting.**
+> - `council` in `xollama.json` (schema v4, `types/xollama/council.go`),
+>   with 23 `xollama tweak model` rows (`--council`, `--council-charter`,
+>   prompts from `@file`), `show` rows and the Modelfile round-trip, all
+>   tested.
+> - Fixed before it could ship: a council tag would have had its own runner,
+>   a second copy of the weights. The launch config now leaves the council
+>   out (`LaunchConfig`, inside the `model-config` hook).
+> - Found for Phase 3: qwen35 (omnimerge) is on upstream's single-sequence
+>   list, so through xollama its council members would run one at a time.
+> - The eval harness no longer holds the library implementations (their
+>   notes are kept), so no `go.mod` in the repo links eino, langgraphgo or
+>   trpc-agent-go.
+> - The plan gains "Context, pressure and compaction": every member states
+>   its context, and compaction follows the owner's PolyKV pressure.
+>
+> Next: Phase 3, the runner on the llama.cpp path.
+
 > **2026-09-25 — Council Chat Phase 1: the in-house `errgroup` runner wins
 > the library bake-off.** The same council was built in eino, langgraphgo,
 > trpc-agent-go and on `errgroup`, all over one shared core and one suite, in
@@ -77,10 +95,10 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
 ## Where we are
 
-`v0.34.2-xollama.1` is the latest release. No product code is in flight.
-The Agentic Council Chat has finished Phase 0 (on b65) and Phase 1: the
-runner will be in-house on `errgroup`. Phase 2, the `Council` config and
-`tweak`, is next. Phase 0 runs again on b111 once it is on the HF dev repo.
+`v0.34.2-xollama.1` is the latest release. The Agentic Council Chat has
+finished Phases 0 (on b65), 1 (in-house `errgroup` runner) and 2 (schema v4
+and `tweak`). Phase 3, the runner on the llama.cpp path, is next. Phase 0
+runs again on b111 once it is on the HF dev repo.
 
 ## What exists today
 
@@ -111,11 +129,13 @@ runner will be in-house on `errgroup`. Phase 2, the `Council` config and
 
 ## Immediate next steps (in order)
 
-1. Council Chat Phase 2: `Council` in `types/xollama/config.go`, validation,
-   `tweak` fields, `show` rows, and the Modelfile round-trip.
+1. Council Chat Phase 3:
+   - `server/council.go` and the `ChatHandler` hook;
+   - streaming as thinking plus content, and the OpenAI/Anthropic shims;
+   - member windows stated per call;
+   - decide on qwen35's single-sequence rule on opencoti, by measurement.
 2. When b111 is on HF: rerun `plans/council-eval/probe/` and
-   `cmd/council-run` on it (Phase 0 re-measure), then move the pin on a
-   measurement.
+   `cmd/council-run` on it, then move the pin on a measurement.
 3. When b111 is on HF: unpark the Docker image and pin the fork's existing
    runtime tgz (`33ac42c1…`).
 

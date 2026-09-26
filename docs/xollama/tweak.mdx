@@ -88,6 +88,39 @@ never served on other hardware instead. An unpinned model is never placed on an
 integrated Vulkan GPU while a discrete one is present — see
 [device selection](/features/device-selection).
 
+## Making a model a council
+
+A council answers every chat turn with several calls to the model:
+- a planner decides whether the message needs the council at all, and answers
+  a greeting directly;
+- otherwise researchers investigate in parallel, then critics review the
+  findings in parallel;
+- a synthesizer writes the one answer the client receives.
+
+Clients ask for the model as they would any other, and the deliberation
+streams as thinking.
+
+`--council` walks the council's settings, and `--council=on` alone takes the
+tested defaults: 2 researchers and 2 critics, a random seed for every member,
+a ±2 % temperature spread on researchers and critics, one round, and the
+deliberation shown.
+
+```sh
+xollama tweak model qwen3.6-council:27b --council=on
+xollama tweak model qwen3.6-council:27b --council-researchers=3 --council-critics=3
+xollama tweak model qwen3.6-council:27b --council-critic-prompt=@critic.txt   # a prompt from a file
+xollama tweak model qwen3.6-council:27b --council-charter                      # asks the charter and every role's prompt
+```
+
+Every council setting other than the switch is skipped silently in the full
+walk while the council is off, because it could not apply. Named by a flag, it
+is skipped with the reason. `council.polykv on` needs the opencoti engine;
+`auto`, the default, uses shared KV where the engine offers it.
+
+A council changes how a turn is answered, not how the model loads. A council
+tag built `FROM` a plain model shares the plain model's runner, and editing
+a prompt does not reload the model.
+
 ## Pinning a drafter's driver
 
 A drafter is attached at build time with a `DRAFT` line, and its driver is

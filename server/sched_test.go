@@ -2373,4 +2373,26 @@ func TestSchedNeedsReloadOnXollamaConfig(t *testing.T) {
 	t.Run("two models that both state nothing share", func(t *testing.T) {
 		require.False(t, newRunner(nil).needsReload(ctx, newReq(nil)))
 	})
+
+	// A council answers turns; it does not change how the model loads. A
+	// council tag FROM a plain model must share its runner, or it costs a
+	// second copy of the weights, and an edited prompt must not reload.
+	yes := true
+	councilOnly := &xollama.Config{Version: 4, Council: &xollama.Council{Enabled: &yes}}
+	councilKV := &xollama.Config{Version: 4, KV: kvA.KV, Council: &xollama.Council{Enabled: &yes, Charter: "x"}}
+
+	t.Run("a council tag shares the plain model's runner", func(t *testing.T) {
+		require.False(t, newRunner(nil).needsReload(ctx, newReq(councilOnly)))
+		require.False(t, newRunner(councilOnly).needsReload(ctx, newReq(nil)))
+		require.False(t, newRunner(kvA).needsReload(ctx, newReq(councilKV)))
+	})
+
+	t.Run("an edited council does not reload", func(t *testing.T) {
+		edited := &xollama.Config{Version: 4, KV: kvA.KV, Council: &xollama.Council{Enabled: &yes, Charter: "y"}}
+		require.False(t, newRunner(councilKV).needsReload(ctx, newReq(edited)))
+	})
+
+	t.Run("a council does not hide a launch difference", func(t *testing.T) {
+		require.True(t, newRunner(councilKV).needsReload(ctx, newReq(kvB)))
+	})
 }

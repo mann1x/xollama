@@ -21,9 +21,6 @@ import (
 	"councileval/council"
 	"councileval/engine"
 	"councileval/impl/baseline"
-	"councileval/impl/eino"
-	"councileval/impl/langgraphgo"
-	"councileval/impl/trpcagent"
 )
 
 type row struct {
@@ -51,14 +48,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	runners := []council.Runner{baseline.Runner{}, &eino.Runner{}, &eino.Runner{Native: true},
-		&langgraphgo.Runner{}, trpcagent.New(), &trpcagent.Runner{Native: true}}
+	// The library runners (eino, langgraphgo, trpc-agent-go) were removed
+	// after Phase 1; their findings are in ../../notes/.
+	runners := []council.Runner{baseline.Runner{}}
 	names := func(r council.Runner) string {
-		n := r.Name()
-		if v, ok := r.(*trpcagent.Runner); ok && v.Native && !strings.HasSuffix(n, "-native") {
-			n += "-native"
-		}
-		return n
+		return r.Name()
 	}
 	var rows []row
 	for range *runs {

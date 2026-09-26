@@ -41,6 +41,9 @@ const (
 	// kindDevices is a multi-select over the server's live devices, with any
 	// typed selector accepted too.
 	kindDevices
+	// kindText is free text kept exactly as typed -- a prompt, a model name --
+	// or `@path` to read it from a file, because a prompt is rarely one line.
+	kindText
 )
 
 // field is one setting in the xollama.json layer.
@@ -96,6 +99,12 @@ type field struct {
 	// single authority for them; duplicating those here is how the two would
 	// drift.
 	blocked func(*xollama.Config) string
+	// quiet skips a blocked field in the walk without saying so. It is for a
+	// feature whose settings are only questions once it is switched on --
+	// the council has 22, and a line per skipped question on every model
+	// that is not a council would bury the questions that are asked. A flag
+	// naming a quiet field still gets the reason.
+	quiet bool
 }
 
 // tri renders a *bool for the review and the current-value line.
@@ -267,6 +276,7 @@ func prune(c *xollama.Config) {
 	if c.Devices.IsZero() {
 		c.Devices = nil
 	}
+	c.Council = c.Council.Prune()
 }
 
 // opencotiOnly is the reason a setting cannot be stated on a model that pins

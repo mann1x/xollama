@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ollama/ollama/parser"
 	"github.com/ollama/ollama/template"
 	"github.com/ollama/ollama/types/xollama"
 )
@@ -109,5 +110,52 @@ func TestTheStatedConfigVersionIsTheOneARebuildWouldStore(t *testing.T) {
 	got := m.String()
 	if !strings.Contains(got, `"version":1`) {
 		t.Fatalf("want the lowest true version on the way out, got:\n%s", got)
+	}
+}
+
+// A council is the config a derived Modelfile must not lose: dropped, the
+// rebuilt model answers every turn with one call instead of a council. Its
+// prompts are multi-line text with quotes, so this is also the test that the
+// one-line XOLLAMA form carries text intact, through the whole chain a user
+// drives: show --modelfile, then create.
+func TestAModelfileCarriesACouncilThroughCreate(t *testing.T) {
+	yes := true
+	jitter := 0.0
+	council := &xollama.Council{
+		Enabled:           &yes,
+		Charter:           "You are a \"council\".\nBe brief.",
+		Researcher:        &xollama.CouncilRole{Count: 3, Prompt: "Dig into:\n- facts\n- sources"},
+		TemperatureJitter: &jitter,
+		Context:           &xollama.CouncilContext{Window: 32768, CompactAt: 0.85},
+	}
+	m := &Model{
+		ModelPath: "/blobs/sha256-abc", Template: template.DefaultTemplate,
+		Xollama: &xollama.Config{Version: 4, Engine: "opencoti", Council: council},
+	}
+
+	printed := m.String()
+	mf, err := parser.ParseFile(strings.NewReader(printed))
+	if err != nil {
+		t.Fatalf("the printed Modelfile does not parse: %v\n%s", err, printed)
+	}
+	req, err := mf.CreateRequest(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := req.Xollama
+	if got == nil || got.Council == nil {
+		t.Fatalf("create lost the council:\n%s", printed)
+	}
+	if got.Version != 4 {
+		t.Fatalf("the council came back as v%d, want 4", got.Version)
+	}
+	if got.Council.Charter != council.Charter || got.Council.Researcher.Prompt != council.Researcher.Prompt {
+		t.Fatalf("text changed on the way:\ncharter %q\nprompt  %q", got.Council.Charter, got.Council.Researcher.Prompt)
+	}
+	if got.Council.TemperatureJitter == nil || *got.Council.TemperatureJitter != 0 {
+		t.Fatal("temperature_jitter 0 was lost: it means no spread, and unstated means the default")
+	}
+	if got.Council.Researcher.Count != 3 || got.Council.Context.Window != 32768 || !got.Council.On() {
+		t.Fatalf("council changed on the way: %+v", got.Council)
 	}
 }
