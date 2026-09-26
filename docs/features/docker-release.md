@@ -52,11 +52,12 @@ docker run -d --gpus all -p 22434:22434 -v xollama:/root/.ollama ghcr.io/mann1x/
 ```
 
 <Warning>
-  Upstream's `Dockerfile`, which is still in the tree and still compiles
-  everything, sets `OLLAMA_HOST=0.0.0.0:11434` and `EXPOSE 11434`. An image
-  built from it listens on the container's loopback at 22434 and cannot be
-  reached from outside. That is why the published image comes from
-  `Dockerfile.xollama` and not from it. The CI smoke test fails a build whose
+  Upstream's `Dockerfile`, still in the tree and still compiling everything,
+  set `OLLAMA_HOST=0.0.0.0:11434` and `EXPOSE 11434`. An image built from it
+  listened on the container's loopback at 22434 and could not be reached from
+  outside. It now sets `XOLLAMA_HOST=0.0.0.0:22434` and `EXPOSE 22434` too
+  (`docker-release` hook), but the published image still comes from
+  `Dockerfile.xollama`, not from it. The CI smoke test fails a build whose
   server does not answer `/api/xollama` through a published port.
 </Warning>
 

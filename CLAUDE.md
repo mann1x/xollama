@@ -209,7 +209,8 @@ on `ubuntu-latest` from pinned artifacts — nothing native is compiled:
 tarballs (`llama/runtime-pin-linux.txt`, sha256 + a README-excluded inputs
 digest), the engine (`llm/engine/pin.txt`) and a Go-only `xollama`, and
 `Dockerfile.xollama` sets `XOLLAMA_HOST=0.0.0.0:22434` (upstream's `Dockerfile`
-sets `OLLAMA_HOST`, which xollama ignores). Publishes to Docker Hub and GHCR,
+now sets it too and `EXPOSE 22434`, `docker-release` hook, but the published
+image still comes from `Dockerfile.xollama`). Publishes to Docker Hub and GHCR,
 amd64 only; see `docs/features/docker-release.md`. The channel is the GitHub
 pre-release flag of the tag's release: a full release moves `:latest`, a
 pre-release or any branch run (`gh workflow run docker-release.yaml --ref dev`)

@@ -5,6 +5,22 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Hugging Face pulls work again; upstream's Dockerfile listens where it says.**
+> - Hugging Face now redirects downloads across its own hosts (hf.co →
+>   huggingface.co → its CDN), and the v0.34.2 base followed same-host
+>   redirects only, so every `hf.co/…` pull failed with "blocked redirect to a
+>   different host". Upstream fixed it in v0.34.4 (6383a0fa, #18533:
+>   redirects allowed among hf.co, huggingface.co, ollama.com, ollama.ai and
+>   their subdomains); cherry-picked with `-x`, so the next sync meets the
+>   same hunks. Live: `hf.co/bartowski/SmolLM2-135M-Instruct-GGUF:Q4_K_M`
+>   pulls on the dev server. Reported by a user's test suite, which skips that
+>   scenario on xollama until this ships.
+> - Upstream's `Dockerfile` set `OLLAMA_HOST=0.0.0.0:11434`, which xollama
+>   ignores: an image built from it bound the container's loopback at 22434
+>   and was unreachable. It now sets `XOLLAMA_HOST=0.0.0.0:22434` and
+>   `EXPOSE 22434` like `Dockerfile.xollama` (`docker-release` hook). The
+>   published image was already right; it is built from `Dockerfile.xollama`.
+
 > **2026-09-26 — Phase 9.4: a council turn resumes from the client's state (`council_chat_state_v1`).**
 > - A client that sends `"council_chat_state": ""` gets a sealed state blob
 >   after the route, the plan and each member, and on the done chunk.
