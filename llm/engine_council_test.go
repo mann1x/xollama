@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -92,5 +93,20 @@ func TestCouncilSeatsRideOnThePoolFlag(t *testing.T) {
 	}
 	if got := enginePoolSeats(LlamaServerConfig{}, false); got != 0 {
 		t.Errorf("no council, no pooling = %d, want 0", got)
+	}
+}
+
+func TestAPoolSaysWhoOwnsIt(t *testing.T) {
+	for _, tc := range []struct {
+		owner string
+		want  bool
+	}{{"", true}, {`null`, false}, {`"conv"`, true}, {`"other"`, false}} {
+		p := PoolInfo{}
+		if tc.owner != "" {
+			p.Owner = json.RawMessage(tc.owner)
+		}
+		if got := p.OwnedBy("conv"); got != tc.want {
+			t.Errorf("owner %s: OwnedBy = %v, want %v", tc.owner, got, tc.want)
+		}
 	}
 }

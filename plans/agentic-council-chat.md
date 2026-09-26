@@ -1460,6 +1460,17 @@ tokens) is the charter read by both planner requests: on this hybrid model the
 slot cannot reuse a partial prefix. The caps (`council.<role>.max_tokens`) set
 the time if it matters.
 
+**bug-141 fixed (2026-09-26): unowned roots leaked pool seats.** Found by
+the 9.3 A/B. Its single-turn questions closed their sessions while the idle
+council was promoting the owner's root. The engine created those roots unowned
+(`owner: null`, "holds no live allocation"), xollama kept them for a
+conversation that never came back, and the engine never releases an unowned
+pool on session close. The result was three pinned orphans with
+`orphaned_pin: true`, half of `pools_max` 6. Now `PoolInfo.OwnedBy` reads the
+engine's answer: `buildRoot` keeps a root only if owned, and `promoteRoot`
+releases one that came back unowned. Test: `TestAnUnownedRootIsNeverKept`
+(promotion and turn); each guard's mutant fails it.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).

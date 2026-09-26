@@ -77,6 +77,25 @@ type PoolInfo struct {
 	Len    int    `json:"prefix_len"`
 	OwnLen int    `json:"own_len"`
 	Warn   string `json:"warning"`
+	// Owner is the session the engine charged the pool to: null when it made
+	// the pool unowned, absent on an engine that does not say.
+	Owner json.RawMessage `json:"owner"`
+}
+
+// OwnedBy reports whether the engine gave the pool to session. An engine that
+// names no owner is taken at its word that the asked owner holds it; one that
+// answers null made the pool unowned -- it does so, with a warning, when the
+// session holds no live allocation -- and an unowned pool outlives the session
+// that asked for it.
+func (p PoolInfo) OwnedBy(session string) bool {
+	if len(p.Owner) == 0 {
+		return true
+	}
+	var o *string
+	if json.Unmarshal(p.Owner, &o) != nil || o == nil {
+		return false
+	}
+	return *o == session
 }
 
 // KVStatus is GET /kv, the parts a council reads.

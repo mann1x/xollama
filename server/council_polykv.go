@@ -368,7 +368,10 @@ func (t *councilTree) buildRoot(ctx context.Context, conv []api.Message) error {
 			return refused
 		}
 	}
-	l := &councilLayer{text: text, ready: make(chan struct{}), id: p.ID, root: true, keep: live, chain: chain, clientPool: t.clientPool}
+	// Kept only when the engine charged it to the owner: an unowned pool is
+	// not released when the session ends, so kept it would outlive it.
+	keep := live && p.OwnedBy(owner)
+	l := &councilLayer{text: text, ready: make(chan struct{}), id: p.ID, root: true, keep: keep, chain: chain, clientPool: t.clientPool}
 	close(l.ready)
 	t.mu.Lock()
 	if !live && !t.unowned && t.promoted == nil {
@@ -711,6 +714,17 @@ func (t *councilTree) promoteRoot(ctx context.Context) {
 	p, err := t.createRoot(ctx, t.owner, text)
 	if err != nil {
 		slog.Debug("council: could not give the owner its root", "error", err)
+		return
+	}
+	if !p.OwnedBy(t.owner) {
+		// The session ended while the council was idle, and the engine made
+		// the root unowned: nothing would ever release it (measured on b133:
+		// three pinned orphans, half of pools_max, after a client closed its
+		// sessions).
+		slog.Info("council: the owner's root came back unowned; releasing it", "session", t.owner, "pool", p.ID, "warning", p.Warn)
+		if err := t.kv.ReleasePool(ctx, p.ID); err != nil {
+			slog.Debug("council: could not release an unowned root", "pool", p.ID, "error", err)
+		}
 		return
 	}
 	t.mu.Lock()

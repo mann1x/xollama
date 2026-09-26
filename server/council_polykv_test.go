@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -48,6 +49,9 @@ type fakeKV struct {
 	full int
 	// noForks refuses every fork, as a full owner does.
 	noForks bool
+	// ownerGone answers owner: null for a pool asked for an owner, as the
+	// engine does when that session holds no live allocation.
+	ownerGone bool
 }
 
 type fakePool struct {
@@ -81,7 +85,11 @@ func (f *fakeKV) CreatePool(_ context.Context, session string, parent *int, prom
 	}
 	id := len(f.pools) // the first pool is 0, as on the engine
 	f.pools = append(f.pools, fakePool{id: id, parent: parent, session: session, text: prompt})
-	return llm.PoolInfo{ID: id, Len: len(prompt)}, nil
+	info := llm.PoolInfo{ID: id, Len: len(prompt)}
+	if session != "" && f.ownerGone {
+		info.Owner = json.RawMessage("null")
+	}
+	return info, nil
 }
 
 func (f *fakeKV) ReleasePool(_ context.Context, id int) error {
@@ -971,4 +979,56 @@ func TestANewClientPoolLetsTheOldRootGo(t *testing.T) {
 	if slices.Contains(kv.released, 0) || slices.Contains(kv.released, 1) {
 		t.Errorf("released a client pool: %v", kv.released)
 	}
+}
+
+// A root the engine made unowned -- its session had ended -- is never kept:
+// nothing releases an unowned pool when a session closes, so kept it would
+// outlive the conversation (b133: three pinned orphans after a client closed
+// its sessions while the council was idle).
+func TestAnUnownedRootIsNeverKept(t *testing.T) {
+	t.Run("promotion", func(t *testing.T) {
+		councilRoots.reset()
+		councilCompactions.reset()
+		e := &councilEngine{route: `{"route":"council"}`}
+		kv := &fakeKV{unowned: true, liveAfter: 16384, used: 900, session: "conv-gone", ownerGone: true}
+		s := polykvCouncil(t, e, kv, councilOn())
+		chatChunks(t, s, longCouncilReq("conv-gone", "Why is the sky blue?"))
+		councilIdle.Wait()
+		kv.mu.Lock()
+		defer kv.mu.Unlock()
+		promoted := -1
+		for _, p := range kv.pools {
+			if p.parent == nil && p.session == "conv-gone" {
+				promoted = p.id
+			}
+		}
+		if promoted < 0 {
+			t.Fatal("the idle council did not try to give the owner its root")
+		}
+		if !slices.Contains(kv.released, promoted) {
+			t.Errorf("the unowned root %d was not released: %v", promoted, kv.released)
+		}
+		if _, kept := councilRoots.m["conv-gone"]; kept {
+			t.Error("the unowned root was kept for the next turn")
+		}
+	})
+	t.Run("turn", func(t *testing.T) {
+		councilRoots.reset()
+		councilCompactions.reset()
+		e := &councilEngine{route: `{"route":"council"}`}
+		kv := &fakeKV{grant: 16384, used: 900, session: "conv-gone2", ownerGone: true}
+		s := polykvCouncil(t, e, kv, councilOn())
+		chatChunks(t, s, longCouncilReq("conv-gone2", "Why is the sky blue?"))
+		councilIdle.Wait()
+		kv.mu.Lock()
+		defer kv.mu.Unlock()
+		for _, p := range kv.pools {
+			if p.parent == nil && !slices.Contains(kv.released, p.id) {
+				t.Errorf("root %d outlived the turn: released %v", p.id, kv.released)
+			}
+		}
+		if _, kept := councilRoots.m["conv-gone2"]; kept {
+			t.Error("the unowned root was kept for the next turn")
+		}
+	})
 }

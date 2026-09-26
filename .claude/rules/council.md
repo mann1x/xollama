@@ -49,6 +49,13 @@ paths:
   answer, after their role. `conversationEnd` finds the council's first message
   with `council.IsPlannerRequest`, never a bare `HasPrefix("ROLE: PLANNER.")`:
   the charter now precedes it.
+- **Keep only a root the engine gave the owner** (`PoolInfo.OwnedBy`). The
+  engine answers `owner: null` -- and creates the pool anyway -- when the
+  asked session holds no live allocation, and it releases only *owned* pools
+  when a session ends. An unowned root kept in `councilRoots` leaks a pinned
+  pool seat forever (bug-141: three orphans on b133, half of `pools_max` 6,
+  from idle promotions after a client closed its sessions). `buildRoot` keeps
+  a root only if owned; `promoteRoot` releases one that came back unowned.
 - `server/council.go` is additive; the hook is one `if councilServes(...)` in
   `ChatHandler` (`server/routes.go`), after the remote-model branch and before
   the capability checks. Registry row `council` in

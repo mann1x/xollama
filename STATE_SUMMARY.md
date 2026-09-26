@@ -14,6 +14,11 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >   (9/9). A council turn takes 38.6 s instead of 26.4 s, because researchers
 >   and critics are no longer held to the client's answer format and write to
 >   their caps.
+> - A live check of 9.3: a Cerebriline-style P0 (`[{system:""},{user:…}]`,
+>   8 tokens, owned by the session) is now what a council's root forks from.
+>   No fallback; 5,249 of 6,033 prompt tokens were cached.
+> - bug-141 fixed: roots the engine made unowned (their session had ended) are
+>   no longer kept, which leaked pinned pool seats.
 > - Left: tools on council turns (9.5) and the sealed state (9.4); the
 >   compact-writer A/B waits for opencoti 0412.
 
