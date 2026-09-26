@@ -1599,6 +1599,38 @@ synthesizer claiming a call it did not make). The mechanism shows no fault.
 Whether a council should take such tasks at all (route them direct, or bypass
 when every step needs tools) is the owner's call.
 
+**9.5 follow-up (2026-09-27): the unreliability was ours.** The owner rejected
+"less reliable" as a finding. A per-member debug trace (`council member` at
+`OLLAMA_DEBUG=1`: each member's full messages, reply and calls) showed:
+- **Compaction never fired**, and both arms ran with thinking off.
+- **Information loss.** Each tool result stayed with the member that called
+  it. Critics and the synthesizer got only the researchers' prose. So critics
+  re-read every file to verify, and the synthesizer, the only writer, never saw
+  the file it had to edit. It re-read it, or wrote "I have added the line"
+  without calling anything. Now a researcher's or critic's reply carries its
+  evidence (each call and result, 4,000 characters per result at most;
+  `TestEvidenceIsCappedAndNeverInTheAnswer`). A reply is the member's last
+  text, not the narration before each call, and critics call a tool only for
+  what the evidence lacks.
+- **A contradicting charter.** On a tool turn the built-in charter still said
+  researchers use "only the conversation and their own knowledge". That
+  sentence now names the tools that only read
+  (`TestTheCharterLetsResearchersReadOnlyWithTools`).
+- **A resumed member got the wrong PolyKV layer.** `workerPlacement` cut the
+  layer before a member's last message, and on a resumed member that is a
+  tool result. Each round trip built a private pool per member. Two results in
+  a row, which qwen's template renders as one block, gave no prefix at all:
+  the member booked its own 2,304 cells beside an owner holding all 16,384,
+  and waited out admission (`kv-reservation: REFUSED … base 0/16384 free`).
+  The layer is now everything before the member's own instruction
+  (`TestAResumedMemberReattachesToItsStage`; the mutant fails it).
+
+The same live A/B after the fixes, 6 council and 6 plain runs interleaved:
+council 6/6 fully right in 27–38 s over 4–6 round trips; plain 6/6 in 5–7 s.
+Critics made no tool calls, and no member ran unpooled or waited on
+admission. Still open: a member with no layer at all still books beside the
+owner and can wait out admission.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).

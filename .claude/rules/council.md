@@ -286,4 +286,11 @@ paths:
   re-encoding an `api.ChatRequest` drops it. Forwarded ids are
   `MemberKey + ":" + id`; ChatHandler gives parsed calls random ids, so tests
   match the prefix. A step's resume points are read under the lock before it
-  launches (bug-143).
+  launches (bug-143). A researcher's or critic's reply carries its evidence
+  (calls and results, capped): the members after it must read what it read,
+  or the synthesizer edits blind. A worker's PolyKV layer is everything
+  before its own instruction (the last user message), never before its last
+  message: a resumed member ends in tool results. Debug a turn with
+  `OLLAMA_DEBUG=1` and the `council member` lines. Live A/Bs compare against
+  the same model as a plain chat (no state, `think: false`). Find the dev
+  server by its port.

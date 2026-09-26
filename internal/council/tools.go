@@ -149,6 +149,13 @@ func (cfg Config) forwarded(r Role, key string, turns []api.Message) []api.ToolC
 // not made, and the synthesizer asked leave to write instead of writing.
 const toolCharter = `The user's tools are listed at the start; they act on the user's real environment. Researchers and critics call the tools that only read, to check facts instead of guessing. The synthesizer, and the planner when it answers directly, may call every tool, and make the changes the user asked for. A tool's result arrives in a message of role tool: never describe a call you did not make or a result you did not receive.`
 
+// charterNoTools is the built-in charter's sentence a turn with tools must
+// not keep: it forbids the very reading the tools are for.
+const (
+	charterNoTools   = "using only the conversation and their own knowledge"
+	charterWithTools = "using the conversation, their own knowledge and the tools that only read"
+)
+
 // charter is the council's standing instruction for this turn.
 func (cfg Config) charter() string {
 	switch {
@@ -157,7 +164,7 @@ func (cfg Config) charter() string {
 	case cfg.Charter == "":
 		return toolCharter
 	}
-	return cfg.Charter + "\n\n" + toolCharter
+	return strings.Replace(cfg.Charter, charterNoTools, charterWithTools, 1) + "\n\n" + toolCharter
 }
 
 // toolNote tells a member what the tools are for in its role. It goes in the
@@ -182,22 +189,60 @@ func (cfg Config) toolNote(r Role) string {
 	if len(ro) == 0 {
 		return " Do not call tools: they change things, and only the synthesizer calls them." + prose
 	}
-	return fmt.Sprintf(" You may call these tools, which only read: %s. Call them for the facts you need. The others change things, and only the synthesizer calls them.%s", strings.Join(ro, ", "), prose)
+	note := fmt.Sprintf(" You may call these tools, which only read: %s. Call them for the facts you need. The others change things, and only the synthesizer calls them.%s", strings.Join(ro, ", "), prose)
+	if r == Critic {
+		// Measured live: critics re-read every file the researchers had read.
+		note += " The findings carry the tool results the researchers read; call a tool only for what they lack."
+	}
+	return note
 }
 
-// replyText is a member's reply over all its turns: what it wrote before each
-// call and after the last.
+// replyText is a member's reply over its turns: its last text, or -- when
+// it ended on a call with nothing more to say -- what it wrote before the
+// calls. The narration before each call ("let me read the file") is not the
+// reply.
 func replyText(turns []api.Message, last string) string {
+	if strings.TrimSpace(last) != "" || len(turns) == 0 {
+		return last
+	}
 	var parts []string
 	for _, t := range turns {
 		if s := strings.TrimSpace(t.Content); s != "" {
 			parts = append(parts, s)
 		}
 	}
-	if s := strings.TrimSpace(last); s != "" || len(parts) == 0 {
-		parts = append(parts, last)
-	}
 	return strings.Join(parts, "\n\n")
+}
+
+// maxEvidence caps one tool result carried in a reply's evidence.
+const maxEvidence = 4000
+
+// evidence is what a researcher or critic read, carried in its reply to every
+// member after it: each call it made and the client's result. Measured live
+// on b137 without it: the synthesizer -- the only member that may write --
+// never saw a file it was asked to edit, and either read it again or claimed
+// an edit it never made; critics re-read what the researchers had read.
+func (cfg Config) evidence(r Role, key string, turns []api.Message) string {
+	var b strings.Builder
+	for _, m := range cfg.transcript(r, key, turns) {
+		if m.Role != "assistant" {
+			continue
+		}
+		for _, c := range m.ToolCalls {
+			res, ok := cfg.Results[ForwardedID(key, c.ID)]
+			if ok2, _ := cfg.may(r, c); !ok || !ok2 {
+				continue
+			}
+			if b.Len() == 0 {
+				b.WriteString("\n\nEvidence (the tools called and what they returned):")
+			}
+			if n := len(res); n > maxEvidence {
+				res = res[:maxEvidence] + fmt.Sprintf("\n[... %d more characters]", n-maxEvidence)
+			}
+			fmt.Fprintf(&b, "\n- %s %s returned:\n%s", c.Function.Name, c.Function.Arguments.String(), res)
+		}
+	}
+	return b.String()
 }
 
 // callTools runs one member that may call tools, from its turns so far. It
@@ -221,7 +266,11 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 			return "", nil, err
 		}
 		if len(rep.Calls) == 0 {
-			return replyText(turns, rep.Content), nil, nil
+			out := replyText(turns, rep.Content)
+			if !writes(req.Role) {
+				out += cfg.evidence(req.Role, key, turns)
+			}
+			return out, nil, nil
 		}
 		turns = append(slices.Clone(turns), api.Message{Role: "assistant", Content: rep.Content, ToolCalls: named(rep.Calls, len(turns))})
 		if len(cfg.forwarded(req.Role, key, turns)) > 0 {

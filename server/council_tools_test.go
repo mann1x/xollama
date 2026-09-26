@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -92,9 +93,10 @@ func TestACouncilTurnCallsToolsAndResumes(t *testing.T) {
 		case "researcher":
 			sawR1 = sawR1 || strings.Contains(p, "<tool>R1-RESULT")
 			sawR2 = sawR2 || strings.Contains(p, "<tool>R2-RESULT")
-		default:
-			if strings.Contains(p, "RESULT") || strings.Contains(p, "r1:call") {
-				t.Errorf("%s reads the researchers' tool traffic: %q", e2.roles[i], p)
+		case "critic", "synthesizer":
+			// The researchers' results as their evidence, never their traffic.
+			if !strings.Contains(p, "returned:\nR1-RESULT") || strings.Contains(p, "<tool>") || strings.Contains(p, "r1:call") {
+				t.Errorf("%s reads %q", e2.roles[i], p)
 			}
 		}
 	}
@@ -218,6 +220,44 @@ func TestAToolTurnsRootHoldsTheTools(t *testing.T) {
 	for i, p := range e.prompts {
 		if !strings.HasPrefix(p, kv.pools[0].text) {
 			t.Errorf("%s does not start with the root", e.roles[i])
+		}
+	}
+}
+
+// A resumed member attaches to its step's shared layer, as on its first call:
+// never to a pool of its own holding its instruction and its tool traffic.
+func TestAResumedMemberReattachesToItsStage(t *testing.T) {
+	councilStateKeyIn(t, t.TempDir())
+	councilRoots.reset()
+	e := &councilEngine{route: `{"route":"council"}`, tools: map[string]string{"researcher": "read_files"}}
+	kv := &fakeKV{unowned: true}
+	s := polykvCouncil(t, e, kv, councilOn())
+	empty := ""
+	req := polykvReq
+	req.Tools, req.CouncilChatState = councilTestTools, &empty
+	chunks := toolChat(t, s, req)
+	var calls []api.ToolCall
+	for _, c := range chunks {
+		calls = append(calls, c.Message.ToolCalls...)
+	}
+	state := chunks[len(chunks)-1].CouncilChatState
+	req.CouncilChatState = &state
+	req.Messages = append(slices.Clone(req.Messages), api.Message{Role: "assistant", ToolCalls: calls},
+		api.Message{Role: "tool", ToolCallID: calls[0].ID, Content: "R1-RESULT"},
+		api.Message{Role: "tool", ToolCallID: calls[1].ID, Content: "R2-RESULT"})
+	if _, content := joined(toolChat(t, s, req)); !strings.HasPrefix(content, "The sky is blue") {
+		t.Fatalf("answer %q", content)
+	}
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	for _, p := range kv.pools {
+		if strings.Contains(p.text, "<tool>") || strings.Contains(p.text, "ROLE: RESEARCHER") {
+			t.Errorf("pool %d holds a member's own part: %q", p.id, p.text[max(0, len(p.text)-160):])
+		}
+	}
+	for i, r := range e.roles {
+		if r == "researcher" && (e.placements[i] == nil || e.placements[i].PoolID == nil) {
+			t.Errorf("researcher call %d ran unpooled: %+v", i, e.placements[i])
 		}
 	}
 }

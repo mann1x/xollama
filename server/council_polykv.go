@@ -458,10 +458,22 @@ func (t *councilTree) learnGrant(k llm.KVStatus) (llm.KVAllocation, bool) {
 // workerPlacement attaches a worker to the pool of its layer. Nil means the
 // worker could not be pooled and runs on its own, sized booking.
 func (t *councilTree) workerPlacement(ctx context.Context, msgs []api.Message, session string) *llm.Placement {
-	if len(msgs) < 2 {
+	// The layer is what precedes the member's own instruction, the last user
+	// message: the stage every member of its step shares. A member resumed
+	// after tool calls (9.5) carries its turns and results after that; a
+	// layer cut after them would be a pool of its own on every round trip,
+	// and with two results in a row -- which a template may render as one
+	// block -- no prefix at all (measured on b137: unpooled, it booked its
+	// own cells beside an owner holding the whole cache, and waited out
+	// admission).
+	own := len(msgs) - 1
+	for own > 0 && msgs[own].Role != "user" {
+		own--
+	}
+	if own < 1 {
 		return nil
 	}
-	layerMsgs := msgs[:len(msgs)-1]
+	layerMsgs := msgs[:own]
 	text, err := t.cut(ctx, layerMsgs)
 	if err != nil || text == "" {
 		slog.Debug("council: no pool layer for a member", "error", err)

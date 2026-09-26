@@ -91,7 +91,8 @@ func TestParallelMembersToolCallsGoOutTogetherAndComeBack(t *testing.T) {
 		}
 	}
 	findings := crit.Messages[len(crit.Messages)-2].Content
-	if !strings.Contains(findings, "let me look\n\nresearcher says R1-DATA") || !strings.Contains(findings, "R2-DATA") {
+	// The reply, not the narration before its call; then what it read.
+	if strings.Contains(findings, "let me look") || !strings.Contains(findings, "researcher says R1-DATA\n\nEvidence (the tools called and what they returned):\n- read_files {} returned:\nR1-DATA") || !strings.Contains(findings, "returned:\nR2-DATA") {
 		t.Fatalf("the critics read %q", findings)
 	}
 }
@@ -191,5 +192,51 @@ func TestTheCharterNamesTheToolsOnlyWhenThereAreSome(t *testing.T) {
 				t.Errorf("tools %v: the planner's request carries the tool charter: %v", tools != nil, got)
 			}
 		}
+	}
+}
+
+// The synthesizer's answer is the user's: it carries no evidence. A result
+// longer than the cap is cut and says by how much.
+func TestEvidenceIsCappedAndNeverInTheAnswer(t *testing.T) {
+	s := &toolStub{stub: stub{route: `{"route":"council"}`}, call: map[string]string{"r1": "read_files", "s": "read_files"}}
+	cfg := FromModel(nil, 0.7)
+	cfg.Tools = testTools
+	res, _ := Run(t.Context(), cfg, s, conv, func(Event) {})
+	cfg.Results = map[string]string{"r1:call_0_0": strings.Repeat("x", maxEvidence+10)}
+	res, _ = RunFrom(t.Context(), cfg, s, conv, res.Progress, nil, func(Event) {})
+	cfg.Results = map[string]string{"s:call_0_0": "S-DATA"}
+	res, err := RunFrom(t.Context(), cfg, s, conv, res.Progress, nil, func(Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(res.Answer, "Evidence") || !strings.Contains(res.Answer, "S-DATA") {
+		t.Fatalf("answer %q", res.Answer)
+	}
+	var synth Request
+	for _, c := range s.calls {
+		if c.Role == Synthesizer {
+			synth = c
+		}
+	}
+	all := ""
+	for _, m := range synth.Messages {
+		all += m.Content
+	}
+	// (The stub's reply echoes the whole result; the evidence entry is capped.)
+	if !strings.Contains(all, "read_files {} returned:\n"+strings.Repeat("x", maxEvidence)+"\n[... 10 more characters]") {
+		t.Fatalf("the synthesizer did not read the researcher's result, capped: %.300q", all[len(all)-min(len(all), 700):])
+	}
+}
+
+// With tools the built-in charter stops telling researchers to use only their
+// own knowledge; it says so again without them.
+func TestTheCharterLetsResearchersReadOnlyWithTools(t *testing.T) {
+	cfg := FromModel(nil, 0.7)
+	if !strings.Contains(cfg.charter(), charterNoTools) {
+		t.Fatal("the built-in charter changed; charterNoTools no longer matches it")
+	}
+	cfg.Tools = testTools
+	if c := cfg.charter(); strings.Contains(c, charterNoTools) || !strings.Contains(c, charterWithTools) {
+		t.Fatalf("charter with tools: %q", c)
 	}
 }

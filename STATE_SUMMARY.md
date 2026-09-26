@@ -5,6 +5,22 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — 9.5 fixed: the council is as reliable with tools as the plain model.**
+> - The owner rejected "less reliable" as a finding. A per-member debug trace
+>   found three faults of ours, with compaction and thinking both ruled out:
+>   - tool results stayed private to the member that called for them, so
+>     the synthesizer (the only writer) never saw the file it edited, and
+>     critics re-read everything. Findings now carry their evidence;
+>   - the charter contradicted the tools ("only their own knowledge");
+>   - a resumed member's PolyKV layer was cut after its own tool results.
+>     That meant a private pool per round trip, or none: it booked cells
+>     beside a full owner, and waited out admission.
+> - Live A/B after the fixes, interleaved: council 6/6, 27–38 s; plain 6/6,
+>   5–7 s. No critic tool calls, no unpooled members.
+> - A procedure fault on the way (bug-144): the dev server was found by
+>   name, so a build named `xollama-trace` survived a restart and served one
+>   batch on the old binary. That batch was discarded. Find it by its port.
+
 > **2026-09-26 — Phase 9.5: the council uses the client's tools (`council_tools_v1`).**
 > - A council turn with tools and `council_chat_state` uses the tools.
 >   Researchers and critics call only the tools marked `x_read_only` (or MCP

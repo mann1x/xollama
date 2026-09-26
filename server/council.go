@@ -602,6 +602,13 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 	if err := ctx.Err(); err != nil {
 		return out.String(), nil, err
 	}
+	// The whole exchange, for reading a turn back member by member.
+	if slog.Default().Enabled(ctx, slog.LevelDebug) {
+		msgs, _ := json.Marshal(r.Messages)
+		reply, _ := json.Marshal(calls)
+		slog.Debug("council member", "role", r.Role, "index", r.Index, "round", r.Round, "session", req.SessionID,
+			"messages", string(msgs), "reply", out.String(), "calls", string(reply))
+	}
 	return out.String(), calls, sc.Err()
 }
 
