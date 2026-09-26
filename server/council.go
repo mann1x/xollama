@@ -100,20 +100,35 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		members.tree = tree
 		// The conversation compacts on the owner's pressure (guide §6.5), and
 		// on its rendered size when there is no allocation to read yet.
+		tree.reserve = reserve
 		pressure := tree.begin(c.Request.Context())
 		budget := int(float64(max(tree.grant, tree.floor))*tree.compactAt) - reserve
-		conv = s.compactConversation(c.Request.Context(), members, conv, tree.tokens, compaction{
-			pressure: pressure, compactAt: tree.compactAt, idleCompactAt: tree.idleCompactAt, budget: budget,
-		})
+		compact := compaction{pressure: pressure, compactAt: tree.compactAt, idleCompactAt: tree.idleCompactAt, budget: budget}
+		conv = s.compactConversation(c.Request.Context(), members, conv, tree.tokens, compact)
+		// The planner runs attached to the conversation's root, so the
+		// conversation is held once (guide §6.2, arm C). An engine that
+		// answers "compact the session" gets exactly that, once.
+		if err := tree.buildRoot(c.Request.Context(), conv); errors.Is(err, llm.ErrSessionFull) {
+			compact.pressure = max(compact.pressure, compact.compactAt)
+			if short := s.compactConversation(c.Request.Context(), members, conv, tree.tokens, compact); len(short) < len(conv) {
+				conv = short
+				_ = tree.buildRoot(c.Request.Context(), conv)
+			}
+		}
 		defer func() {
 			tree.finish(reserve)
-			if a := answer.Load(); a != nil {
-				councilIdle.Add(1)
-				go func() {
-					defer councilIdle.Done()
+			a := answer.Load()
+			councilIdle.Add(1)
+			go func() {
+				defer councilIdle.Done()
+				// Always run: it ends the mark a next turn waits on.
+				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+				tree.promoteRoot(ctx)
+				cancel()
+				if a != nil {
 					s.councilIdleCompact(members, tree, full, *a)
-				}()
-			}
+				}
+			}()
 		}()
 	}
 

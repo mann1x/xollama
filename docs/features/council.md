@@ -49,10 +49,20 @@ When the runner implements `llm.PolyKV` (opencoti with `polykv_subpools_v1`
 and `kv_status_v1`, `CouncilPools > 0`, affinity on) a turn builds one tree:
 
 - the planner is the **owner**: it books the window on the conversation's
-  session (`num_ctx`, `num_ctx_min` = the floor);
-- P1 (the conversation), P2r (+ plan), P2f (+ findings), P3s (+ critiques)
-  are each built once, forked from the longest prefix already built, pinned
-  to the owner. A layer is the rendered prompt cut at `councilSentinel` and
+  session (`num_ctx`, `num_ctx_min` = the floor), **attached to P1**, the
+  conversation's root, so the conversation is held once (guide §6.2, arm C).
+  `buildRoot` makes P1 before the planner's first call. On the first turn the
+  owner has no allocation yet: P1 is unowned (`pool_unowned_v1`, else no root
+  and the planner holds its own copy), the planner's floor drops to its own
+  part, and the idle council's `promoteRoot` builds the owner its own P1. An
+  owned P1 is kept between turns (`councilRoots`), adopted only while the
+  owner's allocation lives and on the runner that built it, and forked by the
+  next turn. The engine never releases a parent, so up to `councilRootChain`
+  (2) old roots stay under it; past that, or on a recurrent model, P1 is
+  rebuilt and the chain let go. A next turn waits for an in-flight promotion
+  (`councilRoots.wait`);
+- P2r (+ plan), P2f (+ findings), P3s (+ critiques) are each built once,
+  forked from the longest prefix already built, pinned to the owner. A layer is the rendered prompt cut at `councilSentinel` and
   must be a byte prefix of the member's own prompt, or the member runs
   unpooled;
 - workers attach with `pool_id` and no window, and are closed when done; the
@@ -68,16 +78,20 @@ and `kv_status_v1`, `CouncilPools > 0`, affinity on) a turn builds one tree:
   a turn summarises the older turns into the system message before it runs
   (the last three stay); after the answer an idle goroutine (`councilIdle`)
   writes the summary at `idle_compact_at` (0.75), deduplicated by
-  `singleflight`, and the next turn takes it from the cache. With no
-  pressure reading, the token budget (`compact_at` of the grant) decides;
+  `singleflight`, and the next turn takes it from the cache. The summary is
+  asked as the next turn of the conversation itself, on the owner and
+  attached to the kept P1, never with the old turns pasted into a new prompt.
+  With no pressure reading, the token budget (`compact_at` of the grant)
+  decides. A P1 refused with "compact the session" (`llm.ErrSessionFull`)
+  compacts the turn and is built once more;
 - `num_ctx 0` (the `polykv-window` hook): the load takes the trained context
   as the pool; with `pool_unowned_v1` the tree is `unowned` — pools created
   with `"unowned": true`, the planner sends no placement, and the owner is
   never grown or shrunk. Without the feature the owner books the loaded
   context.
 
-A PolyKV council launches with `councilPoolSeats` = `2 + 2 × rounds` pool
-seats, so it is not launch-neutral; `polykv off` is.
+A PolyKV council launches with `councilPoolSeats` = `2 + 2 × rounds` +
+`councilRootChain` pool seats, so it is not launch-neutral; `polykv off` is.
 
 Measured on b111 (omnimerge v4 IQ2_M, 16k, `-np 4`): computed prefill per
 council turn 3,139 → 525 tokens, peak KV cells about −40 %, wall time at parity.

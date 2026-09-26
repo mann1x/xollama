@@ -1,6 +1,6 @@
 # Council: continue the conversation's pool
 
-**Status:** WAITING — for an opencoti build with patch 0406 on the HF dev repo · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
+**Status:** WAITING — partly realized 2026-09-26 without `continue_pool` (below); the rest waits for an opencoti build with patch 0406 on the HF dev repo · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
 
 ## Why
 
@@ -26,6 +26,19 @@ adds two things that could make that cheaper:
 Features: `pool_unowned_v1`, `pool_continue_v1`. Both are additive: existing
 requests are unchanged, and `/api/engine` already forwards them, since they are
 fields on routes it proxies.
+
+## Realized without `continue_pool` (2026-09-26)
+
+The first question is answered for the council's own pools, by forking rather
+than continuing: the conversation's root is kept between turns, owned by the
+owner session, and the next turn forks it, prefilling only what is new
+([agentic-council-chat.md](agentic-council-chat.md), "The conversation held
+once"). The first turn's root is unowned (`pool_unowned_v1`). Measured on the
+b128 dev build. Recurrent models rebuild the root each turn, which answers the
+second question for now: a kept chain would hold state cells.
+
+`continue_pool` itself is still unused. It would let the planner send only
+the new messages and skip re-tokenizing the root.
 
 ## Trigger
 

@@ -1,6 +1,6 @@
 # Agentic Council Chat
 
-**Status:** ACTIVE · **Phase:** 6 and 7 built and tested live (`num_ctx 0` and `slots.live` on the b128 dev build); idle compaction on a long conversation left, `num_ctx 0` waits for the next promoted opencoti build (phases 0–5 closed 2026-09-26) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
+**Status:** ACTIVE · **Phase:** 0–7 closed 2026-09-26 (the conversation held once and idle compaction tested live on the b128 dev build); left: the pin moves to a published build with `pool_unowned_v1`, on a measurement · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
 
 In this chat mode, one model name is a *council*. A client connects to xollama
 the usual way: `/api/chat`, the OpenAI or Anthropic API, the CLI, or the
@@ -19,8 +19,8 @@ KV cache and prefills only its own role and turn.
 - [x] Phase 3 — the runner (2026-09-26; live on b111, results below)
 - [x] Phase 4 — PolyKV path (2026-09-26; A/B on b111, results below)
 - [x] Phase 5 — surfaces and docs (2026-09-26; results below)
-- [ ] Phase 6 — PolyKV sizing and pressure-driven compaction (approved and built 2026-09-26, unit-tested; the live test waits for the next promoted opencoti build; below)
-- [ ] Phase 7 — roles on other models and other ollama instances, cloud models included (decided and built 2026-09-26, unit-tested; live test pending; below)
+- [x] Phase 6 — PolyKV sizing and pressure-driven compaction (2026-09-26; live on b128, including the planner on the conversation's root; below)
+- [x] Phase 7 — roles on other models and other ollama instances, cloud models included (2026-09-26; live on cloud models and eleven2go; below)
 
 ## What the user sees
 - `xollama create my-council -f Modelfile` (or `xollama tweak model my-council`)
@@ -806,8 +806,75 @@ The whole-pool turn built its pools with `owner ''`, as the engine logged:
 `created pool 0 … owner ''` and `forked pool 1 from 0 … owner ''`. They were
 released newest first. Members decoded at 25–38 tok/s on the 4-slot launch.
 
-**Left for the live test:** idle compaction on a long conversation (the
-second message's time to first token with and without it).
+### The conversation held once (2026-09-26)
+
+Scripting the idle-compaction test showed a design flaw. The planner's
+session held the conversation in its own cells, and P1 was a second copy
+built from tokens and charged to the same owner. The owner's tree was full at
+about 45 % of the conversation's window, so compaction at 0.85 and idle
+compaction at 0.75 could never fire. Once pools were refused, unpooled
+members queued behind an owner that held everything, and the turn failed with
+a 503 after two minutes. The owner chose to fix it now (guide §6.2, arm C):
+build the root first and run the planner attached to it.
+
+- **The root.** `buildRoot` (`server/council_polykv.go`) builds the
+  conversation's root pool before the planner's first call: the rendered
+  conversation up to where a decision, a plan and a direct answer part. The
+  planner attaches to it with `pool_id`, so only its own tokens are private.
+  Workers' layers fork it as before.
+- **First turn.** The owner has no allocation until the planner's first
+  request, so the root is **unowned**. That needs `pool_unowned_v1`; without
+  it the first turn builds no root, as before. The planner's floor comes down
+  to its own part (`max(4096, reserve)`), because the conversation sits
+  outside its window. The root goes with the turn. While the council is idle,
+  `promoteRoot` builds the owner its own copy. The next message waits for
+  that to finish (`councilRoots.wait`): built beside the turn's own, the two
+  filled the window and the planner was refused, measured.
+- **Later turns.** An owned root is kept (`councilRoots`, by owner session)
+  and is adopted only while the owner's allocation lives, and only on the
+  runner that built it. The next turn forks it and prefills only what is
+  new. The engine never releases a pool with a child, so the old root stays
+  as the parent; each pool is charged only its own part. After
+  `councilRootChain` (2) forks, or on a recurrent model (every pool holds a
+  state cell), the root is rebuilt from tokens, and the old chain is let go
+  first, newest first. The launch reserves two more pool seats for the chain
+  (`councilPoolSeats`: 6 for one round).
+- **The summary is a turn of the conversation.** `summariseOld` asks for it
+  as the next turn of the conversation itself (head plus
+  `councilSummaryPrompt`), on the owner and attached to the kept root. The
+  old prompt pasted the old turns into a new prompt, which was a third copy.
+- **"Compact the session".** A root refused because the owner's allocation
+  is full is `llm.ErrSessionFull` (the engine's 503 names it). The turn
+  compacts and builds the root again, once.
+- Guards: `TestThePlannerAttachesTheConversationRoot`,
+  `TestTheNextTurnExtendsTheKeptRoot`,
+  `TestARecurrentModelRebuildsTheRootEachTurn`,
+  `TestAStaleRootIsNeitherUsedNorReleased`,
+  `TestARefusedRootCompactsAndRetries`,
+  `TestTheIdleCouncilGivesTheOwnerItsRoot`,
+  `TestTheNextTurnWaitsForTheOwnersRoot`,
+  `TestKeepingARootReleasesTheOneItDisplaces`,
+  `TestAFullSessionRefusalIsErrSessionFull`. Mutation-checked with compiling
+  mutations. The one equivalent mutant: the window test in `promoteRoot`,
+  since the engine lists an allocation only with a window.
+
+**Idle compaction, live on b128** (`omni-council-idle`, 16k, a conversation
+of about 7,000 tokens over 22 earlier turns; `council-idle.py`; each arm has
+its own session, closed after it):
+
+| arm | turn N | idle summary | next message: first token | next message: turn |
+|---|---|---|---|---|
+| idle (waits for the summary) | 75.7 s | written 14.1 s after the answer | **2.5 s** | 47.1 s |
+| no idle (sends at once) | 61.1 s | — | 18.3 s | 64.5 s |
+
+After turn N the promoted root put the owner at pressure 0.867, so both arms
+compacted the next message on it, the idle arm using the summary it already
+had. Calibration, before the waiting was added: 4,000 and 7,000 tokens of
+history ran in 51–61 s. At 10,000 tokens the first turn's root did not fit
+beside the window, and the planner held its own copy, as before (57 s).
+The load's pool is one conversation wide at 16k: a second conversation
+cannot book while the first holds its window. The script closes each session
+through `/api/engine` (`sessions/{id}/close`).
 
 ## Phase 7 — roles on other models and other instances (built 2026-09-26)
 
@@ -995,6 +1062,10 @@ version string does not name it. It gets `think: true`.
   conversation's pool instead of rebuilding P1. Its own plan,
   [council-continue-pool.md](council-continue-pool.md), waits for a build
   with 0406 on the HF dev repo (the owner's call).
+- 2026-09-26 — The conversation is held once (the owner's call, "attach the
+  planner to P1 now"): a root pool first, the planner attached, the root kept
+  and forked between turns. On "compact the session" the turn compacts and
+  retries, instead of running its members unpooled.
 - 2026-09-26 — Members may think, per role (`council.<role>.think`), with
   their reasoning hidden. The default is `medium`, it is configurable, and the
   cap message is the model's own. The council sends an explicit token

@@ -152,12 +152,16 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
 On the opencoti engine the members do not each read the conversation from
 scratch. The conversation is cached once; the researchers share it plus the
 plan, and the critics and the synthesizer each share the step before theirs.
-Every member computes only what is new to it. On a hybrid model, whose every
+Every member computes only what is new to it, the planner included: it runs
+on the cached conversation instead of holding a copy of its own. Between
+turns the conversation stays cached for the next message, which computes only
+what was added. On a hybrid model, whose every
 cached sequence also holds a recurrent state, each stage's shared part is freed
 as soon as its members are done, so a turn fits in the few state slots the
-engine keeps. When the turn ends, those shared
-parts are freed and the members' sessions are closed. The conversation keeps
-its window for the next turn.
+engine keeps. When the turn ends, the members' shared
+parts are freed and their sessions are closed. The conversation keeps its
+window, and its cache, for the next turn. On a hybrid model the conversation
+is cached afresh each turn, since a kept one would hold a state slot.
 
 Measured on a 27B model, 16k context, four council turns each way:
 
@@ -183,7 +187,14 @@ or above, the older turns are summarised into the system prompt and the last
 three are kept word for word. The council also uses the time between your
 messages: once it has answered, if the pressure is at
 `council.context.idle_compact_at` (0.75) or above, it writes that summary
-then, and your next message uses it instead of waiting for it.
+then, and your next message uses it instead of waiting for it. Measured on a
+27B model at 16k with about 7,000 tokens of history, the next message's first
+token came after 2.5 s with the summary ready, against 18 s without it.
+
+A new conversation's first turn caches the conversation before the council
+owns any of the engine's memory, which needs an engine that advertises
+`pool_unowned_v1`. On one that does not, the first turn's planner holds its
+own copy, as every turn used to; later turns share it either way.
 
 ### `num_ctx 0`: the whole pool
 
@@ -212,7 +223,7 @@ without pools, it keeps upstream's meaning.
 | opencoti, PolyKV off | as on `llama.cpp`, with slots that grow on demand (`slots.live`, `slots.max`) | the model's, per slot, as upstream |
 | opencoti, PolyKV | share the conversation's cache in one session tree | a window on the conversation, or `0` for the whole pool |
 
-A council on PolyKV reserves a few pool seats when its model loads (four for
+A council on PolyKV reserves a few pool seats when its model loads (six for
 one round), so its runner is its own even among tags that share weights.
 
 To watch it: `GET /api/engine?model=<council>&endpoint=kv` shows the window

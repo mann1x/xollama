@@ -152,6 +152,10 @@ type ResizeResult struct {
 	LargestAdmissible int
 }
 
+// ErrSessionFull is a pool refused because its owner's allocation is full:
+// the engine's answer is "compact the session", and the council does.
+var ErrSessionFull = errors.New("engine refused the council pool: the session's allocation is full")
+
 // councilFeatures are the flags a council's pool tree needs from the engine.
 var councilFeatures = []string{"polykv_subpools_v1", "kv_status_v1"}
 
@@ -219,7 +223,11 @@ func (s *llamaServerRunner) CreatePool(ctx context.Context, session string, pare
 		return PoolInfo{}, err
 	}
 	if status != http.StatusOK {
-		return PoolInfo{}, fmt.Errorf("engine refused the council pool: %s: %s", http.StatusText(status), bytes.TrimSpace(out))
+		msg := bytes.TrimSpace(out)
+		if bytes.Contains(msg, []byte("compact the session")) {
+			return PoolInfo{}, fmt.Errorf("%w: %s", ErrSessionFull, msg)
+		}
+		return PoolInfo{}, fmt.Errorf("engine refused the council pool: %s: %s", http.StatusText(status), msg)
 	}
 	var p PoolInfo
 	if err := json.Unmarshal(out, &p); err != nil {

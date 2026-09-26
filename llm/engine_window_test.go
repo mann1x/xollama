@@ -2,6 +2,8 @@ package llm
 
 import (
 	"encoding/json"
+	"errors"
+	"net/http"
 	"testing"
 
 	"github.com/ollama/ollama/types/xollama"
@@ -66,6 +68,25 @@ func TestACouncilPoolWithoutASessionIsUnowned(t *testing.T) {
 		_, hasSession := sent["session_id"]
 		if (sent["unowned"] == true) != tc.unowned || hasSession == tc.unowned {
 			t.Errorf("session %q sent %v", tc.session, sent)
+		}
+	}
+}
+
+// The engine's "compact the session" is ErrSessionFull, so the council can
+// compact; any other refusal is not.
+func TestAFullSessionRefusalIsErrSessionFull(t *testing.T) {
+	for _, tc := range []struct {
+		payload string
+		full    bool
+	}{
+		{`{"error":{"code":503,"message":"session allocation full ('conv-1': 12 of 16384 cells free, the pool needs 9000) — compact the session"}}`, true},
+		{`{"error":{"code":503,"message":"pool seq-id reservoir exhausted (--polykv-pool-seqs); release a pool first"}}`, false},
+	} {
+		stub := &poolStub{status: http.StatusServiceUnavailable, payload: tc.payload, tokenPayload: `{"tokens":[1,2]}`}
+		s := poolRunner(t, stub)
+		_, err := s.CreatePool(t.Context(), "conv-1", nil, "prefix")
+		if err == nil || errors.Is(err, ErrSessionFull) != tc.full {
+			t.Errorf("%s: err %v, want ErrSessionFull %v", tc.payload, err, tc.full)
 		}
 	}
 }

@@ -4,28 +4,34 @@ package server
 // layout for this flow", "Context, pressure and compaction"). Additive; reached
 // from server/council.go when the runner can carry a pool tree.
 //
-// The planner runs on the council's OWNER session, which books the window.
-// Every other member is a WORKER: it attaches to a pool holding everything it
-// shares with the others and prefills only its own instruction, charged to the
-// owner. The tree is not spelled out here; it falls out of the members'
-// messages. A worker's layer is its conversation up to the opener of its last
-// turn, and each layer forks the longest layer already built that it extends:
+// The planner runs on the council's OWNER session, which books the window,
+// attached to the conversation's ROOT pool (guide §6.2, arm C), so the
+// conversation is held once: in the root, charged to the owner, and never
+// again in the planner's own cells. Every other member is a WORKER: it
+// attaches to a pool holding everything it shares with the others and
+// prefills only its own instruction, charged to the owner. The tree is not
+// spelled out here; it falls out of the members' messages. A worker's layer is
+// its conversation up to the opener of its last turn, and each layer forks the
+// longest layer already built that it extends:
 //
-//	P1  the conversation                  (first worker layer's parent)
+//	P1  the conversation (the root)       the planner
 //	 └ P2r  + the plan                    researchers
 //	    └ P2f  + the findings             critics
 //	       └ P3s  + the critiques         synthesizer
 //
-// The pools live for one turn. The owner stays open between turns, holding the
-// conversation for the next decision, and its booking follows the engine's
-// pressure: shrunk while others are refused, grown back when they are not.
+// The layers live for one turn. The owner stays open between turns and keeps
+// its root, which the idle council summarises on and the next turn forks, so
+// only what is new is prefilled. The first turn's root has no owner yet (the
+// owner books its window on the planner's first call): it needs
+// pool_unowned_v1, and goes with the turn. The owner's booking follows the
+// engine's pressure: shrunk while others are refused, grown back when they
+// are not.
 
 import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"log/slog"
 	"slices"
 	"strings"
@@ -75,6 +81,23 @@ type councilTree struct {
 	// unowned is the whole-pool council (num_ctx 0, pool_unowned_v1): the
 	// planner books no window, and the layers belong to no session.
 	unowned bool
+	// canUnown is pool_unowned_v1: a pool may belong to no session. Without
+	// it the first turn, whose owner holds no allocation yet, builds no root.
+	canUnown bool
+	// reserve is the turn's room on top of the conversation (councilReserve).
+	reserve int
+
+	// root is this turn's conversation pool, which the planner runs attached
+	// to, so the conversation is held once: in the pool, never again in the
+	// planner's own session. kept is the previous turn's root, still owned by
+	// the owner's allocation, which this turn extends instead of prefilling
+	// the conversation again.
+	root *councilLayer
+	kept *councilRoot
+	// promote is the text of a first turn's unowned root, which the idle
+	// council builds again for the owner (promoteRoot).
+	promote  string
+	promoted func() // ends the promotion's mark in councilRoots
 
 	mu     sync.Mutex
 	grant  int
@@ -96,22 +119,255 @@ type councilLayer struct {
 	users    int  // workers attached and not yet closed
 	root     bool // the conversation's own layer, kept for the whole turn
 	released bool
+	// keep outlives the turn: the conversation's root, owned by the owner,
+	// for the next turn to extend. chain is the older roots it was forked
+	// from, oldest first.
+	keep  bool
+	chain []int
 }
 
-// ownerPlacement is the planner's: the owner session and its window. Before
-// the grant is known it asks [floor, window]; afterwards it states the grant,
-// which is how a resumed booking continues rather than re-negotiating.
-func (t *councilTree) ownerPlacement() *llm.Placement {
-	if t.unowned {
+// councilRoot is a conversation's root pool, kept between turns. kv is the
+// runner it lives on: a new runner has none of the old one's pools.
+type councilRoot struct {
+	id    int
+	text  string
+	kv    llm.PolyKV
+	chain []int
+}
+
+// councilRoots holds each conversation's kept root, by owner session.
+var councilRoots = &rootRegistry{m: map[string]councilRoot{}}
+
+type rootRegistry struct {
+	mu sync.Mutex
+	m  map[string]councilRoot
+	// promoting is the owners whose idle council is building their root; the
+	// next turn waits for it rather than build a second copy beside it.
+	promoting map[string]chan struct{}
+}
+
+// promotion marks owner's root as being built. done must be called.
+func (r *rootRegistry) promotion(owner string) (done func()) {
+	ch := make(chan struct{})
+	r.mu.Lock()
+	if r.promoting == nil {
+		r.promoting = map[string]chan struct{}{}
+	}
+	r.promoting[owner] = ch
+	r.mu.Unlock()
+	return func() {
+		r.mu.Lock()
+		if r.promoting[owner] == ch {
+			delete(r.promoting, owner)
+		}
+		r.mu.Unlock()
+		close(ch)
+	}
+}
+
+// wait returns once no root is being built for owner, or ctx ends.
+func (r *rootRegistry) wait(ctx context.Context, owner string) {
+	r.mu.Lock()
+	ch := r.promoting[owner]
+	r.mu.Unlock()
+	if ch == nil {
+		return
+	}
+	select {
+	case <-ch:
+	case <-ctx.Done():
+	}
+}
+
+func (r *rootRegistry) take(owner string) (councilRoot, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	v, ok := r.m[owner]
+	delete(r.m, owner)
+	return v, ok
+}
+
+// put keeps v for owner and returns the root it displaced, if any, which is
+// the caller's to let go.
+func (r *rootRegistry) put(owner string, v councilRoot) (councilRoot, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	old, had := r.m[owner]
+	r.m[owner] = v
+	return old, had && (old.id != v.id || old.kv != v.kv)
+}
+
+func (r *rootRegistry) reset() {
+	r.mu.Lock()
+	r.m, r.promoting = map[string]councilRoot{}, nil
+	r.mu.Unlock()
+}
+
+// ownerPlacement is the planner's: the owner session and its window, attached
+// to the conversation's root when its prompt extends it. Before the grant is
+// known it asks [floor, window]; afterwards it states the grant, which is how
+// a resumed booking continues rather than re-negotiating. A root with no
+// owner yet sits outside the window (the first turn), so the window need only
+// hold the planner's own tokens, and the floor comes down to that.
+func (t *councilTree) ownerPlacement(ctx context.Context, msgs []api.Message) *llm.Placement {
+	root := t.rootFor(ctx, msgs)
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	var p *llm.Placement
+	switch {
+	case t.unowned:
+		if root == nil {
+			return nil
+		}
+		p = &llm.Placement{}
+	case t.grant > 0:
+		p = &llm.Placement{NumCtx: t.grant, NumCtxMin: t.grant}
+	default:
+		p = &llm.Placement{NumCtx: t.window, NumCtxMin: t.floor}
+		if root != nil && !root.keep {
+			p.NumCtxMin = min(t.floor, max(4096, roundUp(t.reserve, 256)))
+		}
+	}
+	if root != nil {
+		id := root.id
+		p.PoolID = &id
+	}
+	return p
+}
+
+// rootFor is the root pool msgs can attach to: this turn's, else the one kept
+// from the last turn (the summary of the old turns is asked on it, before this
+// turn builds its own). Nil when the prompt does not extend it.
+func (t *councilTree) rootFor(ctx context.Context, msgs []api.Message) *councilLayer {
+	t.mu.Lock()
+	root := t.root
+	if root == nil && t.kept != nil {
+		root = &councilLayer{text: t.kept.text, id: t.kept.id, keep: true}
+	}
+	t.mu.Unlock()
+	if root == nil {
+		return nil
+	}
+	full, err := t.render(ctx, msgs)
+	if err != nil || !strings.HasPrefix(full, root.text) {
+		return nil
+	}
+	return root
+}
+
+// rootText is the conversation's root: what every planner prompt starts with.
+// A decision and a plan continue the conversation with a user turn, a direct
+// answer with the assistant's, so the root ends where those two part: after
+// the next turn's opener token, before its role.
+func (t *councilTree) rootText(ctx context.Context, conv []api.Message) (string, error) {
+	user, err := t.cut(ctx, conv)
+	if err != nil {
+		return "", err
+	}
+	answer, err := t.render(ctx, conv)
+	if err != nil {
+		return "", err
+	}
+	n := 0
+	for n < len(user) && n < len(answer) && user[n] == answer[n] {
+		n++
+	}
+	return user[:n], nil
+}
+
+// buildRoot makes this turn's root pool before the planner's first call. It
+// extends the root kept from the last turn when the conversation still starts
+// with it -- prefilling only what is new -- and otherwise builds it afresh
+// and lets the old one go. It belongs to the owner when the owner holds an
+// allocation (so it counts in the owner's pressure, and outlives the turn);
+// on the first turn there is none yet, so the root is unowned and released
+// with the turn.
+//
+// The error is the engine's refusal of a new root, which the caller answers by
+// compacting when it is llm.ErrSessionFull.
+func (t *councilTree) buildRoot(ctx context.Context, conv []api.Message) error {
+	text, err := t.rootText(ctx, conv)
+	if err != nil || text == "" {
+		slog.Debug("council: no conversation root", "error", err)
 		return nil
 	}
 	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.grant > 0 {
-		return &llm.Placement{NumCtx: t.grant, NumCtxMin: t.grant}
+	live := t.grant > 0 && !t.unowned
+	prev := t.kept
+	t.kept = nil
+	t.mu.Unlock()
+	if !live && !t.canUnown {
+		return nil
 	}
-	return &llm.Placement{NumCtx: t.window, NumCtxMin: t.floor}
+	owner := ""
+	if live {
+		owner = t.owner
+	}
+
+	var p llm.PoolInfo
+	var chain []int
+	built := false
+	switch {
+	case prev != nil && prev.text == text:
+		p, chain, built = llm.PoolInfo{ID: prev.id, Len: len(text)}, prev.chain, true
+		prev = nil // the same pool: nothing to let go
+	case prev != nil && !t.recurrent && len(prev.chain) < councilRootChain && strings.HasPrefix(text, prev.text):
+		// The engine never releases a pool with a child, so the old root
+		// stays as the new one's parent; each is charged only its own part.
+		pid := prev.id
+		if p, err = t.kv.CreatePool(ctx, owner, &pid, text); err == nil {
+			chain, built = append(slices.Clone(prev.chain), prev.id), true
+			prev = nil
+		} else {
+			slog.Debug("council: could not extend the conversation root", "pool", pid, "error", err)
+		}
+	}
+	if prev != nil {
+		// Let the old root go before building afresh: it counts against the
+		// same allocation. Still the owner's: begin found its allocation live,
+		// and nobody else books this session between turns.
+		t.releaseRoot(ctx, prev)
+	}
+	var refused error
+	if !built {
+		if p, refused = t.kv.CreatePool(ctx, owner, nil, text); refused != nil {
+			slog.Info("council: conversation root not built; the planner holds its own copy", "error", refused)
+			return refused
+		}
+	}
+	l := &councilLayer{text: text, ready: make(chan struct{}), id: p.ID, root: true, keep: live, chain: chain}
+	close(l.ready)
+	t.mu.Lock()
+	if !live && !t.unowned && t.promoted == nil {
+		// The idle council will build the owner its own (promoteRoot). Marked
+		// now, while the turn runs, so a next message that arrives the moment
+		// this answer ends waits for it.
+		t.promoted = councilRoots.promotion(t.owner)
+	}
+	t.layers[layerKey(text)] = l
+	t.order = append(t.order, l)
+	t.root = l
+	t.mu.Unlock()
+	slog.Debug("council: conversation root", "pool", p.ID, "len", p.Len, "own", p.OwnLen, "kept", live)
+	return nil
 }
+
+// releaseRoot lets a kept root go, and the older roots it was forked from,
+// newest first: the engine releases only a pool with no child.
+func (t *councilTree) releaseRoot(ctx context.Context, r *councilRoot) {
+	ids := append(slices.Clone(r.chain), r.id)
+	for i := len(ids) - 1; i >= 0; i-- {
+		if err := t.kv.ReleasePool(ctx, ids[i]); err != nil {
+			slog.Debug("council: could not release the last turn's root", "pool", ids[i], "error", err)
+			return
+		}
+	}
+}
+
+// councilRootChain is how many older roots a kept root may stand on before
+// the next turn builds it afresh: each is a pool seat, and a pool with a
+// child can never be released.
+const councilRootChain = 2
 
 // learnGrant reads the owner's booking from a /kv answer.
 func (t *councilTree) learnGrant(k llm.KVStatus) (llm.KVAllocation, bool) {
@@ -319,18 +575,77 @@ func (t *councilTree) release() {
 	defer cancel()
 	t.mu.Lock()
 	var order []*councilLayer
+	var keep *councilLayer
 	for _, l := range t.order {
-		if !l.released {
+		switch {
+		case l.released:
+		case l.keep:
+			keep = l
+		default:
 			order = append(order, l)
 		}
 	}
 	t.order, t.layers = nil, map[string]*councilLayer{}
+	if keep != nil {
+		// The idle council summarises on it; the next turn extends it.
+		t.kept = &councilRoot{id: keep.id, text: keep.text, kv: t.kv, chain: keep.chain}
+		t.keepRootLocked(ctx)
+	} else if t.root != nil && !t.unowned {
+		// A first turn's root had no owner and goes with the turn; promote
+		// builds the owner its own once the council is idle.
+		t.promote = t.root.text
+	}
+	t.root = nil
 	t.mu.Unlock()
 	for i := len(order) - 1; i >= 0; i-- {
 		if err := t.kv.ReleasePool(ctx, order[i].id); err != nil {
 			slog.Debug("council: could not release a pool", "pool", order[i].id, "error", err)
 		}
 	}
+}
+
+// keepRootLocked registers t.kept for the next turn, letting go of any root
+// it displaces: a promotion that landed after the next turn began.
+func (t *councilTree) keepRootLocked(ctx context.Context) {
+	if old, had := councilRoots.put(t.owner, *t.kept); had && old.kv == t.kv {
+		t.releaseRoot(ctx, &old)
+	}
+}
+
+// promoteRoot runs while the council is idle after a first turn. That turn's
+// root was built before the owner held an allocation, so it had none and went
+// with the turn; now the owner has one, it gets its own root, charged to it.
+// The idle council's pressure then counts the conversation, and the next turn
+// forks the root instead of prefilling the conversation again.
+func (t *councilTree) promoteRoot(ctx context.Context) {
+	t.mu.Lock()
+	text, done := t.promote, t.promoted
+	t.promote, t.promoted = "", nil
+	t.mu.Unlock()
+	if done == nil {
+		return
+	}
+	defer done()
+	if text == "" {
+		return
+	}
+	k, err := t.kv.KV(ctx)
+	if err != nil {
+		return
+	}
+	if a, ok := k.Session(t.owner); !ok || a.Window <= 0 {
+		return
+	}
+	p, err := t.kv.CreatePool(ctx, t.owner, nil, text)
+	if err != nil {
+		slog.Debug("council: could not give the owner its root", "error", err)
+		return
+	}
+	t.mu.Lock()
+	t.kept = &councilRoot{id: p.ID, text: text, kv: t.kv}
+	t.keepRootLocked(ctx)
+	t.mu.Unlock()
+	slog.Debug("council: conversation root kept for the owner", "session", t.owner, "pool", p.ID, "len", p.Len)
 }
 
 // closeWorker ends a worker's session. The guide's rule: every session a
@@ -353,6 +668,10 @@ func (t *councilTree) closeWorker(id string) {
 // back toward the ask when nobody is being refused, and reports the pressure
 // the conversation is under, so the caller can compact.
 func (t *councilTree) begin(ctx context.Context) (pressure float64) {
+	// A root the idle council is still building for this owner is waited
+	// for, before the pressure is read: built beside this turn's own, the two
+	// filled the owner's window and the planner was refused (measured on b128).
+	councilRoots.wait(ctx, t.owner)
 	k, err := t.kv.KV(ctx)
 	if err != nil {
 		return 0
@@ -363,6 +682,15 @@ func (t *councilTree) begin(ctx context.Context) (pressure float64) {
 	t.recurrent = k.RS != nil && k.RS.CellsCap > 0
 	t.mu.Unlock()
 	a, ok := t.learnGrant(k)
+	// The root kept from the last turn is this conversation's only while the
+	// owner's allocation lives: closing it releases its pools, and the id can
+	// then name another conversation's pool. So it is adopted only while live,
+	// and only on the runner that made it.
+	if r, had := councilRoots.take(t.owner); had && ok && !t.unowned && r.kv == t.kv {
+		t.mu.Lock()
+		t.kept = &r
+		t.mu.Unlock()
+	}
 	if !ok {
 		return 0
 	}
@@ -372,7 +700,7 @@ func (t *councilTree) begin(ctx context.Context) (pressure float64) {
 		if err == nil && r.Refusal != "" && r.LargestAdmissible > a.Window {
 			r, err = t.kv.Resize(ctx, t.owner, r.LargestAdmissible, false)
 		}
-		if err == nil && r.Applied > 0 {
+		if err == nil && r.Applied > a.Window {
 			slog.Info("council: owner window grown back", "session", t.owner, "from", a.Window, "to", r.Applied)
 			t.mu.Lock()
 			t.grant = r.Applied
@@ -497,7 +825,7 @@ func (s *Server) compactConversation(ctx context.Context, members council.Model,
 	if why == "" {
 		return conv
 	}
-	summary, ok := summariseOld(ctx, members, conv[0], old)
+	summary, ok := summariseOld(ctx, members, conv[:len(conv)-2], old)
 	if !ok {
 		return conv
 	}
@@ -511,7 +839,13 @@ func (s *Server) compactConversation(ctx context.Context, members council.Model,
 // summariseOld returns the summary of old, from the cache or made now. A
 // summary already being made -- by the idle council, or a parallel turn -- is
 // waited for rather than made twice.
-func summariseOld(ctx context.Context, members council.Model, system api.Message, old []api.Message) (string, bool) {
+//
+// head is the conversation through the message after old: the system
+// message, old, and the user message that stays. The summary is asked as the
+// next turn of head itself, not by pasting old into a new prompt, so on PolyKV
+// it continues the conversation's root instead of holding a second copy of it
+// -- the idle council and the next turn ask exactly this, and share it.
+func summariseOld(ctx context.Context, members council.Model, head, old []api.Message) (string, bool) {
 	if summary, ok := councilSummaries.get(old); ok {
 		return summary, true
 	}
@@ -519,16 +853,9 @@ func summariseOld(ctx context.Context, members council.Model, system api.Message
 		if summary, ok := councilSummaries.get(old); ok {
 			return summary, nil
 		}
-		var b strings.Builder
-		for _, m := range old {
-			fmt.Fprintf(&b, "%s: %s\n\n", strings.ToUpper(m.Role), m.Content)
-		}
 		out, err := members.Stream(ctx, council.Request{
 			Role: council.Planner, Temperature: 0.2, MaxTokens: 1024,
-			Messages: []api.Message{
-				system,
-				{Role: "user", Content: councilSummaryPrompt + b.String()},
-			},
+			Messages: append(slices.Clone(head), api.Message{Role: "user", Content: councilSummaryPrompt}),
 		}, func(string) {})
 		if err != nil {
 			return "", err
@@ -547,7 +874,7 @@ func summariseOld(ctx context.Context, members council.Model, system api.Message
 	return v.(string), true
 }
 
-const councilSummaryPrompt = "ROLE: PLANNER. Summarise this earlier part of the conversation for the council: keep every fact, decision, number and open question; drop pleasantries.\n\n"
+const councilSummaryPrompt = "ROLE: PLANNER. Summarise the conversation above for the council, except its last user message, which stays verbatim: keep every fact, decision, number and open question; drop pleasantries. Reply with the summary only."
 
 // councilSummarising joins callers asking for the same summary.
 var councilSummarising singleflight.Group
@@ -578,7 +905,7 @@ func (s *Server) councilIdleCompact(members council.Model, t *councilTree, conv 
 		return
 	}
 	old := slices.Clone(conv[1 : len(conv)-1])
-	if _, ok := summariseOld(ctx, members, conv[0], old); ok {
+	if _, ok := summariseOld(ctx, members, conv, old); ok {
 		slog.Info("council: summarised while idle", "session", t.owner, "pressure", a.Pressure, "turns_summarised", len(old))
 	}
 }
@@ -657,9 +984,11 @@ func (s *Server) councilTreeFor(ctx context.Context, m *Model, req api.ChatReque
 	// num_ctx 0 asks for the whole pool: no window for the planner, and pools
 	// no session owns, where the engine can hold them. An engine without them
 	// keeps the owner, booking the context the load took -- the whole pool.
-	unowned := councilWholePool(m.Options, req.Options) && kv.Features(ctx)["pool_unowned_v1"]
+	canUnown := kv.Features(ctx)["pool_unowned_v1"]
+	unowned := councilWholePool(m.Options, req.Options) && canUnown
 	return &councilTree{
 		unowned:       unowned,
+		canUnown:      canUnown,
 		kv:            kv,
 		render:        councilRenderer(m2, r, opts),
 		tokenize:      r.Tokenize,
@@ -708,8 +1037,7 @@ func (cm *councilMembers) place(ctx context.Context, r council.Request, req *api
 	}
 	if r.Role == council.Planner {
 		req.SessionID = t.owner
-		p := t.ownerPlacement()
-		return p, ""
+		return t.ownerPlacement(ctx, r.Messages), ""
 	}
 	req.SessionID = cm.memberSession(r)
 	if p := t.workerPlacement(ctx, r.Messages, req.SessionID); p != nil {
@@ -727,11 +1055,12 @@ func (cm *councilMembers) place(ctx context.Context, r council.Request, req *api
 
 // councilPoolSeats is the engine pool seats a council's tree needs: the
 // conversation and the synthesizer's layer once, the researchers' and the
-// critics' layers once per round. Zero for a model that is not a council or
+// critics' layers once per round, and the older roots a kept conversation
+// stands on (councilRootChain). Zero for a model that is not a council or
 // whose council does not use PolyKV, so its launch is unchanged.
 func councilPoolSeats(m *Model) int {
 	if m == nil || m.Xollama == nil || !m.Xollama.Council.On() || m.Xollama.Council.PolyKV == xollama.CouncilPolyKVOff {
 		return 0
 	}
-	return 2 + 2*min(max(m.Xollama.Council.MaxRounds, 1), xollama.MaxCouncilRounds)
+	return 2 + 2*min(max(m.Xollama.Council.MaxRounds, 1), xollama.MaxCouncilRounds) + councilRootChain
 }

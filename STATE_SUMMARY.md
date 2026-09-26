@@ -5,6 +5,26 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — The council holds the conversation once; idle compaction tested live.**
+> - Scripting the idle test found a design flaw: the planner's session and P1
+>   were two copies of the conversation, both charged to the owner. The tree
+>   was full at ~45 % of the window, so compaction never fired, and refused
+>   pools ended the turn with a 503 after 2 min.
+> - Fixed as the owner chose (guide §6.2 arm C, `server/council_polykv.go`):
+>   - P1 is built first and the planner attached to it.
+>   - The first turn's P1 is unowned (`pool_unowned_v1`), and the idle council
+>     promotes it to an owned one. The next turn waits for that and forks it.
+>   - The summary is asked as a turn of the conversation.
+>   - A root refused with "compact the session" (`llm.ErrSessionFull`)
+>     compacts and retries.
+>   - Seats: `councilPoolSeats` + 2 for the root chain.
+> - Live on b128, `omni-council-idle` at 16k, ~7,000 tokens of history. With
+>   the idle summary the next message's first token came at 2.5 s (turn 47 s);
+>   without it, 18.3 s (turn 64.5 s). The owner's pressure after turn N was
+>   0.867.
+> - Phases 6 and 7 closed. Left: the pin moves to a published build with
+>   `pool_unowned_v1`, on a measurement.
+
 > **2026-09-26 — opencoti fixed #349 (b128); `num_ctx 0` and `slots.live` tested live on it.**
 > - opencoti b128 `2609261427001` (dev, local only) builds the recurrent
 >   state before the attention window and reserves the MTP draft context.
@@ -380,10 +400,11 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 ## Where we are
 
 `v0.34.2-xollama.1` is the latest release. The Agentic Council Chat has
-closed Phases 0–5 and built Phase 6 (PolyKV sizing, pressure and idle
-compaction, `num_ctx 0`, `slots.live`) and Phase 7 (roles on cloud models
-and other servers). Their live tests wait for the next promoted opencoti
-build.
+closed Phases 0–7, tested live on the b128 dev build, the cloud and
+eleven2go: PolyKV sizing, pressure and idle compaction with the conversation
+held once, `num_ctx 0`, `slots.live`, and roles on cloud models and other
+servers. The engine pin stays on b111 until a build with `pool_unowned_v1` is
+published and measured.
 
 ## What exists today
 

@@ -89,6 +89,21 @@ paths:
   message. Idle goroutines join `councilIdle`; a test that serves a council
   must `councilIdle.Wait()` before it reads the fake, or `-race` fires.
   Summaries go through `singleflight`, never twice for one conversation.
+- **The conversation is held once.** The planner runs attached to P1
+  (`buildRoot`, before its first call), never with its own copy beside it:
+  two copies filled the owner's tree at ~45 % of the window, so compaction
+  never fired and refused pools stranded the turn. The first turn's P1 is
+  unowned and needs `pool_unowned_v1`; `promoteRoot` gives the owner its own
+  while idle, and the next turn `councilRoots.wait`s for it (built beside the
+  turn's own, the two filled the window — measured). A kept P1 is adopted
+  only while the owner's allocation lives and on the same runner: a closed
+  allocation takes its pools with it, and the id may name another's. The
+  engine refuses to release a pool with a child, so extending forks and
+  keeps the parent; cap the chain (`councilRootChain`) and rebuild on
+  recurrent models. The summary is a turn of the conversation
+  (`councilSummaryPrompt` after the head), never the old turns pasted anew.
+  `llm.ErrSessionFull` ("compact the session", a 503) compacts and retries
+  the root once. Guards in `server/council_polykv_test.go`.
 - **`num_ctx 0` is the whole pool on PolyKV only** (`polykv-window` hook,
   `llm/engine_window.go`). With `pool_unowned_v1` the tree is `unowned`: pools
   carry `"unowned": true`, the planner no placement, and `begin`/`finish`
@@ -131,7 +146,7 @@ paths:
   deadlocked on its synthesizer (bug-118). Guard:
   `TestARecurrentModelReleasesEachStageItHasFinished`. A released layer is
   never a parent and never released again at the turn's end.
-- The launch adds `councilPoolSeats` (`2 + 2 × rounds`) pool seats, and only
+- The launch adds `councilPoolSeats` (`2 + 2 × rounds` + `councilRootChain`) pool seats, and only
   for a council whose `polykv` is not `off`. Guards:
   `server/council_polykv_test.go` (a fake engine records the tree) and
   `llm/engine_council_test.go`. Measured result: plan Phase 4.

@@ -7,8 +7,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ollama/ollama/api"
+	"github.com/ollama/ollama/internal/council"
 	"github.com/ollama/ollama/llm"
 	"github.com/ollama/ollama/types/xollama"
 )
@@ -35,6 +37,12 @@ type fakeKV struct {
 	sessPressure float64
 	// unowned advertises pool_unowned_v1.
 	unowned bool
+	// liveAfter is the owner's window once the council has made its first
+	// call, as on the engine: the owner books on the planner's first request.
+	liveAfter int
+	// full refuses this many new roots (pools with no parent) as the engine
+	// does when the owner's allocation is full.
+	full int
 }
 
 type fakePool struct {
@@ -52,6 +60,10 @@ func (f *fakeKV) Features(context.Context) map[string]bool {
 func (f *fakeKV) CreatePool(_ context.Context, session string, parent *int, prompt string) (llm.PoolInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if parent == nil && f.full > 0 {
+		f.full--
+		return llm.PoolInfo{}, fmt.Errorf("%w: session allocation full, compact the session", llm.ErrSessionFull)
+	}
 	id := len(f.pools) // the first pool is 0, as on the engine
 	f.pools = append(f.pools, fakePool{id: id, parent: parent, session: session, text: prompt})
 	return llm.PoolInfo{ID: id, Len: len(prompt)}, nil
@@ -74,6 +86,9 @@ func (f *fakeKV) CloseSession(_ context.Context, id string) error {
 func (f *fakeKV) KV(context.Context) (llm.KVStatus, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.liveAfter > 0 && f.grant == 0 && len(f.e.roles) > 0 {
+		f.grant = f.liveAfter
+	}
 	k := llm.KVStatus{Pressure: f.pressure}
 	if f.recurrent {
 		k.RS = &llm.KVRecurrent{CellsCommitted: 4, CellsCap: 8}
@@ -267,8 +282,8 @@ func TestCouncilSeatsFollowTheRounds(t *testing.T) {
 		want int
 	}{
 		{nil, 0},
-		{&xollama.Council{Enabled: &yes}, 4},
-		{&xollama.Council{Enabled: &yes, MaxRounds: 3}, 8},
+		{&xollama.Council{Enabled: &yes}, 6},
+		{&xollama.Council{Enabled: &yes, MaxRounds: 3}, 10},
 		{&xollama.Council{Enabled: &yes, PolyKV: xollama.CouncilPolyKVOff}, 0},
 	} {
 		m := &Model{Xollama: &xollama.Config{Version: 4, Council: tc.c}}
@@ -284,7 +299,7 @@ func (e *councilEngine) summaries() (calls int, compacted bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	for _, p := range e.prompts {
-		if strings.Contains(p, "Summarise this earlier part") {
+		if strings.Contains(p, councilSummaryPrompt) {
 			calls++
 		}
 		if strings.Contains(p, "Summary of the earlier conversation") {
@@ -357,13 +372,22 @@ func TestAnIdleCouncilSummarisesForTheNextMessage(t *testing.T) {
 	}
 	// The earlier turns were summarised once, while idle. (After the second
 	// answer the idle council summarises again, for a longer conversation:
-	// that one carries the first question.)
+	// that one carries the second question.)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	same := 0
-	for _, p := range e.prompts {
-		if strings.Contains(p, "Summarise this earlier part") && !strings.Contains(p, "Why is the sky blue?") {
-			same++
+	for i, p := range e.prompts {
+		if !strings.Contains(p, councilSummaryPrompt) || strings.Contains(p, "sunsets") {
+			continue
+		}
+		same++
+		// Asked as the next turn of the conversation, on the owner, attached
+		// to the root the turn kept: the conversation is not held twice.
+		if !strings.Contains(p, "Does it depend on wavelength?") || e.sessions[i] != "conv-1" {
+			t.Errorf("the summary was not asked on the conversation's owner: session %q", e.sessions[i])
+		}
+		if pl := e.placements[i]; pl == nil || pl.PoolID == nil || *pl.PoolID != 0 {
+			t.Errorf("the idle summary placement %+v, want the kept root, pool 0", pl)
 		}
 	}
 	if same != 1 {
@@ -396,8 +420,9 @@ func TestNumCtxZeroBuildsUnownedPools(t *testing.T) {
 		}
 	}
 	for i, r := range e.roles {
-		if r == "route" && e.placements[i] != nil {
-			t.Errorf("the planner stated a window: %+v", e.placements[i])
+		pl := e.placements[i]
+		if r == "route" && (pl == nil || pl.NumCtx != 0 || pl.NumCtxMin != 0 || pl.PoolID == nil || *pl.PoolID != 0) {
+			t.Errorf("the planner: placement %+v, want the root pool 0 and no window", pl)
 		}
 	}
 	if len(kv.resized) != 0 {
@@ -441,7 +466,10 @@ func TestTheOwnerKeepsItsPoolsWithoutUnownedPools(t *testing.T) {
 				t.Fatal("no pools were built")
 			}
 			for _, p := range kv.pools {
-				if p.session == "" {
+				// With the feature, the first turn's conversation root is
+				// built before the owner holds an allocation: it has no owner
+				// and goes with the turn. Every layer after it is the owner's.
+				if p.session == "" && (!tc.unowned || p.id != 0) {
 					t.Errorf("pool %d has no owner", p.id)
 				}
 			}
@@ -464,5 +492,310 @@ func TestCouncilWholePoolReadsTheRequestFirst(t *testing.T) {
 		if got := councilWholePool(tc.model, tc.req); got != tc.want {
 			t.Errorf("councilWholePool(%v, %v) = %v, want %v", tc.model, tc.req, got, tc.want)
 		}
+	}
+}
+
+// On the first turn the owner holds no allocation yet: the conversation's root
+// is built unowned, the planner attaches to it and asks only for its own part,
+// and the root goes with the turn.
+func TestThePlannerAttachesTheConversationRoot(t *testing.T) {
+	councilRoots.reset()
+	e := &councilEngine{route: `{"route":"council"}`}
+	kv := &fakeKV{unowned: true}
+	s := polykvCouncil(t, e, kv, councilOn())
+	chatChunks(t, s, polykvReq)
+
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	if len(kv.pools) != 4 || kv.pools[0].parent != nil || kv.pools[0].session != "" {
+		t.Fatalf("pools %+v: want an unowned root and three layers", kv.pools)
+	}
+	if p := kv.pools[1]; p.parent == nil || *p.parent != 0 {
+		t.Errorf("the researchers' layer forks %v, want the root", p.parent)
+	}
+	reserve := councilReserve(council.FromModel(councilOn(), 0.7))
+	for i, r := range e.roles {
+		pl := e.placements[i]
+		if r != "route" && r != "planner" {
+			continue
+		}
+		if pl == nil || pl.PoolID == nil || *pl.PoolID != 0 || pl.NumCtx != 16384 || pl.NumCtxMin != max(4096, roundUp(reserve, 256)) {
+			t.Errorf("%s: placement %+v, want the root, a 16384 window and its own part as the floor", r, pl)
+		}
+	}
+	if !slices.Equal(kv.released, []int{3, 2, 1, 0}) {
+		t.Errorf("released %v, want [3 2 1 0]", kv.released)
+	}
+}
+
+// nextTurn is req followed by its answer and a new question.
+func nextTurn(req api.ChatRequest, q string) api.ChatRequest {
+	req.Messages = append(slices.Clone(req.Messages),
+		api.Message{Role: "assistant", Content: "The sky is blue because air scatters blue light most."},
+		api.Message{Role: "user", Content: q})
+	return req
+}
+
+// A live owner keeps its conversation's root between turns; the next turn
+// forks it and prefills only what is new, until the chain is as deep as
+// councilRootChain, when the root is built afresh and the old ones let go.
+func TestTheNextTurnExtendsTheKeptRoot(t *testing.T) {
+	councilRoots.reset()
+	e := &councilEngine{route: `{"route":"council"}`}
+	kv := &fakeKV{grant: 16384, used: 900, session: "conv-1"}
+	s := polykvCouncil(t, e, kv, councilOn())
+	req := polykvReq
+	req.SessionID = "conv-1"
+
+	roots := []int{}
+	for turn, q := range []string{"", "And sunsets?", "And the moon?", "And Mars?"} {
+		if q != "" {
+			req = nextTurn(req, q)
+		}
+		kv.mu.Lock()
+		first, released := len(kv.pools), len(kv.released)
+		kv.mu.Unlock()
+		chatChunks(t, s, req)
+		councilIdle.Wait()
+
+		kv.mu.Lock()
+		root := kv.pools[first]
+		if root.session != "conv-1" {
+			t.Errorf("turn %d: root owned by %q, want the owner", turn, root.session)
+		}
+		rel := kv.released[released:]
+		switch turn {
+		case 0, 3:
+			if root.parent != nil {
+				t.Errorf("turn %d: root forks %v, want a fresh one", turn, *root.parent)
+			}
+		default:
+			if root.parent == nil || *root.parent != roots[turn-1] {
+				t.Errorf("turn %d: root parent %v, want the kept root %d", turn, root.parent, roots[turn-1])
+			}
+		}
+		if turn == 3 {
+			// The old chain goes first, newest first, then this turn's layers.
+			if want := []int{roots[2], roots[1], roots[0]}; len(rel) < 3 || !slices.Equal(rel[:3], want) {
+				t.Errorf("turn 3 released %v, want the old roots %v first", rel, want)
+			}
+			rel = rel[3:]
+		}
+		if slices.Contains(rel, root.id) {
+			t.Errorf("turn %d released its root %d: %v", turn, root.id, rel)
+		}
+		roots = append(roots, root.id)
+		kv.mu.Unlock()
+	}
+	for i, r := range e.roles {
+		if pl := e.placements[i]; r == "route" && (pl == nil || pl.PoolID == nil || pl.NumCtx != 16384 || pl.NumCtxMin != 16384) {
+			t.Errorf("the planner: placement %+v, want its grant, attached to the root", pl)
+		}
+	}
+}
+
+// On a recurrent-state model every pool holds a state cell: a kept root is
+// not stood on, but let go before this turn's is built.
+func TestARecurrentModelRebuildsTheRootEachTurn(t *testing.T) {
+	councilRoots.reset()
+	e := &councilEngine{route: `{"route":"council"}`}
+	kv := &fakeKV{grant: 16384, used: 900, session: "conv-1", recurrent: true}
+	s := polykvCouncil(t, e, kv, councilOn())
+	req := polykvReq
+	req.SessionID = "conv-1"
+	chatChunks(t, s, req)
+	kv.mu.Lock()
+	first, released := len(kv.pools), len(kv.released)
+	kv.mu.Unlock()
+	chatChunks(t, s, nextTurn(req, "And sunsets?"))
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	if kv.pools[first].parent != nil {
+		t.Errorf("the second root forks %v, want a fresh one", *kv.pools[first].parent)
+	}
+	if rel := kv.released[released:]; len(rel) == 0 || rel[0] != 0 {
+		t.Errorf("second turn released %v, want the kept root 0 first", rel)
+	}
+}
+
+// A kept root is the conversation's only while its owner's allocation lives:
+// once it is gone, so are its pools, and the id may name another's. Nothing
+// the next turn asks attaches to it -- not even the summary it compacts with,
+// which is asked before the turn builds its own root.
+func TestAStaleRootIsNeitherUsedNorReleased(t *testing.T) {
+	councilRoots.reset()
+	councilSummaries.reset()
+	e := &councilEngine{route: `{"route":"council"}`}
+	kv := &fakeKV{grant: 16384, used: 900, session: "conv-1"}
+	yes := true
+	// With no allocation to read, the floor alone budgets the turn, and this
+	// one leaves no room: the second turn compacts.
+	s := polykvCouncil(t, e, kv, &xollama.Council{Enabled: &yes, Context: &xollama.CouncilContext{Window: 16384, Floor: 4096}})
+	req := longCouncilReq("conv-1", "Why is the sky blue?")
+	chatChunks(t, s, req)
+	councilIdle.Wait()
+	kv.mu.Lock()
+	kv.grant = 0 // the owner's allocation closed between turns
+	first, released := len(kv.pools), len(kv.released)
+	kv.mu.Unlock()
+	e.mu.Lock()
+	calls := len(e.placements)
+	e.mu.Unlock()
+
+	chatChunks(t, s, nextTurn(req, "And sunsets?"))
+	councilIdle.Wait()
+	if n, _ := e.summaries(); n == 0 {
+		t.Fatal("the second turn did not compact")
+	}
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	if slices.Contains(kv.released[released:], 0) {
+		t.Errorf("released the stale root 0: %v", kv.released[released:])
+	}
+	for _, p := range kv.pools[first:] {
+		if p.parent != nil && *p.parent == 0 {
+			t.Errorf("pool %d forks the stale root", p.id)
+		}
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for i := calls; i < len(e.placements); i++ {
+		if pl := e.placements[i]; pl != nil && pl.PoolID != nil && *pl.PoolID == 0 {
+			t.Errorf("%s attached the stale root", e.roles[i])
+		}
+	}
+}
+
+// An engine that refuses the root with "compact the session" gets exactly
+// that: the conversation is summarised and the root built on the short one.
+func TestARefusedRootCompactsAndRetries(t *testing.T) {
+	councilRoots.reset()
+	councilSummaries.reset()
+	e := &councilEngine{route: `{"route":"council"}`}
+	kv := &fakeKV{grant: 16384, used: 900, session: "conv-1", full: 1}
+	s := polykvCouncil(t, e, kv, councilOn())
+	chatChunks(t, s, longCouncilReq("conv-1", "Why is the sky blue?"))
+	councilIdle.Wait()
+	if _, compacted := e.summaries(); !compacted {
+		t.Fatal("the turn did not compact after the refusal")
+	}
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	if len(kv.pools) == 0 || kv.pools[0].parent != nil || !strings.Contains(kv.pools[0].text, "Summary of the earlier conversation") {
+		t.Errorf("the root was not built on the compacted conversation: %+v", kv.pools)
+	}
+}
+
+// A first turn's root has no owner and goes with the turn. Once the council
+// is idle the owner has an allocation, and gets its own root: the idle summary
+// is asked on it, and the next turn forks it.
+func TestTheIdleCouncilGivesTheOwnerItsRoot(t *testing.T) {
+	for _, pressure := range []float64{0.8, 0} {
+		councilRoots.reset()
+		councilSummaries.reset()
+		e := &councilEngine{route: `{"route":"council"}`}
+		kv := &fakeKV{unowned: true, liveAfter: 16384, used: 900, session: "conv-1", sessPressure: pressure}
+		s := polykvCouncil(t, e, kv, councilOn())
+		req := longCouncilReq("conv-1", "Why is the sky blue?")
+		chatChunks(t, s, req)
+		councilIdle.Wait()
+
+		kv.mu.Lock()
+		if kv.pools[0].session != "" || !slices.Contains(kv.released, 0) {
+			t.Fatalf("the first root %+v released %v: want it unowned and gone with the turn", kv.pools[0], kv.released)
+		}
+		promoted := -1
+		for _, p := range kv.pools[1:] {
+			if p.parent == nil && p.session == "conv-1" && p.text == kv.pools[0].text {
+				promoted = p.id
+			}
+		}
+		first, released := len(kv.pools), len(kv.released)
+		kv.mu.Unlock()
+		if promoted < 0 {
+			t.Fatalf("pressure %v: the owner was not given its root", pressure)
+		}
+		e.mu.Lock()
+		for i, p := range e.prompts {
+			if strings.Contains(p, councilSummaryPrompt) {
+				if pl := e.placements[i]; pl == nil || pl.PoolID == nil || *pl.PoolID != promoted {
+					t.Errorf("the idle summary placement %+v, want the owner's root %d", pl, promoted)
+				}
+			}
+		}
+		e.mu.Unlock()
+
+		chatChunks(t, s, nextTurn(req, "And sunsets?"))
+		councilIdle.Wait()
+		kv.mu.Lock()
+		r := kv.pools[first]
+		if pressure > 0 {
+			// Compacted on the idle summary: the conversation no longer starts
+			// with the root, which goes before the new one is built.
+			if r.parent != nil || len(kv.released) <= released || kv.released[released] != promoted {
+				t.Errorf("compacted turn: root parent %v, released %v; want a fresh root after %d went", r.parent, kv.released[released:], promoted)
+			}
+		} else if r.parent == nil || *r.parent != promoted {
+			t.Errorf("the second turn's root forks %v, want the owner's root %d", r.parent, promoted)
+		}
+		kv.mu.Unlock()
+	}
+}
+
+func TestARootRegistryLetsGoOfWhatItDisplaces(t *testing.T) {
+	r := &rootRegistry{m: map[string]councilRoot{}}
+	kv := &fakeKV{}
+	if _, had := r.put("a", councilRoot{id: 1, kv: kv}); had {
+		t.Error("an empty registry displaced a root")
+	}
+	if _, had := r.put("a", councilRoot{id: 1, kv: kv}); had {
+		t.Error("the same root displaced itself")
+	}
+	if old, had := r.put("a", councilRoot{id: 2, kv: kv}); !had || old.id != 1 {
+		t.Errorf("put over root 1 returned %v %v", old, had)
+	}
+}
+
+// A promotion that lands after the next turn kept its own root displaces
+// that one, which is let go rather than left holding a pool seat.
+func TestKeepingARootReleasesTheOneItDisplaces(t *testing.T) {
+	councilRoots.reset()
+	defer councilRoots.reset()
+	kv := &fakeKV{}
+	councilRoots.put("conv-1", councilRoot{id: 7, kv: kv, chain: []int{5}})
+	tr := &councilTree{kv: kv, owner: "conv-1", kept: &councilRoot{id: 9, kv: kv}}
+	tr.mu.Lock()
+	tr.keepRootLocked(t.Context())
+	tr.mu.Unlock()
+	if !slices.Equal(kv.released, []int{7, 5}) {
+		t.Errorf("released %v, want the displaced root and its chain, newest first", kv.released)
+	}
+	if r, ok := councilRoots.take("conv-1"); !ok || r.id != 9 {
+		t.Errorf("kept %v, want root 9", r)
+	}
+}
+
+// A next message that arrives while the idle council is still building the
+// owner's root waits for it, rather than build a second copy beside it.
+func TestTheNextTurnWaitsForTheOwnersRoot(t *testing.T) {
+	councilRoots.reset()
+	kv := &fakeKV{councilRunner: &councilRunner{e: &councilEngine{}}}
+	done := councilRoots.promotion("conv-1")
+	tr := &councilTree{kv: kv, owner: "conv-1", layers: map[string]*councilLayer{}}
+	began := make(chan struct{})
+	go func() {
+		tr.begin(t.Context())
+		close(began)
+	}()
+	select {
+	case <-began:
+		t.Fatal("the turn began while the owner's root was being built")
+	case <-time.After(50 * time.Millisecond):
+	}
+	done()
+	select {
+	case <-began:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the turn did not begin once the root was built")
 	}
 }
