@@ -570,7 +570,7 @@ func TestTheIdentityNamesTheFeatures(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &id); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"council", "council_compaction_v1", "council_tags_v1", "client_placement_v1", "chat_render_v1"} {
+	for _, f := range []string{"council", "council_compaction_v1", "council_tags_v1", "client_placement_v1", "chat_render_v1", "council_chat_state_v1"} {
 		if !slices.Contains(id.Features, f) {
 			t.Errorf("features %v lack %q", id.Features, f)
 		}

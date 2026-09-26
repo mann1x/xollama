@@ -86,6 +86,6 @@ require (
 	golang.org/x/net v0.55.0 // indirect; xollama-hook: security-deps
 	golang.org/x/term v0.43.0 // xollama-hook: security-deps
 	golang.org/x/text v0.41.0 // xollama-hook: security-deps
-	google.golang.org/protobuf v1.34.1 // indirect
+	google.golang.org/protobuf v1.34.1 // xollama-hook: council
 	gopkg.in/yaml.v3 v3.0.1
 )

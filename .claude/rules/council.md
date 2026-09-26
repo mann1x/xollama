@@ -10,6 +10,8 @@ paths:
   - server/council_compaction_test.go
   - server/council_remote.go
   - server/council_remote_test.go
+  - server/council_state.go
+  - server/council_state_test.go
   - llm/engine_council.go
   - llm/engine_council_test.go
   - llm/engine_window.go
@@ -249,3 +251,19 @@ paths:
   on Linux. Never a per-chat council switch or a write of the model's config
   from the UI: those were options A and B, and the owner chose C. Do not
   Prettier-format upstream's `ChatForm.tsx`; it rewrites about 160 lines.
+- **A member's read ends with the context, never only with its handler.**
+  Upstream's `processPending` skips a pending request whose context ended
+  without answering it, so a member being scheduled when the client leaves
+  never returns from `ChatHandler`. `councilMembers.Stream` closes the pipe
+  through `context.AfterFunc`; every send on the turn's `ch` selects on the
+  request context. A turn left hanging holds its root, and the next turn on
+  the conversation waits on it in `rootRegistry.wait` (bug-142, found by the
+  live resume check). Guarded by `TestALeftTurnEndsWhileAMemberIsUnanswered`.
+- **`council_chat_state_v1`** (`server/council_state.go`): opt-in by a
+  present `council_chat_state` on the request (even `""`). A sealed blob goes
+  on a chunk of its own at each checkpoint of `council.RunFrom`, and on the
+  done chunk with empty progress plus the compaction record. It is bound to
+  the history before the last user message and to that message. Anything
+  unreadable is a fresh start, never an error. Add a field with a new protobuf
+  number; a changed meaning is a new feature name. The key is
+  `<models>/council-state.key`, written through `fsowner`.

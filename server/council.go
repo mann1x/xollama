@@ -125,6 +125,9 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	}
 	// Compaction (Phase 8, Cerebriline's): the record carried from the last
 	// fold is applied, and the conversation folded again if a trigger fires.
+	// A client's state (council_chat_state_v1) restores the compaction record
+	// this server may have lost, and resumes the turn it was made for.
+	from, turnHistory, turnHash := councilResume(req, members.session)
 	compactor := s.councilCompactorFor(ctx, m, req, members, tree, cfg, reserve)
 	if compactor != nil {
 		conv = compactor.compact(ctx, conv, "", false, pressure)
@@ -172,7 +175,26 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 			}
 		}
 		send := func(msg api.Message) { sendTagged(msg, nil) }
-		res, err := council.Run(c.Request.Context(), cfg, members, conv, func(e council.Event) {
+		var checkpoint func(council.Progress)
+		state := func(p council.Progress) string { return "" }
+		if req.CouncilChatState != nil {
+			state = func(p council.Progress) string {
+				blob, err := sealCouncilState(councilState{history: turnHistory, turn: turnHash, progress: p, record: councilCompactions.get(members.session)})
+				if err != nil {
+					slog.Warn("council: could not seal the turn's state", "error", err)
+				}
+				return blob
+			}
+			checkpoint = func(p council.Progress) {
+				if blob := state(p); blob != "" {
+					select {
+					case ch <- api.ChatResponse{Model: req.Model, CreatedAt: time.Now().UTC(), Message: api.Message{Role: "assistant"}, CouncilChatState: blob}:
+					case <-c.Request.Context().Done():
+					}
+				}
+			}
+		}
+		res, err := council.RunFrom(c.Request.Context(), cfg, members, conv, from, checkpoint, func(e council.Event) {
 			if e.Kind == council.Content {
 				if e.Text != "" {
 					send(api.Message{Role: "assistant", Content: e.Text})
@@ -187,7 +209,10 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 			if errors.Is(err, context.Canceled) {
 				return
 			}
-			ch <- gin.H{"error": err.Error(), "status": members.status(err)}
+			select {
+			case ch <- gin.H{"error": err.Error(), "status": members.status(err)}:
+			case <-c.Request.Context().Done():
+			}
 			return
 		}
 		answer.Store(&res.Answer)
@@ -199,7 +224,12 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 			Message: api.Message{Role: "assistant"}, Done: true, DoneReason: "stop",
 		}
 		final.Metrics = members.metrics(time.Since(start))
-		ch <- final
+		// The turn is answered: what is left to carry is the record.
+		final.CouncilChatState = state(council.Progress{})
+		select {
+		case ch <- final:
+		case <-c.Request.Context().Done():
+		}
 	}()
 	writeChatResponse(c, req, ch)
 }
@@ -484,6 +514,13 @@ func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken
 		pw.Close()
 	}()
 	defer pr.Close()
+	// The scheduler drops a request whose context has ended without
+	// answering it (processPending skips it), so a member's handler can wait
+	// forever once the client leaves. The read ends with the context, not
+	// with the handler: a turn left hanging holds its root, and the next turn
+	// on the conversation waits on that.
+	stop := context.AfterFunc(ctx, func() { pr.CloseWithError(ctx.Err()) })
+	defer stop()
 
 	var out strings.Builder
 	sc := bufio.NewScanner(pr)
@@ -595,4 +632,35 @@ func (m *memberWriter) status() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.code
+}
+
+// councilResume reads a client's council_chat_state. It restores the
+// conversation's compaction record when this server holds none or an older
+// one -- apply still uses it only where its hash matches the conversation --
+// and returns the progress to resume when the state was made for this very
+// turn: the same history, the same user message. Anything else is a fresh
+// start. It also returns the turn's binding, for the states this turn sends.
+func councilResume(req api.ChatRequest, key string) (council.Progress, []byte, []byte) {
+	history, turn := councilTurnHashes(req.Messages)
+	if req.CouncilChatState == nil || *req.CouncilChatState == "" {
+		return council.Progress{}, history, turn
+	}
+	st, err := openCouncilState(*req.CouncilChatState)
+	if err != nil {
+		slog.Info("council: the client's state was not used; starting fresh", "error", err)
+		return council.Progress{}, history, turn
+	}
+	if st.record != nil && key != "" {
+		if cur := councilCompactions.get(key); cur == nil || cur.gen < st.record.gen {
+			councilCompactions.put(key, st.record)
+			slog.Info("council: compaction record restored from the client's state", "session", key, "generation", st.record.gen)
+		}
+	}
+	if !bytes.Equal(st.history, history) || !bytes.Equal(st.turn, turn) {
+		return council.Progress{}, history, turn
+	}
+	if st.progress.Route != "" {
+		slog.Info("council: resuming the turn from the client's state", "session", key, "route", st.progress.Route, "rounds", len(st.progress.Rounds))
+	}
+	return st.progress, history, turn
 }

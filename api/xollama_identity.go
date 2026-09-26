@@ -52,6 +52,11 @@ const (
 	// generating nothing; on a council model, what its members send. It is
 	// the renderer a client cuts its PolyKV prefix from.
 	FeatureChatRender = "chat_render_v1"
+	// FeatureCouncilChatState: a council turn sends a sealed resume point,
+	// council_chat_state, at each checkpoint and on the done chunk, when the
+	// request carries the field (empty on a first turn); sent back, it resumes
+	// the turn that broke off and restores a lost compaction record.
+	FeatureCouncilChatState = "council_chat_state_v1"
 )
 
 // IsXollama reports whether the server at base is this fork, by the identity

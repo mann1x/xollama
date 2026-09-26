@@ -211,6 +211,12 @@ type ChatRequest struct {
 	TopLogprobs int `json:"top_logprobs,omitempty"`
 
 	// xollama-hook: council — see plans/agentic-council-chat.md
+	// CouncilChatState is the latest council_chat_state the client received,
+	// sent back so a council turn resumes (council_chat_state_v1). Present,
+	// even empty, it also asks for the state chunks.
+	CouncilChatState *string `json:"council_chat_state,omitempty"`
+
+	// xollama-hook: council — see plans/agentic-council-chat.md
 	Placement *Placement `json:"placement,omitempty"`
 }
 
@@ -590,6 +596,11 @@ type ChatResponse struct {
 	// working within, and tell a truncated answer caused by a thinking bound
 	// apart from one caused by the response cap.
 	ThinkBudgetTokens int `json:"think_budget_tokens,omitempty"`
+
+	// xollama-hook: council — see plans/agentic-council-chat.md
+	// CouncilChatState is an opaque, sealed resume point of a council turn:
+	// on a chunk of its own at each checkpoint, and on the done chunk.
+	CouncilChatState string `json:"council_chat_state,omitempty"`
 
 	// xollama-hook: council — see plans/agentic-council-chat.md
 	Council *CouncilTag `json:"council,omitempty"`

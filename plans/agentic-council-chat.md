@@ -1500,6 +1500,42 @@ engine's answer: `buildRoot` keeps a root only if owned, and `promoteRoot`
 releases one that came back unowned. Test: `TestAnUnownedRootIsNeverKept`
 (promotion and turn); each guard's mutant fails it.
 
+**9.4 built (2026-09-26): the sealed state, to resume.** A request carrying
+`council_chat_state` (even `""`) turns the state chunks on
+(`council_chat_state_v1`). `council.RunFrom` takes a `Progress` (route, plan,
+per-round findings and critiques) and calls a checkpoint after the route,
+the plan and each member; the server seals that into a chunk of its own, and
+the done chunk carries empty progress plus the compaction record
+(`server/council_state.go`: protobuf by `protowire`, AES-256-GCM, envelope
+version byte + nonce, AAD naming the feature, key 32 bytes at
+`<models>/council-state.key` written through `fsowner`). `councilResume` opens
+a client's blob: bound to sha256 of the history before the last user message
+and of that message; the same turn skips the members it records, a different
+last user turn drops the progress; the record is restored when the server has
+none or an older one. Anything unreadable is a fresh start. Tests:
+`TestACouncilStateSealsAndOpens`, `TestACouncilStateSkipsWhatItDoesNotKnow`,
+`TestTheCouncilStateKeyIsKept`, `TestACouncilTurnSendsItsState`,
+`TestABrokenOffTurnResumes`, `TestTheStateRestoresALostRecord`,
+`TestATurnResumesFromItsProgress`; five compiling mutants each fail one.
+
+The live check found **bug-142**. A turn whose client left hung forever,
+and the resumed request waited on it. The scheduler's `processPending` skips a
+cancelled pending request without answering it, so a member's in-process
+`ChatHandler` never returned, and `councilMembers.Stream` read its pipe until
+it did. The turn never ended, its root was never promoted, and the next turn
+on the conversation waited in `rootRegistry.wait`. Now the read ends with the
+context (`context.AfterFunc` closes the pipe), and the turn's last two sends
+are guarded. Upstream's scheduler is untouched: the member's handler goroutine
+still waits there, as upstream's own handler does for a client that left.
+Guarded by `TestALeftTurnEndsWhileAMemberIsUnanswered`; the mutant without the
+`AfterFunc` fails it.
+
+Live on b137 (`council-resume.py 4`): the first request was dropped after 4
+states (route, plan, both researchers; 26.8 s). The same request sent back with
+the newest state logged "resuming the turn from the client's state". Only the
+two critics and the synthesizer ran (members 3). It answered in 28.3 s, first
+token at 12.9 s, and sent 3 states.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).

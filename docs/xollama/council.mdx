@@ -187,6 +187,25 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
     nothing is shared.
   - On a council model, create the pool with the conversation's `session_id`.
     Its window holds the pool, and an unowned pool finds no room there.
+- **Resuming a turn** (`council_chat_state_v1`). Send
+  `"council_chat_state": ""` on a council turn to ask for the turn's state.
+  The server then sends an opaque blob in `council_chat_state` after each
+  step a turn can resume from (the route, the plan, each researcher, each
+  critic), each on a chunk of its own with no text, and a last one on the
+  done chunk. Keep the newest. If the connection drops mid-turn, send the same
+  request again with that blob: the members it records as finished are not
+  asked again. The blob is sealed with a key the server keeps
+  (`<models>/council-state.key`), so it is opaque to the client and useless to
+  another server.
+  - It is bound to the conversation before the last user message and to that
+    message. Change the last user message and the deliberation in flight is
+    dropped; the rest still applies.
+  - The done chunk's blob carries no deliberation, only the council's
+    compaction record. Sent with the next turn, it restores the folded
+    history on a server that has lost it (after a restart), so the
+    conversation is not folded again.
+  - A missing, damaged or foreign blob is a fresh start, never an error.
+    Never send the council's thinking back in the history.
 
 ## On opencoti: members share the conversation
 

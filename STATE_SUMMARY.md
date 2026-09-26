@@ -5,6 +5,24 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Phase 9.4: a council turn resumes from the client's state (`council_chat_state_v1`).**
+> - A client that sends `"council_chat_state": ""` gets a sealed state blob
+>   after the route, the plan and each member, and on the done chunk.
+>   Sending the newest back resumes the turn: finished members are not
+>   asked again. The done blob carries the compaction record, which a
+>   restarted server takes back. Protobuf (`protowire`), AES-256-GCM, key at
+>   `<models>/council-state.key`, bound to hashes of the history and the last
+>   user turn.
+> - Live on b137: a turn broken off after 4 states (26.8 s), resent with the
+>   newest: only the 2 critics and the synthesizer ran, 28.3 s, first token
+>   12.9 s.
+> - bug-142 fixed on the way: a client leaving mid-turn left the turn waiting
+>   forever. The scheduler drops a cancelled request unanswered, so a member
+>   being scheduled never returned, the root was never promoted, and the next
+>   turn on that conversation waited on it. The member's read now ends with
+>   the context.
+> - Next: mail the Cerebriline session; then 9.5, tools on council turns.
+
 > **2026-09-26 — The compaction writer fits its window: compact instruction, measured on b137.**
 > - The writer's instruction went from 2.5–3k tokens to about 500: a compact
 >   replay prompt (565 → 247), marker (156 → 63), and no requests block (the

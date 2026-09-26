@@ -451,3 +451,64 @@ func TestTheRouteDecisionReadsTheCharter(t *testing.T) {
 		t.Errorf("the route decision does not open with the charter: %+v", route.Messages)
 	}
 }
+
+// A turn that broke off resumes: what the progress records as done is used
+// as it is and not asked again, and every member that finishes is a
+// checkpoint (council_chat_state_v1).
+func TestATurnResumesFromItsProgress(t *testing.T) {
+	conv := []api.Message{{Role: "system"}, {Role: "user", Content: "Why is the sky blue?"}}
+	cfg := FromModel(nil, 0.7)
+
+	full := &stub{route: `{"route":"council"}`}
+	var points []Progress
+	if _, err := RunFrom(context.Background(), cfg, full, conv, Progress{}, func(p Progress) { points = append(points, p) }, func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	// route, plan, two researchers, two critics
+	if len(points) != 6 {
+		t.Fatalf("%d checkpoints, want 6: %+v", len(points), points)
+	}
+	last := points[len(points)-1]
+	if last.Route != "council" || last.Plan == nil || len(last.Rounds) != 1 || last.Rounds[0].Critiques[1] == "" || last.Rounds[0].Findings[0] == "" {
+		t.Fatalf("last checkpoint %+v", last)
+	}
+
+	// Broken off after the first researcher: the rest runs, nothing twice.
+	from := points[2]
+	if from.Rounds[0].Findings[0] == "" && from.Rounds[0].Findings[1] == "" {
+		t.Fatalf("checkpoint 3 holds no finding: %+v", from)
+	}
+	done := 0
+	for _, f := range from.Rounds[0].Findings {
+		if f != "" {
+			done++
+		}
+	}
+	s := &stub{route: `{"route":"council"}`}
+	res, err := RunFrom(context.Background(), cfg, s, conv, from, nil, func(Event) {})
+	if err != nil || res.Answer == "" {
+		t.Fatalf("resume: %v %+v", err, res)
+	}
+	if s.count(Planner) != 0 {
+		t.Errorf("the planner was asked again %d times", s.count(Planner))
+	}
+	if n := s.count(Researcher); n != cfg.Researchers-done {
+		t.Errorf("%d researchers asked, want %d", n, cfg.Researchers-done)
+	}
+	if s.count(Critic) != cfg.Critics || s.count(Synthesizer) != 1 {
+		t.Errorf("critics %d synthesizer %d", s.count(Critic), s.count(Synthesizer))
+	}
+
+	// Complete but for the answer: only the synthesizer runs.
+	s = &stub{route: `{"route":"council"}`}
+	if _, err := RunFrom(context.Background(), cfg, s, conv, last, nil, func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.calls) != 1 || s.calls[0].Role != Synthesizer {
+		t.Errorf("from a complete review, calls %d (first %s)", len(s.calls), s.calls[0].Role)
+	}
+	// A progress from a wider council keeps what still has an owner.
+	if got := fit([]string{"a", "b", "c"}, 2); len(got) != 2 || got[1] != "b" {
+		t.Errorf("fit %v", got)
+	}
+}
