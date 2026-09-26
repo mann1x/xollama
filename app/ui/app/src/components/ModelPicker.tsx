@@ -12,6 +12,7 @@ import { useCloudStatus } from "@/hooks/useCloudStatus";
 import { useQueryClient } from "@tanstack/react-query";
 import { getModelUpstreamInfo } from "@/api";
 import { ArrowDownTrayIcon } from "@heroicons/react/24/outline";
+import { CouncilBadge } from "./CouncilBadge"; // xollama-hook: council
 
 const stalenessCheckCache = new Map<string, number>();
 
@@ -168,6 +169,8 @@ export const ModelPicker = forwardRef<
               ? "Loading..."
               : selectedModel?.model || "Select a model"}
           </span>
+          {/* xollama-hook: council */}
+          {!isDisabled && <CouncilBadge model={selectedModel?.model} />}
         </div>
         <svg
           className="h-3 w-3 opacity-70"
@@ -320,6 +323,10 @@ export const ModelList = forwardRef(function ModelList(
                 <span className="flex-1 text-left truncate min-w-0">
                   {model.model}
                 </span>
+                {/* xollama-hook: council — only pulled local models are asked */}
+                {model.digest !== undefined && !model.isCloud() && (
+                  <CouncilBadge model={model.model} />
+                )}
                 {model.isCloud() && (
                   <svg
                     className="h-3 fill-current text-neutral-500 dark:text-neutral-400"

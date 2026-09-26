@@ -5,6 +5,21 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Desktop app shows councils (option C); GHCR confirmed public.**
+> - A council model gets a *council* badge in the model picker, and a
+>   **Deliberation** toggle in place of the Think button. The toggle is on
+>   by default and remembered per browser. The app's backend dropped every
+>   `think:false`, so nothing could hide the deliberation before. It now
+>   forwards `false` for a council only (`app/ui/council.go`, `council`
+>   hook). The UI builds, vitest passes 201 of 201, and the Go test runs on
+>   Linux and compiles for Windows. Not yet tried in the running desktop app.
+> - `ghcr.io/mann1x/xollama` was created public by its first push. An
+>   anonymous token lists `dev` and `0.34.2-dev.1f14838e`;
+>   `docs/features/docker-release.md` says so.
+> - opencoti b124 (dev build, not published) adds `continue_pool` and unowned
+>   pools (#343). They are request fields on routes `/api/engine` already
+>   proxies, so it needs no change. The pin stays on b111.
+
 > **2026-09-26 — Council Chat Phase 5 closed: docs, the one-shot CLI turn,
 > councils at 131k on a hybrid model; bug-117 fixed.**
 > - Docs: `docs/xollama/council.mdx` (users, in the navigation and the index)
@@ -282,24 +297,16 @@ runs again on b111 once it is on the HF dev repo.
 
 ## Immediate next steps (in order)
 
-1. Decide the desktop toggle (Open decisions).
-2. Move the engine pin when opencoti answers on the `rs` cache, and only on
-   a measurement.
-3. Make the GHCR package public if the first push left it private
-   (`docs/features/docker-release.md`, one-time setup).
+1. Try the council badge and the Deliberation toggle in the running desktop
+   app, which needs a Windows or macOS build.
+2. Move the engine pin when opencoti answers on the `rs` cache (#345), and
+   only on a measurement.
+3. Plan a council's use of `continue_pool` (b124) once a build carrying it is
+   published.
 
 ## Open decisions
 
-- The desktop council toggle. The app needs nothing to serve a council tag.
-  The options are:
-  (A) a per-chat "council off" switch. It needs a request field, and
-  contradicts "a council is a property of the model".
-  (B) a model-level switch that writes the model's config layer from the
-  chat UI. It changes the model for every client, and the app backend
-  proxies only reads today.
-  (C) cosmetics only: a council badge in the model picker (from `/api/show`
-  `xollama.council.enabled`) and the Think button labelled "Deliberation"
-  for a council. Recommended: C, or nothing.
+- None open.
 
 ## Maintenance protocol
 

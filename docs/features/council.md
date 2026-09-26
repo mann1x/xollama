@@ -18,6 +18,8 @@ measurements and decision log: `plans/agentic-council-chat.md`.
 | entry: `if councilServes(...)` in `ChatHandler` | `server/routes.go` | hook `council` |
 | `Placement` on the completion and native-chat requests, `CouncilPools` in the launch config, the placement applied to the engine body | `server/routes.go`, `llm/server.go`, `llm/llama_server.go` | hook `council` |
 | the council kept out of the launch (`LaunchConfig`) | `server/routes.go` | hook `model-config` |
+| one-shot `xollama run <council> "…"` sent as chat | `cmd/council_run.go`, `cmd/cmd.go` | additive + hook `council` |
+| desktop: council badge, Deliberation toggle, `think:false` forwarded | `app/ui/council.go`, `app/ui/app/src/hooks/useCouncil.ts`, `components/CouncilBadge.tsx`, `components/DeliberationButton.tsx`; `app/ui/ui.go`, `ChatForm.tsx`, `ModelPicker.tsx` | additive + hook `council` |
 
 The Registry row `council` in `docs/protocols/UPSTREAM-SYNC.md` lists every
 hunk in an upstream file.
@@ -93,6 +95,10 @@ council turn 3,139 → 525 tokens, peak KV cells about −40 %, wall time at par
   `TestTheOwnerWindowFollowsThePressure`, `TestCouncilSeatsFollowTheRounds`.
 - `llm/engine_council_test.go` — placement gating and pool 0, resize answers,
   session routing, pressure, seats.
+- `cmd/council_run_test.go` — a one-shot prompt reaches the council.
+- `app/ui/council_test.go` — a council keeps `think:false`, and every other
+  request is left as upstream built it. `app/ui/app/src/hooks/useCouncil.test.ts`
+  — reading the flag from `/api/show`, and the toggle's default and storage.
 
 Live runs are scripts under `/srv/ml/xollama-phase2/` run as `ollama`
 (`council-p3.sh`, `council-p4ab.sh`, `council-cli.sh`, `council-131k.sh`), against the isolated

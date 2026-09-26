@@ -97,7 +97,12 @@ are tuned to the planner's routing decision, so change them one at a time.
 - **`think: false`**, or `--hidethinking` in the CLI, gets the answer only. So
   does `council.show_deliberation off`.
 - **Tools or a `format`** in the request mean the client is steering the output
-  itself. That turn is answered as a plain chat, without the council.
+  itself. That turn is answered as a plain chat, without the council. In the
+  desktop app, turning on web search adds tools.
+- **The desktop app** marks a council with a *council* badge in the model
+  picker and, in place of the Think button, shows a **Deliberation** toggle.
+  It is on by default. Off asks for the answer alone, like `think: false`.
+  The app remembers the choice in that browser, for every council.
 - **Usage counts** (`prompt_eval_count`, `eval_count`) are the sum over every
   member, and `prompt_eval_cached_count` is the part of the prompts that came
   from the cache.

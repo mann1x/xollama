@@ -1,6 +1,6 @@
 # Agentic Council Chat
 
-**Status:** DONE · **Phase:** all five closed 2026-09-26 (desktop toggle open, see STATE_SUMMARY) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
+**Status:** DONE · **Phase:** all five closed 2026-09-26 · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
 
 In this chat mode, one model name is a *council*. A client connects to xollama
 the usual way: `/api/chat`, the OpenAI or Anthropic API, the CLI, or the
@@ -18,7 +18,7 @@ KV cache and prefills only its own role and turn.
 - [x] Phase 2 — config and tweak (2026-09-26; results below)
 - [x] Phase 3 — the runner (2026-09-26; live on b111, results below)
 - [x] Phase 4 — PolyKV path (2026-09-26; A/B on b111, results below)
-- [x] Phase 5 — surfaces and docs (2026-09-26; results below; desktop toggle an open decision)
+- [x] Phase 5 — surfaces and docs (2026-09-26; results below)
 
 ## What the user sees
 - `xollama create my-council -f Modelfile` (or `xollama tweak model my-council`)
@@ -676,11 +676,16 @@ upstream owns. Ideas worth borrowing:
 - **Stale wording corrected:** `compact_at` is the share of the granted window,
   not a "session pressure", in the schema comments, the `tweak` help and the
   validation error. The plan's pressure section gains an as-built note.
-- **Desktop toggle: not built; an open decision.** The app already serves a
-  council tag with no change: it lists it like any model, and the
-  deliberation arrives as thinking, which the Thinking panel shows. The Think
-  button's "off" sends `think: false`, which gets the answer alone. What a
-  toggle could add is set out under "Open decisions" in `STATE_SUMMARY.md`.
+- **Desktop: option C, built.** The app served a council tag with no change,
+  with the deliberation in the Thinking panel. But its Think button exists
+  only for `gpt-oss` and `deepseek-v3.1`, and its backend never sends
+  `think:false`, so nothing could hide the deliberation. Now a council gets a
+  badge in the model picker and a **Deliberation** toggle in place of the
+  think buttons: on by default, kept per browser. Off sends `think:false`,
+  which the backend now forwards for a council only (`app/ui/council.go`).
+  The UI builds, vitest passes 201 of 201, and the `app/ui` tests pass on
+  Linux and compile for Windows. Not yet exercised in the running desktop
+  app.
 
 ## Decision log
 
@@ -734,3 +739,9 @@ upstream owns. Ideas worth borrowing:
   `/v1/completions` are prompt completion and serve the plain model. The CLI's
   one-shot `run` is moved onto chat for a council, rather than teaching
   generate about councils.
+- 2026-09-26 — Desktop: option C (the owner's call). A council badge and a
+  Deliberation toggle that sends `think`; no per-chat council switch (A), and
+  no write of the model's config from the UI (B).
+- 2026-09-26 — Follow-up, not planned yet: opencoti b124 adds
+  `continue_pool` and unowned pools (patch 0406, #343). A council's next
+  turn could continue the conversation's pool instead of rebuilding P1.

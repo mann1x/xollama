@@ -9,6 +9,11 @@ paths:
   - llm/engine_council_test.go
   - cmd/council_run.go
   - cmd/council_run_test.go
+  - app/ui/council.go
+  - app/ui/council_test.go
+  - app/ui/app/src/hooks/useCouncil.ts
+  - app/ui/app/src/components/CouncilBadge.tsx
+  - app/ui/app/src/components/DeliberationButton.tsx
   - docs/xollama/council.mdx
   - docs/features/council.md
   - plans/agentic-council-chat.md
@@ -87,4 +92,20 @@ paths:
   hook line in `cmd/cmd.go`); `--format` keeps generate. Guarded by
   `cmd/council_run_test.go`. Found by the Phase 5 CLI walkthrough, where the
   one-shot run silently answered without the council.
+- **Desktop app (option C, 2026-09-26).** The app does not change what a
+  council is; it only shows it:
+  - a `CouncilBadge` in the model picker, from `/api/show`
+    `xollama.council.enabled` (`useIsCouncil`). Only pulled local models are
+    asked;
+  - a `DeliberationButton` in place of upstream's think buttons, whose flags
+    are false for a council. It is on by default, like `show_deliberation`,
+    and kept per browser in `localStorage`, never in upstream's
+    `ThinkEnabled`, which defaults to off.
+  The app backend drops every `think:false` ("only set Think if it's actually
+  requesting thinking"), so `councilThink` (`app/ui/council.go`, `council`
+  hook in `app/ui/ui.go`) puts it back for a council only. `app/ui` is built
+  only for Windows and macOS; `council.go` has no build tag so its test runs
+  on Linux. Never a per-chat council switch or a write of the model's config
+  from the UI: those were options A and B, and the owner chose C. Do not
+  Prettier-format upstream's `ChatForm.tsx`; it rewrites about 160 lines.
 

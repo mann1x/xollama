@@ -179,7 +179,11 @@ engine's own device list (`discover/opencoti.go`, `llm/engine/enumerate.go`),
 and refreshes free memory from it before a load (`discover/refresh_opencoti.go`) —
 see `docs/features/device-selection.md`.
 **Desktop UI**: `app/ui/app/src/routes/` (React 19 + TanStack Router + Vite),
-sibling to the `app` workspace (`vite.config.ts`, `vitest.config.ts`).
+sibling to the `app` workspace (`vite.config.ts`, `vitest.config.ts`). A council
+model gets a badge and a Deliberation toggle (`hooks/useCouncil.ts`,
+`components/CouncilBadge.tsx`, `components/DeliberationButton.tsx`);
+`councilThink` in `app/ui/council.go` (the `council` hook in `app/ui/ui.go`)
+keeps its explicit `think:false`.
 **Desktop updates**: `app/updater/fork.go` reads this fork's GitHub releases
 (`XOLLAMA_UPDATE_FEED`, `XOLLAMA_UPDATE_PRERELEASE`) instead of `ollama.com`,
 hooked from `app/updater/updater.go` / `app/updater/updater_windows.go`;

@@ -146,9 +146,12 @@ unchanged.
    applies the account's *default repository privacy* setting, so check it
    afterwards under the repository's **Settings → Visibility**.
 
-   A GHCR package created by `GITHUB_TOKEN` starts **private**, and there is no
-   way to pre-create it public — the package has to exist before it can be made
-   public. So publish once, then make it public and link it to the repository:
+   **Done for `ghcr.io/mann1x/xollama` (2026-09-26).** The first push (run
+   36221348282) created the package public, and an anonymous pull token lists
+   its tags. GitHub's documentation says a package created by `GITHUB_TOKEN`
+   can start **private**, and a package has to exist before its visibility can
+   change. If a new package ever comes up private, publish once, then make it
+   public and link it to the repository:
 
    **In the UI** — the package page
    (`https://github.com/users/mann1x/packages/container/xollama/settings`) →
@@ -169,6 +172,13 @@ unchanged.
    ```shell
    docker logout ghcr.io
    docker pull ghcr.io/mann1x/xollama:dev
+   ```
+
+   Or without docker:
+
+   ```shell
+   tok=$(curl -s "https://ghcr.io/token?scope=repository:mann1x/xollama:pull" | jq -r .token)
+   curl -s -H "Authorization: Bearer $tok" https://ghcr.io/v2/mann1x/xollama/tags/list
    ```
 
    It is a one-time step. Once the package is public it stays public across

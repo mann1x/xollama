@@ -990,6 +990,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return err
 		}
+		councilThink(details, req.Think, chatReq) // xollama-hook: council — see app/ui/council.go
 
 		err = c.Chat(ctx, chatReq, func(res api.ChatResponse) error {
 			if loading {

@@ -27,6 +27,13 @@ import { ErrorEvent, Message } from "@/gotypes";
 import { useSettings } from "@/hooks/useSettings";
 import { useCloudStatus } from "@/hooks/useCloudStatus";
 import { ThinkButton } from "./ThinkButton";
+// xollama-hook: council — the Deliberation toggle, see hooks/useCouncil.ts
+import { DeliberationButton } from "./DeliberationButton";
+import {
+  useIsCouncil,
+  readDeliberation,
+  writeDeliberation,
+} from "@/hooks/useCouncil";
 import { ErrorMessage } from "./ErrorMessage";
 import { processFiles } from "@/utils/fileValidation";
 import type { ImageData } from "@/types/webview";
@@ -162,10 +169,18 @@ function ChatForm({
     setSettings({ ThinkLevel: newLevel });
   };
 
+  // xollama-hook: council — a council's think field is its Deliberation
+  // toggle, so neither of upstream's per-model think buttons applies to it.
+  const isCouncil = useIsCouncil(selectedModel?.model);
+  const [deliberation, setDeliberation] = useState(() => readDeliberation());
   const modelSupportsThinkingLevels =
-    selectedModel?.model.toLowerCase().startsWith("gpt-oss") || false;
+    (!isCouncil &&
+      selectedModel?.model.toLowerCase().startsWith("gpt-oss")) ||
+    false;
   const supportsThinkToggling =
-    selectedModel?.model.toLowerCase().startsWith("deepseek-v3.1") || false;
+    (!isCouncil &&
+      selectedModel?.model.toLowerCase().startsWith("deepseek-v3.1")) ||
+    false;
 
   useEffect(() => {
     if (supportsThinkToggling && thinkEnabled && webSearchEnabled) {
@@ -492,7 +507,9 @@ function ChatForm({
 
     const useWebSearch =
       supportsWebSearch && webSearchEnabled && !cloudDisabled;
-    const useThink = modelSupportsThinkingLevels
+    const useThink = isCouncil // xollama-hook: council
+      ? deliberation
+      : modelSupportsThinkingLevels
       ? thinkLevel
       : supportsThinkToggling
         ? thinkEnabled
@@ -899,6 +916,18 @@ function ChatForm({
                       onDropdownToggle={handleThinkingLevelDropdownToggle}
                     />
                   </>
+                )}
+                {/* xollama-hook: council — show or hide a council's deliberation */}
+                {isCouncil && (
+                  <DeliberationButton
+                    ref={thinkButtonRef}
+                    isActive={deliberation}
+                    onToggle={() => {
+                      const on = !deliberation;
+                      setDeliberation(on);
+                      writeDeliberation(on);
+                    }}
+                  />
                 )}
                 {/* Think Button turn on and off */}
                 {supportsThinkToggling && !modelSupportsThinkingLevels && (
