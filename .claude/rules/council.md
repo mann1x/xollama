@@ -101,6 +101,23 @@ paths:
   - "did it fold" is the record changing, never the message count (a fold of
     one message plus a summary keeps the length);
   - a fold that does not shrink is discarded;
+  - nothing is sent that does not fit the window: the writer only when the
+    measured conversation + instruction + reply fit, else the text path in
+    pieces (bug-134: a 6,656 grant under a 9.5k conversation refused the
+    writer three times, and a one-piece text request waited out admission
+    while the next turn waited on it). The budget floor is
+    `min(4096, window/8)`;
+  - on an owned tree, a compaction call that does not read the root (text
+    path, its reviewers, the retrospective) runs on the owner's session
+    inside its window (`ownerWindow`), never on a session of its own: that
+    one is booked beside the owner and is never admitted once the owner holds
+    the pool (bug-135). Calls on one session take turns, and the kept root
+    goes first (`dropKept`, bug-137): it holds what the fold replaces;
+  - a resize's new window is `window_new`; `window` is the old one
+    (bug-136). Test the engine client against opencoti's real bodies;
+  - a review that cannot fork the conversation on an owned tree is skipped,
+    never run unpooled (bug-138): unpooled it reads the whole conversation
+    on a booking the engine never admits beside a full owner;
   - idle goroutines join `councilIdle`; a test that serves a council must
     `councilIdle.Wait()` before it reads the fake, or `-race` fires. Folds
     go through `councilCompacting` (`singleflight`).

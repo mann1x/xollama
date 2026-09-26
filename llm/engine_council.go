@@ -286,13 +286,19 @@ func (s *llamaServerRunner) Resize(ctx context.Context, id string, numCtx int, d
 }
 
 // parseResize reads a resize answer: 200 applied, 202 queued, 4xx refused.
+// An applied resize names the new window window_new; its "window" is the one
+// it replaced (opencoti oc_alloc_resize_apply). Reading "window" took every
+// grow for a no-op, so the council kept sizing itself on the old grant
+// (measured on b133: a 6,656 window grown to 16,384, compacted as 6,656).
 func parseResize(status int, out []byte) ResizeResult {
 	var r struct {
+		WindowNew         int    `json:"window_new"`
 		NumCtx            int    `json:"num_ctx"`
 		Window            int    `json:"window"`
 		LargestAdmissible int    `json:"largest_admissible"`
 		Reason            string `json:"reason"`
 		Error             struct {
+			Kind              string `json:"error_kind"`
 			Type              string `json:"type"`
 			Reason            string `json:"reason"`
 			LargestAdmissible int    `json:"largest_admissible"`
@@ -301,11 +307,14 @@ func parseResize(status int, out []byte) ResizeResult {
 	_ = json.Unmarshal(out, &r)
 	switch status {
 	case http.StatusOK:
+		if r.WindowNew > 0 {
+			return ResizeResult{Applied: r.WindowNew}
+		}
 		return ResizeResult{Applied: max(r.Window, r.NumCtx)}
 	case http.StatusAccepted:
 		return ResizeResult{Queued: true}
 	}
-	reason := firstNonEmpty(r.Error.Reason, r.Error.Type, r.Reason, http.StatusText(status))
+	reason := firstNonEmpty(r.Error.Kind, r.Error.Reason, r.Error.Type, r.Reason, http.StatusText(status))
 	return ResizeResult{Refusal: reason, LargestAdmissible: max(r.LargestAdmissible, r.Error.LargestAdmissible)}
 }
 

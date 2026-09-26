@@ -237,6 +237,17 @@ func (t *councilTree) ownerPlacement(ctx context.Context, msgs []api.Message) *l
 	return p
 }
 
+// ownerWindow is the owner's booking with no pool: what a call on the owner
+// states when it does not read the conversation's root.
+func (t *councilTree) ownerWindow() *llm.Placement {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.grant > 0 {
+		return &llm.Placement{NumCtx: t.grant, NumCtxMin: t.grant}
+	}
+	return &llm.Placement{NumCtx: t.window, NumCtxMin: t.floor}
+}
+
 // rootFor is the root pool msgs can attach to: this turn's, else the one kept
 // from the last turn (the summary of the old turns is asked on it, before this
 // turn builds its own). Nil when the prompt does not extend it.
@@ -363,6 +374,30 @@ func (t *councilTree) releaseRoot(ctx context.Context, r *councilRoot) {
 			slog.Debug("council: could not release the last turn's root", "pool", ids[i], "error", err)
 			return
 		}
+	}
+}
+
+// dropKept lets the kept root go before the conversation is compacted from
+// text on the owner. The fold replaces what the root holds, and the text path
+// does not read it; kept, it filled the owner's window beside the text pieces
+// (measured on b133: "its pools and workers hold 12197, the prompt needs 9962
+// private"). The idle fold builds the root again from the compacted
+// conversation; a fold that fails costs the next turn a rebuild.
+func (t *councilTree) dropKept(ctx context.Context) {
+	t.mu.Lock()
+	r := t.kept
+	t.kept = nil
+	t.mu.Unlock()
+	if r == nil {
+		if v, ok := councilRoots.take(t.owner); ok && v.kv == t.kv {
+			r = &v
+		}
+	} else if v, ok := councilRoots.take(t.owner); ok && v.id != r.id {
+		councilRoots.put(t.owner, v)
+	}
+	if r != nil {
+		slog.Debug("council: kept root released for a fold from text", "session", t.owner, "pool", r.id)
+		t.releaseRoot(ctx, r)
 	}
 }
 
@@ -871,6 +906,16 @@ func (cm *councilMembers) place(ctx context.Context, r council.Request, req *api
 	if r.Role == council.Planner || r.Role == roleCompactWriter {
 		req.SessionID = t.owner
 		return t.ownerPlacement(ctx, r.Messages), ""
+	}
+	if compactionUnpooled(r.Role) && !t.unowned {
+		// A compaction call that shares nothing with the tree still belongs to
+		// the conversation: it runs on the owner, inside the owner's window.
+		// On a session of its own it is booked beside the owner, and once the
+		// owner has grown to the whole pool it is never admitted (measured on
+		// b133: a 4,608-cell text piece waited out admission beside a
+		// 16,384-cell owner).
+		req.SessionID = t.owner
+		return t.ownerWindow(), ""
 	}
 	req.SessionID = cm.memberSession(r)
 	if !compactionUnpooled(r.Role) {

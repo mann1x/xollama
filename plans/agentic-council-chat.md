@@ -1186,11 +1186,177 @@ survivor, the idle fold's own `learnGrant`, is equivalent while `promoteRoot`
 runs first on the same goroutine, which re-learns it; it stays for the path
 where `promoteRoot` returns early.
 
-**Live**: pending — `council-idle.py` over four and more turns on b128.
+**Live, first try (b128, 2026-09-26)** — `council-turns.py`, one
+conversation over six turns at `num_ctx` 16384, starting at ~9.5k tokens.
+Turn 1 answered in 78.7 s (first token at 20 s). The idle fold then failed and
+held turn 2:
+
+- The owner's grant was 6,656: what turn 1's unowned root (~9.7k cells) left
+  of the 16,384-cell pool.
+- The writer, a continuation of the whole conversation, sent 11,908 tokens to
+  that window and was refused three times ("exceeds the available context
+  size").
+- The text path sent the whole transcript in one sessionless request (14,244
+  tokens); it could not be admitted beside the owner's booking and waited out
+  the 2-minute admission budget while holding the promotion mark.
+
+Fixed (bug-134): the writer is asked only when the measured conversation, its
+instruction and its reply fit the window; the text path cuts the transcript
+into pieces that fit, each piece's summary carried into the next, and a
+summary written in pieces is not reviewed (a reviewer would see only the last
+piece). Cerebriline's 4,096-token budget floor is scaled to at most window/8,
+so it is unchanged from 32k up; on a small window it left no room for the
+text itself. Held by `TestAConversationOverItsGrantCompactsFromTextInPieces`;
+the test fixtures grew to realistic proportions (a writer needs the
+conversation plus about 1,500 tokens of instruction plus its budget).
+Mutation-checked: 6 more mutants, all caught but the `w <= 0` guard in `fits`,
+equivalent while `num_ctx` is always known.
+
+**Live, second try (b133)** — turn 1 answered in 75.7 s (first token at
+17.6 s); the idle fold took the text path in pieces and folded 10,399 tokens
+to 3,181 in 56.6 s, and turn 2 applied the record. Turn 2's fold then stuck:
+by then `begin` had grown the owner back to the whole 16,384-cell pool, and
+the text path's calls, on sessions of their own, were booked beside it
+(bug-135: "largest admissible 0 < num_ctx_min 4608"). Fixed: on an owned
+tree every compaction call that does not read the root (the text path, its
+reviewers, the retrospective) runs on the owner, inside its window and with
+no pool, and they take turns there, the retrospective first and one critic
+at a time, as the plan's fallback already said. Held by
+`TestTheTextPathTakesTurnsOnTheOwner`, whose fake engine now records calls
+that overlap on one session; 4 more mutants, all caught. The run's pasted
+numeric rows also tokenized about four times denser than estimated (a
+2,500-"token" paste was ~10k), so the next run pastes 700.
+
+**Live, third try (b133)** — turns 1–4 of 6 (stopped for a fixed binary):
+
+| turn | wall | first token | owner window, used after | fold |
+|---|---|---|---|---|
+| 1 | 67.2 s | 17.5 s | 6,656, — | idle, text in pieces then the no-tail rescue: 10,190 → 1,679 tokens in 2 min 4 s |
+| 2 | 153.9 s | 100.4 s | 16,384, 4,432 | before the turn, from text on a 6,656 window it no longer had (bug-136) |
+| 3 | 60.7 s | 10.0 s | 16,384, 8,345 | none |
+| 4 | 48.3 s | 15.2 s | 16,384, 13,354 (0.82) | idle fold refused (bug-137) |
+
+Two more faults:
+
+- **bug-136, since Phase 6.** A successful `POST /sessions/{id}/resize`
+  answers `window` = the window it replaced and `window_new` = the new one
+  (opencoti `oc_alloc_resize_apply`); xollama read `window`, so every grow
+  looked like a no-op and the council kept sizing itself on the old grant.
+  Turn 2 compacted for a 6,656 window it had just grown to 16,384, and waited
+  100 s for its first token. Fixed in `parseResize`; a refusal now also names
+  its `error_kind`. `TestResizeAnswers` holds opencoti's real 200 and 409
+  bodies, read from its source.
+- **bug-137.** The text path on the owner ran beside the kept root, which
+  holds the very conversation it replaces: "its pools and workers hold 12197,
+  the prompt needs 9962 private". `dropKept` releases the kept root before a
+  fold from text; the idle fold rebuilds it from the compacted conversation.
+  `TestAFoldFromTextReleasesTheKeptRootFirst`.
+
+**Live, fourth try (b133, bug-134…137 fixed)** — six turns, 9.5k tokens of
+history to start, ~2.8k pasted per turn, `num_ctx` 16384:
+
+| turn | wall | first token | owner used after (pressure) | fold |
+|---|---|---|---|---|
+| 1 | 80.7 s | 17.5 s | — (window 6,656) | idle, 43.6 s |
+| 2 | 67.7 s | 7.6 s | 5,738 (0.35) | none — started on the idle summary |
+| 3 | 70.8 s | 20.5 s | 11,613 (0.71) | none |
+| 4 | 348.9 s | 304.3 s | 4,837 (0.30) | root refused → fold before the turn, 4 min 26 s (bug-138) |
+| 5 | 52.8 s | 14.9 s | 8,534 (0.52) | none |
+| 6 | 54.7 s | 20.6 s | 12,187 (0.74) | idle, 59.8 s |
+
+Against the third try, turn 2 fell from 153.9 s (first token 100.4 s) to
+67.7 s (7.6 s): the idle summary was applied and nothing else ran.
+
+- **bug-138.** Turn 4's root was refused ("compact the session"), and the
+  fold's review could not fork the conversation beside the full owner. Its
+  critics and synthesizer fell back to bookings of their own, each reading
+  the whole conversation, which the engine never admits while the owner
+  holds the pool; each waited out the 2-minute admission budget. Fixed:
+  `reviewLayer` reports whether it forked, and on an owned tree an
+  unforkable review is skipped and the writer's replay stands, as
+  Cerebriline keeps a half as written when its review fails.
+  `TestAReviewWithNoRoomToForkIsSkipped`; 2 mutants.
+- **Open**: the refusal itself. After turn 3 the owner used 11,613 of 16,384
+  while the conversation was ~8.3k tokens: the kept root's chain (up to
+  `councilRootChain` older roots) holds cells beside the root it feeds. This
+  is the first question of the prefix assessment.
+
+**Live, fifth try (b133, bug-134…138 fixed)** — same conversation shape:
+
+| turn | wall | first token | owner used after (pressure) | fold |
+|---|---|---|---|---|
+| 1 | 72.4 s | 17.2 s | — (window 6,656) | idle, from text in pieces: 10,155 → 1,705 in 2 min 18 s |
+| 2 | 57.7 s | 11.2 s | 4,854 (0.30) | none; the window grew back 6,656 → 16,384, read right (bug-136) |
+| 3 | 51.0 s | 10.8 s | 8,874 (0.54) | none |
+| 4 | 45.0 s | 19.7 s | 12,518 (0.76) | idle, from text: 12,699 → 6,411 in 3 min 8 s |
+| 5 | 76.9 s | 34.4 s | 0 | root refused → fold before the turn, review skipped (bug-138), 26 s |
+| 6 | 49.5 s | 10.1 s | 8,433 (0.51) | none |
+
+No turn waited out admission. What is left, both open:
+
+- **The writer rarely fits at the trigger on a small window.** At 16,384 the
+  trigger is 12,544, and a continuation needs the conversation plus ~2.5–3k
+  of instruction plus a 2,048 budget, so every fold here came from text, at
+  2–3 minutes while idle. Cerebriline's trigger reserves the output room but
+  not the compaction's own instruction; the fix is to compact early enough
+  for the writer to fit, measured before it changes.
+- **bug-139 (open): text calls on the owner leave their prompts as the
+  owner's private cells.** Right after the idle fold after turn 4 the owner
+  had 1 of 16,384 cells free and no pools, so the fold's own root rebuild was
+  refused and turn 5 folded again before it started. Asked opencoti (mail
+  #376) for a way to free a session's private cells without releasing its
+  window; closing and re-booking would lose the grant.
 
 **Live.** `council-idle.py` over four and more turns on b128: tokens sent
 per turn, prefill, time to first token and the summary's size by
 generation.
+
+## Phase 9 — Cerebriline as a client: tools, shared prefix, carried state (proposed 2026-09-26)
+
+**Why.** Cerebriline (`/shared/dev/cline`) is adding xollama as a provider
+(mails #366, #367 from the Cerebriline session; answered in #370–#372). It
+sends tools on every turn, so today it never reaches the council, and it
+drives PolyKV itself against a bare opencoti.
+
+**The owner's decisions (2026-09-26).**
+
+- **Council state travels in-band.** The done chunk carries `council_state`,
+  an opaque, versioned blob sealed with a key the server keeps: the
+  compaction record, and a suspended deliberation (below). The client sends
+  the latest one back; the server uses it when its memory lacks the record
+  or holds an older generation, after checking the seal and the hash. No
+  snapshot endpoint.
+- **The council compacts.** Cerebriline turns its own compaction off for a
+  council model and sends the history as the user sees it.
+- **PolyKV driven by the client** on plain turns, as against a bare
+  opencoti: the `/api/engine` pool proxy, plus a client `placement`
+  (`pool_id`, `num_ctx`, `num_ctx_min`) on `/api/chat`. The client's root is
+  P0, and a council turn that names it forks from it and never releases it.
+- **Tools on council turns.** Every role sees the tools and MCP schemas.
+  Researchers and critics get read-only tools; only the synthesizer may call
+  a writing tool (MCP `readOnlyHint`, and a per-tool mark from the client
+  for its built-ins). A member's tool call is forwarded to the client: the
+  response ends with `done_reason` `tool_calls`, the deliberation in flight
+  is suspended into the blob, and the next request (the results plus the
+  blob) resumes it. Parallel members' calls are gathered at a checkpoint and
+  sent as one message; each call id names its member. The `len(req.Tools)`
+  bypass goes once this works; `format` stays a bypass.
+- **One prompt layout, on every council turn.** Every member's system
+  message is empty; the tools follow; then the conversation. That is the
+  shared P every member attaches to. Each role's instruction is a user
+  message after P, with the charter folded into it. The synthesizer alone
+  also gets the client's system prompt, when one was sent, as a user message
+  right after its own role prompt, so it knows both its role and what the
+  user expects. This also answers the owner's request to use the PolyKV
+  prefix better, and it is re-measured against the Phase 0 layout on b133
+  before it replaces it.
+- **Deliberation tags.** `council: {role, index, round}` on each thinking
+  chunk and on a forwarded tool call.
+- **Detection.** `/api/xollama` gains `features: [...]`, named per feature
+  as it ships.
+
+**Order.** Features list and tags; client placement; the shared-P layout,
+measured; the sealed state; tools with suspend and resume.
 
 ## Decision log
 

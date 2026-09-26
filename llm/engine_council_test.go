@@ -38,10 +38,14 @@ func TestResizeAnswers(t *testing.T) {
 		want   ResizeResult
 	}{
 		{http.StatusOK, `{"window":8192}`, ResizeResult{Applied: 8192}},
+		// opencoti's own answer: "window" is the window it replaced.
+		{http.StatusOK, `{"found":true,"window":6656,"cells":6656,"used":5637,"sequences":1,"ok":true,"window_new":16384,"cells_new":16384,"cells_delta":9728}`, ResizeResult{Applied: 16384}},
 		{http.StatusAccepted, `{}`, ResizeResult{Queued: true}},
 		{http.StatusConflict, `{"error":{"type":"session_busy"}}`, ResizeResult{Refusal: "session_busy"}},
 		{http.StatusTooManyRequests, `{"error":{"reason":"insufficient","largest_admissible":24576}}`, ResizeResult{Refusal: "insufficient", LargestAdmissible: 24576}},
 		{http.StatusNotFound, ``, ResizeResult{Refusal: "Not Found"}},
+		// opencoti's own refusal: the kind is error_kind, the type is generic.
+		{http.StatusConflict, `{"error":{"code":409,"message":"the session has 2 active and 0 pending task(s)","type":"unavailable_error","error_kind":"session_busy","window":16384}}`, ResizeResult{Refusal: "session_busy"}},
 	} {
 		if got := parseResize(tc.status, []byte(tc.body)); got != tc.want {
 			t.Errorf("%d %s: %+v, want %+v", tc.status, tc.body, got, tc.want)

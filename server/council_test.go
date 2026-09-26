@@ -38,6 +38,11 @@ type councilEngine struct {
 	compaction map[string]string
 	// gate, when set, holds the compaction's writer until it is closed.
 	gate chan struct{}
+	// hold keeps each compaction call in flight this long, so calls that
+	// overlap on one session are seen doing so; overlaps names those sessions.
+	hold     time.Duration
+	inflight map[string]int
+	overlaps []string
 }
 
 // compactionMarkers tell the compaction's members apart by their instruction.
@@ -78,8 +83,26 @@ func (e *councilEngine) complete(ctx context.Context, r llm.CompletionRequest, f
 			at, role = j, cr
 		}
 	}
-	if strings.HasPrefix(role, "compaction-") && strings.Contains(r.SessionID, "~compaction-text") {
+	// The text path reads the folded turns as a transcript, not the
+	// conversation; it runs on the owner, so its session does not tell.
+	if strings.HasPrefix(role, "compaction-") && role != "compaction-retrospective" && strings.Contains(r.Prompt, "\n\nConversation:\n") {
 		role = "compaction-text-" + strings.TrimPrefix(role, "compaction-")
+	}
+	if e.hold > 0 && strings.HasPrefix(role, "compaction-") {
+		e.mu.Lock()
+		if e.inflight == nil {
+			e.inflight = map[string]int{}
+		}
+		if e.inflight[r.SessionID]++; e.inflight[r.SessionID] > 1 {
+			e.overlaps = append(e.overlaps, r.SessionID+" "+role)
+		}
+		e.mu.Unlock()
+		time.Sleep(e.hold)
+		defer func() {
+			e.mu.Lock()
+			e.inflight[r.SessionID]--
+			e.mu.Unlock()
+		}()
 	}
 	e.mu.Lock()
 	e.roles = append(e.roles, role)

@@ -33,12 +33,12 @@ func TestCompactionSizesFollowCerebriline(t *testing.T) {
 func stockLongReq(session string) api.ChatRequest {
 	return api.ChatRequest{
 		Model: "council", SessionID: session,
-		Options: map[string]any{"num_ctx": 4096},
+		Options: map[string]any{"num_ctx": 8192},
 		Messages: []api.Message{
-			{Role: "user", Content: "What is Rayleigh scattering? " + words(600, "q1")},
-			{Role: "assistant", Content: "Light scattered by small particles. " + words(600, "a1")},
-			{Role: "user", Content: "Does it depend on wavelength? " + words(600, "q2")},
-			{Role: "assistant", Content: "Yes, strongly: the fourth power. " + words(600, "a2")},
+			{Role: "user", Content: "What is Rayleigh scattering? " + words(1100, "q1")},
+			{Role: "assistant", Content: "Light scattered by small particles. " + words(1100, "a1")},
+			{Role: "user", Content: "Does it depend on wavelength? " + words(1100, "q2")},
+			{Role: "assistant", Content: "Yes, strongly: the fourth power. " + words(1100, "a2")},
 			{Role: "user", Content: "Why is the sky blue?"},
 		},
 	}
@@ -109,7 +109,7 @@ func TestAnEditedHistoryDropsTheRecord(t *testing.T) {
 	chatChunks(t, s, req)
 	councilIdle.Wait()
 	next := nextTurn(req, "And sunsets?")
-	next.Messages[2].Content = "An edited answer. " + words(600, "e1")
+	next.Messages[1].Content = "An edited answer. " + words(1100, "e1")
 	chatChunks(t, s, next)
 	councilIdle.Wait()
 	r := councilCompactions.get("conv-edit")
@@ -150,9 +150,9 @@ func TestASecondFoldIsIncremental(t *testing.T) {
 	councilIdle.Wait()
 	e.mu.Lock()
 	for i := from; i < len(e.roles); i++ {
-		// q3 was folded by the second; quoted, a request is clipped to 2000
-		// characters, so whole it can only be the turn itself sent again.
-		if e.roles[i] == "route" && (strings.Contains(e.prompts[i], "a1 a1 a1") || strings.Contains(e.prompts[i], words(700, "q3"))) {
+		// The second fold replaced the third question too; it is quoted once
+		// among the requests, and a second copy is the turn itself sent again.
+		if e.roles[i] == "route" && (strings.Contains(e.prompts[i], "a1 a1 a1") || strings.Count(e.prompts[i], "Why is the sky blue?") > 1) {
 			t.Error("a turn the first fold replaced was sent again after the second")
 		}
 	}
@@ -443,9 +443,10 @@ func TestTheWriterMarksTheHalfOnlyForAReview(t *testing.T) {
 // short span's request and replaying it can outweigh the span.
 func TestAFoldThatDoesNotShrinkIsDiscarded(t *testing.T) {
 	councilCompactions.reset()
-	long := words(3000, "r")
+	long := words(8000, "r")
 	e := &councilEngine{route: `{"route":"council"}`, compaction: map[string]string{
 		"compaction-writer": long, "compaction-critic-1": long, "compaction-critic-2": long, "compaction-synthesizer": long,
+		"compaction-text-writer": long,
 	}}
 	s := councilServer(t, e, councilOn())
 	chatChunks(t, s, stockLongReq("conv-small"))
@@ -544,6 +545,161 @@ func TestTheRetrospectiveTouchesNoPool(t *testing.T) {
 	for _, p := range kv.pools {
 		if strings.Contains(p.text, compactionRetrospectiveRole) {
 			t.Errorf("a pool was built for the retrospective: %d", p.id)
+		}
+	}
+}
+
+// A conversation larger than the window the engine granted cannot be read by
+// a continuation: the engine refuses it ("exceeds the available context
+// size", measured on b128 with a 6656 grant and 9.5k tokens). The writer is
+// not asked; the folded turns are summarised from text, in pieces that each
+// fit the grant with their reply.
+func TestAConversationOverItsGrantCompactsFromTextInPieces(t *testing.T) {
+	councilCompactions.reset()
+	councilRoots.reset()
+	const grant = 3072
+	e := &councilEngine{route: `{"route":"council"}`}
+	kv := &fakeKV{grant: grant, most: grant, used: 900, session: "conv-over"}
+	s := polykvCouncil(t, e, kv, councilOn())
+	req := longCouncilReq("conv-over", "Why is the sky blue?")
+	req.Options["num_ctx"] = 16384
+	for i := range 4 {
+		req.Messages[i].Content += " " + words(900, "x")
+	}
+	chatChunks(t, s, req)
+	councilIdle.Wait()
+	if r := councilCompactions.get("conv-over"); r == nil || !strings.HasPrefix(r.how, "text") {
+		t.Fatalf("record %+v, want one written from text", r)
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	pieces := 0
+	for i, r := range e.roles {
+		if strings.HasPrefix(r, "compaction-") && (strings.Contains(r, "critic") || strings.Contains(r, "synthesizer")) {
+			t.Errorf("%s reviewed a summary written in pieces: it would see only the last", r)
+		}
+		switch r {
+		case "compaction-writer":
+			t.Error("the continuation was asked for a conversation over its grant")
+		case "compaction-text-writer":
+			pieces++
+			if e.sessions[i] != "conv-over" || e.placements[i] == nil || e.placements[i].PoolID != nil || e.placements[i].NumCtx != grant {
+				t.Errorf("a text piece ran on %q with %+v, want the owner's window and no pool", e.sessions[i], e.placements[i])
+			}
+			if n := len(strings.Fields(e.prompts[i])) + e.predicts[i]; n > grant {
+				t.Errorf("a text piece needs %d tokens with its reply, over the grant of %d", n, grant)
+			}
+		}
+	}
+	if pieces < 2 {
+		t.Errorf("%d text calls, want the transcript in pieces", pieces)
+	}
+}
+
+// Off the pools, the text path, its review and the retrospective run on the
+// owner's session inside its window, so they take turns: calls that share a
+// session must not overlap.
+func TestTheTextPathTakesTurnsOnTheOwner(t *testing.T) {
+	councilCompactions.reset()
+	councilRoots.reset()
+	const grant = 3072
+	e := &councilEngine{route: `{"route":"council"}`, hold: 5 * time.Millisecond}
+	kv := &fakeKV{grant: grant, most: grant, used: 900, session: "conv-turns", sessPressure: 0.9}
+	s := polykvCouncil(t, e, kv, councilOn())
+	req := longCouncilReq("conv-turns", "Why is the sky blue?")
+	req.Messages[1].Thinking = "I should start from the law."
+	chatChunks(t, s, req)
+	councilIdle.Wait()
+	if r := councilCompactions.get("conv-turns"); r == nil || r.how != "text" {
+		t.Fatalf("record %+v, want one written from text in one piece", r)
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if len(e.overlaps) > 0 {
+		t.Errorf("calls overlapped on one session: %v", e.overlaps)
+	}
+	seen := map[string]bool{}
+	for i, r := range e.roles {
+		if !strings.HasPrefix(r, "compaction-") {
+			continue
+		}
+		seen[r] = true
+		if e.sessions[i] != "conv-turns" || e.placements[i] == nil || e.placements[i].PoolID != nil {
+			t.Errorf("%s ran on %q with %+v, want the owner and no pool", r, e.sessions[i], e.placements[i])
+		}
+	}
+	for _, r := range []string{"compaction-text-writer", "compaction-text-critic-1", "compaction-text-critic-2", "compaction-retrospective"} {
+		if !seen[r] {
+			t.Errorf("%s was not asked", r)
+		}
+	}
+}
+
+// A fold from text on the owner lets the kept root go first: the root holds
+// what the fold replaces, and kept it fills the owner's window beside the
+// text (b133: "its pools and workers hold 12197, the prompt needs 9962
+// private").
+func TestAFoldFromTextReleasesTheKeptRootFirst(t *testing.T) {
+	councilCompactions.reset()
+	councilRoots.reset()
+	e := &councilEngine{route: `{"route":"council"}`}
+	kv := &fakeKV{grant: 16384, used: 900, session: "conv-drop"}
+	s := polykvCouncil(t, e, kv, councilOn())
+	req := longCouncilReq("conv-drop", "Why is the sky blue?")
+	req.Options["num_ctx"] = 16384
+	chatChunks(t, s, req)
+	councilIdle.Wait()
+	kept, ok := councilRoots.m["conv-drop"]
+	if !ok {
+		t.Fatal("the first turn kept no root")
+	}
+
+	kv.mu.Lock()
+	kv.grant, kv.most, kv.sessPressure = 3072, 3072, 0.9
+	kv.mu.Unlock()
+	chatChunks(t, s, nextTurn(req, "And sunsets?"))
+	councilIdle.Wait()
+
+	e.mu.Lock()
+	firstText := slices.Index(e.roles, "compaction-text-writer")
+	e.mu.Unlock()
+	if firstText < 0 {
+		t.Fatal("the second turn did not compact from text")
+	}
+	kv.mu.Lock()
+	defer kv.mu.Unlock()
+	i := slices.Index(kv.released, kept.id)
+	if i < 0 || kv.releasedAt[i] > firstText {
+		t.Errorf("kept root %d released at %v (calls made %v), want before the first text call (%d)", kept.id, kv.released, kv.releasedAt, firstText)
+	}
+}
+
+// A review whose fork cannot be built on an owned tree is skipped, and the
+// writer's replay stands. Unpooled, each reviewer would read the whole
+// conversation on a booking beside an owner that holds the pool, and wait out
+// admission (b133: a 4.5-minute fold).
+func TestAReviewWithNoRoomToForkIsSkipped(t *testing.T) {
+	councilCompactions.reset()
+	councilRoots.reset()
+	e := &councilEngine{route: `{"route":"council"}`}
+	kv := &fakeKV{grant: 16384, used: 900, session: "conv-nofork", sessPressure: 0.9, noForks: true}
+	s := polykvCouncil(t, e, kv, councilOn())
+	req := longCouncilReq("conv-nofork", "Why is the sky blue?")
+	req.Options["num_ctx"] = 16384
+	for i := range 4 {
+		req.Messages[i].Content += " " + words(900, "x")
+	}
+	chatChunks(t, s, req)
+	councilIdle.Wait()
+	r := councilCompactions.get("conv-nofork")
+	if r == nil || r.how != "pooled" || !strings.Contains(r.replay, fakeReplayFirst) {
+		t.Fatalf("record %+v, want the writer's replay", r)
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, rl := range e.roles {
+		if strings.HasPrefix(rl, "compaction-") && (strings.Contains(rl, "critic") || strings.Contains(rl, "synthesizer")) {
+			t.Errorf("%s ran with no fork to review on", rl)
 		}
 	}
 }

@@ -5,6 +5,37 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Council compaction live on b133: five faults fixed, six turns clean of stalls.**
+> - Live runs (six turns, 16k council, ~9.5k tokens of history) found and
+>   fixed bug-134…138: the writer is asked only when it fits, the text path
+>   goes in pieces on the owner (serially), the kept root is released before
+>   a fold from text, a resize's new window is `window_new` (misread since
+>   Phase 6), and a review with no room to fork is skipped.
+> - Fifth run: every turn 45–77 s, first token 10–34 s; idle folds 2–3 min;
+>   no admission waits. Turn 2 went from 153.9 s (first token 100.4 s) to
+>   57.7 s (11.2 s).
+> - Open: the writer rarely fits at the trigger on a 16k window (every fold
+>   came from text), and bug-139 (text calls leave private cells on the
+>   owner, so the next root is refused once); asked opencoti (#376).
+
+> **2026-09-26 — Council compaction: fits its window; dev server on b133.**
+> - The first live run (b128) failed on turn 2's idle fold: the owner held a
+>   6,656 grant under a 9.5k conversation, so the writer was refused three
+>   times, and the one-piece text request waited out admission while holding
+>   the next turn (bug-134).
+> - Fixed: the writer runs only when conversation, instruction and reply fit;
+>   the text path goes in pieces that fit; the budget floor scales to
+>   window/8 below 32k. New test and 6 mutants.
+> - The dev server (22434) runs opencoti b133 `2609261655001` (b128 + 0410
+>   ckpt-periodic + 0411 adm-running-priority), copied from bs2 and
+>   hash-checked, as the owner asked; `council-b133.sh`.
+> - Cerebriline provider design (mails #366/#367): the owner's decisions are
+>   recorded — sealed council state in-band, PolyKV driven by the client,
+>   tools on council turns with read-only members and a writing synthesizer,
+>   the council compacting, and one prompt layout (empty system, tools,
+>   conversation; role prompts as user messages; the client's system prompt
+>   after the synthesizer's). Answered in #370–#372.
+
 > **2026-09-26 — Council compaction: Phase 8 built, Cerebriline's ported.**
 > - `server/council_compaction.go` and `council_compaction_prompts.go`
 >   replace Phase 6's compaction: a record per conversation applied every

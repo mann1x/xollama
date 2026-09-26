@@ -23,12 +23,14 @@ type fakeKV struct {
 	mu       sync.Mutex
 	pools    []fakePool
 	released []int
-	closed   []string
-	resized  []string
-	grant    int
-	most     int // the most a resize grants; 0 is anything asked
-	used     int
-	pressure *llm.KVPressure
+	// releasedAt is how many engine calls had been made at each release.
+	releasedAt []int
+	closed     []string
+	resized    []string
+	grant      int
+	most       int // the most a resize grants; 0 is anything asked
+	used       int
+	pressure   *llm.KVPressure
 	// recurrent answers /kv with an rs block, as a hybrid model does.
 	recurrent bool
 	// session, when set, is the owner's id and sessPressure its raw
@@ -44,6 +46,8 @@ type fakeKV struct {
 	// full refuses this many new roots (pools with no parent) as the engine
 	// does when the owner's allocation is full.
 	full int
+	// noForks refuses every fork, as a full owner does.
+	noForks bool
 }
 
 type fakePool struct {
@@ -61,6 +65,9 @@ func (f *fakeKV) Features(context.Context) map[string]bool {
 func (f *fakeKV) CreatePool(_ context.Context, session string, parent *int, prompt string) (llm.PoolInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if parent != nil && f.noForks {
+		return llm.PoolInfo{}, fmt.Errorf("%w: session allocation full, compact the session", llm.ErrSessionFull)
+	}
 	if parent == nil && f.full > 0 {
 		f.full--
 		return llm.PoolInfo{}, fmt.Errorf("%w: session allocation full, compact the session", llm.ErrSessionFull)
@@ -74,6 +81,11 @@ func (f *fakeKV) ReleasePool(_ context.Context, id int) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.released = append(f.released, id)
+	if f.councilRunner != nil && f.e != nil {
+		f.e.mu.Lock()
+		f.releasedAt = append(f.releasedAt, len(f.e.roles))
+		f.e.mu.Unlock()
+	}
 	return nil
 }
 
@@ -297,13 +309,14 @@ func TestCouncilSeatsFollowTheRounds(t *testing.T) {
 	}
 }
 
-// summaries counts the compaction writer's calls, and whether any council
-// member was sent the compacted conversation.
+// summaries counts the compaction writer's calls, from the conversation or
+// from text, and whether any council member was sent the compacted
+// conversation.
 func (e *councilEngine) summaries() (calls int, compacted bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	for i, p := range e.prompts {
-		if e.roles[i] == "compaction-writer" {
+		if e.roles[i] == "compaction-writer" || e.roles[i] == "compaction-text-writer" {
 			calls++
 		}
 		if !strings.HasPrefix(e.roles[i], "compaction-") && strings.Contains(p, compactionSummaryHeading) {

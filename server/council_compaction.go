@@ -64,8 +64,14 @@ const (
 	compactionMaxBlockChars   = 1200 // REPLAY_BLOCK_LIMITS.maxBlockChars
 	compactionReasoningChars  = 6000
 	compactionTextChars       = 2000 // TOOL_RESULT_CHAR_LIMIT, for the text path's turns
-	compactionRefusalRatio    = 1.25 // KV_PRESSURE_COMPACTION_MIN_RATIO
-	compactionRefusalGain     = 0.25 // KV_PRESSURE_COMPACTION_MIN_GAIN_SHARE
+
+	// xollama's: the budget floor is at most this share of the window, and a
+	// text-path piece is never smaller than compactionMinPiece tokens.
+	compactionMinBudgetWindowShare = 8
+	compactionMinPiece             = 256
+	compactionFitMargin            = 64   // tokens a template adds around a request
+	compactionRefusalRatio         = 1.25 // KV_PRESSURE_COMPACTION_MIN_RATIO
+	compactionRefusalGain          = 0.25 // KV_PRESSURE_COMPACTION_MIN_GAIN_SHARE
 )
 
 // compactionBudgetLadder is COMPACTION_BUDGET_LADDER: the share of the target
@@ -564,8 +570,12 @@ func (c *councilCompactor) foldWith(ctx context.Context, conv, applied []api.Mes
 
 	gen := prev.gen + 1
 	share := compactionBudgetLadder[min(gen, len(compactionBudgetLadder))-1]
-	combined := max(compactionMinBudget, int(float64(z.target)*share))
-	budget := max(compactionMinBudget, int(float64(combined)*compactionSummaryShare))
+	// Cerebriline's 4096 floor assumes a window of 128k or more; below 32k it
+	// would leave a small window no room for what is being summarised, since
+	// the engine books the reply's budget with the prompt.
+	floor := min(compactionMinBudget, z.window/compactionMinBudgetWindowShare)
+	combined := max(floor, int(float64(z.target)*share))
+	budget := max(floor, int(float64(combined)*compactionSummaryShare))
 	requestsBlock := compactionRequests(requests, int(float64(z.target)*compactionRequestShare/max(z.perChar, 0.01)))
 
 	out := &compactionRecord{n: n, gen: gen, requests: requests, retro: prev.retro}
@@ -573,7 +583,7 @@ func (c *councilCompactor) foldWith(ctx context.Context, conv, applied []api.Mes
 		out.how = "basic"
 		out.replay = compactionBasic(prev.replay, folded, int(float64(budget)/max(z.perChar, 0.01)))
 	} else {
-		replay, retro, how, err := c.agentic(ctx, applied, plan, folded, prev, requestsBlock, keepTail, budget, combined)
+		replay, retro, how, err := c.agentic(ctx, applied, z.tokens, plan, folded, prev, requestsBlock, keepTail, budget, combined)
 		switch {
 		case err == nil:
 			out.replay, out.retro, out.how = replay, retro, how
@@ -600,7 +610,7 @@ func (c *councilCompactor) foldWith(ctx context.Context, conv, applied []api.Mes
 
 // agentic is runAgenticCompaction with runCouncilReview: the writer, then the
 // retrospective beside the two critics, then the synthesizer.
-func (c *councilCompactor) agentic(ctx context.Context, applied []api.Message, plan compactionPlan, folded []api.Message, prev compactionRecord, requestsBlock string, keepTail bool, budget, combined int) (replay, retro, how string, err error) {
+func (c *councilCompactor) agentic(ctx context.Context, applied []api.Message, tokens int, plan compactionPlan, folded []api.Message, prev compactionRecord, requestsBlock string, keepTail bool, budget, combined int) (replay, retro, how string, err error) {
 	prompt, role := compactionReplayPrompt, compactionTailRole
 	if !keepTail {
 		prompt, role = compactionFullPrompt, compactionFullRole
@@ -616,25 +626,36 @@ func (c *councilCompactor) agentic(ctx context.Context, applied []api.Message, p
 	if c.tree == nil {
 		how = "continuation"
 	}
-	writerRole := roleCompactWriter
 	base := slices.Clone(applied)
-	replay, writerMsgs := c.write(ctx, writerRole, base, instruction, budget, keepTail)
+	var writerMsgs []api.Message
+	// A continuation reads the whole applied conversation. When that and the
+	// reply do not fit the window -- the engine granted less than the
+	// conversation holds -- the engine refuses it, so it is not asked.
+	if need := tokens + c.estimate(instruction) + budget + compactionFitMargin; c.fits(need) {
+		replay, writerMsgs = c.write(ctx, roleCompactWriter, base, instruction, budget, keepTail)
+	} else {
+		slog.Info("council: the conversation does not fit its window; compacting from text", "need", need, "window", c.window(), "conversation", tokens, "instruction", c.estimate(instruction), "budget", budget)
+	}
 	if replay == "" {
 		if err := ctx.Err(); err != nil {
 			return "", "", "", err
 		}
 		// The text path: the folded turns as text, for a call that shares
-		// nothing with the conversation.
+		// nothing with the conversation, in pieces that fit the window, each
+		// piece's summary carried into the next. On an owned tree it runs on
+		// the owner, so the kept root, which it replaces, makes room first.
 		how = "text"
-		text := instruction
-		if prev.replay != "" {
-			text += "\n\nPrevious summary:\n" + prev.replay
+		if c.tree != nil && !c.tree.unowned {
+			c.tree.dropKept(ctx)
 		}
-		text += "\n\nConversation:\n" + compactionTranscript(folded)
-		base = []api.Message{{Role: "system", Content: role}}
-		replay, writerMsgs = c.write(ctx, roleCompactText+"-writer", base, text, budget, keepTail)
+		var pieces int
+		replay, writerMsgs, pieces = c.writeFromText(ctx, role, instruction, prev.replay, compactionTranscript(folded), budget, keepTail)
 		if replay == "" {
 			return "", "", "", errors.New("the writer wrote nothing")
+		}
+		if pieces > 1 {
+			// A reviewer would see only the last piece.
+			how = "text-pieces"
 		}
 	}
 
@@ -666,14 +687,31 @@ func (c *councilCompactor) agentic(ctx context.Context, applied []api.Message, p
 	}
 
 	first, second, split := splitReplay(replay)
-	if !c.review || !split {
+	if !c.review || !split || how == "text-pieces" {
 		_ = g.Wait()
 		return stripMarker(replay), retro, how, nil
 	}
+	// Off the pools on a tree, the text path's calls share the owner's
+	// session, so they take turns: the retrospective first, then one critic
+	// at a time (Cerebriline's fallback without PolyKV).
+	onOwner := how != "pooled" && c.tree != nil && !c.tree.unowned
+	if onOwner {
+		_ = g.Wait()
+	}
 	reviewed := append(slices.Clone(writerMsgs), api.Message{Role: "assistant", Content: replay})
 	if how == "pooled" {
-		release := c.tree.reviewLayer(ctx, reviewed)
+		release, pooled := c.tree.reviewLayer(ctx, reviewed)
 		defer release()
+		if !pooled && !c.tree.unowned {
+			// Unpooled, each reviewer would read the whole conversation on a
+			// booking of its own beside the owner, which is never admitted
+			// while the owner holds the pool (b133: critics and synthesizer
+			// each waited out admission, a 4.5-minute fold). The writer's
+			// replay stands, as it does when a review fails.
+			slog.Info("council: the compaction's review was skipped: no room to fork the conversation for it", "session", c.key)
+			_ = g.Wait()
+			return stripMarker(replay), retro, how, nil
+		}
 	}
 	critic := func(r council.Role, half, other, own, theirs string) string {
 		req := renderCouncilPrompt(compactionCriticPrompt, map[string]string{
@@ -691,8 +729,13 @@ func (c *councilCompactor) agentic(ctx context.Context, applied []api.Message, p
 		return out
 	}
 	var firstNew, secondNew string
-	g.Go(func() error { firstNew = critic(roleCompactCritic1, "first", "second", first, second); return nil })
-	g.Go(func() error { secondNew = critic(roleCompactCritic2, "second", "first", second, first); return nil })
+	if onOwner {
+		firstNew = critic(roleCompactCritic1, "first", "second", first, second)
+		secondNew = critic(roleCompactCritic2, "second", "first", second, first)
+	} else {
+		g.Go(func() error { firstNew = critic(roleCompactCritic1, "first", "second", first, second); return nil })
+		g.Go(func() error { secondNew = critic(roleCompactCritic2, "second", "first", second, first); return nil })
+	}
 	_ = g.Wait()
 
 	original := stripMarker(replay)
@@ -729,6 +772,57 @@ func (c *councilCompactor) agentic(ctx context.Context, applied []api.Message, p
 		retro = revised
 	}
 	return merged, retro, how, nil
+}
+
+// fits reports whether a request of need tokens, reply included, fits the
+// window. With no window known everything fits.
+func (c *councilCompactor) fits(need int) bool {
+	w := c.window()
+	return w <= 0 || need <= w
+}
+
+// writeFromText runs the text path's writer over the transcript, cut into
+// the pieces the window holds beside the instruction, the summary so far and
+// the reply's budget. It returns the last summary, the last call's messages,
+// and how many pieces it took; an empty summary is a failure.
+func (c *councilCompactor) writeFromText(ctx context.Context, role, instruction, previous, transcript string, budget int, keepTail bool) (string, []api.Message, int) {
+	c.mu.Lock()
+	perChar := max(c.perChar, 0.01)
+	c.mu.Unlock()
+	summary, rest := previous, transcript
+	var msgs []api.Message
+	pieces := 0
+	for rest != "" {
+		head := instruction
+		if summary != "" {
+			head += "\n\nPrevious summary:\n" + summary
+		}
+		head += "\n\nConversation:\n"
+		room := len(rest)
+		if w := c.window(); w > 0 {
+			tokens := w - c.estimate(role) - c.estimate(head) - budget - compactionFitMargin
+			if tokens < compactionMinPiece {
+				slog.Info("council: the text path has no room left in the window", "window", w, "budget", budget, "summary", c.estimate(summary))
+				return "", msgs, pieces
+			}
+			room = min(room, int(float64(tokens)/perChar))
+		}
+		piece := rest[:room]
+		if room < len(rest) {
+			// End the piece on a line, when one ends in its second half.
+			if i := strings.LastIndexByte(piece, '\n'); i > room/2 {
+				piece = rest[:i+1]
+			}
+		}
+		rest = rest[len(piece):]
+		out, m := c.write(ctx, roleCompactText+"-writer", []api.Message{{Role: "system", Content: role}}, head+piece, budget, keepTail)
+		pieces++
+		if out == "" {
+			return "", m, pieces
+		}
+		summary, msgs = out, m
+	}
+	return summary, msgs, pieces
 }
 
 // reviewRole puts a text-path reviewer off the pools.
@@ -1006,7 +1100,7 @@ func abs(n int) int {
 // replay from the pool and prefill only their own request. The returned
 // function lets it go. Without a root to fork, the reviewers run unpooled
 // rather than build the conversation again from tokens.
-func (t *councilTree) reviewLayer(ctx context.Context, reviewed []api.Message) func() {
+func (t *councilTree) reviewLayer(ctx context.Context, reviewed []api.Message) (release func(), pooled bool) {
 	text, err := t.cut(ctx, reviewed)
 	l := &councilLayer{text: text, ready: make(chan struct{})}
 	close(l.ready)
@@ -1050,7 +1144,7 @@ func (t *councilTree) reviewLayer(ctx context.Context, reviewed []api.Message) f
 				slog.Debug("council: could not release the review's pool", "pool", l.id, "error", err)
 			}
 		}
-	}
+	}, l.err == nil
 }
 
 // councilIdleCompact runs after an answer, while the council waits for the
