@@ -492,14 +492,11 @@ upstream owns. Ideas worth borrowing:
   nothing else is stated, and at the rest's own version. This is inside the
   existing `model-config` hook, and the Registry row says so. The new
   `TestSchedNeedsReloadOnXollamaConfig` cases fail without the fix.
-- **Open for Phase 3: qwen35 is single-sequence in xollama.** Upstream's
-  `parallelUnsafeArchitectures` (ollama#4165) includes qwen35, qwen35moe,
-  qwen3next and others, so through xollama omnimerge serves one sequence at
-  a time, and the council's parallel members would run one after another.
-  Phase 1's engine runs bypassed xollama with `--parallel 6` and ran four
-  members concurrently. Phase 3 must decide whether opencoti is exempt:
-  whether its multi-sequence path for these architectures is correct, which
-  has to be measured, not assumed.
+- **Resolved (2026-09-26): qwen35 is no longer single-sequence on
+  opencoti.** Upstream's `parallelUnsafeArchitectures` (ollama#4165) now binds
+  only stock llama.cpp. Measured on b111 before lifting it:
+  `probe/parallel_correctness.py` found omnimerge v4 IQ2_M 12/12 correct and
+  identical serial vs concurrent, and no cross-task bleed on qwen3.5:2b.
 - **Deploy note:** a server older than this build refuses a v4 config (by
   design), so writing a council needs the new build serving.
 

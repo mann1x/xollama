@@ -42,5 +42,6 @@ paths:
   `show --modelfile` prints the layer through `Config.Marshal`, so the version
   shown is the one a rebuild would store.
 - Prose: `docs/features/model-config.md`, `docs/xollama/tweak.mdx`; the council
-  plan is `plans/agentic-council-chat.md`. Registry row `model-config` in
+  plan is `plans/agentic-council-chat.md`; serving a council turn is
+  `.claude/rules/council.md`. Registry row `model-config` in
   `docs/protocols/UPSTREAM-SYNC.md`.

@@ -5,6 +5,24 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — ollama#4165's single-sequence rule binds only stock
+> llama.cpp.**
+> - Qwen3.5, Qwen3-Next, Qwen3-VL, LFM2, Nemotron-H and mllama now take
+>   `OLLAMA_NUM_PARALLEL` and dynamic slots when opencoti serves them. The
+>   scheduler asks `llm.WouldUseOpencoti` before capping; with
+>   `XOLLAMA_ENGINE=llamacpp` the cap is upstream's, unchanged.
+> - A load predicted for opencoti that lands on stock anyway (artifact
+>   missing, or the opt-in retry) relaunches at one sequence
+>   (`servedSequences`). Embedding models stay at one on every engine.
+> - Measured on b111 as `ollama`: qwen3.5:2b launched `-np 4`, 4 streams at
+>   ~107 tok/s each. `probe/parallel_correctness.py` (4 checkable tasks,
+>   serial then concurrent, greedy, 3 rounds): omnimerge v4 IQ2_M 12/12
+>   correct, 12/12 identical to serial; qwen3.5:2b the same 9/12 correct
+>   serial and parallel (the misses are the model's), 0 cross-task bleed.
+>
+> Next: the b111 pin (a multislot/overflow gap against b65 is being
+> re-measured) and Council Phase 3 live.
+
 > **2026-09-26 — Docker image: assembled on hosted runners from pinned
 > artifacts.**
 > - `docker-release.yaml` no longer compiles anything, and no longer needs

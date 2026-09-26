@@ -103,6 +103,10 @@ scheduling `server/sched.go`, model IO `server/images.go` `server/create.go`
 `XOLLAMA_ENGINE_ARGS` last on the engine command line. `llm/drafter.go` holds
 the drafter rules (built-in vs attached head, `--spec-type`) as pure functions
 shared by the launch and `show` (`server/drafter_show.go`), so the two cannot drift.
+The ollama#4165 single-sequence deny-list binds only on stock llama.cpp:
+`server/sched.go` asks `llm.WouldUseOpencoti` before clamping, and
+`servedSequences` (`llm/engine_estimate.go`) drops a launch that lands on stock
+after all back to one — see `.claude/rules/dynamic-slots.md`.
 **Prompting**: `model/renderers/` (per-model `Render`) ↔ `model/parsers/`
 (streaming output), plus `template/`, `thinking/`, `harmony/`.
 **API shims**: `api/types.go`, `openai/openai.go`, `anthropic/anthropic.go`,
@@ -148,7 +152,12 @@ layer through `/api/show` (`api.ShowResponse.Xollama`), validates against
 `xOllama` table via `tweak.SettingRows` (same hook, in `showInfo`); unstated ones
 are omitted. A council is request-side only: `llamaServerConfigForModel` in
 `server/routes.go` passes `LaunchConfig()`, so a council tag built `FROM` a plain
-model shares its runner — see `.claude/rules/model-config.md`.
+model shares its runner. A council turn is served by `internal/council/` (the
+errgroup runner: route-only decision, researchers and critics in parallel,
+synthesizer) and `server/council.go` (members as in-process chat turns, each
+on its own engine session), reached from one `councilServes` line in
+`ChatHandler` (`council` hook); tools or a `format` bypass it — see
+`.claude/rules/model-config.md` and `.claude/rules/council.md`.
 **Device selection**: a model's device pin (`types/xollama/devices.go`) is
 applied by `selectModelDevices` in `server/device_select.go`, hooked from
 `server/sched.go` — a missing pinned device refuses the load, never falls back,

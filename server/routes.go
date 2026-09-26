@@ -2662,7 +2662,8 @@ func llamaServerConfigForModel(m *Model) llm.LlamaServerConfig {
 		// council tag its own runner (types/xollama LaunchConfig).
 		Xollama: m.Xollama.LaunchConfig(),
 		// xollama-hook: launch-config
-		SingleSequenceOnly: singleSequenceOnly(m),
+		SingleSequenceOnly:      singleSequenceOnly(m),
+		SingleSequenceStockOnly: parallelUnsafeArchitecture(m),
 	}
 }
 
@@ -2685,6 +2686,19 @@ func singleSequenceOnly(m *Model) bool {
 	}
 	if m.CheckCapabilities(model.CapabilityCompletion) != nil {
 		return true // an embedding model
+	}
+	return parallelUnsafeArchitecture(m)
+}
+
+// parallelUnsafeArchitecture reports whether a completion model is held to one
+// sequence only by the ollama/ollama#4165 deny-list.
+//
+// xollama-hook: launch-config -- that list records what stock llama.cpp gets
+// wrong, so it binds only there: on opencoti these architectures run with
+// several sequences (llm.LlamaServerConfig.SingleSequenceStockOnly).
+func parallelUnsafeArchitecture(m *Model) bool {
+	if m == nil || m.CheckCapabilities(model.CapabilityCompletion) != nil {
+		return false
 	}
 	return slices.Contains(parallelUnsafeArchitectures, m.Config.ModelFamily)
 }

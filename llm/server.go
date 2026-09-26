@@ -94,6 +94,13 @@ type LlamaServerConfig struct {
 	// never grow past one here: that deny-list is a correctness decision, not
 	// a capacity preference. See docs/xollama/slots.mdx.
 	SingleSequenceOnly bool
+
+	// xollama-hook: launch-config — the only reason for SingleSequenceOnly is
+	// the ollama/ollama#4165 architecture deny-list. That list records what
+	// stock llama.cpp gets wrong; opencoti serves those architectures with
+	// several sequences in flight, so on opencoti the rule is lifted. An
+	// embedding model never sets this. See singleSequence.
+	SingleSequenceStockOnly bool
 }
 
 // enginePin returns the engine this model says it needs, or "".

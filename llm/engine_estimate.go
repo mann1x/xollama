@@ -104,7 +104,7 @@ func PredictServerSlotVRAM(f *gguf.Model, cfg LlamaServerConfig, gpus []ml.Devic
 		return 0
 	}
 
-	plan := resolveSlotPlan(cfg, numParallel, cfg.SingleSequenceOnly)
+	plan := resolveSlotPlan(cfg, numParallel, cfg.singleSequence(wouldUseOpencoti(cfg, gpus)))
 
 	// n_seq_max is the slot ceiling PLUS the reserved pool ids
 	// (common_n_parallel_max(params) + polykv_max_pools), so a pool costs a
@@ -154,6 +154,28 @@ func PredictServerSlotVRAM(f *gguf.Model, cfg LlamaServerConfig, gpus []ml.Devic
 // available to a prediction made before the process exists. What it must never
 // do is answer yes for a load pinned to llama.cpp: with XOLLAMA_ENGINE=llamacpp
 // every number here has to be upstream's, to the byte.
+// WouldUseOpencoti is wouldUseOpencoti for the scheduler, which has to decide
+// the sequence count before the process exists (see singleSequence).
+func WouldUseOpencoti(cfg LlamaServerConfig, gpus []ml.DeviceInfo) bool {
+	return wouldUseOpencoti(cfg, gpus)
+}
+
+// singleSequence reports whether this load is held to one sequence on the
+// engine that serves it. Stock llama.cpp keeps upstream's answer exactly;
+// opencoti drops it when the architecture deny-list was the only reason.
+func (c LlamaServerConfig) singleSequence(opencoti bool) bool {
+	return c.SingleSequenceOnly && !(opencoti && c.SingleSequenceStockOnly)
+}
+
+// servedSequences is the sequence count a launch runs once the engine is known:
+// the scheduler's, unless stock llama.cpp ended up serving a model held to one.
+func servedSequences(cfg LlamaServerConfig, numParallel int, opencoti bool) int {
+	if cfg.singleSequence(opencoti) && numParallel > 1 {
+		return 1
+	}
+	return numParallel
+}
+
 func wouldUseOpencoti(cfg LlamaServerConfig, gpus []ml.DeviceInfo) bool {
 	if cfg.enginePin() == xollama.EngineLlamaCpp {
 		return false

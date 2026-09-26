@@ -163,11 +163,24 @@ func TestSlotCeilingFollowsTheResolvedPlan(t *testing.T) {
 			cfg:  LlamaServerConfig{Xollama: &xollama.Config{Version: 1, Slots: &xollama.Slots{Dynamic: &no}}},
 		},
 		{
-			// An architecture ollama refuses above one sequence never grows,
-			// so there is nothing extra to pay for.
-			name: "architecture forced to a single sequence",
+			// An embedding model never grows, so there is nothing extra to
+			// pay for.
+			name: "embedding model held to a single sequence",
 			env:  map[string]string{"XOLLAMA_ENGINE": "opencoti"},
 			cfg:  LlamaServerConfig{SingleSequenceOnly: true},
+		},
+		{
+			// ollama/ollama#4165 is stock llama.cpp's deny-list: on opencoti
+			// the architecture grows like any other.
+			name:    "deny-listed architecture on opencoti",
+			env:     map[string]string{"XOLLAMA_ENGINE": "opencoti"},
+			cfg:     LlamaServerConfig{SingleSequenceOnly: true, SingleSequenceStockOnly: true},
+			wantPos: true,
+		},
+		{
+			name: "deny-listed architecture on llamacpp",
+			env:  map[string]string{"XOLLAMA_ENGINE": "llamacpp"},
+			cfg:  LlamaServerConfig{SingleSequenceOnly: true, SingleSequenceStockOnly: true},
 		},
 		{
 			name:    "ceiling raised by the model",
@@ -259,5 +272,31 @@ func TestSlotCeilingChargesPoolsWithoutDynamicSlots(t *testing.T) {
 
 	if got := PredictServerSlotVRAM(f, cfg, nil, 8192, 512, 1); got == 0 {
 		t.Error("surcharge = 0, want a charge: two reserved pools are two more sequences")
+	}
+}
+
+// TestAStockLaunchServesTheDenyListOneSequence is the other half of the
+// ollama/ollama#4165 exemption: the scheduler lifts the rule on a prediction,
+// and a launch that lands on stock llama.cpp anyway must take it back.
+func TestAStockLaunchServesTheDenyListOneSequence(t *testing.T) {
+	denied := LlamaServerConfig{SingleSequenceOnly: true, SingleSequenceStockOnly: true}
+	embedding := LlamaServerConfig{SingleSequenceOnly: true}
+
+	for _, tc := range []struct {
+		name     string
+		cfg      LlamaServerConfig
+		opencoti bool
+		want     int
+	}{
+		{"deny-listed on opencoti", denied, true, 4},
+		{"deny-listed fell back to stock", denied, false, 1},
+		{"embedding on opencoti", embedding, true, 1},
+		{"unrestricted on stock", LlamaServerConfig{}, false, 4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := servedSequences(tc.cfg, 4, tc.opencoti); got != tc.want {
+				t.Errorf("servedSequences = %d, want %d", got, tc.want)
+			}
+		})
 	}
 }

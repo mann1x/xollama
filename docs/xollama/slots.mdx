@@ -138,12 +138,16 @@ is no neighbour.
 
 ## Things that are decided for you
 
-**A model that must be served one at a time is never grown.** Some
-architectures give wrong answers with more than one sequence in flight, and
-Ollama already refuses to run them in parallel. Dynamic slots respect that: a
-model on that list stays at one slot no matter what you set, because that is a
-correctness decision and not a capacity preference. Embedding models are the
-same.
+**On stock llama.cpp, a model that must be served one at a time is never
+grown.** Some architectures (Qwen3.5, Qwen3-Next, Qwen3-VL, LFM2, Nemotron-H,
+mllama) give wrong answers with more than one sequence in flight on stock
+llama.cpp, and Ollama refuses to run them in parallel
+([ollama#4165](https://github.com/ollama/ollama/issues/4165)). With
+`XOLLAMA_ENGINE=llamacpp` that list binds exactly as upstream's does. On
+opencoti it does not: those architectures take `OLLAMA_NUM_PARALLEL` and grow
+like any other model. If a load meant for opencoti ends up on stock llama.cpp
+(the artifact is missing, or the opt-in fallback retried), it starts at one
+sequence again. Embedding models stay at one slot on every engine.
 
 **A busy engine waits rather than failing.** When there is no room, the engine
 refuses the request immediately rather than queueing it — which is right for the

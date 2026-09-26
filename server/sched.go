@@ -534,7 +534,12 @@ func (s *Scheduler) load(req *LlmRequest, systemInfo ml.SystemInfo, gpus []ml.De
 	// xollama-hook: launch-config — the deny-list itself lives in
 	// singleSequenceOnly so the scheduler's decision and the launch
 	// configuration cannot drift apart. Dynamic slots read the same answer.
-	if completion && singleSequenceOnly(req.model) && numParallel != 1 {
+	//
+	// The list is stock llama.cpp's: when opencoti will serve the load the
+	// operator's count stands, and a launch that lands on stock after all
+	// drops back to one sequence itself (llm.startLlamaServer).
+	if completion && singleSequenceOnly(req.model) && numParallel != 1 &&
+		!llm.WouldUseOpencoti(llamaServerConfigForModel(req.model), gpus) {
 		numParallel = 1
 		slog.Warn("model architecture does not currently support parallel requests", "architecture", req.model.Config.ModelFamily)
 	}
