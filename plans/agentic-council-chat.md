@@ -1,6 +1,6 @@
 # Agentic Council Chat
 
-**Status:** ACTIVE · **Phase:** 0–7 closed 2026-09-26 (the conversation held once and idle compaction tested live on the b128 dev build); left: the pin moves to a published build with `pool_unowned_v1`, on a measurement · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
+**Status:** ACTIVE · **Phase:** 0–7 closed 2026-09-26; Phase 8 (Cerebriline's council compaction, ported) approved 2026-09-26, being built; the pin moves to a published build with `pool_unowned_v1`, on a measurement · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
 
 In this chat mode, one model name is a *council*. A client connects to xollama
 the usual way: `/api/chat`, the OpenAI or Anthropic API, the CLI, or the
@@ -21,6 +21,7 @@ KV cache and prefills only its own role and turn.
 - [x] Phase 5 — surfaces and docs (2026-09-26; results below)
 - [x] Phase 6 — PolyKV sizing and pressure-driven compaction (2026-09-26; live on b128, including the planner on the conversation's root; below)
 - [x] Phase 7 — roles on other models and other ollama instances, cloud models included (2026-09-26; live on cloud models and eleven2go; below)
+- [ ] Phase 8 — Cerebriline's council compaction, ported (approved 2026-09-26, being built; below)
 
 ## What the user sees
 - `xollama create my-council -f Modelfile` (or `xollama tweak model my-council`)
@@ -990,6 +991,174 @@ version string does not name it. It gets `think: true`.
 - a host taken down mid-turn, to check that the fallback note reads well in
   the CLI and the desktop app.
 
+## Phase 8 — Cerebriline's council compaction, ported (approved 2026-09-26)
+
+**Why.** The owner asked whether the council's compaction was based on
+Cerebriline's agentic council compaction. It was not: only the 0.85 `/kv`
+pressure trigger came from the guide (§6.5). Everything else was invented:
+the last three messages kept word for word, and one summary of at most 1024
+tokens appended to the **system** message. Reading the code also showed four
+faults:
+
+- **It forgets.** The client resends the full history each turn and nothing
+  records a compaction, so the council likely flips between compacted and
+  full turns. Read from the code; not yet measured.
+- **It is not incremental.** Each compaction re-summarises all the old turns
+  from the raw history.
+- **It is sized on the engine's grant, with a wrong budget.** The token
+  budget used max(grant, floor), which came to more than the grant.
+- **It breaks the cached prefix.** Writing into the system message changes
+  the root's first bytes.
+
+**Source.** Cerebriline, `/shared/dev/cline/sdk/packages/core/src/extensions/context/`
+(`compaction.ts`, `compaction-shared.ts`, `agentic-compaction.ts`,
+`council-compaction.ts`, `continuation-compaction.ts`, `replay-compaction.ts`,
+`full-compaction.ts`, `basic-compaction.ts`, `kv-pressure.ts`) and guide
+§2.7, §6.5, §11 e, §11 i, §11 j. Numbers below are Cerebriline's defaults,
+cited there. A few names mislead in its own sources:
+
+- `DEFAULT_TARGET_RATIO` (0.7) is unused. The live target is
+  `COMPACTION_TARGET_CONTENT_SHARE` = 0.25.
+- The critics review halves of the *summary*, not of the transcript, whatever
+  the comments say.
+
+**What is ported.**
+
+0. **The window** (`resolveGrantedContextWindow`, guide §6.5). This is the
+   window the engine granted the owner when it is smaller than the
+   conversation's `num_ctx`, and `num_ctx` otherwise. The owner chose this
+   basis on 2026-09-26, over `num_ctx` alone. Every size below reads it.
+1. **Trigger** (`resolveCompactionTriggerTokens`). Usable input = 0.9 ×
+   window. The trigger is `min(0.9 × usable, max(window − output room,
+   0.5 × window))`. The output room is the council turn's reserve
+   (`councilReserve`), because a council's replies are known caps rather
+   than observed outputs.
+
+   Any one of these signals compacts:
+   - the applied conversation's tokens reach the trigger, counted by the
+     engine's tokenizer as the members send them;
+   - on PolyKV, the owner's raw `/kv` pressure is ≥ 0.85 (`polykvSaysCompact`);
+   - a root refused with "compact the session" (`llm.ErrSessionFull`,
+     Cerebriline's `contextOverflow`);
+   - under refusals on the server, the conversation is ≥ 1.25 × what
+     compaction would leave **and** compacting lets the owner's booking
+     shrink by ≥ 25 % (`kvPressureCompaction`). This joins the existing
+     shrink in `finish`.
+
+   Pressure only adds reasons to compact; it never vetoes the arithmetic.
+2. **Target** (`resolveMessageTargetTokens`). The messages may use 0.25 ×
+   (usable − overhead) after a fold, where the overhead is the system
+   message (the model's and the charter's).
+3. **The kept tail** (`findCutPlan`, `resolveRecencyBounds`).
+   - Walk back from the newest message. Stop at the target, or at
+     `preserveRecent` = round(20,000 × (window/128k)^(2/3)), capped at
+     0.6 × target, once at least 25 % of the messages are kept.
+   - Cut only at the start of a user turn.
+   - If the last turn alone is over 0.66 of the budget, pin its prompt and
+     keep half of what follows it (`planPinnedCut`).
+   - A cut must fold at least one message newer than the last summary.
+4. **What replaces the folded turns** (`buildSummaryMessage`). One
+   **user-role** message at the front of the messages, after the system
+   message, which is never changed. Its parts:
+   - every user request so far, quoted verbatim in `<user_request>` blocks
+     (0.15 of the target in characters, 200–2,000 per request, never evicted);
+   - the retrospective, when there is one;
+   - `Context summary:` followed by the replay.
+
+   The kept tail follows it. A chat council has no tools, so there is no
+   tool ledger and no `## Files` section.
+5. **The pipeline** (`runAgenticCompaction`, `runCouncilReview`), each call
+   a council member:
+   - **Writer.** The conversation's next turn, on the owner attached to the
+     root (§11 i), with the thinking setting of the council's planner. It
+     gets the applied conversation plus the replay instruction
+     (`DEFAULT_REPLAY_COMPACTION_PROMPT`, adapted from agent work to a
+     conversation, plus `DEFAULT_COUNCIL_WRITER_PROMPT`: one `<<<HALFWAY>>>`
+     line). The instruction names the span to replay by its first words
+     (`describeReplaySpan`), not by pasting it. Up to 3 attempts; an
+     over-budget answer is retried with its measured size.
+   - **Retrospective** (`generateThinkingSummary`). It reads the folded
+     turns' reasoning, where the client sent `thinking`, plus the previous
+     retrospective, and is skipped when there is none. Thinking off. It can
+     never fail the compaction.
+   - **Two critics**, in parallel. They run on P′, the root forked after the
+     writer's turn, as workers of the owner (§11 j). Each returns its own
+     half of the replay, revised against the conversation, within ±10 % of
+     its length (`DEFAULT_COUNCIL_CRITIC_PROMPT`). The split is at
+     `<<<HALFWAY>>>` when it falls within 30–70 %, else the nearest blank
+     line; with no split the review is skipped. A failed or empty half is
+     kept as written.
+   - **Synthesizer.** It joins the halves and revises the retrospective
+     (`## Replay`, `## Retrospective`), up to 1.1 × the original length. A
+     merge under 0.5 × the original is rejected and the writer's replay
+     used instead.
+   - **Budgets** (`COMPACTION_BUDGET_LADDER` by generation: 0.33, 0.40,
+     0.45, 0.50, then 0.55). Combined = max(4,096, target × share). Summary
+     = max(4,096, 0.7 × combined), the rest is the retrospective's; critics
+     and synthesizer are capped at the summary's budget.
+6. **Carried forward.** The server keeps a record per conversation (by
+   owner session; memory only, bounded):
+   - how many client messages it replaces, and their hash;
+   - the summary message;
+   - the generation;
+   - the user requests;
+   - the retrospective.
+
+   Every turn applies it first. A history the client edited or cut drops
+   the record, and the raw history is used. A later compaction folds only
+   the messages after the summary: the writer sees the previous summary in
+   its context, so it is incremental (`createCompactionStateAwarePrepareTurn`).
+   The critics review only the newly folded span.
+7. **Fallbacks** (`compaction.ts:1441-1791`).
+   - Without PolyKV (stock llama.cpp, opencoti without pools), the same
+     calls run as plain turns of the owner's session, one critic at a
+     time.
+   - A continuation that fails or writes nothing falls back to the text
+     path: the folded turns serialized as `[User]:` / `[Bot]:` for a
+     stateless call.
+   - A result still over the trigger gets a no-tail rescue with
+     `DEFAULT_FULL_COMPACTION_PROMPT` (sections Goal … Next), accepted only
+     if smaller.
+   - A failed agentic compaction becomes a basic one (no model call). It
+     keeps every user prompt and each older turn's final answer where it
+     fits.
+
+**What xollama adds.**
+
+- **Idle.** After an answer, at `idle_compact_at` (0.75 of the trigger
+  basis), the whole pipeline runs while the council waits, and the next
+  message applies the record at once. Cerebriline compacts only before a
+  request.
+- **Pools.** The writer is on the owner attached to the kept root, and
+  P′ is a fork of it; after the fold, the root is rebuilt from the
+  compacted conversation. The system message no longer changes, so the
+  system part of the root survives a fold.
+
+**Settings.** `council.context` gains `compaction` (`agentic` or `basic`),
+`review` (the critics and synthesizer, on) and `retrospective` (on). The
+schema stays v4, which is unreleased. `compact_at` and `idle_compact_at` keep
+their names.
+
+**Tests (planned).**
+
+- The flip-flop test: turns 2–4 apply the record and never send the raw
+  history.
+- An edited history drops the record.
+- The trigger and target formulas, table-tested against Cerebriline's
+  numbers.
+- The cut: recency bounds, the pinned last turn, user-turn boundaries.
+- The summary message's layout, and a system message left unchanged.
+- An incremental second fold.
+- The halves split and the synthesizer's merge-ratio guard.
+- Each fallback.
+- Idle apply.
+- Stock llama.cpp compaction.
+- Mutation-checked.
+
+**Live.** `council-idle.py` over four and more turns on b128: tokens sent
+per turn, prefill, time to first token and the summary's size by
+generation.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).
@@ -1062,6 +1231,11 @@ version string does not name it. It gets `think: true`.
   conversation's pool instead of rebuilding P1. Its own plan,
   [council-continue-pool.md](council-continue-pool.md), waits for a build
   with 0406 on the HF dev repo (the owner's call).
+- 2026-09-26 — Phase 8: the council's compaction becomes a port of
+  Cerebriline's agentic council compaction (the owner's question; the
+  earlier design was not based on it). A compaction is carried forward per
+  conversation and folded incrementally, and is sized on the granted window
+  when it is smaller than `num_ctx`, as Cerebriline does. Approved.
 - 2026-09-26 — The conversation is held once (the owner's call, "attach the
   planner to P1 now"): a root pool first, the planner attached, the root kept
   and forked between turns. On "compact the session" the turn compacts and

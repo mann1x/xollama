@@ -5,6 +5,26 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Council compaction: Phase 8 proposed, a port of Cerebriline's.**
+> - The owner asked whether the council's compaction followed Cerebriline's
+>   agentic council compaction. It did not: only the 0.85 pressure trigger
+>   came from the guide. Reading the code also showed faults:
+>   - it forgets a compaction, so it likely flips between compacted and full
+>     turns;
+>   - it re-summarises all the old turns;
+>   - its budget is wrong;
+>   - it edits the system message, which breaks the cached prefix.
+> - The plan's Phase 8 now ports Cerebriline's flow, read from
+>   `/shared/dev/cline`:
+>   - trigger min(0.9 × usable, room) and target 0.25 of the message budget;
+>   - the kept tail by recency bounds;
+>   - one user-role summary message at the front: the user's requests
+>     verbatim, a retrospective and the replay;
+>   - a writer, two critics on the replay's halves, and a synthesizer;
+>   - carried forward and incremental, with Cerebriline's fallbacks.
+> - Approved 2026-09-26, sized on the granted window as Cerebriline does;
+>   being built.
+
 > **2026-09-26 — The council holds the conversation once; idle compaction tested live.**
 > - Scripting the idle test found a design flaw: the planner's session and P1
 >   were two copies of the conversation, both charged to the owner. The tree

@@ -28,7 +28,7 @@ what happened is [`../STATE_SUMMARY.md`](../STATE_SUMMARY.md).
 
 | Plan | Status | Phase | Owner | Summary |
 |---|---|---|---|---|
-| [Agentic Council Chat](agentic-council-chat.md) | ACTIVE | 0–7 closed 2026-09-26; the conversation held once (planner on the root pool) and idle compaction tested live on b128; left: the pin moves to a published build with `pool_unowned_v1`, on a measurement | xollama | A model configured as a council (planner, researchers, critics, synthesizer) answers through the normal chat APIs, sharing KV through PolyKV |
+| [Agentic Council Chat](agentic-council-chat.md) | ACTIVE | 0–7 closed 2026-09-26; Phase 8 proposed (Cerebriline's agentic council compaction ported: writer, critics on halves, synthesizer; carried forward and incremental, sized on the grant), approved 2026-09-26, being built; the pin moves to a published build with `pool_unowned_v1`, on a measurement | xollama | A model configured as a council (planner, researchers, critics, synthesizer) answers through the normal chat APIs, sharing KV through PolyKV |
 | [Council: continue the conversation's pool](council-continue-pool.md) | WAITING | partly realized 2026-09-26 by forking a kept root (no `continue_pool`); the rest waits for an opencoti build with patch 0406 on the HF dev repo | xollama | Keep and continue the conversation's pool across council turns instead of rebuilding it |
 | [Docker image](docker-image.md) | ACTIVE | first `:dev` image published (run 36221348282), GHCR public (2026-09-26); user testing open | xollama | Assemble the image on hosted runners from prebuilt artifacts (`scripts/docker-assemble.sh`, `llama/runtime-pin-linux.txt`) |
 
