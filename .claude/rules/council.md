@@ -110,7 +110,16 @@ paths:
   `remote_host`), never the name alone: a pulled cloud tag can be called
   anything (cline's rule). Another server is asked `/api/xollama`
   (`api.IsXollama`) and `/api/show`, cached 5 min in `councilProbes`; any
-  doubt sends `think: true`, which every server accepts.
+  doubt sends `think: true`, which every server accepts. A cloud *reference*
+  (`…-cloud`, `…:cloud`) is cloud by name on every server: its `/api/show` is
+  answered by ollama.com with no `remote_host` (measured on eleven2go).
+- **A role that does not think sends `think: false`, never nil**, on every
+  model: nil on a thinking model means true upstream, and `qwen3:8b` spent its
+  whole 384-token cap reasoning and answered nothing. False is accepted by a
+  model that cannot think.
+- **A remote reply is whole only with its `done` line.** A dropped connection
+  ends the stream without an error; `remote()` fails it, and the runner treats
+  an empty reply from a member elsewhere as a failure too.
 - **`slots.live`** replaces `OLLAMA_NUM_PARALLEL` only when opencoti serves
   (`server/slots_live.go`, `slots-live` hook). Never set the parallel env for
   a council on opencoti: `-c` is `num_ctx × slots`, and 4 × 131k did not fit.

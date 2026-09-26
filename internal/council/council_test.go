@@ -23,8 +23,9 @@ type stub struct {
 	peak    atomic.Int32
 	blockAt Role
 	release chan struct{}
-	// away fails every member served on another model or host.
-	away bool
+	// away fails every member served on another model or host; mute has
+	// them answer nothing.
+	away, mute bool
 }
 
 func (s *stub) Stream(ctx context.Context, req Request, onToken func(string)) (string, error) {
@@ -44,6 +45,9 @@ func (s *stub) Stream(ctx context.Context, req Request, onToken func(string)) (s
 	}
 	if req.Role == s.fail || (s.away && (req.Model != "" || req.Host != "")) {
 		return "", errors.New("member failed")
+	}
+	if s.mute && (req.Model != "" || req.Host != "") {
+		return "", nil
 	}
 	var out string
 	switch {
@@ -368,5 +372,17 @@ func TestACanceledTurnDoesNotFallBack(t *testing.T) {
 	}
 	if fallsBack(t.Context(), Request{Role: Researcher}) {
 		t.Error("a member on the council's own model retried on itself")
+	}
+}
+
+func TestAnEmptyReplyFromElsewhereFallsBack(t *testing.T) {
+	yes := true
+	cfg := FromModel(&xollama.Council{Enabled: &yes, Researcher: &xollama.CouncilRole{Model: "qwen3:8b"}}, 0.7)
+	s := &stub{route: `{"route":"council"}`, mute: true}
+	if _, err := Run(t.Context(), cfg, s, conv, func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	if n := s.count(Researcher); n != 4 {
+		t.Errorf("%d researcher calls, want 2 elsewhere and 2 answered by the council's model", n)
 	}
 }

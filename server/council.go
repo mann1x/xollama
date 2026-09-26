@@ -361,8 +361,11 @@ func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken
 		SessionID: cm.memberSession(r),
 	}
 	if r.Model != "" {
+		// Keep think false: a thinking model sent no think reasons by default
+		// (upstream's ChatHandler turns nil into true), and a small one spends
+		// its whole reply cap doing so -- measured, qwen3:8b answered nothing
+		// in 384 tokens. False is accepted by a model that cannot think.
 		req.Model = r.Model
-		req.Think = nil // another model may not think at all
 	}
 	// A role that reasons gets its budget as a token count, and room for it
 	// on top of its reply cap: a level sent as is would be a share of

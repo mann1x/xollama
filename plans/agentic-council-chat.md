@@ -1,6 +1,6 @@
 # Agentic Council Chat
 
-**Status:** ACTIVE · **Phase:** 6 and 7 built; cloud roles tested live, remote host waits for eleven2go, `num_ctx 0` waits for the next promoted opencoti build (phases 0–5 closed 2026-09-26) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
+**Status:** ACTIVE · **Phase:** 6 and 7 built; cloud roles and remote hosts tested live, `num_ctx 0` waits for the next promoted opencoti build (phases 0–5 closed 2026-09-26) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
 
 In this chat mode, one model name is a *council*. A client connects to xollama
 the usual way: `/api/chat`, the OpenAI or Anthropic API, the CLI, or the
@@ -872,8 +872,43 @@ and to a model another xollama serves itself (`api.IsXollama` + `/api/show`,
 cached 5 min). Otherwise it sends `think: true`, with `num_predict` bounding
 it.
 
+**Live on another server, 2026-09-26 (eleven2go, researchers `qwen3:8b`).**
+eleven2go runs the mann1x/ollama think-budget fork on `:11434`
+(`0.34.2-1-thinkbudget`, no `/api/xollama`, so treated as stock) and
+`0.34.2-xollama.1` on `127.0.0.1:22434`, reached through an SSH tunnel. The
+host allow-list was `eleven2go,127.0.0.1:22435`. After the fixes below:
+
+| researchers on | sent | turn |
+|---|---|---|
+| eleven2go ollama `:11434`, think on | `think=true` | 56 s |
+| eleven2go xollama, think on | `think=2048` | 66 s |
+| eleven2go xollama, `gemma4:31b-cloud`, think on | `think=true` | 53 s |
+| eleven2go xollama, tunnel killed mid-reply | one "unexpected EOF", fell back | 58 s, 8 members |
+
+**Three bugs found live, each fixed with a guard that fails under a mutation:**
+
+1. A cloud reference on another xollama was sent a token budget and refused
+   (400). Its `/api/show` is answered by ollama.com with no `remote_host`.
+   Now a cloud reference is cloud by name everywhere, and `/api/show` decides
+   only for pulled tags. Guard: the "cloud reference" case of
+   `TestAThinkingMemberGetsABudgetOnlyWhereOneIsUnderstood`.
+2. A connection dropped mid-reply ended the stream with no error. The member
+   "succeeded" with a fragment, and the turn went on with no research. Now
+   `remote()` requires the `done` line. Guard:
+   `TestARemoteReplyThatStopsShortFallsBack`.
+3. A role on another model had its `think` cleared to nil. Upstream reads nil
+   on a thinking model as true, and `qwen3:8b` spent its whole 384-token cap
+   reasoning, so its content was empty. Measured directly: 1,564 characters of
+   thinking, 0 of content. Now `think: false` is kept. As a safety net, the
+   runner treats an empty reply from a member elsewhere as a failure. Guards:
+   the `think` assertion in `TestARoleOnAnAllowedHostIsServedThere`, and
+   `TestAnEmptyReplyFromElsewhereFallsBack`.
+
+**Not done:** the think-budget fork on `:11434` could take a token budget,
+but it cannot be told from stock ollama: it has no `/api/xollama`, and its
+version string does not name it. It gets `think: true`.
+
 **Left for the live test:**
-- a researcher on another ollama on the LAN (eleven2go, when it is free);
 - a host taken down mid-turn, to check that the fallback note reads well in
   the CLI and the desktop app.
 

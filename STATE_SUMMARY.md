@@ -5,6 +5,23 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Council roles on eleven2go tested live; three bugs fixed.**
+> - Researchers ran on eleven2go's ollama (the think-budget fork, `:11434`,
+>   treated as stock: `think=true`, 56 s), on its xollama through an SSH
+>   tunnel (`think=2048`, 66 s), and on a cloud model through that xollama
+>   (`think=true`, 53 s). A tunnel killed mid-reply fell back (58 s).
+> - Fixed:
+>   - A cloud reference's `/api/show` carries no `remote_host`. A cloud
+>     reference is now cloud by name on every server.
+>   - A dropped connection ended the stream silently, and the council went on
+>     with no research. A remote reply now needs its `done` line.
+>   - A role on another model had `think` cleared to nil, which upstream reads
+>     as true, so `qwen3:8b` reasoned away its whole cap and answered nothing.
+>     `think: false` is now kept, and an empty reply from elsewhere falls back.
+> - opencoti #356: #349's cause is found (rs built after the attention
+>   window; draft context not reserved). b126 boots the main context, and
+>   the draft-aware sizer is in progress. We stay on 131k.
+
 > **2026-09-26 — Cloud roles tested live; think budgets only where understood.**
 > - `gemma4:31b-cloud` as researchers, critics, planner and synthesizer,
 >   and in all four roles: every turn answered, 17–54 s. The all-cloud
@@ -374,8 +391,8 @@ build.
   reproduce the overflow deficit, and multislot is at most −7.6 % median,
   inside the spread; no bisect, agreed with opencoti (#339). Also waiting
   on: an HF dev publish
-  of patch 0406 (`continue_pool`, #343). #349 is still open: 0408 did not
-  fix it (#353). The Linux Vulkan `.so`
+  of patch 0406 (`continue_pool`, #343). #349: cause found (#356), b126
+  fixes the main context, and the draft-aware sizer is in progress. The Linux Vulkan `.so`
   comes in their next dev publish. Also waiting on the spent-response port
   and the E2B/E4B gate, which needs an HF repo@rev.
 - **mann1x/ollama (fork):** the static `llama/compat/README.md` commit. When
@@ -406,9 +423,8 @@ build.
 1. Test council Phase 6 live on the next promoted opencoti build (0406
    unowned pools, 0408 rs-window reserve): `num_ctx 0`, idle compaction, and
    `omni-council-think` with `think: on` (now 2048).
-2. Test council Phase 7 on another server: eleven2go when it is free
-   (`XOLLAMA_COUNCIL_HOSTS`), stock ollama and xollama both, and a host
-   stopped mid-turn.
+2. When opencoti's draft-aware sizer build lands (#349), give it the card and
+   re-measure a 4-slot 131k launch.
 3. Try the council badge and the Deliberation toggle in the running desktop
    app, which needs a Windows or macOS build.
 4. Move the engine pin only on a measurement. The `rs` question (#345) is

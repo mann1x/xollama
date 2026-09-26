@@ -3,6 +3,7 @@ package council
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -82,6 +83,11 @@ func call(ctx context.Context, m Model, cfg Config, emit Emit, req Request, k Ki
 		defer emit(Event{Role: req.Role, Index: req.Index, Round: req.Round, Kind: k, Done: true})
 	}
 	out, err := m.Stream(ctx, req, onToken)
+	// An empty reply is no finding: a member elsewhere that answered nothing
+	// is replaced like one that failed.
+	if err == nil && strings.TrimSpace(out) == "" && fallsBack(ctx, req) {
+		err = errors.New("the member replied with nothing")
+	}
 	if err != nil && fallsBack(ctx, req) {
 		// One of several researchers or critics: the council's own model
 		// answers in its place, and the turn goes on.

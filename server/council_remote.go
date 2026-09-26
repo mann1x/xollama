@@ -5,7 +5,9 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -28,13 +30,20 @@ func (cm *councilMembers) remote(ctx context.Context, r council.Request, req api
 		return "", fmt.Errorf("council %s: %w", r.Role, err)
 	}
 	req.SessionID = ""
+	think := any(nil)
+	if req.Think != nil {
+		think = req.Think.Value
+	}
+	slog.Info("council: member on another server", "role", r.Role, "index", r.Index, "host", u.Host, "model", req.Model, "think", think)
 	var out strings.Builder
+	done := false
 	err = api.NewClient(u, http.DefaultClient).Chat(ctx, &req, func(resp api.ChatResponse) error {
 		if t := resp.Message.Content; t != "" {
 			out.WriteString(t)
 			onToken(t)
 		}
 		if resp.Done {
+			done = true
 			cm.mu.Lock()
 			cm.m.PromptEvalCount += resp.PromptEvalCount
 			cm.m.PromptEvalDuration += resp.PromptEvalDuration
@@ -45,6 +54,13 @@ func (cm *councilMembers) remote(ctx context.Context, r council.Request, req api
 		}
 		return nil
 	})
+	// A connection that drops mid-reply ends the stream without an error; only
+	// the final done line says the member finished. Without it the reply is a
+	// fragment, and the turn would go on as if it were whole (measured: a
+	// tunnel dropped mid-research left the council with no findings at all).
+	if err == nil && !done && ctx.Err() == nil {
+		err = errors.New("the stream ended before the member finished")
+	}
 	if err != nil {
 		return out.String(), fmt.Errorf("council %s on %s at %s: %w", r.Role, req.Model, u.Host, err)
 	}
@@ -93,7 +109,7 @@ func (cm *councilMembers) councilTakesBudget(ctx context.Context, r council.Requ
 // cloud reference ("…:cloud"), or a pulled tag whose manifest names a remote
 // host -- the discriminator, since a cloud tag need not say so in its name.
 var councilModelIsCloud = func(name string) bool {
-	if ref, err := parseAndValidateModelRef(name); err == nil && ref.Source == modelSourceCloud {
+	if councilIsCloudRef(name) {
 		return true
 	}
 	m, err := GetModel(name)
@@ -124,8 +140,12 @@ func (h *hostProbes) takesBudget(ctx context.Context, u *url.URL, model string) 
 	}
 	h.mu.Unlock()
 
+	// A cloud reference is cloud on any server, and there /api/show answers
+	// from ollama.com, with no remote_host to say so (measured on a
+	// 0.34.2-xollama.1: gemma4:31b-cloud showed as a plain gemma4). Only a
+	// pulled tag's show carries it.
 	ok := false
-	if api.IsXollama(ctx, u) {
+	if !councilIsCloudRef(model) && api.IsXollama(ctx, u) {
 		show, err := api.NewClient(u, http.DefaultClient).Show(ctx, &api.ShowRequest{Model: model})
 		ok = err == nil && show.RemoteHost == "" && show.RemoteModel == ""
 	}
@@ -139,4 +159,11 @@ func (h *hostProbes) reset() {
 	h.mu.Lock()
 	h.entries = map[string]probeEntry{}
 	h.mu.Unlock()
+}
+
+// councilIsCloudRef is whether a model name is itself a cloud reference
+// ("…:cloud", "…-cloud"), which every server sends to ollama.com.
+func councilIsCloudRef(name string) bool {
+	ref, err := parseAndValidateModelRef(name)
+	return err == nil && ref.Source == modelSourceCloud
 }

@@ -23,6 +23,8 @@ type remoteOllama struct {
 	// xollama answers the fork's identity route; cloud says, in /api/show,
 	// that the model is served from ollama.com.
 	xollama, cloud bool
+	// cut ends every chat mid-reply, as a dropped connection does.
+	cut bool
 }
 
 func (r *remoteOllama) serve(t *testing.T) *httptest.Server {
@@ -53,6 +55,10 @@ func (r *remoteOllama) serve(t *testing.T) *httptest.Server {
 		r.reqs = append(r.reqs, m)
 		r.mu.Unlock()
 		w.Header().Set("Content-Type", "application/x-ndjson")
+		if r.cut {
+			_, _ = io.WriteString(w, `{"model":"remote-m","message":{"role":"assistant","content":"half a fin"},"done":false}`+"\n")
+			return
+		}
 		_, _ = io.WriteString(w, `{"model":"remote-m","message":{"role":"assistant","content":"remote finding"},"done":true,"eval_count":7}`+"\n")
 	}))
 	t.Cleanup(srv.Close)
@@ -87,6 +93,11 @@ func TestARoleOnAnAllowedHostIsServedThere(t *testing.T) {
 		}
 		if _, ok := r["session_id"]; ok {
 			t.Errorf("sent this server's session to another: %v", r["session_id"])
+		}
+		// Unset, a thinking model reasons by default and can spend its whole
+		// reply cap on it; a role that does not think says so.
+		if r["think"] != false {
+			t.Errorf("think %v, want false for a role that does not think", r["think"])
 		}
 	}
 	if slices.Contains(e.roles, "researcher") {
@@ -149,11 +160,15 @@ func TestAThinkingMemberGetsABudgetOnlyWhereOneIsUnderstood(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
 		xollama, cloud bool
+		model          string
 		want           any
 	}{
-		{"stock ollama", false, false, true},
-		{"xollama, its own model", true, false, budget},
-		{"xollama, a cloud model", true, true, true},
+		{"stock ollama", false, false, "", true},
+		{"xollama, its own model", true, false, "", budget},
+		{"xollama, a pulled cloud tag", true, true, "", true},
+		// Measured: a cloud reference's /api/show comes from ollama.com and
+		// says nothing of a remote host.
+		{"xollama, a cloud reference", true, false, "gemma4:31b-cloud", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			councilProbes.reset()
@@ -162,6 +177,9 @@ func TestAThinkingMemberGetsABudgetOnlyWhereOneIsUnderstood(t *testing.T) {
 			t.Setenv("XOLLAMA_COUNCIL_HOSTS", "127.0.0.1")
 			c := remoteResearchers(srv.URL)
 			c.Researcher.Think = "on"
+			if tc.model != "" {
+				c.Researcher.Model = tc.model
+			}
 			s := councilServer(t, &councilEngine{route: `{"route":"council"}`}, c)
 			chatChunks(t, s, api.ChatRequest{Model: "council", Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}}})
 			if len(remote.reqs) != 2 {
@@ -218,5 +236,28 @@ func TestAPulledCloudTagIsCloudByItsManifest(t *testing.T) {
 	}
 	if councilModelIsCloud("no-such-model") {
 		t.Error("a model this server does not have is cloud")
+	}
+}
+
+// A remote member whose reply stops before its done line has failed: the
+// fragment must not stand in for its finding.
+func TestARemoteReplyThatStopsShortFallsBack(t *testing.T) {
+	remote := &remoteOllama{cut: true}
+	srv := remote.serve(t)
+	t.Setenv("XOLLAMA_COUNCIL_HOSTS", "127.0.0.1")
+	e := &councilEngine{route: `{"route":"council"}`}
+	s := councilServer(t, e, remoteResearchers(srv.URL))
+	thinking, _ := joined(chatChunks(t, s, api.ChatRequest{Model: "council", Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}}}))
+	if !strings.Contains(thinking, "the council's model answers instead") {
+		t.Errorf("a cut-off remote reply was taken as whole: %q", thinking)
+	}
+	n := 0
+	for _, r := range e.roles {
+		if r == "researcher" {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Errorf("%d researchers answered here, want the 2 whose remote replies were cut", n)
 	}
 }
