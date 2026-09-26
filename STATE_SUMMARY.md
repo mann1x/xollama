@@ -5,6 +5,16 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — The compaction writer fits its window: compact instruction, measured on b137.**
+> - The writer's instruction went from 2.5–3k tokens to about 500: a compact
+>   replay prompt (565 → 247), marker (156 → 63), and no requests block (the
+>   summary still quotes them). The trigger is capped so the writer fits.
+> - A/B on opencoti b137 (0412 in): both arms 6/6 turns and 6/6 recall, the
+>   same wall time; mean first token 19.2 s against 24.1 s. At 16k the
+>   writer now fits (pooled folds), with no text path and no refused-root fold.
+> - opencoti b137's pool-owner-evict fired in the council's pattern: no
+>   500s, bug-139 closed.
+
 > **2026-09-26 — Phase 9.3: the council shares one prefix.**
 > - Every member sends an empty system message, then the conversation. The
 >   charter opens the planner's route and plan requests. The client's system

@@ -26,36 +26,18 @@ const (
 	compactionSynthesizerRole = "You are joining two independently rewritten halves of one replay into a single continuous piece, and revising a retrospective against the result. Each half was rewritten by someone holding the whole conversation but owning only that half, so both are grounded — and both could be wrong about the other's territory. Your answer is the finished text, not an account of how you produced it."
 )
 
-// compactionReplayPrompt is DEFAULT_REPLAY_COMPACTION_PROMPT: the instruction
-// when the recent turns are kept.
-const compactionReplayPrompt = `The conversation has grown too long and its earlier part is about to be discarded. Write the replay that takes its place.
+// compactionReplayPrompt is DEFAULT_REPLAY_COMPACTION_PROMPT, compacted: the
+// instruction when the recent turns are kept. The original runs to 565 tokens;
+// in a 16k window that and the requests block left the writer no room, so
+// every fold took the text path (plans/agentic-council-chat.md, Phase 8).
+// Same rules, same shapes, a third of the words.
+const compactionReplayPrompt = `The earlier part of this conversation is about to be discarded. Write the replay that takes its place: it goes directly in front of the turns that remain, so make the seam invisible.
 
-Your replay will be **prepended directly to the messages that remain** — the most recent turns of this conversation, which are still there and which you will read immediately after this. Write it so that seam is invisible.
+Write in the first person, present continuous, in the voice of those turns: the situation as it stands now, not a report of something finished. Write every step as the step, then what came of it — "The user is asking me…", "I am explaining…", "The user objects that…; I am showing…", "We have settled that…". Hold that voice in the middle too, not only in the first and last sentences.
 
-Write in the **first person, present continuous tense**, in your own voice, in the same prose as the turns it sits in front of. You are not reporting on a conversation to someone else and you are not recounting something finished: you are picking the conversation back up, and everything in the replay is the situation as it stands right now.
+Carry, in order: what was asked and answered, with the figures and the reasoning; every correction and who made it — an answer the user rejected is the most important thing to keep, or you will give it again; what was concluded or ruled out, and why; where the conversation is now and what is open. Keep names, numbers and constraints exactly as the conversation gives them.
 
-Write **every step** as the step itself, then what came of it. These are the shapes — reuse them:
-
-- "The user is asking me how Rayleigh scattering depends on wavelength."
-- "I am explaining that it goes with the inverse fourth power." — then what the user made of it.
-- "The user objects that sunsets are red. I am showing why that follows from the same law."
-- "We have settled that the answer holds for particles much smaller than the wavelength."
-
-This holds for the middle of the replay and not only its first and last sentences. A step that opens by reporting itself has changed voice, and the seam this replay exists to remove is back.
-
-Written in the past tense the replay reads as history, and history is something you are entitled to doubt: you will re-derive what is already settled and treat a correction that still stands as something that merely once happened. Written in the present it is the state of play, which is what it actually is. Every sentence, not only the first and the last.
-
-Carry all of this:
-
-- **What the user asks, verbatim.** Quote the user's requests and instructions word for word. Everything else here can be rebuilt; what was asked exists nowhere else once these messages are gone.
-- **What has been said, in order.** The questions, your answers, the figures and the reasoning behind them.
-- **What was corrected**, and by whom. An answer the user rejected, or one you took back, is the most important kind to keep — without it you will simply give it again.
-- **What has been concluded**, including anything ruled out and why.
-- **Where the conversation is now**, and what is open.
-
-Do not invent anything you are not sure of. A figure or a quotation you cannot see in the conversation is one you do not know.
-
-Write the replay and stop. Do not continue the conversation that follows these instructions, and do not copy any part of it back: it is what you are replacing.`
+Invent nothing: a figure you cannot see in the conversation is one you do not know. Write the replay and stop; do not continue the conversation or copy it back.`
 
 // compactionFullPrompt is DEFAULT_FULL_COMPACTION_PROMPT: the instruction when
 // nothing of the conversation is kept but the latest request.
@@ -93,18 +75,16 @@ What the user is waiting for, in order, specific enough to act on without re-der
 
 Two rules over all of it. **Do not invent anything.** If you cannot recall something, leave it out or say it is uncertain. And do not restate at length material the user can simply ask for again: carry what was decided, not every word of how.`
 
-// compactionWriterMarker is DEFAULT_COUNCIL_WRITER_PROMPT: sent only while the
-// review is on, since only the review reads the marker.
-const compactionWriterMarker = "## Mark the halfway point\n\n" +
-	"Exactly once, put a line containing `" + compactionHalfway + "` and nothing else, at the\n" +
-	"point where you are about half way through the conversation you are describing.\n\n" +
-	"Measure the half by what happened, not by the words: the marker goes where the\n" +
-	"first half of the conversation ends and the second half begins. It must sit on a\n" +
-	"boundary between steps — after one step and its outcome are complete, never\n" +
-	"inside a step and never inside a fenced block.\n\n" +
-	"Nothing else about the replay changes. It is one continuous piece of prose that\n" +
-	"happens to carry a marker; do not write headings for the halves, do not\n" +
-	"summarise each half, and do not refer to the marker in the text."
+// compactionWriterMarker is DEFAULT_COUNCIL_WRITER_PROMPT, compacted: sent
+// only while the review is on, since only the review reads the marker.
+const compactionWriterMarker = "Mark the halfway point: exactly once, on a line of its own, write `" + compactionHalfway + "` " +
+	"where the first half of what happened ends — on a boundary between steps, never inside a step or a fenced block. " +
+	"Otherwise it stays one continuous piece: no headings, no summary of either half, no mention of the marker."
+
+// compactionWriterNote takes the requests block's place in the writer's
+// instruction. The block still opens the summary message, verbatim, so the
+// writer need not spend the window reading it nor its budget copying it.
+const compactionWriterNote = "The user's requests are carried word for word beside what you write, so you need not copy them out; quote the user only where the exact words matter to a step."
 
 const compactionHalfway = "<<<HALFWAY>>>"
 

@@ -70,6 +70,7 @@ const (
 	compactionMinBudgetWindowShare = 8
 	compactionMinPiece             = 256
 	compactionFitMargin            = 64   // tokens a template adds around a request
+	compactionSpanChars            = 400  // compactionSpan: its text and up to two quoted heads
 	compactionRefusalRatio         = 1.25 // KV_PRESSURE_COMPACTION_MIN_RATIO
 	compactionRefusalGain          = 0.25 // KV_PRESSURE_COMPACTION_MIN_GAIN_SHARE
 )
@@ -181,6 +182,20 @@ func compactionSizesFor(window, overhead, reserve int) compactionSizes {
 	}
 }
 
+// compactionWriterTrigger caps the trigger so the writer fits when it fires:
+// the conversation, the writer's instruction and its largest budget within the
+// window. Cerebriline's trigger reserves the reply's room but not the
+// compaction's own, and a writer that does not fit folds from text, pieces at a
+// time. The cap never goes below half the window, where folding stops paying.
+func compactionWriterTrigger(z compactionSizes) int {
+	floor := min(compactionMinBudget, z.window/compactionMinBudgetWindowShare)
+	budget := max(floor, int(float64(z.target)*compactionBudgetLadder[len(compactionBudgetLadder)-1]*compactionSummaryShare))
+	longest := max(len(compactionTailRole)+len(compactionReplayPrompt), len(compactionFullRole)+len(compactionFullPrompt))
+	instruction := int(math.Ceil(float64(longest+len(compactionWriterMarker)+len(compactionWriterNote)+compactionSpanChars+4*len("\n\n")) * z.perChar))
+	room := z.window - instruction - budget - compactionFitMargin
+	return max(min(z.trigger, room), int(float64(z.window)*compactionMinTriggerShare))
+}
+
 // measure sizes conv. The whole conversation and its system message are
 // counted by the engine's tokenizer; one message is its share by characters.
 func (c *councilCompactor) measure(ctx context.Context, conv []api.Message) (compactionSizes, error) {
@@ -201,6 +216,7 @@ func (c *councilCompactor) measure(ctx context.Context, conv []api.Message) (com
 	z := compactionSizesFor(c.window(), overhead, c.reserve)
 	z.tokens = len(toks)
 	z.perChar = float64(len(toks)) / float64(max(1, len(full)))
+	z.trigger = compactionWriterTrigger(z)
 	c.mu.Lock()
 	c.perChar = z.perChar
 	c.mu.Unlock()
@@ -583,7 +599,7 @@ func (c *councilCompactor) foldWith(ctx context.Context, conv, applied []api.Mes
 		out.how = "basic"
 		out.replay = compactionBasic(prev.replay, folded, int(float64(budget)/max(z.perChar, 0.01)))
 	} else {
-		replay, retro, how, err := c.agentic(ctx, applied, z.tokens, plan, folded, prev, requestsBlock, keepTail, budget, combined)
+		replay, retro, how, err := c.agentic(ctx, applied, z.tokens, plan, folded, prev, keepTail, budget, combined)
 		switch {
 		case err == nil:
 			out.replay, out.retro, out.how = replay, retro, how
@@ -610,7 +626,7 @@ func (c *councilCompactor) foldWith(ctx context.Context, conv, applied []api.Mes
 
 // agentic is runAgenticCompaction with runCouncilReview: the writer, then the
 // retrospective beside the two critics, then the synthesizer.
-func (c *councilCompactor) agentic(ctx context.Context, applied []api.Message, tokens int, plan compactionPlan, folded []api.Message, prev compactionRecord, requestsBlock string, keepTail bool, budget, combined int) (replay, retro, how string, err error) {
+func (c *councilCompactor) agentic(ctx context.Context, applied []api.Message, tokens int, plan compactionPlan, folded []api.Message, prev compactionRecord, keepTail bool, budget, combined int) (replay, retro, how string, err error) {
 	prompt, role := compactionReplayPrompt, compactionTailRole
 	if !keepTail {
 		prompt, role = compactionFullPrompt, compactionFullRole
@@ -618,7 +634,7 @@ func (c *councilCompactor) agentic(ctx context.Context, applied []api.Message, t
 	if c.review {
 		prompt += "\n\n" + compactionWriterMarker
 	}
-	instruction := role + "\n\n" + prompt + "\n\n" + requestsBlock + "\n\n" + compactionSpan(applied, plan)
+	instruction := role + "\n\n" + prompt + "\n\n" + compactionWriterNote + "\n\n" + compactionSpan(applied, plan)
 
 	// The writer is the conversation's next turn (§11 i): same messages, one
 	// instruction after them, so on PolyKV it reads the conversation's root.

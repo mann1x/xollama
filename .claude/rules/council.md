@@ -146,7 +146,9 @@ paths:
     pieces (bug-134: a 6,656 grant under a 9.5k conversation refused the
     writer three times, and a one-piece text request waited out admission
     while the next turn waited on it). The budget floor is
-    `min(4096, window/8)`;
+    `min(4096, window/8)`. The trigger is capped by `compactionWriterTrigger`
+    so the writer fits when it fires (conversation + instruction + largest
+    budget), never below half the window;
   - on an owned tree, a compaction call that does not read the root (text
     path, its reviewers, the retrospective) runs on the owner's session
     inside its window (`ownerWindow`), never on a session of its own: that

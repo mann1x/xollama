@@ -557,7 +557,7 @@ func TestTheRetrospectiveTouchesNoPool(t *testing.T) {
 func TestAConversationOverItsGrantCompactsFromTextInPieces(t *testing.T) {
 	councilCompactions.reset()
 	councilRoots.reset()
-	const grant = 3072
+	const grant = 2304
 	e := &councilEngine{route: `{"route":"council"}`}
 	kv := &fakeKV{grant: grant, most: grant, used: 900, session: "conv-over"}
 	s := polykvCouncil(t, e, kv, councilOn())
@@ -602,7 +602,7 @@ func TestAConversationOverItsGrantCompactsFromTextInPieces(t *testing.T) {
 func TestTheTextPathTakesTurnsOnTheOwner(t *testing.T) {
 	councilCompactions.reset()
 	councilRoots.reset()
-	const grant = 3072
+	const grant = 2176
 	e := &councilEngine{route: `{"route":"council"}`, hold: 5 * time.Millisecond}
 	kv := &fakeKV{grant: grant, most: grant, used: 900, session: "conv-turns", sessPressure: 0.9}
 	s := polykvCouncil(t, e, kv, councilOn())
@@ -655,7 +655,7 @@ func TestAFoldFromTextReleasesTheKeptRootFirst(t *testing.T) {
 	}
 
 	kv.mu.Lock()
-	kv.grant, kv.most, kv.sessPressure = 3072, 3072, 0.9
+	kv.grant, kv.most, kv.sessPressure = 2048, 2048, 0.9
 	kv.mu.Unlock()
 	chatChunks(t, s, nextTurn(req, "And sunsets?"))
 	councilIdle.Wait()
@@ -701,5 +701,66 @@ func TestAReviewWithNoRoomToForkIsSkipped(t *testing.T) {
 		if strings.HasPrefix(rl, "compaction-") && (strings.Contains(rl, "critic") || strings.Contains(rl, "synthesizer")) {
 			t.Errorf("%s ran with no fork to review on", rl)
 		}
+	}
+}
+
+// At the trigger the writer fits: the conversation, its instruction and its
+// largest budget stay within the window, unless that would put the trigger
+// below half the window.
+func TestTheTriggerLeavesTheWriterRoom(t *testing.T) {
+	for _, window := range []int{4096, 6656, 8192, 16384, 32768, 131072} {
+		z := compactionSizesFor(window, 300, 2048)
+		z.perChar = 0.3
+		cerebriline := z.trigger
+		z.trigger = compactionWriterTrigger(z)
+		if z.trigger > cerebriline {
+			t.Errorf("window %d: trigger %d raised above Cerebriline's %d", window, z.trigger, cerebriline)
+		}
+		if half := window / 2; z.trigger == half {
+			continue
+		}
+		c := &councilCompactor{numCtx: window, perChar: z.perChar}
+		rest := "\n\n" + compactionWriterMarker + "\n\n" + compactionWriterNote + "\n\n" + strings.Repeat("x", compactionSpanChars)
+		instruction := compactionTailRole + "\n\n" + compactionReplayPrompt + rest
+		if full := compactionFullRole + "\n\n" + compactionFullPrompt + rest; len(full) > len(instruction) {
+			instruction = full
+		}
+		floor := min(compactionMinBudget, window/compactionMinBudgetWindowShare)
+		budget := max(floor, int(float64(z.target)*compactionBudgetLadder[len(compactionBudgetLadder)-1]*compactionSummaryShare))
+		if need := z.trigger + c.estimate(instruction) + budget + compactionFitMargin; !c.fits(need) {
+			t.Errorf("window %d: at the trigger %d the writer needs %d", window, z.trigger, need)
+		}
+	}
+}
+
+// The writer is not sent the requests: they open the summary verbatim, so it
+// needs neither the window to read them nor the budget to copy them.
+func TestTheWriterIsNotSentTheRequests(t *testing.T) {
+	councilCompactions.reset()
+	e := &councilEngine{route: `{"route":"council"}`}
+	s := councilServer(t, e, councilOn())
+	chatChunks(t, s, stockLongReq("conv-norequests"))
+	councilIdle.Wait()
+	r := councilCompactions.get("conv-norequests")
+	if r == nil || !strings.Contains(r.head[0].Content, compactionRequestsHeading) {
+		t.Fatalf("record %+v, want a summary that opens with the requests", r)
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	writers := 0
+	for i, role := range e.roles {
+		if role != "compaction-writer" {
+			continue
+		}
+		writers++
+		if strings.Contains(e.prompts[i], compactionRequestsHeading) {
+			t.Error("the writer was sent the requests block")
+		}
+		if !strings.Contains(e.prompts[i], compactionWriterNote) {
+			t.Error("the writer was not told the requests travel beside its text")
+		}
+	}
+	if writers == 0 {
+		t.Fatal("no writer was asked")
 	}
 }

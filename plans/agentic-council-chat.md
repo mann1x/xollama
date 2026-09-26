@@ -1311,6 +1311,35 @@ No turn waited out admission. What is left, both open:
 per turn, prefill, time to first token and the summary's size by
 generation.
 
+**Compact writer instruction (2026-09-26, measured on b137).** The owner:
+adapt Cerebriline's limits where the situation differs, and measure. The writer's
+instruction was 2.5–3k tokens: the replay prompt (565), the halfway marker
+(156), and a requests block that quoted every request at 200 characters or
+more, so it grew each turn. At the 16k trigger that left the writer no room, and
+every fold went from text. Now the replay prompt is 247 tokens (same rules and
+shapes), the marker 63, and the requests block is replaced in the writer's
+instruction by a 35-token note; the summary still opens with the requests,
+verbatim. The trigger is capped (`compactionWriterTrigger`) so that the
+conversation, the longest writer instruction and its largest budget fit the
+window, never below half the window. Tests: `TestTheTriggerLeavesTheWriterRoom`
+and `TestTheWriterIsNotSentTheRequests`, each killing its mutants.
+
+A/B on b137 (0412 in), six turns plus a recall question over facts planted in
+turns 1–3, HEAD against HEAD with the compact writer:
+
+| | HEAD | compact writer |
+|---|---|---|
+| Turns / recall | 6/6, 6/6 | 6/6, 6/6 |
+| Wall, six turns | 407.6 s | 408.5 s |
+| Mean first token | 24.1 s | 19.2 s |
+| Fold at 16k | the writer needs 18,261 (instruction 2,822), so text, 41 s; then the root is refused and a second fold follows (turn 5 first token 64.8 s) | the writer fits, pooled, 18.5 s and 26.7 s; no refused root |
+| First fold (6,912 grant) | text pieces, 35 s | text pieces twice: the tail replay ended at or over the 3,456 trigger, so it was redone without the tail (2m27, idle) |
+
+The redo in the compact arm is the no-tail rescue, triggered by the replay's
+length: the budget (864) and the trigger were the same in both arms. Runs on b133
+had both died on the engine's 500 (opencoti 0412), so this is the first
+comparison that reached recall.
+
 ## Phase 9 — Cerebriline as a client: tools, shared prefix, carried state (proposed 2026-09-26)
 
 **Why.** Cerebriline (`/shared/dev/cline`) is adding xollama as a provider
