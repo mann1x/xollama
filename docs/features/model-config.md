@@ -48,7 +48,7 @@ fork uses it.
 | `engine` | `opencoti` or `llamacpp`. Empty means the model does not care and `XOLLAMA_ENGINE` decides, which is the normal case. Note `auto` is **not** valid: a model saying "auto" is a model saying nothing. |
 | `draft.spec_type` | Overrides the `--spec-type` otherwise inferred from the drafter's metadata. |
 | `devices.backend` / `devices.ids` | Pins the backend (`CUDA`, `Vulkan`, `ROCm`, `CPU`) and optionally the devices a model runs on, by PCI ID, device index, `integrated` or `discrete`. A missing device refuses the load. See [device-selection.md](device-selection.md). |
-| `council` | Makes the model a council: a planner, researchers and critics in parallel, and a synthesizer answer every chat turn (v4). `council.enabled` is the switch; everything else has a measured default. Settings stated without the switch are refused. A council changes how a turn is answered, never how the model loads, so it is left out of the launch config (`LaunchConfig`): a council tag built `FROM` a plain model shares its runner. See [plans/agentic-council-chat.md](../../plans/agentic-council-chat.md). |
+| `council` | Makes the model a council: a planner, researchers and critics in parallel, and a synthesizer answer every chat turn (v4). `council.enabled` is the switch; everything else has a measured default. Settings stated without the switch are refused. A council changes how a turn is answered, never how the model loads, so it is left out of the launch config (`LaunchConfig`). Like any two tags over one blob, a council tag and the model it is built `FROM` do not share a runner: switching between them reloads. See [plans/agentic-council-chat.md](../../plans/agentic-council-chat.md). |
 
 ### The version written is the lowest that is true
 

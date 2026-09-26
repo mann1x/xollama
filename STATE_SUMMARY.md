@@ -5,6 +5,20 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Council Chat Phase 3: a council model answers through
+> every chat API.**
+> - `internal/council/` (the errgroup runner) and `server/council.go`
+>   (members as in-process chat turns, each on its own engine session), plus
+>   one `council` hook line in `ChatHandler`. Tools, a `format` and every
+>   member's own turn bypass it.
+> - Live on b111 (omnimerge v4 IQ2_M council tag): "Hello!" answered
+>   directly in 1.4 s warm; a council turn in 54–102 s with 7 members; the
+>   second turn, OpenAI (`reasoning` + content) and Anthropic all correct.
+> - Corrected: a council tag does not share its base tag's runner (upstream's
+>   `ManifestDigest` is in the launch config); the docs said it did.
+>
+> Next: Phase 4, the PolyKV path (owner session, pools, pressure and resize).
+
 > **2026-09-26 — Engine pin moved to b111 (2609252051001).**
 > - `llm/engine/pin.txt`: rev `1d0f1dcd`, bin `a66e9e27`, CUDA dso
 >   `f32ebf54`. b111 brings `kv_pressure_v1`, `kv_resize_v1` and

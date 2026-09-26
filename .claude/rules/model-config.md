@@ -25,9 +25,11 @@ paths:
   changes how a *turn is answered* (the council) must not. `Config.LaunchConfig`
   in `types/xollama/council.go` strips the council, and
   `llamaServerConfigForModel` in `server/routes.go` passes it (the
-  `model-config` hook), so a council tag built `FROM` a plain model shares the
-  plain model's runner and editing a prompt never reloads it. Add a new
-  request-side block to `LaunchConfig`, not to the hook.
+  `model-config` hook), so the launch never sees the council. It does NOT make
+  two tags share a runner: upstream's `ManifestDigest` is in the same config,
+  so a council tag and its `FROM` base swap the runner like any two tags over
+  one blob (measured on b111, 2026-09-26). Add a new request-side block to
+  `LaunchConfig`, not to the hook.
 - **A council is a property of the model, never of the server.** `council` has
   no `XOLLAMA_*` fallback; `council.enabled` is the switch, and settings stated
   without it are refused by `validate`. `council.polykv on` requires the

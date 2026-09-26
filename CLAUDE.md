@@ -151,8 +151,9 @@ layer through `/api/show` (`api.ShowResponse.Xollama`), validates against
 `docs/xollama/tweak.mdx`. `xollama show` lists the stated settings in an
 `xOllama` table via `tweak.SettingRows` (same hook, in `showInfo`); unstated ones
 are omitted. A council is request-side only: `llamaServerConfigForModel` in
-`server/routes.go` passes `LaunchConfig()`, so a council tag built `FROM` a plain
-model shares its runner. A council turn is served by `internal/council/` (the
+`server/routes.go` passes `LaunchConfig()`, so the launch never sees the council
+(a council tag and its `FROM` base still swap the runner, as any two tags do:
+upstream's `ManifestDigest` is in the launch config). A council turn is served by `internal/council/` (the
 errgroup runner: route-only decision, researchers and critics in parallel,
 synthesizer) and `server/council.go` (members as in-process chat turns, each
 on its own engine session), reached from one `councilServes` line in

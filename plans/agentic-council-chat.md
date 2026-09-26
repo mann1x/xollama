@@ -1,6 +1,6 @@
 # Agentic Council Chat
 
-**Status:** ACTIVE · **Phase:** 3 — the runner, llama.cpp path (Phase 0 re-measure on b111 pending) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
+**Status:** ACTIVE · **Phase:** 4 — PolyKV path (Phase 3 done 2026-09-26) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
 
 In this chat mode, one model name is a *council*. A client connects to xollama
 the usual way: `/api/chat`, the OpenAI or Anthropic API, the CLI, or the
@@ -16,7 +16,7 @@ KV cache and prefills only its own role and turn.
 - [ ] Phase 0 re-measured on b111 (when on HF)
 - [x] Phase 1 — the council flow in each candidate library; **in-house errgroup chosen** (2026-09-25; results below)
 - [x] Phase 2 — config and tweak (2026-09-26; results below)
-- [ ] Phase 3 — the runner, llama.cpp path
+- [x] Phase 3 — the runner (2026-09-26; live on b111, results below)
 - [ ] Phase 4 — PolyKV path
 - [ ] Phase 5 — surfaces and docs
 
@@ -492,6 +492,11 @@ upstream owns. Ideas worth borrowing:
   nothing else is stated, and at the rest's own version. This is inside the
   existing `model-config` hook, and the Registry row says so. The new
   `TestSchedNeedsReloadOnXollamaConfig` cases fail without the fix.
+  **Corrected in Phase 3 (measured on b111):** this keeps the council out of
+  the launch, but it does not make a council tag share its base's runner.
+  Upstream's `ManifestDigest` is in the same config, so any two tags over one
+  blob swap the runner (the base warmed, the council tag's first turn loaded
+  again, 23 s). Not changed: that comparison is upstream's behaviour.
 - **Resolved (2026-09-26): qwen35 is no longer single-sequence on
   opencoti.** Upstream's `parallelUnsafeArchitectures` (ollama#4165) now binds
   only stock llama.cpp. Measured on b111 before lifting it:
@@ -499,6 +504,47 @@ upstream owns. Ideas worth borrowing:
   identical serial vs concurrent, and no cross-task bleed on qwen3.5:2b.
 - **Deploy note:** a server older than this build refuses a v4 config (by
   design), so writing a council needs the new build serving.
+
+## Phase 3 results — the runner (2026-09-26)
+
+- **Where it lives.** `internal/council/` holds the Phase 1 errgroup runner,
+  with the model's settings wired in (`FromModel`, `Charter`, per-role prompt,
+  model and max_tokens). `server/council.go` serves each member as an ordinary
+  chat turn through `ChatHandler`, in process: a gin context over a pipe, marked
+  by a context key so a member never convenes the council again. The `council`
+  hook is one line in `ChatHandler`, with a Registry row.
+- **Sessions.** The planner keeps the conversation's engine session. Every
+  other member gets `<session>~researcher-N`, `~critic-N` or `~synthesizer`,
+  because the derived id is the same for all of them (system prompt plus first
+  user turn), and one session would have serialized them.
+- **Streaming.** The deliberation goes out as thinking and the answer as
+  content, through upstream's `writeChatResponse`, so non-streamed requests and
+  the OpenAI and Anthropic shims need nothing. One member holds the floor at a
+  time: the first live run changed heading on every line.
+- **Bypassed:** requests with tools or a `format`, and `think:false` (answer
+  only).
+- **Live on b111** as `ollama`, on an isolated store built from hardlinks: the
+  service's store is untouched, because an old server refuses a v4 config.
+  Model: omnimerge v4 IQ2_M council tag, `num_ctx` 16384, `-np 4`.
+
+  | request | route | members | wall |
+  |---|---|---|---|
+  | `/api/chat` "Hello!" (cold, then warm) | direct | 2 | 21 s / 1.4 s |
+  | `/api/chat` 10 GB sort question, streamed | council | 7 | 54 s, 102 s |
+  | second turn ("200 GB?") | council | 7 | 62 s |
+  | `/v1/chat/completions` (binary search) | council | 7 | 69 s, 6.9k chars reasoning |
+  | `/v1/messages` "Hi there" | direct | 2 | 1.4 s |
+
+  The answers were on point: in-place sort for 10 GB, external merge sort for
+  200 GB. The researchers' text interleaved, which shows they ran
+  concurrently.
+- **Corrected: a council tag does not share its base's runner.** See the
+  Phase 2 note. Any two tags over one blob swap the runner (upstream's
+  `ManifestDigest`), so a client should use the council tag for everything.
+- **Not in Phase 3:** member windows, pools and pressure. Members state the
+  request's own `num_ctx` and run on the engine's ordinary sessions. Phase 4
+  adds the PolyKV client: owner session, `/apply-template` pools, and
+  `kv_pressure_v1` / `kv_resize_v1`, which b111 advertises.
 
 ## Decision log
 
@@ -536,6 +582,7 @@ upstream owns. Ideas worth borrowing:
   (notes kept in `plans/council-eval/notes/`), so no `go.mod` in the tree
   links them.
 - 2026-09-26 — A council is request-side only. It is left out of the launch
-  config, so it never gets its own runner.
+  config, so the launch never sees it (it still has its own runner, as every
+  tag does; corrected in Phase 3).
 - 2026-09-26 — Schema v4 for the council, and no environment fallback: a
   council is a property of the model, never of the server.

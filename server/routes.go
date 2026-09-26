@@ -2941,6 +2941,14 @@ func (s *Server) ChatHandler(c *gin.Context) {
 		return
 	}
 
+	// xollama-hook: council -- a model whose config makes it a council answers
+	// the turn with its members (server/council.go); everything else, and every
+	// member's own turn, continues below unchanged.
+	if councilServes(c, m, req) {
+		s.councilChat(c, req, m)
+		return
+	}
+
 	caps := []model.Capability{model.CapabilityCompletion}
 	if len(req.Tools) > 0 {
 		caps = append(caps, model.CapabilityTools)
