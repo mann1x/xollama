@@ -16,9 +16,12 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >   needs pools on (`XOLLAMA_SESSION_POOL`), the pool must be rendered from the
 >   exact text sent, and on a council model it must belong to the conversation's
 >   session.
-> - Left: sharing on council turns needs 9.3's layout (mail #389 asks
->   Cerebriline what its P0 holds); the compact-writer A/B waits for opencoti
->   0412.
+> - `chat_render_v1`: `_debug_render_only` on `/api/chat` is the renderer a
+>   client cuts P0 from (Cerebriline, mail #390); on a council model it now
+>   renders what the members send instead of convening the council.
+> - Left: sharing on council turns needs 9.3's layout (Cerebriline's P0 =
+>   render([{system:""},{user:SENTINEL}] + tools) cut at the sentinel, #390);
+>   the compact-writer A/B waits for opencoti 0412.
 
 > **2026-09-26 — Phase 9.1: `/api/xollama` lists features; council thinking is tagged per member.**
 > - `features: ["council", "council_compaction_v1", "council_tags_v1"]` on

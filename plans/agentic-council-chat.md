@@ -1411,6 +1411,17 @@ Live on b133:
 - **On a council model** the client's pool must belong to the conversation's
   session. An unowned one found only 256 unbooked cells.
 
+**Render (`chat_render_v1`).** Cerebriline cuts P0 from the server's
+rendering (mail #390), and opencoti's `/apply-template` is not xollama's
+renderer when a model renders through its `TEMPLATE`. Upstream's
+`_debug_render_only` on `/api/chat` already answers the exact prompt on both
+paths. The one change: `councilServes` lets a render-only request through as a
+plain turn, so a council model renders what its members send and convenes
+nobody. Guarded by `TestARenderIsWhatTheEngineGets` (render == the prompt the
+engine receives; a council render makes no call), and the mutant without the
+condition fails it. Live on b133: `[{system:""},{user:SENTINEL}]` renders
+identically on the plain and the council model, and no council turn ran.
+
 Sharing on council turns depends on the layout. Today the charter is inside
 the system message, so a client's P0 of the system prompt cannot be a prefix.
 It becomes possible with 9.3 (empty system, then tools), and the question of

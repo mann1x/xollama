@@ -567,7 +567,7 @@ func TestTheIdentityNamesTheFeatures(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &id); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"council", "council_compaction_v1", "council_tags_v1", "client_placement_v1"} {
+	for _, f := range []string{"council", "council_compaction_v1", "council_tags_v1", "client_placement_v1", "chat_render_v1"} {
 		if !slices.Contains(id.Features, f) {
 			t.Errorf("features %v lack %q", id.Features, f)
 		}
@@ -595,5 +595,36 @@ func TestAPlainTurnCarriesTheClientsPlacement(t *testing.T) {
 	}
 	if e.placements[1] != nil {
 		t.Errorf("a turn without a placement sent %+v", e.placements[1])
+	}
+}
+
+// A render-only request answers the exact text a turn sends the engine, and
+// generates nothing; on a council model it renders as the members send, and
+// convenes nobody (chat_render_v1).
+func TestARenderIsWhatTheEngineGets(t *testing.T) {
+	for _, c := range []*xollama.Council{nil, councilOn()} {
+		e := &councilEngine{}
+		s := councilServer(t, e, c)
+		msgs := []api.Message{{Role: "system", Content: ""}, {Role: "user", Content: "SENTINEL"}}
+		out := chatChunks(t, s, api.ChatRequest{Model: "council", Messages: msgs, DebugRenderOnly: true})
+		if len(out) != 1 || out[0].DebugInfo == nil || out[0].DebugInfo.RenderedTemplate == "" {
+			t.Fatalf("council %v: render answered %+v", c != nil, out)
+		}
+		e.mu.Lock()
+		calls := len(e.prompts)
+		e.mu.Unlock()
+		if calls != 0 {
+			t.Errorf("council %v: a render made %d engine calls", c != nil, calls)
+		}
+		if c != nil {
+			continue
+		}
+		chatChunks(t, s, api.ChatRequest{Model: "council", Messages: msgs})
+		e.mu.Lock()
+		got := e.prompts[0]
+		e.mu.Unlock()
+		if got != out[0].DebugInfo.RenderedTemplate {
+			t.Errorf("rendered %q, the engine got %q", out[0].DebugInfo.RenderedTemplate, got)
+		}
 	}
 }

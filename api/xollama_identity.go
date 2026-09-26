@@ -47,6 +47,11 @@ const (
 	// the engine on a plain turn, and the pool a council turn's root forks
 	// from when the conversation starts with it.
 	FeatureClientPlacement = "client_placement_v1"
+	// FeatureChatRender: /api/chat with `_debug_render_only` answers
+	// `_debug_info.rendered_template`, the exact text the engine would get,
+	// generating nothing; on a council model, what its members send. It is
+	// the renderer a client cuts its PolyKV prefix from.
+	FeatureChatRender = "chat_render_v1"
 )
 
 // IsXollama reports whether the server at base is this fork, by the identity

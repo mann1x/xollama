@@ -176,10 +176,15 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
   one, so you can release that. Three things decide whether it shares:
   - The model's engine must have pools: `session.pool` on for the model, or
     `XOLLAMA_SESSION_POOL=1`. A council model always has them.
-  - The pool must be rendered from exactly what the chat sends. Whitespace
-    matters: the chat path trims a system prompt's trailing space and
-    `apply-template` does not, and on a hybrid model the prompt must match
-    the whole pool or nothing is shared.
+  - The pool must be rendered from exactly what the chat sends. Render it with
+    `/api/chat` itself: `"_debug_render_only": true` answers
+    `_debug_info.rendered_template`, the exact text the engine would get, and
+    generates nothing (`chat_render_v1`). On a council model it renders what
+    the members send. The engine's own `apply-template` is not the same
+    renderer: it misses a model's `TEMPLATE` and xollama's own processing
+    (seen live: it kept a system prompt's trailing space that the chat
+    trims). On a hybrid model the prompt must match the whole pool, or
+    nothing is shared.
   - On a council model, create the pool with the conversation's `session_id`.
     Its window holds the pool, and an unowned pool finds no room there.
 

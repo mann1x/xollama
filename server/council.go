@@ -66,7 +66,10 @@ func clientPlacement(c *gin.Context, req api.ChatRequest) {
 //
 // Tools and a response format are the client driving the model's output
 // itself: a council would answer something other than what was asked, so the
-// model answers as an ordinary chat. So does a load-only or unload request.
+// model answers as an ordinary chat. So does a load-only or unload request,
+// and a render-only one (`_debug_render_only`, chat_render_v1): a client
+// rendering its PolyKV prefix for a council model needs what the members send,
+// and members are served as plain turns of the same model.
 func councilServes(c *gin.Context, m *Model, req api.ChatRequest) bool {
 	if m == nil || m.Xollama == nil || !m.Xollama.Council.On() {
 		return false
@@ -74,7 +77,7 @@ func councilServes(c *gin.Context, m *Model, req api.ChatRequest) bool {
 	if c.GetBool(councilMemberKey) {
 		return false
 	}
-	return len(req.Messages) > 0 && len(req.Tools) == 0 && len(req.Format) == 0
+	return len(req.Messages) > 0 && len(req.Tools) == 0 && len(req.Format) == 0 && !req.DebugRenderOnly
 }
 
 // councilChat answers one chat turn with the model's council.
