@@ -991,7 +991,7 @@ version string does not name it. It gets `think: true`.
 - a host taken down mid-turn, to check that the fallback note reads well in
   the CLI and the desktop app.
 
-## Phase 8 — Cerebriline's council compaction, ported (approved 2026-09-26)
+## Phase 8 — Cerebriline's council compaction, ported (approved and built 2026-09-26)
 
 **Why.** The owner asked whether the council's compaction was based on
 Cerebriline's agentic council compaction. It was not: only the 0.85 `/kv`
@@ -1125,10 +1125,10 @@ cited there. A few names mislead in its own sources:
 
 **What xollama adds.**
 
-- **Idle.** After an answer, at `idle_compact_at` (0.75 of the trigger
-  basis), the whole pipeline runs while the council waits, and the next
-  message applies the record at once. Cerebriline compacts only before a
-  request.
+- **Idle** (the owner's design, from Phase 6). After an answer, at
+  `idle_compact_at` (0.75 of the trigger basis), the whole pipeline runs
+  while the council waits, and the next message applies the record at once.
+  Cerebriline compacts only before a request.
 - **Pools.** The writer is on the owner attached to the kept root, and
   P′ is a fork of it; after the fold, the root is rebuilt from the
   compacted conversation. The system message no longer changes, so the
@@ -1139,21 +1139,54 @@ cited there. A few names mislead in its own sources:
 schema stays v4, which is unreleased. `compact_at` and `idle_compact_at` keep
 their names.
 
-**Tests (planned).**
+**Built** (2026-09-26): `server/council_compaction.go`,
+`server/council_compaction_prompts.go`; the Phase 6 compaction in
+`server/council_polykv.go` is gone. Three faults found while building it,
+each now held by a test:
 
-- The flip-flop test: turns 2–4 apply the record and never send the raw
-  history.
-- An edited history drops the record.
-- The trigger and target formulas, table-tested against Cerebriline's
-  numbers.
-- The cut: recency bounds, the pinned last turn, user-turn boundaries.
-- The summary message's layout, and a system message left unchanged.
-- An incremental second fold.
-- The halves split and the synthesizer's merge-ratio guard.
-- Each fallback.
-- Idle apply.
-- Stock llama.cpp compaction.
-- Mutation-checked.
+- **An unowned tree's grant is not a window.** With `num_ctx 0` the engine
+  books each request, and the grant read back is that request's (2 in the
+  fake). Taken as the window, it made the idle fold fire and block on a dead
+  scheduler while holding the promotion mark. `window()` reads the grant only
+  on an owned tree.
+- **"Did it fold" is the record changing.** The refused-root retry compared
+  message counts; folding one message and adding the summary keeps the count,
+  so the retry never ran.
+- **A fold can grow the conversation.** Quoting a short span's requests and
+  replaying them outweighed the span (589 → 623 tokens). Cerebriline's rescue
+  accepts only a smaller result; the port discards any fold that does not
+  shrink.
+- The idle fold re-learns the grant, since the first turn's booking is made
+  by its planner's first call.
+
+**Tests** (`server/council_compaction_test.go`, and `council_polykv_test.go`
+rewritten for the port), all under `-race`:
+
+- the record carried over three turns with one writer;
+- an edited history drops the record;
+- an incremental second fold, whose record still covers the first;
+- the summary leads and the system message stays;
+- the sizes table-tested against Cerebriline's numbers at three windows;
+- the cut: recency, a quarter of the messages kept, the question kept with
+  its answer, the pinned last turn, nothing newer than the summary, the no-tail
+  form, the tool boundary;
+- the split, the section parser, the replay cleaner, the merge guard;
+- each fallback (text path, basic);
+- the settings (review off, basic);
+- the retrospective reads the folded reasoning and touches no pool;
+- the refusal trigger;
+- a fold that does not shrink is discarded;
+- the grant sizes the compaction when it is below `num_ctx`;
+- the idle fold holds the next turn;
+- the writer marks the half only for a review;
+- a refused root that no fold relieves is not retried.
+
+**Mutation-checked**: 28 compiling mutants, every one caught but one. The
+survivor, the idle fold's own `learnGrant`, is equivalent while `promoteRoot`
+runs first on the same goroutine, which re-learns it; it stays for the path
+where `promoteRoot` returns early.
+
+**Live**: pending — `council-idle.py` over four and more turns on b128.
 
 **Live.** `council-idle.py` over four and more turns on b128: tokens sent
 per turn, prefill, time to first token and the summary's size by

@@ -86,6 +86,8 @@ Every setting is optional; `xollama tweak model <name> --council` walks them.
 | `council.polykv` | `--council-polykv` | `auto` | Shares the conversation's cache between members on opencoti (below). `on` refuses to serve without it, `off` never uses it. |
 | `council.context.window`, `.floor`, `.compact_at` | `--council-window`, `--council-floor`, `--council-compact-at` | the model's context, all or nothing, 0.85 | The conversation's window on opencoti, the least it accepts, and the context pressure at which a turn compacts. |
 | `council.context.idle_compact_at` | `--council-idle-compact-at` | 0.75 | The pressure at which the council compacts while it waits for your next message, so that message starts sooner. Not above `compact_at`. |
+| `council.context.compaction` | `--council-compaction` | `agentic` | How the older turns are folded: `agentic` has the model write it (below), `basic` keeps your requests and the answers that fit, with no model call. |
+| `council.context.review`, `.retrospective` | `--council-compaction-review`, `--council-compaction-retrospective` | on, on | Two critics and a synthesizer check the model's summary; a retrospective carries its reasoning forward. Off makes compaction cheaper. |
 
 `<role>` is `planner`, `researcher`, `critic` or `synthesizer`. The planner's
 `think` also covers a direct answer; its routing decision never reasons. The defaults
@@ -181,15 +183,10 @@ lack of cache, an idle council gives back the part of its window it is not
 using, down to `council.context.floor`, and takes it back on a later turn once
 the pressure is gone.
 
-The council compacts on the engine's own measure of the conversation, its
-context pressure. When a turn starts at `council.context.compact_at` (0.85)
-or above, the older turns are summarised into the system prompt and the last
-three are kept word for word. The council also uses the time between your
-messages: once it has answered, if the pressure is at
-`council.context.idle_compact_at` (0.75) or above, it writes that summary
-then, and your next message uses it instead of waiting for it. Measured on a
-27B model at 16k with about 7,000 tokens of history, the next message's first
-token came after 2.5 s with the summary ready, against 18 s without it.
+On opencoti the engine's context pressure is one more reason to compact
+(below): at `council.context.compact_at` (0.85) a turn compacts before it
+runs, and at `council.context.idle_compact_at` (0.75) the council compacts
+while it waits for your next message.
 
 A new conversation's first turn caches the conversation before the council
 owns any of the engine's memory, which needs an engine that advertises
@@ -232,6 +229,38 @@ runs. See [Seeing what the engine did](/xollama/introspection).
 
 On stock `llama.cpp` a council runs the same flow; each member simply reads
 the conversation itself.
+
+## Long conversations
+
+A council folds the older part of a long conversation into a summary, on
+every engine, the way Cerebriline compacts
+an agent's context:
+
+- **When.** When the conversation reaches its trigger: 90 % of 90 % of the
+  window, or less when the turn's replies need the room. On opencoti the
+  window is what the engine granted the conversation, when that is less
+  than `num_ctx`. It also compacts at the pressure settings above, and when
+  the engine refuses the conversation's cache for lack of room.
+- **What stays.** The system prompt, untouched, and the most recent turns,
+  word for word: at least a quarter of the messages, and more as the window
+  grows. What the older turns become is one message in front of them:
+  every request you made, quoted word for word, then the summary.
+- **Who writes it.** The model itself, continuing the conversation: it
+  retells its own part so far. Two critics each check one half of that
+  against the conversation, and a synthesizer joins the halves. A
+  retrospective, when your client sent the model's thinking back, carries
+  what worked and what did not.
+- **Once.** The server remembers the fold for as long as your client resends
+  the same history, and each later fold summarises only what came after the
+  last. Edit or cut the history and the council starts again from what you
+  sent.
+- **Between messages.** After it answers, if the conversation is close to its
+  trigger (`idle_compact_at` against `compact_at`), the council compacts
+  then, and your next message starts on the summary instead of waiting for
+  it.
+
+If the model's summary fails or would not make the conversation shorter,
+the council falls back to a plainer one, and at worst to `basic`.
 
 ## Limits
 

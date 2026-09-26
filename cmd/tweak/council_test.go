@@ -21,8 +21,11 @@ func TestTheCouncilFlagWalksTheCouncil(t *testing.T) {
 		"off",           // show deliberation
 		"",              // polykv
 		"32768", "8192", // window, floor
-		"0.8", // compact at
-		"0.7", // idle compact at
+		"0.8",   // compact at
+		"0.7",   // idle compact at
+		"basic", // compaction
+		"",      // review: keep the default
+		"off",   // retrospective
 	)
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out)
@@ -31,7 +34,9 @@ func TestTheCouncilFlagWalksTheCouncil(t *testing.T) {
 	if !k.On() || k.Researcher.Count != 3 || k.Critic != nil || k.MaxRounds != 2 ||
 		k.TemperatureJitter == nil || *k.TemperatureJitter != 0 || k.Seed != nil ||
 		k.ShowDeliberation == nil || *k.ShowDeliberation || k.Context.Window != 32768 ||
-		k.Context.Floor != 8192 || k.Context.CompactAt != 0.8 || k.Context.IdleCompactAt != 0.7 {
+		k.Context.Floor != 8192 || k.Context.CompactAt != 0.8 || k.Context.IdleCompactAt != 0.7 ||
+		k.Context.Compaction != xollama.CouncilCompactionBasic || k.Context.Review != nil ||
+		k.Context.Retrospective == nil || *k.Context.Retrospective {
 		t.Fatalf("council = %+v", k)
 	}
 	if cfg.Engine != xollama.EngineOpencoti {

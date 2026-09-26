@@ -121,18 +121,45 @@ type CouncilContext struct {
 	// means all or nothing.
 	Floor int `json:"floor,omitempty"`
 
-	// CompactAt is the share of the granted window at which the conversation
-	// is compacted before the next turn, in (0, 1). Zero means the default
-	// 0.85.
+	// CompactAt is the owner session's /kv pressure (PolyKV) at which the
+	// conversation is compacted before the next turn, in (0, 1). Zero means
+	// the default 0.85. The conversation's size compacts it too, on every
+	// engine: Cerebriline's trigger, min(0.9 of the usable input, the window
+	// less the turn's room).
 	CompactAt float64 `json:"compact_at,omitempty"`
 
 	// IdleCompactAt is the owner pressure at which the conversation is
 	// summarised after an answer, while the council waits for the next
 	// message, so that message starts from the short conversation. In (0, 1)
-	// and not above compact_at; zero means the default 0.75. PolyKV only: it
-	// reads the owner's /kv row.
+	// and not above compact_at; zero means the default 0.75. The size trigger
+	// scales with it too: idle_compact_at / compact_at of the turn's trigger.
 	IdleCompactAt float64 `json:"idle_compact_at,omitempty"`
+
+	// Compaction is how the conversation is compacted: "agentic" (a writer
+	// replays the folded turns, two critics rewrite its halves and a
+	// synthesizer joins them, Cerebriline's) or "basic" (no model call: the
+	// user's requests and the newest answers that fit). Empty is agentic.
+	Compaction string `json:"compaction,omitempty"`
+
+	// Review has two critics rewrite the replay's halves and a synthesizer
+	// join them. Nil means on.
+	Review *bool `json:"review,omitempty"`
+
+	// Retrospective writes a short judgement of the folded turns' reasoning
+	// beside the replay. Nil means on.
+	Retrospective *bool `json:"retrospective,omitempty"`
 }
+
+// Council compaction modes.
+const (
+	CouncilCompactionAgentic = "agentic"
+	CouncilCompactionBasic   = "basic"
+)
+
+var validCouncilCompaction = []string{CouncilCompactionAgentic, CouncilCompactionBasic}
+
+// ValidCouncilCompaction lists the compaction modes.
+func ValidCouncilCompaction() []string { return slices.Clone(validCouncilCompaction) }
 
 // Council role names, the keys a tool or a message uses for them.
 const (
@@ -321,6 +348,9 @@ func (c *Council) validate(engine string) error {
 		if x.IdleCompactAt > compactAt {
 			return fmt.Errorf("xollama config: council.context.idle_compact_at %v is above compact_at; the idle council compacts earlier than a turn does, not later", x.IdleCompactAt)
 		}
+		if x.Compaction != "" && !slices.Contains(validCouncilCompaction, x.Compaction) {
+			return fmt.Errorf("xollama config: unknown council.context.compaction %q (want one of %v)", x.Compaction, validCouncilCompaction)
+		}
 	}
 	return nil
 }
@@ -341,6 +371,10 @@ func (c *Council) Clone() *Council {
 	out.Critic = clonePtr(c.Critic)
 	out.Synthesizer = clonePtr(c.Synthesizer)
 	out.Context = clonePtr(c.Context)
+	if out.Context != nil {
+		out.Context.Review = clonePtr(c.Context.Review)
+		out.Context.Retrospective = clonePtr(c.Context.Retrospective)
+	}
 	return &out
 }
 

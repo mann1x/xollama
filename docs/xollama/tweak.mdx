@@ -167,8 +167,8 @@ short call.
   window it is not using, down to `council.context.floor`. When the pressure
   clears, the next turn takes the window back. Past
   `council.context.compact_at` of the window (0.85 by default), the older
-  turns are summarised into the system prompt, and the last three stay
-  word for word.
+  turns are folded into a summary in front of the recent ones (see
+  [Long conversations](/xollama/council#long-conversations)).
 - **Watching it:** `GET /api/engine?model=<council>&endpoint=kv` shows the
   window and the pressure, and `endpoint=polykv/pools` the shared parts during
   a turn (see [Seeing what the engine did](/xollama/introspection)).

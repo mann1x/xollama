@@ -167,7 +167,10 @@ on its own engine session; on opencoti with PolyKV, `server/council_polykv.go`
 builds the turn's pool tree — the planner attached to the conversation's root
 pool, kept between turns — and `llm/engine_council.go` is its client; a role with
 `council.<role>.host` is sent to that server by `server/council_remote.go`, only
-when `XOLLAMA_COUNCIL_HOSTS` allows it), reached from one `councilServes` line in
+when `XOLLAMA_COUNCIL_HOSTS` allows it; `server/council_compaction.go` folds the
+conversation before a turn and after its answer, Cerebriline's agentic compaction
+ported, prompts in `server/council_compaction_prompts.go`), reached from one
+`councilServes` line in
 `ChatHandler` (`council` hook); tools or a `format` bypass it, and a one-shot
 `xollama run <council> "…"` goes through chat (`cmd/council_run.go`) — see
 `.claude/rules/model-config.md` and `.claude/rules/council.md`.

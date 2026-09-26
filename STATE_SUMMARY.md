@@ -5,6 +5,20 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Council compaction: Phase 8 built, Cerebriline's ported.**
+> - `server/council_compaction.go` and `council_compaction_prompts.go`
+>   replace Phase 6's compaction: a record per conversation applied every
+>   turn, the writer as the owner's next turn on the root, two critics on
+>   the replay's halves and a synthesizer on a fork of it, a retrospective,
+>   incremental folds, and Cerebriline's fallbacks. It runs on every engine.
+> - Settings: `council.context.compaction` (`agentic`/`basic`), `review`,
+>   `retrospective` (schema v4, unreleased).
+> - Faults found while building it: an unowned tree's per-request grant was
+>   taken as the window, and hung the idle fold; the refused-root retry
+>   compared message counts; a fold could grow the conversation.
+> - Tests under `-race`; 28 compiling mutants, all caught but one
+>   equivalent. Live run on b128 pending.
+
 > **2026-09-26 — Council compaction: Phase 8 proposed, a port of Cerebriline's.**
 > - The owner asked whether the council's compaction followed Cerebriline's
 >   agentic council compaction. It did not: only the 0.85 pressure trigger
@@ -473,9 +487,10 @@ published and measured.
 
 ## Immediate next steps (in order)
 
-1. Test council Phase 6 live on the next promoted opencoti build (0406
-   unowned pools, 0408 rs-window reserve): `num_ctx 0`, idle compaction, and
-   `omni-council-think` with `think: on` (now 2048).
+1. Run the Phase 8 compaction live on b128 over four and more turns
+   (`council-idle.py`): tokens sent per turn, time to first token, and the
+   summary's size by generation. Then assess the council's use of the
+   shared prefix on PolyKV (the owner's request).
 2. When b128 (or later) is on the HF dev repo, measure it with
    `scripts/phase2-engine-ab.py` and move the pin; then retire the #349
    workaround notes (a 4 × 131k launch loads on b128).

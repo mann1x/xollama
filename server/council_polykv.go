@@ -38,8 +38,6 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/sync/singleflight"
-
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/internal/council"
 	"github.com/ollama/ollama/llm"
@@ -86,6 +84,10 @@ type councilTree struct {
 	canUnown bool
 	// reserve is the turn's room on top of the conversation (councilReserve).
 	reserve int
+	// numCtx is the conversation's num_ctx, the loaded context for num_ctx 0.
+	numCtx int
+	// refusing is set when /kv reports the engine refusing others.
+	refusing bool
 
 	// root is this turn's conversation pool, which the planner runs attached
 	// to, so the conversation is held once: in the pool, never again in the
@@ -633,7 +635,7 @@ func (t *councilTree) promoteRoot(ctx context.Context) {
 	if err != nil {
 		return
 	}
-	if a, ok := k.Session(t.owner); !ok || a.Window <= 0 {
+	if a, ok := t.learnGrant(k); !ok || a.Window <= 0 {
 		return
 	}
 	p, err := t.kv.CreatePool(ctx, t.owner, nil, text)
@@ -680,6 +682,7 @@ func (t *councilTree) begin(ctx context.Context) (pressure float64) {
 	// a recurrent model it is the turn whose layers must be pruned.
 	t.mu.Lock()
 	t.recurrent = k.RS != nil && k.RS.CellsCap > 0
+	t.refusing = k.Pressure.Active()
 	t.mu.Unlock()
 	a, ok := t.learnGrant(k)
 	// The root kept from the last turn is this conversation's only while the
@@ -788,177 +791,6 @@ func councilIdleCompactAt(cc *xollama.CouncilContext, compactAt float64) float64
 	return min(idle, compactAt)
 }
 
-// compaction says when a turn compacts. On PolyKV the trigger is the owner
-// session's raw pressure from /kv (guide §6.5): compact at compactAt, or
-// already past idleCompactAt when the idle council has the summary ready, so
-// using it costs nothing. budget is the safety net for a conversation with no
-// allocation to read yet -- the first turn of a long pasted history.
-type compaction struct {
-	pressure, compactAt, idleCompactAt float64
-	budget                             int
-}
-
-// councilKeep is how many messages stay verbatim: the last exchange and the
-// new message.
-const councilKeep = 3
-
-// compactConversation replaces the oldest turns with a summary when the
-// compaction says so. The last exchange and the new message stay verbatim;
-// the summary joins the system message, so the turns still alternate.
-func (s *Server) compactConversation(ctx context.Context, members council.Model, conv []api.Message, tokens func(context.Context, []api.Message) (int, error), c compaction) []api.Message {
-	if len(conv) < 5 {
-		return conv
-	}
-	old := conv[1 : len(conv)-councilKeep]
-	_, ready := councilSummaries.get(old)
-	why := ""
-	switch {
-	case c.pressure >= c.compactAt:
-		why = "pressure"
-	case ready && c.pressure >= c.idleCompactAt:
-		why = "idle summary"
-	default:
-		if n, err := tokens(ctx, conv); err == nil && n > c.budget {
-			why = "budget"
-		}
-	}
-	if why == "" {
-		return conv
-	}
-	summary, ok := summariseOld(ctx, members, conv[:len(conv)-2], old)
-	if !ok {
-		return conv
-	}
-	sys := conv[0]
-	sys.Content += "\n\nSummary of the earlier conversation:\n" + summary
-	out := append([]api.Message{sys}, conv[len(conv)-councilKeep:]...)
-	slog.Info("council: conversation compacted", "trigger", why, "pressure", c.pressure, "turns_summarised", len(old))
-	return out
-}
-
-// summariseOld returns the summary of old, from the cache or made now. A
-// summary already being made -- by the idle council, or a parallel turn -- is
-// waited for rather than made twice.
-//
-// head is the conversation through the message after old: the system
-// message, old, and the user message that stays. The summary is asked as the
-// next turn of head itself, not by pasting old into a new prompt, so on PolyKV
-// it continues the conversation's root instead of holding a second copy of it
-// -- the idle council and the next turn ask exactly this, and share it.
-func summariseOld(ctx context.Context, members council.Model, head, old []api.Message) (string, bool) {
-	if summary, ok := councilSummaries.get(old); ok {
-		return summary, true
-	}
-	v, err, _ := councilSummarising.Do(councilSummaries.key(old), func() (any, error) {
-		if summary, ok := councilSummaries.get(old); ok {
-			return summary, nil
-		}
-		out, err := members.Stream(ctx, council.Request{
-			Role: council.Planner, Temperature: 0.2, MaxTokens: 1024,
-			Messages: append(slices.Clone(head), api.Message{Role: "user", Content: councilSummaryPrompt}),
-		}, func(string) {})
-		if err != nil {
-			return "", err
-		}
-		summary := strings.TrimSpace(out)
-		if summary == "" {
-			return "", errors.New("empty summary")
-		}
-		councilSummaries.put(old, summary)
-		return summary, nil
-	})
-	if err != nil {
-		slog.Debug("council: no summary", "error", err)
-		return "", false
-	}
-	return v.(string), true
-}
-
-const councilSummaryPrompt = "ROLE: PLANNER. Summarise the conversation above for the council, except its last user message, which stays verbatim: keep every fact, decision, number and open question; drop pleasantries. Reply with the summary only."
-
-// councilSummarising joins callers asking for the same summary.
-var councilSummarising singleflight.Group
-
-// councilIdle tracks the idle compactions still running after their turn, so
-// a test can wait for them.
-var councilIdle sync.WaitGroup
-
-// councilIdleCompact runs after an answer, while the council waits for the
-// next message. Past idleCompactAt of the owner's window it summarises what
-// the next turn will summarise -- the conversation up to this answer, less
-// the last exchange -- so the next message starts from the short
-// conversation instead of waiting for the summary.
-func (s *Server) councilIdleCompact(members council.Model, t *councilTree, conv []api.Message, answer string) {
-	// The next turn is conv, this answer and a new message; it keeps the last
-	// three, so it summarises conv less its last message.
-	if len(conv)+2 < 5 || strings.TrimSpace(answer) == "" {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-	k, err := t.kv.KV(ctx)
-	if err != nil {
-		return
-	}
-	a, ok := k.Session(t.owner)
-	if !ok || a.Pressure < t.idleCompactAt {
-		return
-	}
-	old := slices.Clone(conv[1 : len(conv)-1])
-	if _, ok := summariseOld(ctx, members, conv, old); ok {
-		slog.Info("council: summarised while idle", "session", t.owner, "pressure", a.Pressure, "turns_summarised", len(old))
-	}
-}
-
-// councilSummaries remembers summaries, so a conversation past its budget is
-// summarised once rather than on every turn.
-var councilSummaries = &summaryCache{m: map[string]string{}}
-
-type summaryCache struct {
-	mu    sync.Mutex
-	m     map[string]string
-	order []string
-}
-
-func (c *summaryCache) key(msgs []api.Message) string {
-	h := sha256.New()
-	for _, m := range msgs {
-		h.Write([]byte(m.Role))
-		h.Write([]byte{0})
-		h.Write([]byte(m.Content))
-		h.Write([]byte{0})
-	}
-	return hex.EncodeToString(h.Sum(nil))
-}
-
-// reset empties the cache.
-func (c *summaryCache) reset() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.m, c.order = map[string]string{}, nil
-}
-
-func (c *summaryCache) get(msgs []api.Message) (string, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	v, ok := c.m[c.key(msgs)]
-	return v, ok
-}
-
-func (c *summaryCache) put(msgs []api.Message, v string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	k := c.key(msgs)
-	if _, ok := c.m[k]; !ok {
-		c.order = append(c.order, k)
-	}
-	c.m[k] = v
-	for len(c.order) > 64 {
-		delete(c.m, c.order[0])
-		c.order = c.order[1:]
-	}
-}
-
 // councilTreeFor returns the pool tree for this turn, or nil when the members
 // run unpooled: PolyKV off for this council, a runner that is not opencoti or
 // has no seats, or an engine without the features. `polykv on` makes the last
@@ -989,6 +821,7 @@ func (s *Server) councilTreeFor(ctx context.Context, m *Model, req api.ChatReque
 	return &councilTree{
 		unowned:       unowned,
 		canUnown:      canUnown,
+		numCtx:        opts.NumCtx,
 		kv:            kv,
 		render:        councilRenderer(m2, r, opts),
 		tokenize:      r.Tokenize,
@@ -1035,13 +868,15 @@ func (cm *councilMembers) place(ctx context.Context, r council.Request, req *api
 	if t == nil || r.Model != "" {
 		return nil, ""
 	}
-	if r.Role == council.Planner {
+	if r.Role == council.Planner || r.Role == roleCompactWriter {
 		req.SessionID = t.owner
 		return t.ownerPlacement(ctx, r.Messages), ""
 	}
 	req.SessionID = cm.memberSession(r)
-	if p := t.workerPlacement(ctx, r.Messages, req.SessionID); p != nil {
-		return p, req.SessionID
+	if !compactionUnpooled(r.Role) {
+		if p := t.workerPlacement(ctx, r.Messages, req.SessionID); p != nil {
+			return p, req.SessionID
+		}
 	}
 	// Unpooled: state a window sized to this member, never the engine's
 	// default, which books the whole session_ctx_max per request.

@@ -26,6 +26,7 @@ type fakeKV struct {
 	closed   []string
 	resized  []string
 	grant    int
+	most     int // the most a resize grants; 0 is anything asked
 	used     int
 	pressure *llm.KVPressure
 	// recurrent answers /kv with an rs block, as a hybrid model does.
@@ -118,6 +119,9 @@ func (f *fakeKV) Resize(_ context.Context, id string, numCtx int, deferred bool)
 	f.resized = append(f.resized, fmt.Sprintf("%d deferred=%v", numCtx, deferred))
 	if deferred {
 		return llm.ResizeResult{Queued: true}, nil
+	}
+	if f.most > 0 && numCtx > f.most {
+		numCtx = f.most
 	}
 	f.grant = numCtx
 	return llm.ResizeResult{Applied: numCtx}, nil
@@ -293,32 +297,38 @@ func TestCouncilSeatsFollowTheRounds(t *testing.T) {
 	}
 }
 
-// summaries counts the summary calls the engine saw, and whether any member
-// was sent the compacted conversation.
+// summaries counts the compaction writer's calls, and whether any council
+// member was sent the compacted conversation.
 func (e *councilEngine) summaries() (calls int, compacted bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	for _, p := range e.prompts {
-		if strings.Contains(p, councilSummaryPrompt) {
+	for i, p := range e.prompts {
+		if e.roles[i] == "compaction-writer" {
 			calls++
 		}
-		if strings.Contains(p, "Summary of the earlier conversation") {
+		if !strings.HasPrefix(e.roles[i], "compaction-") && strings.Contains(p, compactionSummaryHeading) {
 			compacted = true
 		}
 	}
 	return calls, compacted
 }
 
-// A conversation long enough to compact: three earlier turns and a new one.
+// words is n words of w.
+func words(n int, w string) string { return strings.TrimSpace(strings.Repeat(w+" ", n)) }
+
+// A conversation long enough to fold, short of its size trigger at num_ctx
+// 4096 (2048 tokens): two earlier exchanges of 300 words a message and a new
+// question. Only pressure compacts it, and a fold of its first exchange
+// shrinks it.
 func longCouncilReq(session, last string) api.ChatRequest {
 	return api.ChatRequest{
 		Model: "council", SessionID: session,
-		Options: map[string]any{"num_ctx": 16384},
+		Options: map[string]any{"num_ctx": 4096},
 		Messages: []api.Message{
-			{Role: "user", Content: "What is Rayleigh scattering?"},
-			{Role: "assistant", Content: "Light scattered by particles smaller than its wavelength."},
-			{Role: "user", Content: "Does it depend on wavelength?"},
-			{Role: "assistant", Content: "Yes, strongly: the fourth power."},
+			{Role: "user", Content: "What is Rayleigh scattering? " + words(300, "q1")},
+			{Role: "assistant", Content: "Light scattered by small particles. " + words(300, "a1")},
+			{Role: "user", Content: "Does it depend on wavelength? " + words(300, "q2")},
+			{Role: "assistant", Content: "Yes, strongly: the fourth power. " + words(300, "a2")},
 			{Role: "user", Content: last},
 		},
 	}
@@ -328,26 +338,26 @@ func TestATurnCompactsOnTheOwnersPressure(t *testing.T) {
 	for _, tt := range []struct {
 		pressure float64
 		want     bool
-		calls    int // the turn's own, and the idle council's after it
-	}{{0.9, true, 2}, {0.85, true, 2}, {0.5, false, 0}} {
-		councilSummaries.reset()
+	}{{0.9, true}, {0.85, true}, {0.5, false}} {
+		councilCompactions.reset()
 		e := &councilEngine{route: `{"route":"council"}`}
 		kv := &fakeKV{grant: 16384, used: 900, session: "conv-1", sessPressure: tt.pressure}
 		s := polykvCouncil(t, e, kv, councilOn())
 		chatChunks(t, s, longCouncilReq("conv-1", "Why is the sky blue?"))
 		councilIdle.Wait()
 		calls, compacted := e.summaries()
-		if compacted != tt.want || calls != tt.calls {
-			t.Errorf("pressure %v: %d summary calls, compacted %v; want %d, %v", tt.pressure, calls, compacted, tt.calls, tt.want)
+		if compacted != tt.want || (calls > 0) != tt.want {
+			t.Errorf("pressure %v: %d writer calls, compacted %v; want compacted %v", tt.pressure, calls, compacted, tt.want)
 		}
 	}
 }
 
 func TestAnIdleCouncilSummarisesForTheNextMessage(t *testing.T) {
-	councilSummaries.reset()
+	councilCompactions.reset()
+	councilRoots.reset()
 	e := &councilEngine{route: `{"route":"council"}`}
 	// Past idle_compact_at (0.75), below compact_at (0.85): this turn does not
-	// compact, but the council summarises once it has answered.
+	// compact, but the council folds once it has answered.
 	kv := &fakeKV{grant: 16384, used: 900, session: "conv-1", sessPressure: 0.8}
 	s := polykvCouncil(t, e, kv, councilOn())
 	req := longCouncilReq("conv-1", "Why is the sky blue?")
@@ -357,41 +367,42 @@ func TestAnIdleCouncilSummarisesForTheNextMessage(t *testing.T) {
 	}
 	councilIdle.Wait()
 	if calls, _ := e.summaries(); calls != 1 {
-		t.Fatalf("summary calls after the answer = %d, want the idle council's one", calls)
+		t.Fatalf("writer calls after the answer = %d, want the idle council's one", calls)
 	}
+	e.mu.Lock()
+	for i, r := range e.roles {
+		switch r {
+		case "compaction-writer":
+			// The next turn of the conversation, on the owner, attached to the
+			// root the turn kept: the conversation is not held twice.
+			if pl := e.placements[i]; e.sessions[i] != "conv-1" || pl == nil || pl.PoolID == nil || *pl.PoolID != 0 {
+				t.Errorf("the writer: session %q placement %+v, want the owner on the kept root 0", e.sessions[i], pl)
+			}
+		case "compaction-critic-1", "compaction-critic-2", "compaction-synthesizer":
+			if pl := e.placements[i]; pl == nil || pl.PoolID == nil || *pl.PoolID == 0 {
+				t.Errorf("%s: placement %+v, want P′, the root forked after the writer", r, pl)
+			}
+		}
+	}
+	idleRoles := len(e.roles)
+	e.mu.Unlock()
 
-	// The next message: the same conversation, the answer and a new question.
+	// The next message applies the record: no fold before it, and its members
+	// read the summary instead of the folded turns.
 	next := req
 	next.Messages = append(slices.Clone(req.Messages),
 		api.Message{Role: "assistant", Content: answer},
 		api.Message{Role: "user", Content: "And why are sunsets red?"})
 	chatChunks(t, s, next)
 	councilIdle.Wait()
-	if _, compacted := e.summaries(); !compacted {
-		t.Error("the next message did not start from the idle summary")
-	}
-	// The earlier turns were summarised once, while idle. (After the second
-	// answer the idle council summarises again, for a longer conversation:
-	// that one carries the second question.)
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	same := 0
-	for i, p := range e.prompts {
-		if !strings.Contains(p, councilSummaryPrompt) || strings.Contains(p, "sunsets") {
-			continue
-		}
-		same++
-		// Asked as the next turn of the conversation, on the owner, attached
-		// to the root the turn kept: the conversation is not held twice.
-		if !strings.Contains(p, "Does it depend on wavelength?") || e.sessions[i] != "conv-1" {
-			t.Errorf("the summary was not asked on the conversation's owner: session %q", e.sessions[i])
-		}
-		if pl := e.placements[i]; pl == nil || pl.PoolID == nil || *pl.PoolID != 0 {
-			t.Errorf("the idle summary placement %+v, want the kept root, pool 0", pl)
-		}
+	if r := e.roles[idleRoles]; r != "route" {
+		t.Errorf("the next message began with %s, want the council's own decision", r)
 	}
-	if same != 1 {
-		t.Errorf("the earlier turns were summarised %d times, want once", same)
+	p := e.prompts[idleRoles]
+	if !strings.Contains(p, compactionSummaryHeading) || !strings.Contains(p, fakeMerged) {
+		t.Error("the next message did not start from the idle summary")
 	}
 }
 
@@ -620,17 +631,14 @@ func TestARecurrentModelRebuildsTheRootEachTurn(t *testing.T) {
 
 // A kept root is the conversation's only while its owner's allocation lives:
 // once it is gone, so are its pools, and the id may name another's. Nothing
-// the next turn asks attaches to it -- not even the summary it compacts with,
-// which is asked before the turn builds its own root.
+// the next turn asks attaches to it -- not even the compaction's writer, which
+// runs before the turn builds its own root.
 func TestAStaleRootIsNeitherUsedNorReleased(t *testing.T) {
 	councilRoots.reset()
-	councilSummaries.reset()
+	councilCompactions.reset()
 	e := &councilEngine{route: `{"route":"council"}`}
 	kv := &fakeKV{grant: 16384, used: 900, session: "conv-1"}
-	yes := true
-	// With no allocation to read, the floor alone budgets the turn, and this
-	// one leaves no room: the second turn compacts.
-	s := polykvCouncil(t, e, kv, &xollama.Council{Enabled: &yes, Context: &xollama.CouncilContext{Window: 16384, Floor: 4096}})
+	s := polykvCouncil(t, e, kv, councilOn())
 	req := longCouncilReq("conv-1", "Why is the sky blue?")
 	chatChunks(t, s, req)
 	councilIdle.Wait()
@@ -642,7 +650,8 @@ func TestAStaleRootIsNeitherUsedNorReleased(t *testing.T) {
 	calls := len(e.placements)
 	e.mu.Unlock()
 
-	chatChunks(t, s, nextTurn(req, "And sunsets?"))
+	// A long new question takes the conversation past its size trigger.
+	chatChunks(t, s, nextTurn(req, "And sunsets? "+words(1200, "q3")))
 	councilIdle.Wait()
 	if n, _ := e.summaries(); n == 0 {
 		t.Fatal("the second turn did not compact")
@@ -667,10 +676,10 @@ func TestAStaleRootIsNeitherUsedNorReleased(t *testing.T) {
 }
 
 // An engine that refuses the root with "compact the session" gets exactly
-// that: the conversation is summarised and the root built on the short one.
+// that: the conversation is folded and the root built on the short one.
 func TestARefusedRootCompactsAndRetries(t *testing.T) {
 	councilRoots.reset()
-	councilSummaries.reset()
+	councilCompactions.reset()
 	e := &councilEngine{route: `{"route":"council"}`}
 	kv := &fakeKV{grant: 16384, used: 900, session: "conv-1", full: 1}
 	s := polykvCouncil(t, e, kv, councilOn())
@@ -681,18 +690,40 @@ func TestARefusedRootCompactsAndRetries(t *testing.T) {
 	}
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
-	if len(kv.pools) == 0 || kv.pools[0].parent != nil || !strings.Contains(kv.pools[0].text, "Summary of the earlier conversation") {
+	if len(kv.pools) == 0 || kv.pools[0].parent != nil || !strings.Contains(kv.pools[0].text, compactionSummaryHeading) {
 		t.Errorf("the root was not built on the compacted conversation: %+v", kv.pools)
 	}
 }
 
+// A refusal that no fold can relieve is not retried: the planner runs on its
+// own copy, as without pools.
+func TestARefusedRootThatCannotFoldIsNotRetried(t *testing.T) {
+	councilRoots.reset()
+	councilCompactions.reset()
+	e := &councilEngine{route: `{"route":"council"}`}
+	kv := &fakeKV{grant: 16384, used: 900, session: "conv-1", full: 1}
+	s := polykvCouncil(t, e, kv, councilOn())
+	req := polykvReq
+	req.SessionID = "conv-1"
+	chatChunks(t, s, req)
+	councilIdle.Wait()
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for i, r := range e.roles {
+		if r == "route" && e.placements[i] != nil && e.placements[i].PoolID != nil {
+			t.Errorf("the planner attached pool %d after a refusal nothing relieved", *e.placements[i].PoolID)
+		}
+	}
+}
+
 // A first turn's root has no owner and goes with the turn. Once the council
-// is idle the owner has an allocation, and gets its own root: the idle summary
-// is asked on it, and the next turn forks it.
+// is idle the owner has an allocation, and gets its own root: an idle fold is
+// written on it, and the next turn forks it -- or, after a fold, the root the
+// idle council built from the compacted conversation.
 func TestTheIdleCouncilGivesTheOwnerItsRoot(t *testing.T) {
 	for _, pressure := range []float64{0.8, 0} {
 		councilRoots.reset()
-		councilSummaries.reset()
+		councilCompactions.reset()
 		e := &councilEngine{route: `{"route":"council"}`}
 		kv := &fakeKV{unowned: true, liveAfter: 16384, used: 900, session: "conv-1", sessPressure: pressure}
 		s := polykvCouncil(t, e, kv, councilOn())
@@ -704,39 +735,42 @@ func TestTheIdleCouncilGivesTheOwnerItsRoot(t *testing.T) {
 		if kv.pools[0].session != "" || !slices.Contains(kv.released, 0) {
 			t.Fatalf("the first root %+v released %v: want it unowned and gone with the turn", kv.pools[0], kv.released)
 		}
-		promoted := -1
+		promoted, rebuilt := -1, -1
 		for _, p := range kv.pools[1:] {
-			if p.parent == nil && p.session == "conv-1" && p.text == kv.pools[0].text {
+			switch {
+			case p.parent == nil && p.session == "conv-1" && p.text == kv.pools[0].text:
 				promoted = p.id
+			case p.parent == nil && p.session == "conv-1" && strings.Contains(p.text, compactionSummaryHeading):
+				rebuilt = p.id
 			}
 		}
-		first, released := len(kv.pools), len(kv.released)
+		first := len(kv.pools)
 		kv.mu.Unlock()
 		if promoted < 0 {
 			t.Fatalf("pressure %v: the owner was not given its root", pressure)
 		}
 		e.mu.Lock()
-		for i, p := range e.prompts {
-			if strings.Contains(p, councilSummaryPrompt) {
+		for i, r := range e.roles {
+			if r == "compaction-writer" {
 				if pl := e.placements[i]; pl == nil || pl.PoolID == nil || *pl.PoolID != promoted {
-					t.Errorf("the idle summary placement %+v, want the owner's root %d", pl, promoted)
+					t.Errorf("the idle writer's placement %+v, want the owner's root %d", pl, promoted)
 				}
 			}
 		}
 		e.mu.Unlock()
+		if (rebuilt >= 0) != (pressure > 0) {
+			t.Fatalf("pressure %v: root rebuilt from the compacted conversation = %d", pressure, rebuilt)
+		}
 
 		chatChunks(t, s, nextTurn(req, "And sunsets?"))
 		councilIdle.Wait()
 		kv.mu.Lock()
-		r := kv.pools[first]
+		want := promoted
 		if pressure > 0 {
-			// Compacted on the idle summary: the conversation no longer starts
-			// with the root, which goes before the new one is built.
-			if r.parent != nil || len(kv.released) <= released || kv.released[released] != promoted {
-				t.Errorf("compacted turn: root parent %v, released %v; want a fresh root after %d went", r.parent, kv.released[released:], promoted)
-			}
-		} else if r.parent == nil || *r.parent != promoted {
-			t.Errorf("the second turn's root forks %v, want the owner's root %d", r.parent, promoted)
+			want = rebuilt
+		}
+		if r := kv.pools[first]; r.parent == nil || *r.parent != want {
+			t.Errorf("pressure %v: the second turn's root forks %v, want %d", pressure, r.parent, want)
 		}
 		kv.mu.Unlock()
 	}

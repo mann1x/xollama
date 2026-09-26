@@ -13,7 +13,8 @@ measurements and decision log: `plans/agentic-council-chat.md`.
 | `tweak` fields, `show` rows | `cmd/tweak/council.go` | additive |
 | the runner: `Decide` → `Direct`, or plan → researchers ∥ → critics ∥ → synthesizer, bounded revise loop, on `errgroup` | `internal/council/` | additive |
 | serving a turn: members as in-process chat turns, streaming | `server/council.go` | additive |
-| the PolyKV tree, windows, pressure, compaction | `server/council_polykv.go` | additive |
+| the PolyKV tree, windows, pressure | `server/council_polykv.go` | additive |
+| compaction: Cerebriline's, ported (Phase 8) | `server/council_compaction.go`, `server/council_compaction_prompts.go` | additive |
 | the engine client: `Placement`, pools, sessions, `/kv`, resize | `llm/engine_council.go` | additive |
 | entry: `if councilServes(...)` in `ChatHandler` | `server/routes.go` | hook `council` |
 | `Placement` on the completion and native-chat requests, `CouncilPools` in the launch config, the placement applied to the engine body | `server/routes.go`, `llm/server.go`, `llm/llama_server.go` | hook `council` |
@@ -74,16 +75,19 @@ and `kv_status_v1`, `CouncilPools > 0`, affinity on) a turn builds one tree:
 - before a turn the owner grows back toward its ask when nothing is refused;
   after a turn, under pressure, it shrinks (deferred) to
   `max(floor, used + reserve)`, only if that frees at least 4096 cells or 10 %;
-- compaction follows the owner's raw `/kv` pressure: at `compact_at` (0.85)
-  a turn summarises the older turns into the system message before it runs
-  (the last three stay); after the answer an idle goroutine (`councilIdle`)
-  writes the summary at `idle_compact_at` (0.75), deduplicated by
-  `singleflight`, and the next turn takes it from the cache. The summary is
-  asked as the next turn of the conversation itself, on the owner and
-  attached to the kept P1, never with the old turns pasted into a new prompt.
-  With no pressure reading, the token budget (`compact_at` of the grant)
-  decides. A P1 refused with "compact the session" (`llm.ErrSessionFull`)
-  compacts the turn and is built once more;
+- compaction is Cerebriline's (`server/council_compaction.go`, plan Phase 8),
+  on every engine. `councilCompactor.compact` applies the conversation's
+  record, then folds when a trigger fires: the size trigger on the window
+  (the grant when it is below `num_ctx`), the owner's `/kv` pressure at
+  `compact_at`, a refused root (`llm.ErrSessionFull`, retried once only when
+  a record was made), or refusals on the server with a ≥ 25 % shrink. The
+  writer is the owner's next turn attached to the root; the critics and the
+  synthesizer are workers on P′ (`reviewLayer`); the retrospective and the
+  text path run unpooled. The record (`councilCompactions`) is keyed by the
+  owner session and hash-checked every turn; a fold that does not shrink is
+  discarded. After the answer `councilIdleCompact` runs the same fold at
+  `idle_compact_at`, holding `councilRoots.promotion` so the next turn waits
+  for it, then rebuilds the root from the compacted conversation;
 - `num_ctx 0` (the `polykv-window` hook): the load takes the trained context
   as the pool; with `pool_unowned_v1` the tree is `unowned` — pools created
   with `"unowned": true`, the planner sends no placement, and the owner is

@@ -228,7 +228,7 @@ func councilFields() []field {
 				"variable for this -- a council is a property of the model.",
 			kind:  kindTri,
 			head:  true,
-			group: []string{"council", "council-researchers", "council-critics", "council-jitter", "council-seed", "council-max-rounds", "council-show-deliberation", "council-polykv", "council-window", "council-floor", "council-compact-at", "council-idle-compact-at"},
+			group: []string{"council", "council-researchers", "council-critics", "council-jitter", "council-seed", "council-max-rounds", "council-show-deliberation", "council-polykv", "council-window", "council-floor", "council-compact-at", "council-idle-compact-at", "council-compaction", "council-compaction-review", "council-compaction-retrospective"},
 			get: func(c *xollama.Config) string {
 				return councilGet(c, func(k *xollama.Council) string { return tri(k.Enabled) })
 			},
@@ -393,9 +393,9 @@ func councilFields() []field {
 			path:  "council.context.compact_at",
 			title: "Compact at — the share of the window that compacts the conversation",
 			help: "On PolyKV, once the owner session's pressure (its share of the window in\n" +
-				"use) reaches this, the conversation is compacted before the turn: the oldest\n" +
-				"turns summarised, the last three kept. Unset is 0.85. A number between 0\n" +
-				"and 1.",
+				"use) reaches this, the conversation is compacted before the turn. A\n" +
+				"conversation that nears the window compacts on any engine. Unset is 0.85.\n" +
+				"A number between 0 and 1.",
 			kind:    kindFloat,
 			quiet:   true,
 			blocked: councilOff,
@@ -408,10 +408,10 @@ func councilFields() []field {
 			name:  "council-idle-compact-at",
 			path:  "council.context.idle_compact_at",
 			title: "Idle compact at — compact after an answer, before the next message",
-			help: "On PolyKV, once the owner session fills this share of its window, the\n" +
-				"council summarises the older turns right after answering, while it waits,\n" +
-				"so the next message starts from the short conversation. Unset is 0.75.\n" +
-				"A number between 0 and 1, not above compact-at.",
+			help: "Once the conversation nears this share of what compacts a turn, the\n" +
+				"council compacts right after answering, while it waits, so the next message\n" +
+				"starts from the short conversation. Unset is 0.75. A number between 0 and 1,\n" +
+				"not above compact-at.",
 			kind:    kindFloat,
 			quiet:   true,
 			blocked: councilOff,
@@ -419,6 +419,60 @@ func councilFields() []field {
 				return orEmpty(c.Council != nil && c.Council.Context != nil, func() string { return showFloat(c.Council.Context.IdleCompactAt) })
 			},
 			set: func(c *xollama.Config, v string) error { return setFloat(v, &councilContext(c).IdleCompactAt) },
+		},
+		{
+			name:  "council-compaction",
+			path:  "council.context.compaction",
+			title: "Compaction — how a long conversation is shortened",
+			help: "agentic (unset) is Cerebriline's council compaction: the model replays the\n" +
+				"older turns in its own voice, two critics rewrite the replay's halves against\n" +
+				"the conversation, and a synthesizer joins them. basic makes no model call: it\n" +
+				"keeps your requests word for word and the newest answers that fit.",
+			kind:    kindChoice,
+			choices: func(*xollama.Config) []string { return xollama.ValidCouncilCompaction() },
+			quiet:   true,
+			blocked: councilOff,
+			get: func(c *xollama.Config) string {
+				return orEmpty(c.Council != nil && c.Council.Context != nil, func() string { return c.Council.Context.Compaction })
+			},
+			set: func(c *xollama.Config, v string) error {
+				s, err := choice(v, xollama.ValidCouncilCompaction())
+				if err != nil {
+					return err
+				}
+				councilContext(c).Compaction = s
+				return nil
+			},
+		},
+		{
+			name:  "council-compaction-review",
+			path:  "council.context.review",
+			title: "Compaction review — critics check the replay",
+			help: "Two critics each rewrite one half of the replay against the conversation, and\n" +
+				"a synthesizer joins the halves. Off ships the writer's replay unreviewed,\n" +
+				"which is faster. Unset is on.",
+			kind:    kindTri,
+			quiet:   true,
+			blocked: councilOff,
+			get: func(c *xollama.Config) string {
+				return orEmpty(c.Council != nil && c.Council.Context != nil, func() string { return tri(c.Council.Context.Review) })
+			},
+			set: func(c *xollama.Config, v string) error { return setTri(v, &councilContext(c).Review) },
+		},
+		{
+			name:  "council-compaction-retrospective",
+			path:  "council.context.retrospective",
+			title: "Compaction retrospective — a judgement kept beside the replay",
+			help: "Where the conversation carries the model's reasoning, a short assessment of\n" +
+				"it (what worked, what did not) is kept at the top of the compacted\n" +
+				"conversation and carried into the next compaction. Unset is on.",
+			kind:    kindTri,
+			quiet:   true,
+			blocked: councilOff,
+			get: func(c *xollama.Config) string {
+				return orEmpty(c.Council != nil && c.Council.Context != nil, func() string { return tri(c.Council.Context.Retrospective) })
+			},
+			set: func(c *xollama.Config, v string) error { return setTri(v, &councilContext(c).Retrospective) },
 		},
 		{
 			name:  "council-charter",

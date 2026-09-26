@@ -25,6 +25,7 @@ import (
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/internal/council"
 	"github.com/ollama/ollama/llm"
+	"github.com/ollama/ollama/types/model"
 )
 
 // councilMemberKey marks a chat request the council itself made. A member is
@@ -96,41 +97,50 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	// answer is set by the turn and read once the response is written; a
 	// client that left may leave the turn still running, hence atomic.
 	var answer atomic.Pointer[string]
+	ctx := c.Request.Context()
+	pressure := 0.0
 	if tree != nil {
 		members.tree = tree
-		// The conversation compacts on the owner's pressure (guide §6.5), and
-		// on its rendered size when there is no allocation to read yet.
 		tree.reserve = reserve
-		pressure := tree.begin(c.Request.Context())
-		budget := int(float64(max(tree.grant, tree.floor))*tree.compactAt) - reserve
-		compact := compaction{pressure: pressure, compactAt: tree.compactAt, idleCompactAt: tree.idleCompactAt, budget: budget}
-		conv = s.compactConversation(c.Request.Context(), members, conv, tree.tokens, compact)
+		pressure = tree.begin(ctx)
+	}
+	// Compaction (Phase 8, Cerebriline's): the record carried from the last
+	// fold is applied, and the conversation folded again if a trigger fires.
+	compactor := s.councilCompactorFor(ctx, m, req, members, tree, cfg, reserve)
+	if compactor != nil {
+		conv = compactor.compact(ctx, conv, "", false, pressure)
+	}
+	if tree != nil {
 		// The planner runs attached to the conversation's root, so the
 		// conversation is held once (guide §6.2, arm C). An engine that
 		// answers "compact the session" gets exactly that, once.
-		if err := tree.buildRoot(c.Request.Context(), conv); errors.Is(err, llm.ErrSessionFull) {
-			compact.pressure = max(compact.pressure, compact.compactAt)
-			if short := s.compactConversation(c.Request.Context(), members, conv, tree.tokens, compact); len(short) < len(conv) {
+		if err := tree.buildRoot(ctx, conv); errors.Is(err, llm.ErrSessionFull) && compactor != nil {
+			before := councilCompactions.get(compactor.key)
+			if short := compactor.compact(ctx, full, "refused", false, pressure); councilCompactions.get(compactor.key) != before {
 				conv = short
-				_ = tree.buildRoot(c.Request.Context(), conv)
+				_ = tree.buildRoot(ctx, conv)
 			}
 		}
-		defer func() {
+	}
+	defer func() {
+		if tree != nil {
 			tree.finish(reserve)
-			a := answer.Load()
-			councilIdle.Add(1)
-			go func() {
-				defer councilIdle.Done()
+		}
+		a := answer.Load()
+		councilIdle.Add(1)
+		go func() {
+			defer councilIdle.Done()
+			if tree != nil {
 				// Always run: it ends the mark a next turn waits on.
 				ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 				tree.promoteRoot(ctx)
 				cancel()
-				if a != nil {
-					s.councilIdleCompact(members, tree, full, *a)
-				}
-			}()
+			}
+			if a != nil && compactor != nil {
+				s.councilIdleCompact(compactor, full, *a)
+			}
 		}()
-	}
+	}()
 
 	ch := make(chan any)
 	go func() {
@@ -194,6 +204,22 @@ func councilTemperature(m *Model, req api.ChatRequest) float64 {
 	_ = opts.FromMap(m.Options)
 	_ = opts.FromMap(req.Options)
 	return float64(opts.Temperature)
+}
+
+// councilCompactorFor is the conversation's compactor, on every engine: on
+// PolyKV it sizes against the tree's grant, elsewhere against num_ctx. Nil
+// when the runner cannot be had, which leaves the conversation as it came.
+func (s *Server) councilCompactorFor(ctx context.Context, m *Model, req api.ChatRequest, members *councilMembers, tree *councilTree, cfg council.Config, reserve int) *councilCompactor {
+	cc := m.Xollama.Council.Context
+	if tree != nil {
+		return newCouncilCompactor(members, tree, cc, cfg, tree.render, tree.tokenize, tree.numCtx, reserve)
+	}
+	r, m2, opts, err := s.scheduleRunner(ctx, m, []model.Capability{model.CapabilityCompletion}, req.Options, req.KeepAlive, req.Shift)
+	if err != nil {
+		slog.Debug("council: no runner to size the conversation; not compacting", "error", err)
+		return nil
+	}
+	return newCouncilCompactor(members, nil, cc, cfg, councilRenderer(m2, r, opts), r.Tokenize, opts.NumCtx, reserve)
 }
 
 // councilConversation is the conversation as every member sends it: one system
@@ -474,7 +500,7 @@ func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken
 // decision, a direct answer and the plan continue the conversation, and a
 // direct answer is then served from the same KV a plain chat would have used.
 func (cm *councilMembers) memberSession(r council.Request) string {
-	if cm.session == "" || r.Role == council.Planner {
+	if cm.session == "" || r.Role == council.Planner || r.Role == roleCompactWriter {
 		return cm.session
 	}
 	id := cm.session + "~" + string(r.Role)

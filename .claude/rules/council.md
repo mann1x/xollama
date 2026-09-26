@@ -5,6 +5,9 @@ paths:
   - server/council_test.go
   - server/council_polykv.go
   - server/council_polykv_test.go
+  - server/council_compaction.go
+  - server/council_compaction_prompts.go
+  - server/council_compaction_test.go
   - server/council_remote.go
   - server/council_remote_test.go
   - llm/engine_council.go
@@ -83,12 +86,25 @@ paths:
 - The owner's window follows `/kv` pressure. `begin` grows it back when nothing
   is refused. `finish` shrinks it, deferred, only under pressure and only if
   that gives back at least 4096 cells or 10 %.
-- **Compaction follows pressure** (Phase 6): the owner's raw `/kv` pressure at
-  `compact_at` (0.85) compacts before a turn; after the answer,
-  `councilIdleCompact` summarises at `idle_compact_at` (0.75) for the next
-  message. Idle goroutines join `councilIdle`; a test that serves a council
-  must `councilIdle.Wait()` before it reads the fake, or `-race` fires.
-  Summaries go through `singleflight`, never twice for one conversation.
+- **Compaction is Cerebriline's, ported** (Phase 8,
+  `server/council_compaction.go`). Its numbers are Cerebriline's defaults,
+  cited in the constants; change one only against a measurement. The
+  prompts (`council_compaction_prompts.go`) are its texts adapted to chat —
+  keep the structure. Rules that tests hold:
+  - the system message is never changed: the summary is a user message
+    after it, so the root's system part survives a fold;
+  - a record per conversation, applied every turn and dropped on a hash
+    mismatch; a later fold folds only what follows the summary
+    (`n = prevN + …`);
+  - the window is the grant only on an owned tree: an unowned tree's grant
+    is per request (2 in the fake) and hung the idle fold;
+  - "did it fold" is the record changing, never the message count (a fold of
+    one message plus a summary keeps the length);
+  - a fold that does not shrink is discarded;
+  - idle goroutines join `councilIdle`; a test that serves a council must
+    `councilIdle.Wait()` before it reads the fake, or `-race` fires. Folds
+    go through `councilCompacting` (`singleflight`).
+  Guards in `server/council_compaction_test.go`.
 - **The conversation is held once.** The planner runs attached to P1
   (`buildRoot`, before its first call), never with its own copy beside it:
   two copies filled the owner's tree at ~45 % of the window, so compaction
@@ -100,8 +116,8 @@ paths:
   allocation takes its pools with it, and the id may name another's. The
   engine refuses to release a pool with a child, so extending forks and
   keeps the parent; cap the chain (`councilRootChain`) and rebuild on
-  recurrent models. The summary is a turn of the conversation
-  (`councilSummaryPrompt` after the head), never the old turns pasted anew.
+  recurrent models. The compaction writer is a turn of the conversation on
+  the root, never the old turns pasted anew.
   `llm.ErrSessionFull` ("compact the session", a 503) compacts and retries
   the root once. Guards in `server/council_polykv_test.go`.
 - **`num_ctx 0` is the whole pool on PolyKV only** (`polykv-window` hook,

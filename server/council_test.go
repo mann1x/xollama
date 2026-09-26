@@ -34,6 +34,34 @@ type councilEngine struct {
 	placements []*llm.Placement
 	budgets    []int // the think budget each call carried
 	predicts   []int // and its num_predict
+	// compaction overrides the compaction members' replies, by role.
+	compaction map[string]string
+	// gate, when set, holds the compaction's writer until it is closed.
+	gate chan struct{}
+}
+
+// compactionMarkers tell the compaction's members apart by their instruction.
+var compactionMarkers = map[string]string{
+	"Write the replay that takes its place":     "compaction-writer",
+	"Everything above is about to be deleted":   "compaction-writer",
+	"you own the **first half**":                "compaction-critic-1",
+	"you own the **second half**":               "compaction-critic-2",
+	"Join them back into one continuous replay": "compaction-synthesizer",
+	"You are writing the retrospective":         "compaction-retrospective",
+}
+
+const (
+	fakeReplayFirst  = "The user is asking me about Rayleigh scattering, and I am explaining it."
+	fakeReplaySecond = "The user now asks whether it depends on wavelength; I am answering that it goes with the fourth power."
+	fakeMerged       = "The user is asking me about Rayleigh scattering, and I am explaining it carefully. The user now asks whether it depends on wavelength; I am answering that it goes with the inverse fourth power."
+)
+
+var compactionReplies = map[string]string{
+	"compaction-writer":        fakeReplayFirst + "\n\n" + compactionHalfway + "\n\n" + fakeReplaySecond,
+	"compaction-critic-1":      "The user is asking me about Rayleigh scattering, and I am explaining it carefully.",
+	"compaction-critic-2":      "The user now asks whether it depends on wavelength; I am answering that it goes with the inverse fourth power.",
+	"compaction-synthesizer":   "## Replay\n\n" + fakeMerged,
+	"compaction-retrospective": "## What worked\n- Answering from the law first.",
 }
 
 var councilMarkers = []string{`{"route":"direct"}`, "ROLE: PLANNER. The council", "ROLE: RESEARCHER", "ROLE: CRITIC", "ROLE: SYNTHESIZER"}
@@ -44,6 +72,14 @@ func (e *councilEngine) complete(ctx context.Context, r llm.CompletionRequest, f
 		if j := strings.LastIndex(r.Prompt, m); j > at {
 			at, role = j, []string{"route", "planner", "researcher", "critic", "synthesizer"}[i]
 		}
+	}
+	for m, cr := range compactionMarkers {
+		if j := strings.LastIndex(r.Prompt, m); j > at {
+			at, role = j, cr
+		}
+	}
+	if strings.HasPrefix(role, "compaction-") && strings.Contains(r.SessionID, "~compaction-text") {
+		role = "compaction-text-" + strings.TrimPrefix(role, "compaction-")
 	}
 	e.mu.Lock()
 	e.roles = append(e.roles, role)
@@ -68,6 +104,19 @@ func (e *councilEngine) complete(ctx context.Context, r llm.CompletionRequest, f
 	}[role]
 	if role == "route" && e.route == `{"route":"direct"}` {
 		reply = e.route
+	}
+	if role == "compaction-writer" && e.gate != nil {
+		select {
+		case <-e.gate:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	if strings.HasPrefix(role, "compaction-") {
+		reply = compactionReplies[strings.Replace(role, "compaction-text-", "compaction-", 1)]
+		if v, ok := e.compaction[role]; ok {
+			reply = v
+		}
 	}
 	// A member given a budget reasons first, as a thinking model does -- once:
 	// a structured reply is a second pass whose prompt already holds the
