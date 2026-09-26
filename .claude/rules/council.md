@@ -12,6 +12,10 @@ paths:
   - server/council_remote_test.go
   - server/council_state.go
   - server/council_state_test.go
+  - server/council_tools.go
+  - server/council_tools_test.go
+  - api/xollama_tools.go
+  - api/xollama_tools_test.go
   - llm/engine_council.go
   - llm/engine_council_test.go
   - llm/engine_window.go
@@ -63,8 +67,9 @@ paths:
   the capability checks. Registry row `council` in
   `docs/protocols/UPSTREAM-SYNC.md`.
 - `councilServes` is false for a model without an enabled council, a request
-  with no messages, tools or a `format` (the client is steering the output
-  itself), and any member's own turn. Members are marked with the
+  with no messages, tools without `council_chat_state` or a `format` (the
+  client is steering the output itself), and any member's own turn. Members
+  are marked with the
   `councilMemberKey` gin context key — never a header, so no client can set it
   and no member can convene the council again.
 - Every member is an ordinary chat turn served in process through
@@ -267,3 +272,18 @@ paths:
   unreadable is a fresh start, never an error. Add a field with a new protobuf
   number; a changed meaning is a new feature name. The key is
   `<models>/council-state.key`, written through `fsowner`.
+- **Tools on council turns (9.5, `council_tools_v1`).** Tools reach the
+  council only with `council_chat_state`: a member that calls one is suspended
+  into the state, so a client without it keeps the plain-chat bypass. Every
+  member request carries the client's tools (`councilMembers.tools`), and so
+  does `councilRenderer`, or the PolyKV root stops being the members' prefix
+  (`TestAToolTurnsRootHoldsTheTools`). The policy lives in
+  `internal/council/tools.go`: researchers and critics call only
+  `api.ToolFunction.ReadOnly` tools, the synthesizer and a direct answer call
+  any; a refused call is answered in place and never forwarded. The read-only
+  mark is `json:"-"` on purpose -- a marshalled mark would change every
+  rendered tool prompt; tests must send it as wire JSON (`toolChat`), since
+  re-encoding an `api.ChatRequest` drops it. Forwarded ids are
+  `MemberKey + ":" + id`; ChatHandler gives parsed calls random ids, so tests
+  match the prefix. A step's resume points are read under the lock before it
+  launches (bug-143).

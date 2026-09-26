@@ -83,12 +83,23 @@ func maxTok(cfg Config, r Role) int {
 // call makes one member's call, sending its tokens to emit as k -- unless it
 // is deliberation and that is hidden -- and closing them with a Done event.
 func call(ctx context.Context, m Model, cfg Config, emit Emit, req Request, k Kind) (string, error) {
+	out, _, err := callFrom(ctx, m, cfg, emit, req, k, nil)
+	return out, err
+}
+
+// callFrom is call for a member that may call tools, continuing from its turns
+// so far. A member that calls a tool it may call returns its turns, to be
+// suspended (tools.go); every other returns its reply.
+func callFrom(ctx context.Context, m Model, cfg Config, emit Emit, req Request, k Kind, turns []api.Message) (string, []api.Message, error) {
 	onToken := func(string) {}
 	if k != Thinking || cfg.ShowDeliberation {
 		onToken = func(s string) {
 			emit(Event{Role: req.Role, Index: req.Index, Round: req.Round, Kind: k, Text: s})
 		}
 		defer emit(Event{Role: req.Role, Index: req.Index, Round: req.Round, Kind: k, Done: true})
+	}
+	if tm, ok := m.(ToolModel); ok && len(cfg.Tools) > 0 && req.Format == nil {
+		return callTools(ctx, tm, cfg, req, turns, onToken)
 	}
 	out, err := m.Stream(ctx, req, onToken)
 	// An empty reply is no finding: a member elsewhere that answered nothing
@@ -102,9 +113,9 @@ func call(ctx context.Context, m Model, cfg Config, emit Emit, req Request, k Ki
 		slog.Warn("council: member failed on its own model, answered by the council's", "role", req.Role, "index", req.Index, "model", req.Model, "host", req.Host, "error", err)
 		onToken(fmt.Sprintf("\n\n(%s on %s failed; the council's model answers instead)\n\n", req.Role, memberWhere(req)))
 		req.Model, req.Host = "", ""
-		return m.Stream(ctx, req, onToken)
+		out, err = m.Stream(ctx, req, onToken)
 	}
-	return out, err
+	return out, nil, err
 }
 
 // fallsBack reports whether a failed member is retried on the council's own
@@ -147,14 +158,19 @@ func Decide(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Messag
 // Direct answers a trivial message: an ordinary turn, streamed as content,
 // followed by the client's system prompt when there is one.
 func Direct(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, emit Emit) (string, error) {
+	out, _, err := direct(ctx, m, cfg, d, conv, emit, nil)
+	return out, err
+}
+
+func direct(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, emit Emit, turns []api.Message) (string, []api.Message, error) {
 	msgs := conv
 	if cfg.System != "" {
 		msgs = append(clone(conv), user(directIntro+systemIntro+cfg.System))
 	}
-	return call(ctx, m, cfg, emit, Request{
+	return callFrom(ctx, m, cfg, emit, Request{
 		Role: Planner, Messages: msgs, Seed: d.Direct.Seed,
 		Temperature: d.Direct.Temperature, MaxTokens: maxTok(cfg, Synthesizer), Think: cfg.Think[Planner],
-	}, Content)
+	}, Content, turns)
 }
 
 // plannerRole opens every planner instruction the council adds: the route
@@ -172,10 +188,10 @@ func IsPlannerRequest(s string) bool {
 // system message empty the decision has no other source for it (measured on
 // b133: without it, two of six storage questions were answered directly).
 func routeRequest(cfg Config) api.Message {
-	if cfg.Charter == "" {
-		return user(routeMsg)
+	if c := cfg.charter(); c != "" {
+		return user(c + "\n\n" + routeMsg)
 	}
-	return user(cfg.Charter + "\n\n" + routeMsg)
+	return user(routeMsg)
 }
 
 // planMsg is the planner's plan request. The charter opens it: every later
@@ -183,8 +199,8 @@ func routeRequest(cfg Config) api.Message {
 func planMsg(cfg Config) api.Message {
 	s := fmt.Sprintf(`ROLE: PLANNER. %s Reply with JSON only: {"plan":"<the plan>","briefs":[<exactly %d researcher briefs>]}.`,
 		prompt(cfg, Planner), cfg.Researchers)
-	if cfg.Charter != "" {
-		s = cfg.Charter + "\n\n" + s
+	if c := cfg.charter(); c != "" {
+		s = c + "\n\n" + s
 	}
 	return user(s)
 }
@@ -218,31 +234,41 @@ func base(cfg Config, conv []api.Message, p Plan) []api.Message {
 
 // Research runs researcher i. prior holds the previous round's critiques, if any.
 func Research(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, p Plan, i, round int, prior []string, emit Emit) (string, error) {
+	out, _, err := research(ctx, m, cfg, d, conv, p, i, round, prior, emit, nil)
+	return out, err
+}
+
+func research(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, p Plan, i, round int, prior []string, emit Emit, turns []api.Message) (string, []api.Message, error) {
 	msgs := base(cfg, conv, p)
 	if len(prior) > 0 {
 		msgs = append(msgs, user(joinNumbered("CRITIQUE", prior)))
 	}
-	msgs = append(msgs, user(fmt.Sprintf("ROLE: RESEARCHER %d. Your brief: %s\n%s", i+1, p.Briefs[i], prompt(cfg, Researcher))))
+	msgs = append(msgs, user(fmt.Sprintf("ROLE: RESEARCHER %d. Your brief: %s\n%s%s", i+1, p.Briefs[i], prompt(cfg, Researcher), cfg.toolNote(Researcher))))
 	dr := d.Researchers[round][i]
-	return call(ctx, m, cfg, emit, Request{
+	return callFrom(ctx, m, cfg, emit, Request{
 		Role: Researcher, Index: i, Round: round, Model: cfg.Models[Researcher], Host: cfg.Hosts[Researcher], Messages: msgs,
 		Seed: dr.Seed, Temperature: dr.Temperature, MaxTokens: maxTok(cfg, Researcher), Think: cfg.Think[Researcher],
-	}, Thinking)
+	}, Thinking, turns)
 }
 
 // Critique runs critic i over all findings, in researcher order.
 func Critique(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, p Plan, findings []string, i, round int, emit Emit) (string, error) {
-	instr := prompt(cfg, Critic)
+	out, _, err := critique(ctx, m, cfg, d, conv, p, findings, i, round, emit, nil)
+	return out, err
+}
+
+func critique(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, p Plan, findings []string, i, round int, emit Emit, turns []api.Message) (string, []api.Message, error) {
+	instr := prompt(cfg, Critic) + cfg.toolNote(Critic)
 	if round+1 < max(cfg.MaxRounds, 1) {
 		instr += fmt.Sprintf(" If the findings are not good enough to answer from, end with %q.", Revise)
 	}
 	msgs := append(base(cfg, conv, p), user(joinNumbered("FINDINGS OF RESEARCHER", findings)),
 		user(fmt.Sprintf("ROLE: CRITIC %d. %s", i+1, instr)))
 	dc := d.Critics[round][i]
-	return call(ctx, m, cfg, emit, Request{
+	return callFrom(ctx, m, cfg, emit, Request{
 		Role: Critic, Index: i, Round: round, Model: cfg.Models[Critic], Host: cfg.Hosts[Critic], Messages: msgs,
 		Seed: dc.Seed, Temperature: dc.Temperature, MaxTokens: maxTok(cfg, Critic), Think: cfg.Think[Critic],
-	}, Thinking)
+	}, Thinking, turns)
 }
 
 // NeedsRevision reports whether another round is wanted and allowed.
@@ -260,16 +286,21 @@ func NeedsRevision(cfg Config, critiques []string, round int) bool {
 
 // Synthesize writes the answer, streamed as content.
 func Synthesize(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, p Plan, findings, critiques []string, emit Emit) (string, error) {
+	out, _, err := synthesize(ctx, m, cfg, d, conv, p, findings, critiques, emit, nil)
+	return out, err
+}
+
+func synthesize(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, p Plan, findings, critiques []string, emit Emit, turns []api.Message) (string, []api.Message, error) {
 	msgs := append(base(cfg, conv, p), user(joinNumbered("FINDINGS OF RESEARCHER", findings)),
 		user(joinNumbered("CRITIQUE", critiques)),
-		user("ROLE: SYNTHESIZER. "+prompt(cfg, Synthesizer)))
+		user("ROLE: SYNTHESIZER. "+prompt(cfg, Synthesizer)+cfg.toolNote(Synthesizer)))
 	if cfg.System != "" {
 		msgs = append(msgs, user(systemIntro+cfg.System))
 	}
-	return call(ctx, m, cfg, emit, Request{
+	return callFrom(ctx, m, cfg, emit, Request{
 		Role: Synthesizer, Model: cfg.Models[Synthesizer], Host: cfg.Hosts[Synthesizer], Messages: msgs,
 		Seed: d.Synth.Seed, Temperature: d.Synth.Temperature, MaxTokens: maxTok(cfg, Synthesizer), Think: cfg.Think[Synthesizer],
-	}, Content)
+	}, Content, turns)
 }
 
 func joinNumbered(label string, parts []string) string {

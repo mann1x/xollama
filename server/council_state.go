@@ -12,6 +12,8 @@ package server
 //   - what the turn has finished (council.Progress): route, plan, each
 //     member's reply, bound to a hash of the history and of the user turn in
 //     flight, so it resumes only that turn;
+//   - each member suspended on its tool calls (9.5): its own turns so far,
+//     which the client's results resume;
 //   - the conversation's compaction record, restored when this server's memory
 //     has none or an older one (after a restart), and applied only where its
 //     own hash matches the conversation.
@@ -23,7 +25,8 @@ package server
 // Wire layout (field numbers are the contract; add, never renumber):
 //
 //	State     1 version(varint) 2 history(bytes) 3 turn(bytes) 4 progress(Progress) 5 record(Record)
-//	Progress  1 route(string) 2 plan(Plan) 3 rounds(Round, repeated)
+//	Progress  1 route(string) 2 plan(Plan) 3 rounds(Round, repeated) 4 suspended(Member, repeated)
+//	Member    1 key(string) 2 turns(bytes: the member's []api.Message as JSON)
 //	Plan      1 plan(string) 2 briefs(string, repeated)
 //	Round     1 findings(string, repeated) 2 critiques(string, repeated)
 //	Record    1 n(varint) 2 hash(string) 3 head(Message, repeated) 4 gen(varint)
@@ -39,8 +42,10 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 
 	"google.golang.org/protobuf/encoding/protowire"
@@ -129,6 +134,16 @@ func marshalProgress(p council.Progress) []byte {
 		}
 		b = protowire.AppendTag(b, 3, protowire.BytesType)
 		b = protowire.AppendBytes(b, rb)
+	}
+	for _, k := range slices.Sorted(maps.Keys(p.Suspended)) {
+		turns, err := json.Marshal(p.Suspended[k])
+		if err != nil {
+			continue // unreachable for api.Message; a member left out starts over
+		}
+		var mb []byte
+		mb = appendString(mb, 1, k)
+		mb = appendBytes(mb, 2, turns)
+		b = appendBytes(b, 4, mb)
 	}
 	return b
 }
@@ -273,6 +288,26 @@ func unmarshalProgress(b []byte) (council.Progress, error) {
 				return err
 			}
 			p.Rounds = append(p.Rounds, r)
+		case 4:
+			var key string
+			var turns []api.Message
+			if err := fields(v, func(num protowire.Number, typ protowire.Type, v []byte, _ uint64) error {
+				switch {
+				case num == 1 && typ == protowire.BytesType:
+					key = string(v)
+				case num == 2 && typ == protowire.BytesType:
+					return json.Unmarshal(v, &turns)
+				}
+				return nil
+			}); err != nil {
+				return err
+			}
+			if key != "" && len(turns) > 0 {
+				if p.Suspended == nil {
+					p.Suspended = map[string][]api.Message{}
+				}
+				p.Suspended[key] = turns
+			}
 		}
 		return nil
 	})

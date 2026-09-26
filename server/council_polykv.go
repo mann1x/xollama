@@ -912,7 +912,7 @@ func (s *Server) councilTreeFor(ctx context.Context, m *Model, req api.ChatReque
 		canUnown:      canUnown,
 		numCtx:        opts.NumCtx,
 		kv:            kv,
-		render:        councilRenderer(m2, r, opts),
+		render:        councilRenderer(m2, r, opts, req.Tools),
 		tokenize:      r.Tokenize,
 		owner:         session,
 		window:        window,
@@ -924,16 +924,17 @@ func (s *Server) councilTreeFor(ctx context.Context, m *Model, req api.ChatReque
 }
 
 // councilRenderer renders messages exactly as ChatHandler renders a member's:
-// the model's own MESSAGE turns first, thinking off, on whichever path -- the
-// engine's template or ollama's -- the model's chats take.
-func councilRenderer(m *Model, r llm.LlamaServer, opts *api.Options) func(context.Context, []api.Message) (string, error) {
+// the model's own MESSAGE turns first, thinking off, the turn's tools (every
+// member carries them), on whichever path -- the engine's template or
+// ollama's -- the model's chats take.
+func councilRenderer(m *Model, r llm.LlamaServer, opts *api.Options, tools api.Tools) func(context.Context, []api.Message) (string, error) {
 	off := &api.ThinkValue{Value: false}
 	return func(ctx context.Context, msgs []api.Message) (string, error) {
 		all := filterThinkTags(append(slices.Clone(m.Messages), msgs...), m)
 		if chatModeForModel(m) == chatExecutionModeNative {
-			return r.ApplyChatTemplate(ctx, llm.ChatRequest{Messages: all, Options: opts, Think: off})
+			return r.ApplyChatTemplate(ctx, llm.ChatRequest{Messages: all, Tools: tools, Options: opts, Think: off})
 		}
-		p, _, err := chatPrompt(ctx, m, r.Tokenize, opts, all, nil, off, false)
+		p, _, err := chatPrompt(ctx, m, r.Tokenize, opts, all, tools, off, false)
 		return p, err
 	}
 }

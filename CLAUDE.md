@@ -172,7 +172,9 @@ conversation before a turn and after its answer, Cerebriline's agentic compactio
 ported, prompts in `server/council_compaction_prompts.go`; `server/council_state.go`
 seals the `council_chat_state` resume point a client sends back), reached from one
 `councilServes` line in
-`ChatHandler` (`council` hook); tools or a `format` bypass it, and a one-shot
+`ChatHandler` (`council` hook); a `format` bypasses it, and tools reach it only
+with `council_chat_state` (`internal/council/tools.go`: read-only tools for
+researchers and critics, writes by the synthesizer; `server/council_tools.go`), and a one-shot
 `xollama run <council> "…"` goes through chat (`cmd/council_run.go`) — see
 `.claude/rules/model-config.md` and `.claude/rules/council.md`.
 **Device selection**: a model's device pin (`types/xollama/devices.go`) is

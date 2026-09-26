@@ -5,6 +5,24 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Phase 9.5: the council uses the client's tools (`council_tools_v1`).**
+> - A council turn with tools and `council_chat_state` uses the tools.
+>   Researchers and critics call only the tools marked `x_read_only` (or MCP
+>   `readOnlyHint`); the synthesizer and a direct answer call any. A member's
+>   call ends the response like a model's, under an id naming the member
+>   (`r2:call_x`); the results plus the state resume it. Without the state,
+>   tools stay a plain chat. Every member carries the tools, and so does the
+>   PolyKV root.
+> - Live on b137, a client loop over a fake repository: parallel members'
+>   calls travel together, each round trip resumes only who waits, and only
+>   the synthesizer writes. The first prompts made researchers invent tool
+>   results, because the charter still said "their own knowledge". With a
+>   tools paragraph and role notes, 4/6 runs were fully right. The plain model
+>   got 6/6 in about a sixth of the time.
+> - bug-143 (a race on the suspended members) caught by `-race` and fixed.
+> - Open for the owner: whether easy tool turns should go to the council at
+>   all.
+
 > **2026-09-26 — Hugging Face pulls work again; upstream's Dockerfile listens where it says.**
 > - Hugging Face now redirects downloads across its own hosts (hf.co →
 >   huggingface.co → its CDN), and the v0.34.2 base followed same-host

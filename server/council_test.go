@@ -45,6 +45,9 @@ type councilEngine struct {
 	hold     time.Duration
 	inflight map[string]int
 	overlaps []string
+	// tools names the tool a role calls (9.5) until its prompt, after the
+	// role's instruction, holds a result.
+	tools map[string]string
 }
 
 // compactionMarkers tell the compaction's members apart by their instruction.
@@ -129,6 +132,9 @@ func (e *councilEngine) complete(ctx context.Context, r llm.CompletionRequest, f
 	}[role]
 	if role == "route" && e.route == `{"route":"direct"}` {
 		reply = e.route
+	}
+	if name := e.tools[role]; name != "" && !strings.Contains(r.Prompt[at:], "<tool>") {
+		reply = fmt.Sprintf(`{"name": %q, "arguments": {"path": "notes.txt"}}`, name)
 	}
 	if role == "compaction-writer" && e.gate != nil {
 		select {
@@ -570,7 +576,7 @@ func TestTheIdentityNamesTheFeatures(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &id); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"council", "council_compaction_v1", "council_tags_v1", "client_placement_v1", "chat_render_v1", "council_chat_state_v1"} {
+	for _, f := range []string{"council", "council_compaction_v1", "council_tags_v1", "client_placement_v1", "chat_render_v1", "council_chat_state_v1", "council_tools_v1"} {
 		if !slices.Contains(id.Features, f) {
 			t.Errorf("features %v lack %q", id.Features, f)
 		}

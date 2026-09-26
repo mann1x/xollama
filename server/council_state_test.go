@@ -304,3 +304,32 @@ func TestALeftTurnEndsWhileAMemberIsUnanswered(t *testing.T) {
 		t.Fatal("the turn is still waiting on a member the scheduler dropped")
 	}
 }
+
+// A suspended member's turns travel in the state exactly, tool arguments in
+// their order included (9.5).
+func TestASuspendedMemberTravelsInTheState(t *testing.T) {
+	councilStateKeyIn(t, t.TempDir())
+	args := api.NewToolCallFunctionArguments()
+	args.Set("path", "notes.txt")
+	args.Set("lines", float64(3))
+	st := testState()
+	st.progress.Suspended = map[string][]api.Message{
+		"r2": {{Role: "assistant", Content: "let me look", ToolCalls: []api.ToolCall{{ID: "call_1", Function: api.ToolCallFunction{Name: "read_files", Arguments: args}}}}},
+		"s":  {{Role: "assistant", ToolCalls: []api.ToolCall{{ID: "call_2", Function: api.ToolCallFunction{Name: "write_file"}}}}},
+	}
+	blob, err := sealCouncilState(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := openCouncilState(blob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2 := got.progress.Suspended["r2"]
+	if len(got.progress.Suspended) != 2 || len(r2) != 1 || r2[0].Content != "let me look" || r2[0].ToolCalls[0].ID != "call_1" {
+		t.Fatalf("suspended %+v", got.progress.Suspended)
+	}
+	if a := r2[0].ToolCalls[0].Function.Arguments.String(); a != `{"path":"notes.txt","lines":3}` {
+		t.Fatalf("arguments %s", a)
+	}
+}

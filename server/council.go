@@ -64,9 +64,13 @@ func clientPlacement(c *gin.Context, req api.ChatRequest) {
 
 // councilServes reports whether this chat turn goes to the council.
 //
-// Tools and a response format are the client driving the model's output
-// itself: a council would answer something other than what was asked, so the
-// model answers as an ordinary chat. So does a load-only or unload request,
+// A response format is the client driving the model's output itself: a
+// council would answer something other than what was asked, so the model
+// answers as an ordinary chat. Tools go to the council only for a client that
+// carries its state (council_chat_state): a member that calls one is
+// suspended into that state, and without it the turn could not come back
+// (plans/agentic-council-chat.md, 9.5); for any other client they stay a
+// plain chat, as before. So does a load-only or unload request,
 // and a render-only one (`_debug_render_only`, chat_render_v1): a client
 // rendering its PolyKV prefix for a council model needs what the members send,
 // and members are served as plain turns of the same model.
@@ -77,7 +81,7 @@ func councilServes(c *gin.Context, m *Model, req api.ChatRequest) bool {
 	if c.GetBool(councilMemberKey) {
 		return false
 	}
-	return len(req.Messages) > 0 && len(req.Tools) == 0 && len(req.Format) == 0 && !req.DebugRenderOnly
+	return len(req.Messages) > 0 && (len(req.Tools) == 0 || req.CouncilChatState != nil) && len(req.Format) == 0 && !req.DebugRenderOnly
 }
 
 // councilChat answers one chat turn with the model's council.
@@ -128,6 +132,13 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	// A client's state (council_chat_state_v1) restores the compaction record
 	// this server may have lost, and resumes the turn it was made for.
 	from, turnHistory, turnHash := councilResume(req, members.session)
+	// Tools (9.5): every member carries them; a resumed turn's own calls and
+	// results leave the conversation for the members that made them.
+	cfg.Tools, members.tools = req.Tools, req.Tools
+	if from.Route != "" {
+		conv, cfg.Results = councilToolTurn(conv)
+		full = conv
+	}
 	compactor := s.councilCompactorFor(ctx, m, req, members, tree, cfg, reserve)
 	if compactor != nil {
 		conv = compactor.compact(ctx, conv, "", false, pressure)
@@ -215,17 +226,29 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 			}
 			return
 		}
-		answer.Store(&res.Answer)
+		// A turn whose members wait on tools ends with their calls, as a
+		// model's turn does, and carries what it resumes from; an answered
+		// one carries only the record.
+		var carry council.Progress
+		if len(res.Calls) > 0 {
+			carry = res.Progress
+			select {
+			case ch <- api.ChatResponse{Model: req.Model, CreatedAt: time.Now().UTC(), Message: api.Message{Role: "assistant", ToolCalls: res.Calls}}:
+			case <-c.Request.Context().Done():
+				return
+			}
+		} else {
+			answer.Store(&res.Answer)
+		}
 		slog.Info("council turn", "model", req.Model, "route", res.Route, "rounds", res.Rounds,
-			"members", members.calls.Load(), "duration", time.Since(start),
+			"members", members.calls.Load(), "tool_calls", len(res.Calls), "duration", time.Since(start),
 			"seeds", councilSeeds(res.Draws))
 		final := api.ChatResponse{
 			Model: req.Model, CreatedAt: time.Now().UTC(),
 			Message: api.Message{Role: "assistant"}, Done: true, DoneReason: "stop",
 		}
 		final.Metrics = members.metrics(time.Since(start))
-		// The turn is answered: what is left to carry is the record.
-		final.CouncilChatState = state(council.Progress{})
+		final.CouncilChatState = state(carry)
 		select {
 		case ch <- final:
 		case <-c.Request.Context().Done():
@@ -269,7 +292,7 @@ func (s *Server) councilCompactorFor(ctx context.Context, m *Model, req api.Chat
 		slog.Debug("council: no runner to size the conversation; not compacting", "error", err)
 		return nil
 	}
-	return newCouncilCompactor(members, nil, cc, cfg, councilRenderer(m2, r, opts), r.Tokenize, opts.NumCtx, reserve)
+	return newCouncilCompactor(members, nil, cc, cfg, councilRenderer(m2, r, opts, req.Tools), r.Tokenize, opts.NumCtx, reserve)
 }
 
 // councilConversation is the conversation as every member sends it: an empty
@@ -429,6 +452,10 @@ type councilMembers struct {
 	// window is a member's context, which a role's think level is a share of.
 	window int
 
+	// tools are the client's, on every member's request of a turn that has
+	// them, so the prefix every member shares holds them too.
+	tools api.Tools
+
 	calls  atomic.Int32
 	mu     sync.Mutex
 	m      api.Metrics
@@ -437,6 +464,17 @@ type councilMembers struct {
 }
 
 func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken func(string)) (string, error) {
+	rep, err := cm.StreamTools(ctx, r, onToken)
+	return rep.Content, err
+}
+
+// StreamTools is Stream with the tools the member calls (council.ToolModel).
+func (cm *councilMembers) StreamTools(ctx context.Context, r council.Request, onToken func(string)) (council.Reply, error) {
+	out, calls, err := cm.stream(ctx, r, onToken)
+	return council.Reply{Content: out, Calls: calls}, err
+}
+
+func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken func(string)) (string, []api.ToolCall, error) {
 	cm.calls.Add(1)
 	stream, off := true, api.ThinkValue{Value: false}
 	opts := maps.Clone(cm.base.Options)
@@ -485,17 +523,20 @@ func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken
 		}
 	}
 	if r.Host != "" {
-		return cm.remote(ctx, r, req, onToken)
+		// A member on another server shares no prefix and calls nothing.
+		out, err := cm.remote(ctx, r, req, onToken)
+		return out, nil, err
 	}
+	req.Tools = cm.tools
 	placement, worker := cm.place(ctx, r, &req)
 	body, err := json.Marshal(req)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
 	hr, err := http.NewRequestWithContext(ctx, http.MethodPost, "/api/chat", bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	hr.Header.Set("Content-Type", "application/json")
 	pr, pw := io.Pipe()
@@ -523,6 +564,7 @@ func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken
 	defer stop()
 
 	var out strings.Builder
+	var calls []api.ToolCall
 	sc := bufio.NewScanner(pr)
 	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	for sc.Scan() {
@@ -531,18 +573,19 @@ func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken
 			Error string `json:"error"`
 		}
 		if err := json.Unmarshal(sc.Bytes(), &line); err != nil {
-			return out.String(), fmt.Errorf("council %s: %w", r.Role, err)
+			return out.String(), nil, fmt.Errorf("council %s: %w", r.Role, err)
 		}
 		if line.Error != "" {
 			cm.mu.Lock()
 			cm.last = w.status()
 			cm.mu.Unlock()
-			return out.String(), fmt.Errorf("council %s: %s", r.Role, line.Error)
+			return out.String(), nil, fmt.Errorf("council %s: %s", r.Role, line.Error)
 		}
 		if t := line.Message.Content; t != "" {
 			out.WriteString(t)
 			onToken(t)
 		}
+		calls = append(calls, line.Message.ToolCalls...)
 		if line.Done {
 			cm.mu.Lock()
 			cm.m.PromptEvalCount += line.PromptEvalCount
@@ -557,9 +600,9 @@ func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		return out.String(), err
+		return out.String(), nil, err
 	}
-	return out.String(), sc.Err()
+	return out.String(), calls, sc.Err()
 }
 
 // memberSession gives each member its own engine session, so parallel members

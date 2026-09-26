@@ -138,9 +138,10 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
   member before it has finished.
 - **`think: false`**, or `--hidethinking` in the CLI, gets the answer only. So
   does `council.show_deliberation off`.
-- **Tools or a `format`** in the request mean the client is steering the output
-  itself. That turn is answered as a plain chat, without the council. In the
-  desktop app, turning on web search adds tools.
+- **A `format`** in the request means the client is steering the output
+  itself. That turn is answered as a plain chat, without the council. So are
+  **tools** from a client that does not carry the council's state (below);
+  in the desktop app, turning on web search adds tools.
 - **The desktop app** marks a council with a *council* badge in the model
   picker and, in place of the Think button, shows a **Deliberation** toggle.
   It is on by default. Off asks for the answer alone, like `think: false`.
@@ -206,6 +207,37 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
     conversation is not folded again.
   - A missing, damaged or foreign blob is a fresh start, never an error.
     Never send the council's thinking back in the history.
+- **Tools on a council turn** (`council_tools_v1`). Send tools together with
+  `council_chat_state` and the council uses them; without the state, tools
+  keep the turn a plain chat. Every member's prompt carries the tools, so the
+  prefix the members share holds them too.
+  - **Who calls what.** Researchers and critics may call only the tools you
+    mark read-only: `"x_read_only": true` in the tool's `function` object
+    (MCP's `annotations.readOnlyHint` there counts too). Everything unmarked
+    is taken to change things, and only the synthesizer, or the planner
+    answering directly, calls it. A researcher's call to such a tool is
+    refused inside the council and never reaches you. The mark is read on
+    `/api/chat` only; the OpenAI-compatible endpoints have no field for it.
+  - **The calls reach you as a model's do.** A step of the council whose
+    members call tools ends the response there: one chunk carries every
+    member's calls in `message.tool_calls`, the done chunk (`done_reason`
+    `stop`, as for any model) carries the state. Each call's `id` names its
+    member: `r2:call_x` is researcher 2's, `c1:` critic 1's, `s:` the
+    synthesizer's, `d:` the planner's direct answer; `.2` after it means the
+    second round.
+  - **Send the results back** as `tool` messages after an assistant message
+    holding those calls, with `tool_call_id` set to the id you received (a
+    result with no id answers the next call in order), and the newest state.
+    The council resumes where it stopped: finished members are not asked
+    again, and each waiting member continues from its own calls. The calls and
+    results stay out of the conversation the other members read.
+
+  ```json
+  {"model":"my-council","council_chat_state":"<newest state>","tools":[…],
+   "messages":[{"role":"user","content":"What does notes.txt say?"},
+     {"role":"assistant","content":"","tool_calls":[{"id":"r1:call_x","function":{"name":"read_files","arguments":{"path":"notes.txt"}}}]},
+     {"role":"tool","tool_call_id":"r1:call_x","content":"Deadline: 14 October."}]}
+  ```
 
 ## On opencoti: members share the conversation
 

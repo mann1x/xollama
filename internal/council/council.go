@@ -118,6 +118,11 @@ type Config struct {
 	// conversation: the members that answer the user know what the user
 	// expects, and every member's prefix stays the same.
 	System string
+	// Tools are the client's (tools.go): every member's prompt carries them,
+	// and who may call which is the council's policy. Results are the
+	// client's answers to the calls a turn forwarded, by forwarded id.
+	Tools   api.Tools
+	Results map[string]string
 }
 
 // Built-in defaults: the owner's specification, measured in Phase 0 and 1.
@@ -245,6 +250,11 @@ type Result struct {
 	Answer string
 	Rounds int
 	Draws  Draws
+	// Calls, when set, are the tools the client runs before the turn goes
+	// on: every suspended member's, each under an id naming its member. The
+	// turn then has no answer yet, and Progress is what it resumes from.
+	Calls    []api.ToolCall
+	Progress Progress
 }
 
 // ErrNoConversation is returned for an empty conversation.

@@ -528,6 +528,12 @@ type ToolFunction struct {
 	Name        string                 `json:"name"`
 	Description string                 `json:"description,omitempty"`
 	Parameters  ToolFunctionParameters `json:"parameters"`
+
+	// xollama-hook: council — see plans/agentic-council-chat.md
+	// ReadOnly is the client's mark that the tool changes nothing
+	// (api/xollama_tools.go). It is never marshalled, so a rendered prompt
+	// stays upstream's.
+	ReadOnly bool `json:"-"`
 }
 
 func (t *ToolFunction) String() string {

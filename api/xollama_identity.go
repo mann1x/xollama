@@ -57,6 +57,11 @@ const (
 	// request carries the field (empty on a first turn); sent back, it resumes
 	// the turn that broke off and restores a lost compaction record.
 	FeatureCouncilChatState = "council_chat_state_v1"
+	// FeatureCouncilTools: a council turn with tools and council_chat_state
+	// uses the tools -- read-only ones (function.x_read_only) for researchers
+	// and critics, every one for the synthesizer -- and forwards its members'
+	// calls to the client under ids naming the member ("r2:call_x").
+	FeatureCouncilTools = "council_tools_v1"
 )
 
 // IsXollama reports whether the server at base is this fork, by the identity

@@ -1536,6 +1536,69 @@ the newest state logged "resuming the turn from the client's state". Only the
 two critics and the synthesizer ran (members 3). It answered in 28.3 s, first
 token at 12.9 s, and sent 3 states.
 
+**9.5 built (2026-09-26): tools on council turns (`council_tools_v1`).**
+Tools reach the council only with `council_chat_state`: a member that calls one
+is suspended into the state, so for a client without it tools stay the
+plain-chat bypass they were. Every member's request carries the client's tools,
+and so does the renderer the PolyKV root is cut from, so P holds them.
+- **Policy** (`internal/council/tools.go`). Researchers and critics call only
+  the tools marked read-only: `x_read_only` or MCP `annotations.readOnlyHint`
+  in the function object. They are read into `api.ToolFunction.ReadOnly`,
+  which is `json:"-"`, because a marshalled mark would change every rendered
+  tool prompt. The synthesizer and a direct answer call any tool. The route and
+  plan follow a schema and call nothing. A refused call is answered in place
+  and never forwarded; after two refusals the member's text stands.
+- **Suspend and resume.** `council.ToolModel.StreamTools` returns a member's
+  calls. `RunFrom` runs each step to its end, and a step with calls ends the
+  turn there. `Result.Calls` holds every waiting member's calls under
+  `MemberKey:id` (`r2:`, `c1:`, `s:`, `d:`, `.2` for later rounds).
+  `Progress.Suspended` holds each member's own turns (state field 4, turns as
+  JSON). The server sends the calls on one chunk and the state on the done
+  chunk (`done_reason` `stop`, as upstream's). A resumed request's traffic after
+  the last user message leaves the conversation (`councilToolTurn`); results go
+  back by `tool_call_id`, or in order when a result names no call.
+- **Prompts on a turn with tools.** A tools paragraph joins the charter
+  (`toolCharter`). Researchers and critics are told which tools only read and
+  to reply in prose. The synthesizer is told to make the changes, and that the
+  plan is not a format to follow.
+- **Tests.** Council: `TestParallelMembersToolCallsGoOutTogetherAndComeBack`,
+  `TestOnlyTheMemberThatCalledWaits`, `TestOnlyTheSynthesizerWrites`,
+  `TestADirectAnswerCallsTools`, `TestResearchersAreToldWhichToolsOnlyRead`,
+  `TestAModelWithoutToolsCallsNothing`,
+  `TestTheCharterNamesTheToolsOnlyWhenThereAreSome`. Server:
+  `TestACouncilTurnCallsToolsAndResumes`,
+  `TestACouncilSynthesizerWritesThroughTheClient`,
+  `TestToolsWithoutStateStayAPlainChat`,
+  `TestAResumedTurnsToolTrafficLeavesTheConversation`,
+  `TestAToolTurnsRootHoldsTheTools`, `TestASuspendedMemberTravelsInTheState`.
+  API: `TestAToolCarriesItsReadOnlyMark`, `TestTheReadOnlyMarkIsNeverRendered`.
+  Twelve compiling mutants each fail a test (four policy, eight server).
+  **bug-143**, a data race on `Progress.Suspended` between a step's launch loop
+  and a finishing member, was caught by `-race`.
+
+Live on b137 (`council-tools.py`), as a client. Tools: `list_files` and
+`read_files`, marked read-only, and `write_file`, over a two-file fake
+repository. The question needs both files and one write.
+- **The mechanism works.** Parallel members' calls go out together (`r1`+`r2`,
+  `c1`+`c2`). Each round trip resumes only the waiting members, in 1.2–5 s.
+  Only the synthesizer writes.
+- **First prompts.** The charter still said researchers work "using only the
+  conversation and their own knowledge". They called nothing and described
+  calls they had not made, naming files that do not exist. Critics answered in
+  the plan's JSON, and the synthesizer asked leave to write.
+- **With the tools paragraph and the role notes**, six runs (5–9 round trips,
+  28–46 s): 4/6 had both facts and the write. In the other two, one fact was
+  lost in the findings and the synthesizer said it had written without calling
+  `write_file`.
+- **Baseline: the same model as a plain chat** (no state, thinking off), six
+  runs: 6/6 had both facts and the write, in 5–6 s over 5 round trips.
+
+So on a small, easy tool task the council costs about 6× the time and is less
+reliable than the plain model. The members' failures are the model's (a
+synthesizer claiming a call it did not make). The mechanism shows no fault.
+Whether a council should take such tasks at all (route them direct, or bypass
+when every step needs tools) is the owner's call.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).
