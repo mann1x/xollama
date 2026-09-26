@@ -1,6 +1,6 @@
 # Docker image
 
-**Status:** PARKED, waiting for opencoti b111 on HF · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
+**Status:** ACTIVE — assembly workflow built and validated locally (2026-09-26); first `:dev` image pending · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
 
 The owner wants a container image so users can test xollama and so the image
 path gets exercised. Publishing mechanics (registries, channels, environments)
@@ -38,9 +38,40 @@ opencoti publishes b111 to HF and it is measured. Then:
 2. Pin the runtime tgz above.
 3. Trigger the workflow as a pre-release (`:dev`) for user testing.
 
+## Results (2026-09-26)
+
+- **The inputs digest matches.** The digest leaves out `llama/compat/README.md`
+  on both sides. The fork at `d6e24119` and `dev` both come to
+  `eff6800e1f27383e5f9b880f109fb0e70aad0108f8a52716201d9f77c1fc54c6`, and
+  the README is their only difference.
+  `scripts/docker-assemble.sh` checks both: this commit against the pin, and
+  the pinned `built` commit against the pin whenever it is reachable.
+- **Upstream sha256s:**
+  - `ollama-linux-amd64.tar.zst` is `e155b835…`. It carries `cuda_v12`,
+    `cuda_v13`, `vulkan` and a CPU set.
+  - `ollama-linux-amd64-mlx.tar.zst` is `aafb2f2d…`, carrying `mlx_cuda_v13`.
+  - Both match GitHub's published digests.
+  - Upstream `LLAMA_CPP_VERSION` is `b10969`, the same as ours.
+- **The overlay is clean.** The fork runtime replaces every CPU file upstream
+  ships. Upstream contributes only its GPU directories, `libgomp` and licence
+  files.
+- **Local validation on solidPC:**
+  - the full assembly ran at the b65 engine pin;
+  - `docker build` produced a 5.43 GB image;
+  - the container served on `0.0.0.0:22434`: `/api/version` and
+    `/api/xollama` answered `0.34.2-dev.a4886db9` through a published port,
+    and `xollama list` worked inside it.
+  - GPU inside the container was not exercised.
+- **Found on the way:**
+  - Upstream's `Dockerfile` sets `OLLAMA_HOST`, which xollama ignores, so an
+    image built from it is unreachable. `Dockerfile.xollama` sets
+    `XOLLAMA_HOST`.
+  - The old hyphen rule would have sent every `-xollama.<n>` release to
+    `:dev`. The channel is now the GitHub pre-release flag.
+
 ## Progress
 
 - [x] Design agreed (2026-09-25)
 - [ ] b111 on HF and measured
-- [ ] Runtime pin + assembly workflow
+- [x] Runtime pin + assembly workflow (2026-09-26: `llama/runtime-pin-linux.txt`, `scripts/docker-assemble.sh`, `Dockerfile.xollama`, `docker-release.yaml` on `ubuntu-latest`)
 - [ ] First `:dev` image, user testing

@@ -29,7 +29,7 @@ what happened is [`../STATE_SUMMARY.md`](../STATE_SUMMARY.md).
 | Plan | Status | Phase | Owner | Summary |
 |---|---|---|---|---|
 | [Agentic Council Chat](agentic-council-chat.md) | ACTIVE | 3 — the runner, llama.cpp path (Phase 2 done: schema v4 + tweak; b111 re-measure pending) | xollama | A model configured as a council (planner, researchers, critics, synthesizer) answers through the normal chat APIs, sharing KV through PolyKV |
-| [Docker image](docker-image.md) | PARKED | — | xollama | Assemble the image on hosted runners from prebuilt artifacts; waits for opencoti b111 on HF |
+| [Docker image](docker-image.md) | ACTIVE | runtime pin + assembly workflow done; first `:dev` image pending | xollama | Assemble the image on hosted runners from prebuilt artifacts (`scripts/docker-assemble.sh`, `llama/runtime-pin-linux.txt`) |
 
 ## How to use this document
 

@@ -172,12 +172,17 @@ it (`OllamaSchemeUnclaimed`). macOS declares both schemes and
 `app/cmd/app/app_darwin.m` handles both, because ollama.com picks the sign-in
 redirect scheme; `app/cmd/app/app.go` accepts either — see
 `docs/features/windows-installer.md`.
-**Container image**: `.github/workflows/docker-release.yaml` publishes to Docker
-Hub and GHCR on a `v*` tag, on the self-hosted `xollama-build` runner (bs2, set
-up by `scripts/setup-bs2-runner.sh`; label declared in `.github/actionlint.yaml`)
-— separate from upstream's `release.yaml`, see `docs/features/docker-release.md`.
-A plain `v1.2.3` tag runs in the `release` environment and moves `:latest`; a
-pre-release tag (`-rc1`, `-dev.4`) runs in `dev` and moves `:dev`, never `:latest`.
+**Container image**: `.github/workflows/docker-release.yaml` ASSEMBLES the image
+on `ubuntu-latest` from pinned artifacts — nothing native is compiled:
+`scripts/docker-assemble.sh` stages the fork's CPU runtime and upstream's GPU
+tarballs (`llama/runtime-pin-linux.txt`, sha256 + a README-excluded inputs
+digest), the engine (`llm/engine/pin.txt`) and a Go-only `xollama`, and
+`Dockerfile.xollama` sets `XOLLAMA_HOST=0.0.0.0:22434` (upstream's `Dockerfile`
+sets `OLLAMA_HOST`, which xollama ignores). Publishes to Docker Hub and GHCR,
+amd64 only; see `docs/features/docker-release.md`. The channel is the GitHub
+pre-release flag of the tag's release: a full release moves `:latest`, a
+pre-release or any branch run (`gh workflow run docker-release.yaml --ref dev`)
+moves `:dev`, never `:latest`.
 Upstream's `.github/workflows/latest.yaml` job is guarded to `ollama/ollama`
 (`docker-release` hook), since `docker-release.yaml` already pushes `:latest`;
 `release.yaml`'s `darwin-build` job is guarded off on the fork and dropped from

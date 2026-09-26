@@ -5,6 +5,33 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Docker image: assembled on hosted runners from pinned
+> artifacts.**
+> - `docker-release.yaml` no longer compiles anything, and no longer needs
+>   the bs2 runner, which was never registered. On `ubuntu-latest` it runs
+>   `scripts/docker-assemble.sh`, which stages:
+>   - the fork's CPU runtime tgz (`33ac42c1…`);
+>   - upstream v0.34.2's GPU and MLX tarballs, pinned by sha256;
+>   - the engine from `llm/engine/pin.txt`;
+>   - a Go-only `xollama` (go1.26.8, AlmaLinux 8).
+>
+>   `Dockerfile.xollama` then builds, smoke-tests and pushes the image.
+> - The pins are in `llama/runtime-pin-linux.txt`. Its inputs digest leaves
+>   out `llama/compat/README.md`; the fork at `d6e24119` and `dev` both come
+>   to `eff6800e…`.
+> - Validated locally:
+>   - the assembly, and a 5.43 GB image;
+>   - the container answers `/api/xollama` on `0.0.0.0:22434`;
+>   - actionlint and shellcheck are clean.
+> - The channel is now the GitHub pre-release flag, not the hyphen, and
+>   `:latest` never moves from a branch.
+> - Found: upstream's `Dockerfile` sets `OLLAMA_HOST`, so an image built from
+>   it would be unreachable. The new image sets `XOLLAMA_HOST`.
+>
+> Next: push `dev`, then
+> `gh workflow run docker-release.yaml --ref dev -f push=true -f channel=dev`
+> for the first `:dev` image, then user testing.
+
 > **2026-09-26 — Council Chat Phase 2: a council is a model setting.**
 > - `council` in `xollama.json` (schema v4, `types/xollama/council.go`),
 >   with 23 `xollama tweak model` rows (`--council`, `--council-charter`,
@@ -114,15 +141,19 @@ runs again on b111 once it is on the HF dev repo.
 
 ## In flight / waiting on others
 
-- **opencoti:** publishing b111 to HF. This unparks the Docker image and moves
-  the pin once b111 is measured. Also waiting on the spent-response port,
+- **opencoti:** b111 is on HF; the engine pin moves once it is measured.
+  Also waiting on the spent-response port,
   queued behind row K, and the E2B/E4B gate, which needs an HF repo@rev.
 - **mann1x/ollama (fork):** the static `llama/compat/README.md` commit. When
   it lands, xollama takes it by sha.
 
 ## Known gaps
 
-- Docker image not published yet (PARKED, [`plans/docker-image.md`](plans/docker-image.md)).
+- Docker image assembled and validated locally, but not published yet: no
+  `:dev` run has happened ([`plans/docker-image.md`](plans/docker-image.md)).
+  amd64 only.
+- Upstream's `Dockerfile` still sets `OLLAMA_HOST`/`EXPOSE 11434`, which
+  xollama ignores; only `Dockerfile.xollama` makes a reachable image.
 - Open fork-sync items: `docs/protocols/FORK-SYNC.md` § "Open items".
 - Carried upstream PRs: `docs/protocols/CARRIED-PATCHES.md`.
 - UI lockfile Dependabot alerts are inherited from upstream and not addressed.
@@ -136,8 +167,10 @@ runs again on b111 once it is on the HF dev repo.
    - decide on qwen35's single-sequence rule on opencoti, by measurement.
 2. When b111 is on HF: rerun `plans/council-eval/probe/` and
    `cmd/council-run` on it, then move the pin on a measurement.
-3. When b111 is on HF: unpark the Docker image and pin the fork's existing
-   runtime tgz (`33ac42c1…`).
+3. Push `dev` and run
+   `gh workflow run docker-release.yaml --ref dev -f push=true -f channel=dev`
+   for the first `:dev` image. The first GHCR push leaves the package private,
+   so make it public (`docs/features/docker-release.md`, one-time setup).
 
 ## Open decisions
 
