@@ -262,3 +262,51 @@ func TestACanceledTurnReturnsPromptly(t *testing.T) {
 		t.Errorf("err %v, want context.Canceled", err)
 	}
 }
+
+func TestThinkBudgetResolvesARoleSetting(t *testing.T) {
+	for setting, want := range map[string]int{
+		"": 0, "off": 0,
+		"on":     4096, // medium
+		"medium": 4096,
+		"high":   8192,
+		"low":    2048,
+		"2048":   2048,
+	} {
+		if got := ThinkBudget(setting, 16384); got != want {
+			t.Errorf("ThinkBudget(%q, 16384) = %d, want %d", setting, got, want)
+		}
+	}
+}
+
+func TestEachRoleCarriesItsThinkButNeverTheRoute(t *testing.T) {
+	yes := true
+	cfg := FromModel(&xollama.Council{
+		Enabled:     &yes,
+		Planner:     &xollama.CouncilRole{Think: "on"},
+		Researcher:  &xollama.CouncilRole{Think: "high"},
+		Synthesizer: &xollama.CouncilRole{Think: "1024"},
+	}, 0.7)
+	s := &stub{route: `{"route":"council"}`}
+	if _, err := Run(t.Context(), cfg, s, conv, func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	want := map[Role]string{Planner: "on", Researcher: "high", Critic: "", Synthesizer: "1024"}
+	for _, c := range s.calls {
+		isRoute := c.Format != nil && strings.Contains(string(c.Format), "route")
+		switch {
+		case isRoute && c.Think != "":
+			t.Errorf("the routing call carries think %q; it must never reason", c.Think)
+		case !isRoute && c.Think != want[c.Role]:
+			t.Errorf("%s: think %q, want %q", c.Role, c.Think, want[c.Role])
+		}
+	}
+
+	// A direct answer is the planner's, so it reasons as the planner does.
+	s = &stub{route: `{"route":"direct"}`}
+	if _, err := Run(t.Context(), cfg, s, conv, func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	if last := s.calls[len(s.calls)-1]; last.Think != "on" {
+		t.Errorf("direct answer think %q, want the planner's", last.Think)
+	}
+}

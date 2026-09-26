@@ -32,11 +32,13 @@ type councilEngine struct {
 	sessions   []string
 	prompts    []string
 	placements []*llm.Placement
+	budgets    []int // the think budget each call carried
+	predicts   []int // and its num_predict
 }
 
 var councilMarkers = []string{`{"route":"direct"}`, "ROLE: PLANNER. The council", "ROLE: RESEARCHER", "ROLE: CRITIC", "ROLE: SYNTHESIZER"}
 
-func (e *councilEngine) complete(_ context.Context, r llm.CompletionRequest, fn func(llm.CompletionResponse)) error {
+func (e *councilEngine) complete(ctx context.Context, r llm.CompletionRequest, fn func(llm.CompletionResponse)) error {
 	role, at := "chat", -1
 	for i, m := range councilMarkers {
 		if j := strings.LastIndex(r.Prompt, m); j > at {
@@ -48,6 +50,12 @@ func (e *councilEngine) complete(_ context.Context, r llm.CompletionRequest, fn 
 	e.sessions = append(e.sessions, r.SessionID)
 	e.prompts = append(e.prompts, r.Prompt)
 	e.placements = append(e.placements, r.Placement)
+	e.budgets = append(e.budgets, r.ThinkBudget)
+	if r.Options != nil {
+		e.predicts = append(e.predicts, r.Options.NumPredict)
+	} else {
+		e.predicts = append(e.predicts, 0)
+	}
 	e.mu.Unlock()
 
 	reply := map[string]string{
@@ -61,9 +69,20 @@ func (e *councilEngine) complete(_ context.Context, r llm.CompletionRequest, fn 
 	if role == "route" && e.route == `{"route":"direct"}` {
 		reply = e.route
 	}
+	// A member given a budget reasons first, as a thinking model does -- once:
+	// a structured reply is a second pass whose prompt already holds the
+	// reasoning (ChatHandler's structured-outputs restart).
+	if r.ThinkBudget > 0 && !strings.Contains(r.Prompt, memberReasoning) {
+		reply = "<think>" + memberReasoning + "</think>" + reply
+	}
 	// Two pieces, so the stream is a stream.
 	half := len(reply) / 2
 	fn(llm.CompletionResponse{Content: reply[:half]})
+	// A runner stops when its request is canceled, as ChatHandler does to
+	// restart a thinking model under its format.
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	fn(llm.CompletionResponse{Content: reply[half:], Done: true, DoneReason: llm.DoneReasonStop, PromptEvalCount: 10, EvalCount: 5})
 	return nil
 }
@@ -101,7 +120,22 @@ func councilServerWith(t *testing.T, e *councilEngine, council *xollama.Council,
 	return councilServerOn(t, &councilRunner{mockRunner: &mockRunner{contextLength: 32768}, e: e}, council, messages)
 }
 
+const councilTemplate = `{{- if .Tools }}{{ .Tools }}{{ end }}{{- range .Messages }}<{{ .Role }}>{{ .Content }}
+{{ end }}`
+
+// councilThinkingTemplate is councilTemplate for a model that can think.
+const councilThinkingTemplate = `{{- if .Tools }}{{ .Tools }}{{ end }}{{- range .Messages }}<{{ .Role }}>{{ if .Thinking }}<think>{{ .Thinking }}</think>{{ end }}{{ .Content }}
+{{ end }}`
+
+// memberReasoning is what a thinking member reasons; it must never reach the client.
+const memberReasoning = "MEMBER-PRIVATE-REASONING"
+
 func councilServerOn(t *testing.T, mock llm.LlamaServer, council *xollama.Council, messages []api.Message) *Server {
+	t.Helper()
+	return councilServerTemplate(t, mock, council, messages, councilTemplate)
+}
+
+func councilServerTemplate(t *testing.T, mock llm.LlamaServer, council *xollama.Council, messages []api.Message, template string) *Server {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	s := &Server{sched: &Scheduler{
@@ -143,10 +177,9 @@ func councilServerOn(t *testing.T, mock llm.LlamaServer, council *xollama.Counci
 		cfg = &xollama.Config{Version: xollama.SchemaVersion, Council: council}
 	}
 	w := createRequest(t, s.CreateHandler, api.CreateRequest{
-		Model: "council",
-		Files: map[string]string{"test.gguf": digest},
-		Template: `{{- if .Tools }}{{ .Tools }}{{ end }}{{- range .Messages }}<{{ .Role }}>{{ .Content }}
-{{ end }}`,
+		Model:    "council",
+		Files:    map[string]string{"test.gguf": digest},
+		Template: template,
 		Xollama:  cfg,
 		Messages: messages,
 		Stream:   &no,
@@ -358,6 +391,46 @@ func TestTheModelsOwnMessagesReachEachMemberOnce(t *testing.T) {
 	for i, p := range e.prompts {
 		if n := strings.Count(p, "PRIMER-QUESTION"); n != 1 {
 			t.Errorf("%s prompt carries the model's MESSAGE %d times", e.roles[i], n)
+		}
+	}
+}
+
+func TestAThinkingRoleReasonsWithinItsBudgetAndHidesIt(t *testing.T) {
+	e := &councilEngine{route: `{"route":"council"}`}
+	c := councilOn()
+	c.Planner = &xollama.CouncilRole{Think: "on"}
+	c.Researcher = &xollama.CouncilRole{Think: "medium"}
+	c.Synthesizer = &xollama.CouncilRole{Think: "2048"}
+	s := councilServerTemplate(t, &councilRunner{mockRunner: &mockRunner{contextLength: 32768}, e: e}, c, nil, councilThinkingTemplate)
+	thinking, content := joined(chatChunks(t, s, api.ChatRequest{
+		Model:    "council",
+		Options:  map[string]any{"num_ctx": 16384},
+		Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}},
+	}))
+	if !strings.HasPrefix(content, "The sky is blue") {
+		t.Fatalf("answer %q", content)
+	}
+	if strings.Contains(thinking+content, memberReasoning) {
+		t.Errorf("a member's own reasoning reached the client:\nthinking %q\ncontent %q", thinking, content)
+	}
+	if !strings.Contains(thinking, "Rayleigh scattering") {
+		t.Errorf("the researchers' replies are missing from the deliberation: %q", thinking)
+	}
+
+	// medium and on are a quarter of the 16k window; the budget comes on top
+	// of the role's reply cap; the routing call and the critics never reason.
+	want := map[string][2]int{
+		"route":       {0, 16},
+		"planner":     {4096, 512 + 4096},
+		"researcher":  {4096, 384 + 4096},
+		"critic":      {0, 256},
+		"synthesizer": {2048, 1024 + 2048},
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for i, role := range e.roles {
+		if got := [2]int{e.budgets[i], e.predicts[i]}; got != want[role] {
+			t.Errorf("%s: budget, num_predict = %v, want %v", role, got, want[role])
 		}
 	}
 }

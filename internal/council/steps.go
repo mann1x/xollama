@@ -108,7 +108,7 @@ func Decide(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Messag
 func Direct(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, emit Emit) (string, error) {
 	return call(ctx, m, cfg, emit, Request{
 		Role: Planner, Messages: conv, Seed: d.Direct.Seed,
-		Temperature: d.Direct.Temperature, MaxTokens: maxTok(cfg, Synthesizer),
+		Temperature: d.Direct.Temperature, MaxTokens: maxTok(cfg, Synthesizer), Think: cfg.Think[Planner],
 	}, Content)
 }
 
@@ -121,7 +121,7 @@ func planMsg(cfg Config) api.Message {
 func MakePlan(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, emit Emit) (Plan, error) {
 	out, err := call(ctx, m, cfg, emit, Request{
 		Role: Planner, Model: cfg.Models[Planner], Messages: append(clone(conv), planMsg(cfg)),
-		Seed: d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Planner),
+		Seed: d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Planner), Think: cfg.Think[Planner],
 		Format: planSchema(cfg.Researchers),
 	}, Thinking)
 	if err != nil {
@@ -154,7 +154,7 @@ func Research(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Mess
 	dr := d.Researchers[round][i]
 	return call(ctx, m, cfg, emit, Request{
 		Role: Researcher, Index: i, Round: round, Model: cfg.Models[Researcher], Messages: msgs,
-		Seed: dr.Seed, Temperature: dr.Temperature, MaxTokens: maxTok(cfg, Researcher),
+		Seed: dr.Seed, Temperature: dr.Temperature, MaxTokens: maxTok(cfg, Researcher), Think: cfg.Think[Researcher],
 	}, Thinking)
 }
 
@@ -169,7 +169,7 @@ func Critique(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Mess
 	dc := d.Critics[round][i]
 	return call(ctx, m, cfg, emit, Request{
 		Role: Critic, Index: i, Round: round, Model: cfg.Models[Critic], Messages: msgs,
-		Seed: dc.Seed, Temperature: dc.Temperature, MaxTokens: maxTok(cfg, Critic),
+		Seed: dc.Seed, Temperature: dc.Temperature, MaxTokens: maxTok(cfg, Critic), Think: cfg.Think[Critic],
 	}, Thinking)
 }
 
@@ -193,7 +193,7 @@ func Synthesize(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Me
 		user("ROLE: SYNTHESIZER. "+prompt(cfg, Synthesizer)))
 	return call(ctx, m, cfg, emit, Request{
 		Role: Synthesizer, Model: cfg.Models[Synthesizer], Messages: msgs,
-		Seed: d.Synth.Seed, Temperature: d.Synth.Temperature, MaxTokens: maxTok(cfg, Synthesizer),
+		Seed: d.Synth.Seed, Temperature: d.Synth.Temperature, MaxTokens: maxTok(cfg, Synthesizer), Think: cfg.Think[Synthesizer],
 	}, Content)
 }
 

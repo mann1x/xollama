@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"strconv"
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/types/xollama"
@@ -46,6 +47,9 @@ type Request struct {
 	Seed        int64
 	Temperature float64
 	MaxTokens   int
+	// Think is the role's think setting (xollama.CouncilRole.Think), or ""
+	// for none. ThinkBudget resolves it against the member's window.
+	Think string
 	// Format is a JSON schema the reply must follow, or nil for free text.
 	Format json.RawMessage
 }
@@ -99,6 +103,8 @@ type Config struct {
 	// another model.
 	Prompts map[Role]string
 	Models  map[Role]string
+	// Think is each role's think setting; absent means no reasoning.
+	Think map[Role]string
 }
 
 // Built-in defaults: the owner's specification, measured in Phase 0 and 1.
@@ -117,6 +123,7 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 		Temperature: temperature, Jitter: DefaultJitter,
 		MaxRounds: 1, ShowDeliberation: true,
 		MaxTokens: map[Role]int{}, Prompts: map[Role]string{}, Models: map[Role]string{},
+		Think: map[Role]string{},
 	}
 	for r, n := range defaultMaxTokens {
 		cfg.MaxTokens[r] = n
@@ -155,6 +162,9 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 		}
 		if role.Model != "" {
 			cfg.Models[r] = role.Model
+		}
+		if role.Think != "" {
+			cfg.Think[r] = role.Think
 		}
 	}
 	return cfg
@@ -232,4 +242,21 @@ func (c Config) Validate() error {
 		return fmt.Errorf("council: jitter %v out of [0,1)", c.Jitter)
 	}
 	return nil
+}
+
+// ThinkBudget resolves a role's think setting to the tokens a member may spend
+// reasoning, or 0 for none. "on" is "medium"; a level is its share of window,
+// the member's context, by the same table a chat request's think level uses;
+// a positive integer is a budget as it stands.
+func ThinkBudget(setting string, window int) int {
+	switch setting {
+	case "", xollama.CouncilThinkOff:
+		return 0
+	case xollama.CouncilThinkOn:
+		setting = "medium"
+	}
+	if n, err := strconv.Atoi(setting); err == nil {
+		return max(n, 0)
+	}
+	return (&api.ThinkValue{Value: setting}).BudgetTokens(window)
 }

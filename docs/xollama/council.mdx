@@ -76,6 +76,7 @@ Every setting is optional; `xollama tweak model <name> --council` walks them.
 | `council.<role>.prompt` | `--council-<role>-prompt` | built in | Replaces one role's instruction. `@file` reads it from a file. |
 | `council.<role>.model` | `--council-<role>-model` | the council's model | Serves one role with another model. That role then shares no cache with the rest. |
 | `council.<role>.max_tokens` | `--council-<role>-max-tokens` | 512 planner, 384 researcher, 256 critic, 1024 synthesizer | Caps one member's reply. |
+| `council.<role>.think` | `--council-<role>-think` | off | Lets that role reason before it replies: `on` (= `medium`), a level (`minimal` … `max`, a share of the council's context), or a token budget. The budget comes on top of `max_tokens`. The reasoning is never shown, and the model's own `think_budget_message` closes it at the cap. |
 | `council.charter` | `--council-charter` | built in | The system prompt every member shares. |
 | `council.temperature_jitter` | `--council-jitter` | 0.02 | Researchers and critics each draw a temperature within ±2 % of the model's, so parallel members do not say the same thing. |
 | `council.seed` | `--council-seed` | random | A fixed seed makes a council reproducible; every member's seed is derived from it. |
@@ -84,7 +85,8 @@ Every setting is optional; `xollama tweak model <name> --council` walks them.
 | `council.polykv` | `--council-polykv` | `auto` | Shares the conversation's cache between members on opencoti (below). `on` refuses to serve without it, `off` never uses it. |
 | `council.context.window`, `.floor`, `.compact_at` | `--council-window`, `--council-floor`, `--council-compact-at` | the model's context, all or nothing, 0.85 | The conversation's window on opencoti, the least it accepts, and when to compact. |
 
-`<role>` is `planner`, `researcher`, `critic` or `synthesizer`. The defaults
+`<role>` is `planner`, `researcher`, `critic` or `synthesizer`. The planner's
+`think` also covers a direct answer; its routing decision never reasons. The defaults
 are the ones measured while the feature was built; the prompts, in particular,
 are tuned to the planner's routing decision, so change them one at a time.
 

@@ -3,6 +3,7 @@ package xollama
 import (
 	"fmt"
 	"slices"
+	"strconv"
 )
 
 // Council makes a model a council: one model name that, on every chat turn,
@@ -81,6 +82,17 @@ type CouncilRole struct {
 
 	// MaxTokens caps one member's reply. Zero means the role's default.
 	MaxTokens int `json:"max_tokens,omitempty"`
+
+	// Think lets the role's members reason before they reply. Empty or "off"
+	// is the default: no reasoning. "on" means "medium". A level (minimal,
+	// low, medium, high, max) caps the reasoning at that share of the
+	// member's context window, as a think level does for a chat request; a
+	// positive integer is a token budget. The cap is added to max_tokens, so
+	// the reply keeps its own room. The reasoning is never shown: only the
+	// reply joins the deliberation. The planner's routing call never reasons.
+	// When the cap is reached, the model's own think_budget_message closes
+	// the reasoning.
+	Think string `json:"think,omitempty"`
 }
 
 // CouncilContext is the council's window and its compaction trigger. The
@@ -119,6 +131,28 @@ const (
 )
 
 var validCouncilPolyKV = []string{CouncilPolyKVAuto, CouncilPolyKVOn, CouncilPolyKVOff}
+
+// Council think settings besides a positive token count. The levels are the
+// ones a chat request's think accepts.
+const (
+	CouncilThinkOff = "off"
+	CouncilThinkOn  = "on"
+)
+
+var validCouncilThink = []string{CouncilThinkOff, CouncilThinkOn, "minimal", "low", "medium", "high", "max"}
+
+// ValidCouncilThink returns the named think settings a role may state; a
+// positive integer token budget is also valid.
+func ValidCouncilThink() []string { return slices.Clone(validCouncilThink) }
+
+// ValidCouncilThinkValue reports whether v is a think setting a role may state.
+func ValidCouncilThinkValue(v string) bool {
+	if v == "" || slices.Contains(validCouncilThink, v) {
+		return true
+	}
+	n, err := strconv.Atoi(v)
+	return err == nil && n > 0
+}
 
 // ValidCouncilPolyKV returns the PolyKV settings a council may state.
 func ValidCouncilPolyKV() []string { return slices.Clone(validCouncilPolyKV) }
@@ -199,6 +233,9 @@ func (c *Council) validate(engine string) error {
 		}
 		if r.role.Count > 0 && (r.name == RolePlanner || r.name == RoleSynthesizer) {
 			return fmt.Errorf("xollama config: council.%s.count: there is one %s; count applies to researchers and critics", r.name, r.name)
+		}
+		if !ValidCouncilThinkValue(r.role.Think) {
+			return fmt.Errorf("xollama config: council.%s.think %q: want one of %v or a positive token count", r.name, r.role.Think, validCouncilThink)
 		}
 		if r.role.Count > MaxCouncilWidth {
 			return fmt.Errorf("xollama config: council.%s.count %d is above %d; every member is a concurrent request", r.name, r.role.Count, MaxCouncilWidth)

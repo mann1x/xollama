@@ -90,6 +90,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	members.window = councilMemberWindow(m, req, tree)
 	reserve := councilReserve(cfg)
 	if tree != nil {
 		members.tree = tree
@@ -144,6 +145,19 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 
 // councilTemperature is the temperature the model would sample at: the
 // request's, else the Modelfile's, else the default.
+// councilMemberWindow is the context a member works in: the window the
+// council's owner asks for on PolyKV, otherwise the model's num_ctx after the
+// request's options.
+func councilMemberWindow(m *Model, req api.ChatRequest, tree *councilTree) int {
+	if tree != nil && tree.window > 0 {
+		return tree.window
+	}
+	opts := api.DefaultOptions()
+	_ = opts.FromMap(m.Options)
+	_ = opts.FromMap(req.Options)
+	return opts.NumCtx
+}
+
 func councilTemperature(m *Model, req api.ChatRequest) float64 {
 	opts := api.DefaultOptions()
 	_ = opts.FromMap(m.Options)
@@ -295,6 +309,8 @@ type councilMembers struct {
 
 	// tree places the members on PolyKV; nil runs every member on its own.
 	tree *councilTree
+	// window is a member's context, which a role's think level is a share of.
+	window int
 
 	calls  atomic.Int32
 	mu     sync.Mutex
@@ -331,6 +347,16 @@ func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken
 	if r.Model != "" {
 		req.Model = r.Model
 		req.Think = nil // another model may not think at all
+	}
+	// A role that reasons gets its budget as a token count, and room for it
+	// on top of its reply cap: a level sent as is would be a share of
+	// num_predict, the reply cap, and bound nothing useful. The reasoning is
+	// read nowhere below; only the reply joins the deliberation.
+	if budget := council.ThinkBudget(r.Think, cm.window); budget > 0 {
+		req.Think = &api.ThinkValue{Value: budget}
+		if r.MaxTokens > 0 {
+			opts["num_predict"] = r.MaxTokens + budget
+		}
 	}
 	placement, worker := cm.place(ctx, r, &req)
 	body, err := json.Marshal(req)

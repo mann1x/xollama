@@ -1,6 +1,6 @@
 # Agentic Council Chat
 
-**Status:** DONE · **Phase:** all five closed 2026-09-26 · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
+**Status:** ACTIVE · **Phase:** 6 proposed (phases 0–5 closed 2026-09-26) · **Index:** [MASTER_PLAN](MASTER_PLAN.md)
 
 In this chat mode, one model name is a *council*. A client connects to xollama
 the usual way: `/api/chat`, the OpenAI or Anthropic API, the CLI, or the
@@ -19,6 +19,7 @@ KV cache and prefills only its own role and turn.
 - [x] Phase 3 — the runner (2026-09-26; live on b111, results below)
 - [x] Phase 4 — PolyKV path (2026-09-26; A/B on b111, results below)
 - [x] Phase 5 — surfaces and docs (2026-09-26; results below)
+- [ ] Phase 6 — PolyKV sizing and pressure-driven compaction (proposed 2026-09-26; below)
 
 ## What the user sees
 - `xollama create my-council -f Modelfile` (or `xollama tweak model my-council`)
@@ -687,6 +688,68 @@ upstream owns. Ideas worth borrowing:
   Linux and compile for Windows. Not yet exercised in the running desktop
   app.
 
+## Phase 6 — PolyKV sizing and pressure-driven compaction (proposed 2026-09-26)
+
+The owner's direction (2026-09-26), after the MTP IQ2_M failed to load at
+131k:
+
+1. On opencoti **with PolyKV**, the engine has one unified KV pool. A council
+   needs one session. Its roles run as sub-sessions on pools forked from it.
+   Common role instructions belong in the shared prefix. Parallel slots are
+   not sized up front: opencoti's elastic slots grow on demand.
+2. `num_ctx` reserves that many cells for the session. A request without it
+   takes the whole pool (`session_ctx_max`). New behaviour: under PolyKV,
+   `num_ctx 0` sends no `num_ctx` and lets the engine size the pool.
+   Otherwise xollama keeps upstream's default, 32k on a 24 GB card.
+3. KV cache K f16, V q8_0.
+4. No `OLLAMA_NUM_PARALLEL` with opencoti. Parallelism, where wanted, comes
+   from the model's xollama config.
+5. Compaction follows the owner session's context **pressure**: compact at
+   0.85 during a turn, and at 0.75 while idle, after the answer and before
+   the next message, so the next turn starts short. This is the integration
+   guide's model (`/shared/dev/docs/cerebriline-polykv-integration.md` §2.7,
+   §6.5).
+6. **The split stays.** Stock llama.cpp, and opencoti without PolyKV, keep
+   today's behaviour byte for byte. Everything here applies only where the
+   runner serves PolyKV and the council's `polykv` is not `off`.
+
+**Measured first (b111, 3090, MTP IQ2_M, `num_ctx 131072`).**
+
+- The 131k load failure came from the test script's `XOLLAMA_NUM_PARALLEL=4`.
+  xollama launches `-c = num_ctx × parallel` (`llm/llama_server.go`), so the
+  pool was 524,288 cells. The compute buffers alone (main and MTP context)
+  were 4.6 GiB each.
+- Without the override, with `kv {k: f16, v: q8_0}`, the launch is
+  `-c 131072 -np 1 --max-parallel 4 --kv-unified --polykv-max-pools 4`.
+  Compute buffers are 0.45–1.5 GiB, 10.4 GB of VRAM is in use, and a full
+  council turn finishes in 52 s (5,501 prompt tokens, 4,627 cached, 1,962
+  generated, MTP drafting on). There were no refusals.
+- The fit estimate omits the MTP context's own recurrent-state cells. This
+  was reported to opencoti (#349). It no longer blocks this model.
+
+**What exists already.** Dynamic slots (`slots.max`, `--max-parallel`) and
+per-model `kv.k`/`kv.v`. The council's owner session, its pool tree and its
+sub-session workers match point 1. `begin` reads the owner's `/kv` row.
+
+**Proposed changes (PolyKV path only):**
+
+- **Trigger.** Compact when the owner's `/kv` `allocations[].pressure` is at or
+  above `compact_at` (0.85), in place of the rendered-token budget.
+  The token budget stays for the non-PolyKV paths.
+- **Idle compaction.** After the answer, if the pressure is at or above a new
+  `council.context.idle_compact_at` (default 0.75), summarise in the
+  background and cache the summary. Then warm the owner session with the
+  compacted prefix, so the next message finds it built. The next turn uses a
+  ready summary whenever one exists for exactly its old turns.
+- **`num_ctx 0`.** Under PolyKV only: send no `num_ctx` (the owner's
+  placement included) and launch `-c 0` (the engine sizes the pool from the
+  model). Open: whether the council's owner may then book a held window at
+  all. The guide's rule 2 says pools need an owner allocation, and an
+  allocation without `num_ctx` is per-request.
+- **Parallel.** A per-model `slots.live` (the boot slot count), so no
+  environment variable is needed; `slots.max` exists.
+- **Docs.** The three paths side by side: what each sends and launches.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).
@@ -747,3 +810,9 @@ upstream owns. Ideas worth borrowing:
   conversation's pool instead of rebuilding P1. Its own plan,
   [council-continue-pool.md](council-continue-pool.md), waits for a build
   with 0406 on the HF dev repo (the owner's call).
+- 2026-09-26 — Members may think, per role (`council.<role>.think`), with
+  their reasoning hidden. The default is `medium`, it is configurable, and the
+  cap message is the model's own. The council sends an explicit token
+  budget, not a level, because a level is a share of `num_predict`, and for a
+  member that is its reply cap. Live, `medium` at 131k (32k tokens per
+  member) let a researcher loop past 29k tokens. The member default is open.

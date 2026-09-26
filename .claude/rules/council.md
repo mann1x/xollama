@@ -43,7 +43,13 @@ paths:
   `councilMemberKey` gin context key — never a header, so no client can set it
   and no member can convene the council again.
 - Every member is an ordinary chat turn served in process through
-  `ChatHandler`, thinking off. Each parallel member gets its own engine session
+  `ChatHandler`, thinking off unless its role states `council.<role>.think`.
+  A thinking role is sent an explicit **token** budget
+  (`council.ThinkBudget(setting, cm.window)`), never a level: a level is a
+  share of `num_predict`, which for a member is its reply cap. `num_predict`
+  becomes `max_tokens` + budget. `Stream` reads only `Message.Content`, so
+  the reasoning is dropped. The route-only decision never carries `think`.
+  The cap message is the model's `think_budget_message`; never set one here. Each parallel member gets its own engine session
   named under the conversation's (`<session>~researcher-1`); the planner keeps
   the conversation's session so a direct answer hits the same cache as a plain
   chat. Deliberation streams as thinking, the answer as content, through

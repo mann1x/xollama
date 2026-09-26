@@ -5,6 +5,34 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Council members can think; the MTP IQ2_M runs councils at 131k; Phase 6 proposed.**
+> - `council.<role>.think` (`off` | `on` = medium | level | token count), with
+>   `tweak --council-<role>-think`. The council resolves the level against the
+>   member's window and sends an explicit token budget. It raises
+>   `num_predict` to the reply cap plus the budget. It never shows the
+>   reasoning, and the model's `think_budget_message` closes it at the cap.
+>   The routing call never reasons. Tests at the schema, runner and server
+>   level; each fails under a mutation.
+> - Live, the defaults proved unusable. `medium` at a 131,072 window is
+>   32,768 tokens per member, and a researcher looped ("Wait, I should
+>   check…") past 29k tokens. The run was stopped after 11 min. The default
+>   budget for members is an open decision.
+> - Stores: `mannix/omnimerge-v4-mtp:IQ2_M` (MTP, 65 blocks) replaces the
+>   non-MTP IQ2_M in both. The service store's
+>   `omnimerge-v4-mtp_tb:27b-iq2m-128k` is recreated on it. The old tag's
+>   CRLF Modelfile had swallowed its RENDERER, PARSER and think_budget into
+>   the TEMPLATE, so the new tag takes them from `…:27b-q4km-128k`. The
+>   council store holds `omni-council` and `omni-council-think` (qwen3.5
+>   renderer, `num_ctx 131072`, `kv {k: f16, v: q8_0}`).
+> - 131k with MTP: it failed only because the test script set
+>   `XOLLAMA_NUM_PARALLEL=4`, which makes `-c = 4 × 131072`. Without it: `-c
+>   131072 -np 1 --max-parallel 4`, 10.4 GB, and a full council turn in 52 s.
+>   The engine's fit omits the MTP context's recurrent-state cells
+>   (opencoti #349).
+> - Phase 6 is proposed in the plan: PolyKV-only sizing, `num_ctx 0`,
+>   compaction on the owner's pressure (0.85, and 0.75 while idle), per-model
+>   `slots.live`. Stock llama.cpp and opencoti without PolyKV stay as they are.
+
 > **2026-09-26 — `continue_pool` planned, waiting for an HF dev publish.**
 > - New plan [`plans/council-continue-pool.md`](plans/council-continue-pool.md)
 >   (WAITING). It starts when an opencoti build carrying patch 0406
@@ -284,7 +312,7 @@ runs again on b111 once it is on the HF dev repo.
 - **opencoti:** the pin is on b111. The paired re-run (#336) did not
   reproduce the overflow deficit, and multislot is at most −7.6 % median,
   inside the spread; no bisect, agreed with opencoti (#339). Also waiting
-  on: their answer on the `rs` cache at 131k (#345), and an HF dev publish
+  on: an HF dev publish
   of patch 0406 (`continue_pool`, #343). The Linux Vulkan `.so`
   comes in their next dev publish. Also waiting on the spent-response port
   and the E2B/E4B gate, which needs an HF repo@rev.
@@ -301,26 +329,33 @@ runs again on b111 once it is on the HF dev repo.
   Ollama API. On a server bound beyond localhost, anyone who can reach the
   port can close sessions or release pools (stated in
   `docs/xollama/introspection.mdx`).
-- On a hybrid model at a large context (b111, `-c 524288`) the engine's
-  elastic recurrent-state cache does not grow past 4 committed cells; it
-  refuses instead. A council copes by releasing finished layers, and
-  other parallel work queues. Reported to opencoti.
+- On a hybrid model at a large context (b111, `-c 524288`) the engine keeps
+  4 recurrent-state cells and refuses a fifth sequence. This is intended
+  (opencoti #348): the cache grows only into free VRAM beyond a 1 GiB margin
+  (`OPENCOTI_RS_VRAM_MARGIN_MIB`), and the base KV reservation leaves none.
+  A council copes by releasing finished layers, and other parallel work
+  queues.
 - Open fork-sync items: `docs/protocols/FORK-SYNC.md` § "Open items".
 - Carried upstream PRs: `docs/protocols/CARRIED-PATCHES.md`.
 - UI lockfile Dependabot alerts are inherited from upstream and not addressed.
 
 ## Immediate next steps (in order)
 
-1. Try the council badge and the Deliberation toggle in the running desktop
+1. Agree Phase 6 of the council plan and the default thinking budget for
+   members; then build it.
+2. Try the council badge and the Deliberation toggle in the running desktop
    app, which needs a Windows or macOS build.
-2. Move the engine pin when opencoti answers on the `rs` cache (#345), and
-   only on a measurement.
-3. When an opencoti build with patch 0406 is on the HF dev repo, start
+3. Move the engine pin only on a measurement. The `rs` question (#345) is
+   answered: working as intended.
+4. When an opencoti build with patch 0406 is on the HF dev repo, start
    `plans/council-continue-pool.md` Phase 0.
 
 ## Open decisions
 
-- None open.
+- The default thinking budget for council members. `medium` of the member's
+  context is 32k tokens at 131k, which proved far too long live.
+- Phase 6 of the council plan (proposed), including how `num_ctx 0` and an
+  owner allocation fit together under PolyKV.
 
 ## Maintenance protocol
 

@@ -168,6 +168,32 @@ func roleFields(name, what string) []field {
 				return setInt(v, &councilRole(c, name).MaxTokens)
 			},
 		},
+		{
+			name:  flag + "-think",
+			path:  "council." + name + ".think",
+			title: "Council " + name + " thinking — let it reason before it replies",
+			help: "Unset or off: no reasoning, the tested default. on is medium. A level\n" +
+				"(minimal, low, medium, high, max) caps the reasoning at that share of the\n" +
+				"council's context; a number is a token budget. The cap comes on top of the\n" +
+				"reply cap, the reasoning is never shown, and the model's own\n" +
+				"think_budget_message closes it at the cap. Every member takes longer.",
+			kind:    kindText,
+			quiet:   true,
+			blocked: councilOff,
+			get:     roleGet(name, func(r *xollama.CouncilRole) string { return r.Think }),
+			set: func(c *xollama.Config, v string) error {
+				s := strings.ToLower(strings.TrimSpace(v))
+				switch s {
+				case "unset", "clear", "default", "none":
+					s = ""
+				}
+				if !xollama.ValidCouncilThinkValue(s) {
+					return fmt.Errorf("want one of %v or a positive token count", xollama.ValidCouncilThink())
+				}
+				councilRole(c, name).Think = s
+				return nil
+			},
+		},
 	}
 }
 

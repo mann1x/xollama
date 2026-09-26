@@ -33,7 +33,10 @@ hunk in an upstream file.
 2. The planner's first call is route-only, under a `json_schema` grammar. A
    malformed decision goes to the council; the question is never lost.
 3. Every member is an ordinary chat turn through `ChatHandler`, in process,
-   thinking off, with its own seed; researchers and critics draw a temperature
+   thinking off unless its role states `think` (then `think` is an explicit
+   token budget from `council.ThinkBudget` against the member's window, and
+   `num_predict` = `max_tokens` + budget; only `Message.Content` is read, so
+   the reasoning is dropped; the routing call never reasons), with its own seed; researchers and critics draw a temperature
    within `temperature_jitter`. The planner runs on the conversation's session;
    the others on `<session>~researcher-N`, `~critic-N`, `~synthesizer`.
 4. The deliberation streams as thinking, one member holding the floor at a
@@ -85,7 +88,12 @@ council turn 3,139 → 525 tokens, peak KV cells about −40 %, wall time at par
 ## Tests
 
 - `internal/council/council_test.go` — routing, fan-out, seeds and jitter,
-  the revise loop.
+  the revise loop, `TestThinkBudgetResolvesARoleSetting`,
+  `TestEachRoleCarriesItsThinkButNeverTheRoute`.
+- `server/council_test.go` `TestAThinkingRoleReasonsWithinItsBudgetAndHidesIt`
+  — budgets and `num_predict` per role, and a member's reasoning never
+  reaching the client (the fake engine re-runs a structured reply as
+  `ChatHandler`'s structured-outputs restart does).
 - `server/council_test.go` — `TestAModelWithoutACouncilIsUntouched`,
   `TestToolsAndFormatBypassTheCouncil`, `TestEveryParallelMemberHasItsOwnSession`,
   `TestParallelMembersReadOneAtATime`, `TestTheModelsOwnMessagesReachEachMemberOnce`.
