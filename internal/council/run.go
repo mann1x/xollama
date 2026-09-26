@@ -8,8 +8,9 @@ import (
 	"github.com/ollama/ollama/api"
 )
 
-// Run answers one turn. conv is the conversation as the members see it, the
-// charter already its system message. The first member error cancels the
+// Run answers one turn. conv is the conversation as every member sends it:
+// an empty system message, then the turns (plans/agentic-council-chat.md,
+// 9.3). The charter and the client's system prompt come from cfg. The first member error cancels the
 // others and is returned; so does ctx.
 func Run(ctx context.Context, cfg Config, m Model, conv []api.Message, emit Emit) (Result, error) {
 	if err := cfg.Validate(); err != nil {

@@ -109,6 +109,15 @@ type Config struct {
 	Hosts map[Role]string
 	// Think is each role's think setting; absent means no reasoning.
 	Think map[Role]string
+	// Charter is the council's standing instruction. It opens the planner's
+	// plan request, which every later member continues from, so it is held
+	// once per turn and in no member's system message.
+	Charter string
+	// System is the client's system prompt, else the model's. The synthesizer
+	// reads it after its own role prompt, and a direct answer after the
+	// conversation: the members that answer the user know what the user
+	// expects, and every member's prefix stays the same.
+	System string
 }
 
 // Built-in defaults: the owner's specification, measured in Phase 0 and 1.
@@ -128,6 +137,7 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 		MaxRounds: 1, ShowDeliberation: true,
 		MaxTokens: map[Role]int{}, Prompts: map[Role]string{}, Models: map[Role]string{},
 		Hosts: map[Role]string{}, Think: map[Role]string{},
+		Charter: Charter(c),
 	}
 	for r, n := range defaultMaxTokens {
 		cfg.MaxTokens[r] = n
@@ -177,7 +187,7 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 	return cfg
 }
 
-// Charter returns the system prompt every member shares.
+// Charter returns the council's standing instruction (Config.Charter).
 func Charter(c *xollama.Council) string {
 	if c != nil && c.Charter != "" {
 		return c.Charter

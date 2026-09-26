@@ -95,7 +95,8 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		return
 	}
 
-	conv := councilConversation(council.Charter(cc), m, req.Messages)
+	conv, system := councilConversation(m, req.Messages)
+	cfg.System = system
 	members := &councilMembers{
 		s:       s,
 		base:    req,
@@ -241,30 +242,25 @@ func (s *Server) councilCompactorFor(ctx context.Context, m *Model, req api.Chat
 	return newCouncilCompactor(members, nil, cc, cfg, councilRenderer(m2, r, opts), r.Tokenize, opts.NumCtx, reserve)
 }
 
-// councilConversation is the conversation as every member sends it: one system
-// message holding the charter, after whatever system prompt the model or the
-// client stated, then the turns. Members are served through ChatHandler, which
-// adds the model's system prompt only when the conversation states none -- so
-// it is folded in here, where the charter can follow it. The model's own
-// MESSAGE turns are not: ChatHandler prepends those to every request, as
-// upstream does, and folding them in here too sent them twice.
-func councilConversation(charter string, m *Model, msgs []api.Message) []api.Message {
-	var system []string
-	if m.System != "" {
-		system = append(system, m.System)
-	}
+// councilConversation is the conversation as every member sends it: an empty
+// system message, then the turns -- the prefix every member shares, and the
+// one a client's PolyKV root is cut from (plans/agentic-council-chat.md, 9.3).
+// The system prompt it displaces -- the client's, else the model's -- is
+// returned for the members that answer the user (council.Config.System). The
+// empty message is explicit because ChatHandler adds the model's system prompt
+// to a conversation that states none. The model's own MESSAGE turns are not
+// folded in: ChatHandler prepends those to every request, as upstream does.
+func councilConversation(m *Model, msgs []api.Message) ([]api.Message, string) {
+	system := m.System
 	var turns []api.Message
 	for _, msg := range msgs {
-		if msg.Role == "system" {
-			if len(turns) == 0 {
-				system = append(system[:0:0], msg.Content) // a client's system prompt replaces the model's
-				continue
-			}
+		if msg.Role == "system" && len(turns) == 0 {
+			system = msg.Content // a client's system prompt replaces the model's
+			continue
 		}
 		turns = append(turns, msg)
 	}
-	system = append(system, charter)
-	return append([]api.Message{{Role: "system", Content: strings.Join(system, "\n\n")}}, turns...)
+	return append([]api.Message{{Role: "system"}}, turns...), strings.TrimSpace(system)
 }
 
 func councilSeeds(d council.Draws) []int64 {

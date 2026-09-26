@@ -1427,6 +1427,39 @@ the system message, so a client's P0 of the system prompt cannot be a prefix.
 It becomes possible with 9.3 (empty system, then tools), and the question of
 what P0 holds went to Cerebriline in mail #389.
 
+**9.3 built (2026-09-26): one shared prefix.** Every member sends an empty
+system message, then the conversation (`councilConversation`). The charter
+opens the planner's route and plan requests, so every later member reads it
+through the plan layer. The client's system prompt (else the model's) goes to
+the synthesizer after its role prompt and to a direct answer after the
+conversation (`Config.System`). `conversationEnd` uses
+`council.IsPlannerRequest`. Tests: `TestEveryMemberSharesOnePrefix`,
+`TestTheRouteDecisionReadsTheCharter` and `TestEveryMemberStartsFromAnEmptySystem`.
+Four compiling mutants each fail one (synthesizer or direct answer without the
+system prompt, charter after the role, system kept in the conversation).
+Three compaction fixtures were re-sized, since the system message no longer
+holds the charter's ~200 words.
+
+A/B on b133 (`council-layout-ab.py`): six storage questions on fresh sessions,
+with a fixed history and a client system prompt carrying a checkable format
+rule; three follow-ups; each session closed after its question.
+
+| Layout | Council-routed | Council turn wall / first token | Eval | Uncached prompt | Format rule kept |
+|---|---|---|---|---|---|
+| A (charter + system in the system message) | 6/6 | 26.4 s / 23.0 s | 917 | 363 | 9/9 |
+| B (9.3, route request without the charter) | 4/6 | 40.4 s / 36.0 s | 1,575 | 648 | 9/9 |
+| B2 (9.3, charter on the route request too; shipped) | 6/6 | 38.6 s / 34.6 s | 1,509 | 846 | 9/9 |
+
+The cost is generation, not prefill. In A the client's "three bullets" rule
+sat in every member's system message, so researchers and critics obeyed it
+and wrote short: 709/748 chars per researcher, against 1,511/1,628 in B on the
+same question. In 9.3 they write to their caps, which is what the owner's
+layout intends. B's two direct answers were the route decision losing the
+charter's definition of trivial; B2 restores it. The uncached rise (about 480
+tokens) is the charter read by both planner requests: on this hybrid model the
+slot cannot reuse a partial prefix. The caps (`council.<role>.max_tokens`) set
+the time if it matters.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).

@@ -134,8 +134,14 @@ short call.
 - **Every member is an ordinary chat turn on the model**, served inside the
   server with the model's own template, parser and engine. Thinking is off for
   each member; the council's deliberation is the members' replies.
-- **The system prompt** every member sees is the model's (or the client's, if
-  it sends one), followed by the charter.
+- **Every member's system message is empty**, then comes the conversation:
+  one prefix all of them share, and the one a client's PolyKV pool is cut
+  from. The charter opens the planner's route and plan requests, which the
+  other members continue from. The system prompt, the client's or else the
+  model's, goes to the synthesizer only, as a message after its own role
+  prompt, and to the planner's direct answer. The members that answer the
+  user know what the user expects; the others research and review without
+  the answer's format rules.
 - **Each parallel member has its own engine session**, named after the
   conversation's (`<session>~researcher-1`, `~critic-2`, `~synthesizer`), so
   members never wait on one slot. The planner keeps the conversation's own

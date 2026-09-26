@@ -386,3 +386,68 @@ func TestAnEmptyReplyFromElsewhereFallsBack(t *testing.T) {
 		t.Errorf("%d researcher calls, want 2 elsewhere and 2 answered by the council's model", n)
 	}
 }
+
+// The shared-prefix layout (plans/agentic-council-chat.md, 9.3): every member
+// sends the conversation as it came, the charter opens the plan request every
+// later member continues from, and only the members that answer the user read
+// the client's system prompt, after their own role.
+func TestEveryMemberSharesOnePrefix(t *testing.T) {
+	shared := []api.Message{{Role: "system"}, {Role: "user", Content: "Why is the sky blue?"}}
+	for _, route := range []string{`{"route":"council"}`, `{"route":"direct"}`} {
+		for _, sys := range []string{"", "Answer in three bullets."} {
+			s := &stub{route: route}
+			cfg := FromModel(nil, 0.7)
+			cfg.System = sys
+			if _, err := Run(context.Background(), cfg, s, shared, func(Event) {}); err != nil {
+				t.Fatal(err)
+			}
+			for _, c := range s.calls {
+				if len(c.Messages) < len(shared) || c.Messages[0].Content != "" || c.Messages[1].Content != shared[1].Content {
+					t.Errorf("%s: does not start with the conversation: %+v", c.Role, c.Messages)
+					continue
+				}
+				last := c.Messages[len(c.Messages)-1].Content
+				answers := c.Role == Synthesizer || (route == `{"route":"direct"}` && c.Format == nil)
+				switch {
+				case sys != "" && answers && !strings.HasSuffix(last, sys):
+					t.Errorf("%s answers the user but its last message is %q", c.Role, last)
+				case !answers || sys == "":
+					for _, m := range c.Messages {
+						if sys != "" && strings.Contains(m.Content, sys) {
+							t.Errorf("%s read the system prompt", c.Role)
+						}
+					}
+				}
+				if c.Role == Planner && c.Format != nil && strings.Contains(string(c.Format), "briefs") {
+					if !strings.HasPrefix(c.Messages[len(shared)].Content, DefaultCharter) {
+						t.Errorf("the plan request does not open with the charter: %q", c.Messages[len(shared)].Content)
+					}
+				}
+				if c.Role != Planner && route == `{"route":"council"}` && !strings.HasPrefix(c.Messages[len(shared)].Content, DefaultCharter) {
+					t.Errorf("%s does not continue from the plan request", c.Role)
+				}
+			}
+			if route == `{"route":"direct"}` && sys == "" {
+				direct := s.calls[len(s.calls)-1]
+				if len(direct.Messages) != len(shared) {
+					t.Errorf("a direct answer with no system prompt is not the plain turn: %+v", direct.Messages)
+				}
+			}
+		}
+	}
+	if !IsPlannerRequest(planMsg(FromModel(nil, 0)).Content) || !IsPlannerRequest(routeMsg) || IsPlannerRequest("Why is the sky blue?") {
+		t.Error("IsPlannerRequest misreads the planner's instructions")
+	}
+}
+
+// The route decision reads the charter too: it defines what is trivial.
+func TestTheRouteDecisionReadsTheCharter(t *testing.T) {
+	s := &stub{route: `{"route":"direct"}`}
+	if _, err := Run(context.Background(), FromModel(nil, 0.7), s, []api.Message{{Role: "system"}, {Role: "user", Content: "Hi"}}, func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	route := s.calls[0]
+	if route.Format == nil || !strings.HasPrefix(route.Messages[len(route.Messages)-1].Content, DefaultCharter) {
+		t.Errorf("the route decision does not open with the charter: %+v", route.Messages)
+	}
+}

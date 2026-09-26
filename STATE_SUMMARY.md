@@ -5,6 +5,18 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-26 — Phase 9.3: the council shares one prefix.**
+> - Every member sends an empty system message, then the conversation. The
+>   charter opens the planner's route and plan requests. The client's system
+>   prompt goes only to the synthesizer and a direct answer.
+> - A/B on b133, today's layout against 9.3: same routing (6/6 once the route
+>   request carries the charter; 4/6 without it) and the same format adherence
+>   (9/9). A council turn takes 38.6 s instead of 26.4 s, because researchers
+>   and critics are no longer held to the client's answer format and write to
+>   their caps.
+> - Left: tools on council turns (9.5) and the sealed state (9.4); the
+>   compact-writer A/B waits for opencoti 0412.
+
 > **2026-09-26 — Phase 9.2: client placement (`client_placement_v1`).**
 > - `placement {pool_id, num_ctx, num_ctx_min}` on `/api/chat`. A plain turn
 >   hands all three to the engine. A council turn forks its conversation root

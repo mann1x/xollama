@@ -574,7 +574,7 @@ func (t *councilTree) conversationLayer(ctx context.Context, msgs []api.Message,
 // planner's instruction, which every council message sequence carries.
 func conversationEnd(msgs []api.Message) int {
 	for i, m := range msgs {
-		if m.Role == "user" && strings.HasPrefix(m.Content, "ROLE: PLANNER.") {
+		if m.Role == "user" && council.IsPlannerRequest(m.Content) {
 			return i
 		}
 	}

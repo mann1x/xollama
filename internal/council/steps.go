@@ -12,9 +12,9 @@ import (
 	"github.com/ollama/ollama/api"
 )
 
-// DefaultCharter is the system prompt every member shares. It matches the
-// Phase 0 probe (plans/council-eval/probe/council_tree.py), so the numbers
-// measured there describe these bytes.
+// DefaultCharter is the council's standing instruction. Phase 0 measured it as
+// the members' system prompt (plans/council-eval/probe/council_tree.py); since
+// Phase 9.3 it opens the planner's plan request instead (Config.Charter).
 const DefaultCharter = `You are one member of a council of assistants that answers a user together.
 The council has four roles. The PLANNER reads the conversation and decides whether
 the latest user message needs the council at all; trivial messages (greetings,
@@ -28,6 +28,14 @@ single answer the user receives, using the findings and honouring the critiques.
 Every member writes plainly, cites the part of the conversation it relies on, and
 never invents facts about documents it was given. Your role for this turn is
 stated in the last message.`
+
+// systemIntro introduces the client's system prompt to the members that
+// answer the user (Config.System).
+const systemIntro = "The user's system prompt for this conversation. Your answer follows it:\n\n"
+
+// directIntro leads a direct answer's copy of it: the message the answer is
+// for is the one before.
+const directIntro = "Answer the user's message above. "
 
 // The role instructions a model's council may replace (council.<role>.prompt).
 // The parts the council fills in -- a researcher's brief, the revise marker,
@@ -121,7 +129,7 @@ func memberWhere(req Request) string {
 // continues the conversation, which is the council model's to give.
 func Decide(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message) (string, error) {
 	out, err := m.Stream(ctx, Request{
-		Role: Planner, Messages: append(clone(conv), user(routeMsg)),
+		Role: Planner, Messages: append(clone(conv), routeRequest(cfg)),
 		Seed: d.Decide.Seed, Temperature: d.Decide.Temperature, MaxTokens: 16, Format: routeSchema,
 	}, func(string) {})
 	if err != nil {
@@ -136,17 +144,49 @@ func Decide(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Messag
 	return "council", nil
 }
 
-// Direct answers a trivial message: an ordinary turn, streamed as content.
+// Direct answers a trivial message: an ordinary turn, streamed as content,
+// followed by the client's system prompt when there is one.
 func Direct(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, emit Emit) (string, error) {
+	msgs := conv
+	if cfg.System != "" {
+		msgs = append(clone(conv), user(directIntro+systemIntro+cfg.System))
+	}
 	return call(ctx, m, cfg, emit, Request{
-		Role: Planner, Messages: conv, Seed: d.Direct.Seed,
+		Role: Planner, Messages: msgs, Seed: d.Direct.Seed,
 		Temperature: d.Direct.Temperature, MaxTokens: maxTok(cfg, Synthesizer), Think: cfg.Think[Planner],
 	}, Content)
 }
 
+// plannerRole opens every planner instruction the council adds: the route
+// decision and the plan request, which carries the charter before it.
+const plannerRole = "ROLE: PLANNER."
+
+// IsPlannerRequest reports whether a message is one of the planner's
+// instructions, the first message the council adds after the conversation.
+func IsPlannerRequest(s string) bool {
+	return strings.HasPrefix(s, plannerRole) || strings.Contains(s, "\n\n"+plannerRole+" ")
+}
+
+// routeRequest is the route decision. The charter opens it as it opens the
+// plan request: it is what says which messages are trivial, and with the
+// system message empty the decision has no other source for it (measured on
+// b133: without it, two of six storage questions were answered directly).
+func routeRequest(cfg Config) api.Message {
+	if cfg.Charter == "" {
+		return user(routeMsg)
+	}
+	return user(cfg.Charter + "\n\n" + routeMsg)
+}
+
+// planMsg is the planner's plan request. The charter opens it: every later
+// member continues from it (base), so the charter is prefilled once a turn.
 func planMsg(cfg Config) api.Message {
-	return user(fmt.Sprintf(`ROLE: PLANNER. %s Reply with JSON only: {"plan":"<the plan>","briefs":[<exactly %d researcher briefs>]}.`,
-		prompt(cfg, Planner), cfg.Researchers))
+	s := fmt.Sprintf(`ROLE: PLANNER. %s Reply with JSON only: {"plan":"<the plan>","briefs":[<exactly %d researcher briefs>]}.`,
+		prompt(cfg, Planner), cfg.Researchers)
+	if cfg.Charter != "" {
+		s = cfg.Charter + "\n\n" + s
+	}
+	return user(s)
 }
 
 // MakePlan writes the plan and one brief per researcher.
@@ -223,6 +263,9 @@ func Synthesize(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Me
 	msgs := append(base(cfg, conv, p), user(joinNumbered("FINDINGS OF RESEARCHER", findings)),
 		user(joinNumbered("CRITIQUE", critiques)),
 		user("ROLE: SYNTHESIZER. "+prompt(cfg, Synthesizer)))
+	if cfg.System != "" {
+		msgs = append(msgs, user(systemIntro+cfg.System))
+	}
 	return call(ctx, m, cfg, emit, Request{
 		Role: Synthesizer, Model: cfg.Models[Synthesizer], Host: cfg.Hosts[Synthesizer], Messages: msgs,
 		Seed: d.Synth.Seed, Temperature: d.Synth.Temperature, MaxTokens: maxTok(cfg, Synthesizer), Think: cfg.Think[Synthesizer],

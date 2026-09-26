@@ -40,6 +40,15 @@ paths:
 - `DefaultCharter` in `internal/council/steps.go` matches the Phase 0 probe
   (`plans/council-eval/probe/council_tree.py`). Change its bytes and the
   measured numbers no longer describe the shipped prompt — re-measure.
+- **The prompt layout (9.3) is one shared prefix.** Every member sends an
+  explicitly empty system message (explicit, or ChatHandler adds the model's
+  SYSTEM), then the conversation. The charter opens the route and plan
+  requests (`routeRequest`, `planMsg`); without it the route decision sends
+  real questions direct (measured: 2 of 6). `Config.System` (the client's,
+  else the model's system prompt) goes only to the synthesizer and a direct
+  answer, after their role. `conversationEnd` finds the council's first message
+  with `council.IsPlannerRequest`, never a bare `HasPrefix("ROLE: PLANNER.")`:
+  the charter now precedes it.
 - `server/council.go` is additive; the hook is one `if councilServes(...)` in
   `ChatHandler` (`server/routes.go`), after the remote-model branch and before
   the capability checks. Registry row `council` in

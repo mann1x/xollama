@@ -78,7 +78,7 @@ Every setting is optional; `xollama tweak model <name> --council` walks them.
 | `council.<role>.host` | `--council-<role>-host` | this server | Serves one role on another ollama or xollama server, such as `http://gpu2:11434`; needs `model`, named as that server names it. The server must allow the host (below). |
 | `council.<role>.max_tokens` | `--council-<role>-max-tokens` | 512 planner, 384 researcher, 256 critic, 1024 synthesizer | Caps one member's reply. |
 | `council.<role>.think` | `--council-<role>-think` | off | Lets that role reason before it replies: `on` (a 2048-token budget), a token budget such as `4096`, or a level (`minimal` … `max`, a share of the council's context: `medium` at 131k is 32k tokens per member). The budget comes on top of `max_tokens`. The reasoning is never shown, and the model's own `think_budget_message` closes it at the cap. A cloud model or a stock ollama takes no budget: that role is sent `think: true`, and only its reply cap (`max_tokens` + budget) bounds it. |
-| `council.charter` | `--council-charter` | built in | The system prompt every member shares. |
+| `council.charter` | `--council-charter` | built in | The council's standing instruction. It opens the planner's route and plan requests, which every later member continues from; no member's system message carries it. |
 | `council.temperature_jitter` | `--council-jitter` | 0.02 | Researchers and critics each draw a temperature within ±2 % of the model's, so parallel members do not say the same thing. |
 | `council.seed` | `--council-seed` | random | A fixed seed makes a council reproducible; every member's seed is derived from it. |
 | `council.max_rounds` | `--council-max-rounds` | 1 | Lets the critics send the research back, up to 4 rounds in all. |

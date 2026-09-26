@@ -416,15 +416,18 @@ func TestAModelWithoutACouncilIsUntouched(t *testing.T) {
 	}
 }
 
-func TestTheCharterFollowsTheModelsSystemPrompt(t *testing.T) {
+// Every member's conversation opens with an empty system message; the system
+// prompt it displaces -- the client's, else the model's -- goes to the members
+// that answer the user.
+func TestEveryMemberStartsFromAnEmptySystem(t *testing.T) {
 	m := &Model{System: "You are terse."}
-	conv := councilConversation("CHARTER", m, []api.Message{{Role: "user", Content: "hi"}})
-	if len(conv) != 2 || conv[0].Content != "You are terse.\n\nCHARTER" {
-		t.Errorf("model system: %+v", conv)
+	conv, sys := councilConversation(m, []api.Message{{Role: "user", Content: "hi"}})
+	if len(conv) != 2 || conv[0].Role != "system" || conv[0].Content != "" || sys != "You are terse." {
+		t.Errorf("model system: %+v, %q", conv, sys)
 	}
-	conv = councilConversation("CHARTER", m, []api.Message{{Role: "system", Content: "Client rules."}, {Role: "user", Content: "hi"}})
-	if conv[0].Content != "Client rules.\n\nCHARTER" || conv[1].Content != "hi" {
-		t.Errorf("client system: %+v", conv)
+	conv, sys = councilConversation(m, []api.Message{{Role: "system", Content: "Client rules."}, {Role: "user", Content: "hi"}})
+	if len(conv) != 2 || conv[0].Content != "" || conv[1].Content != "hi" || sys != "Client rules." {
+		t.Errorf("client system: %+v, %q", conv, sys)
 	}
 }
 
