@@ -28,10 +28,12 @@ paths:
 - **`slots.live`** (`types/xollama/config.go`, `xollama tweak model`
   `slots-live`) is the count a load starts with: `liveSlots` in
   `server/slots_live.go` (`slots-live` hook, one line in `load()` after the
-  ollama#4165 cap) replaces `OLLAMA_NUM_PARALLEL` with it only for a
-  completion model `llm.WouldUseOpencoti` says opencoti will serve. Stock
-  llama.cpp reserves a KV copy per slot at launch, so there the operator's
-  count stands. `slots.live` above `slots.max` is refused by `Validate`.
+  ollama#4165 cap). For a completion model `llm.WouldUseOpencoti` says
+  opencoti will serve it is `slots.live`, else `XOLLAMA_PARALLEL`, else one:
+  **`OLLAMA_NUM_PARALLEL` is never read on opencoti** (owner's rule
+  2026-09-27 — a stock ollama beside xollama shares it). Stock llama.cpp
+  reserves a KV copy per slot at launch, so there the operator's
+  `OLLAMA_NUM_PARALLEL` stands. `slots.live` above `slots.max` is refused by `Validate`.
   Guard: `server/slots_live_test.go`; Registry row `slots-live`.
 - **A prediction is not the launch.** `servedSequences` in `startLlamaServer`
   (`llm/llama_server.go`) drops back to one and relaunches when stock served

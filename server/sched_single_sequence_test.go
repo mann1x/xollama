@@ -16,8 +16,9 @@ import (
 
 // TestTheSingleSequenceRuleBindsOnlyStockLlamaCpp holds the ollama/ollama#4165
 // exemption: the architecture deny-list is what stock llama.cpp gets wrong, so
-// on opencoti the operator's sequence count stands. With the engine pinned to
-// llama.cpp the scheduler must still start upstream's one sequence.
+// on opencoti the operator's sequence count stands -- XOLLAMA_PARALLEL there,
+// OLLAMA_NUM_PARALLEL on stock. With the engine pinned to llama.cpp the
+// scheduler must still start upstream's one sequence.
 func TestTheSingleSequenceRuleBindsOnlyStockLlamaCpp(t *testing.T) {
 	for _, tc := range []struct {
 		engine string
@@ -32,6 +33,7 @@ func TestTheSingleSequenceRuleBindsOnlyStockLlamaCpp(t *testing.T) {
 		t.Run(tc.engine+"/"+tc.family, func(t *testing.T) {
 			t.Setenv("XOLLAMA_ENGINE", tc.engine)
 			t.Setenv("OLLAMA_NUM_PARALLEL", "4")
+			t.Setenv("XOLLAMA_PARALLEL", "4")
 
 			got := schedLoadParallel(t, completionModel(t, tc.family))
 			if got != tc.want {

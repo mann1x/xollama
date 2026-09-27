@@ -5,6 +5,14 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — Installer setup pages; XOLLAMA_PARALLEL replaces OLLAMA_NUM_PARALLEL on opencoti; server-wide KV types fall back on stock.**
+> Owner's requests, for moving pandorum (RTX 5080, an `Ollama think-budget` install) to xOllama.
+> - **Installer** (`app/xollama-setup-pages.iss`, included from `app/xollama.iss`, full installer only): the pages are Ollama found (uninstall `/SILENT` after backing up `%LOCALAPPDATA%\Ollama`, or keep it), port (22434 / 11434 greyed out while an Ollama stays / custom), API key (generate / copy / skip) and KV cache (opencoti K and V + legacy type). Silent installs change nothing. Compiled clean with Inno Setup 6.7.1 (CI's version) on pandorum against a stub payload; the real installer comes from the dry-run release build.
+> - **`XOLLAMA_PARALLEL`**: on opencoti `liveSlots` takes `slots.live`, else `XOLLAMA_PARALLEL`, else 1, and never reads `OLLAMA_NUM_PARALLEL` (shared with any stock ollama). Stock llama.cpp keeps `OLLAMA_NUM_PARALLEL`. `XOLLAMA_MAX_PARALLEL` unchanged. Guards: `TestXollamaParallelReplacesNumParallelOnOpencoti`, the updated `TestLiveSlotsBindOnlyOnOpencoti` and `TestTheSingleSequenceRuleBindsOnlyStockLlamaCpp`; a mutant restoring the old count fails both slot tests.
+> - **KV fallback**: a server-wide `XOLLAMA_K/V_CACHE_TYPE` stock llama.cpp cannot parse no longer fails a load stock serves. `resolveKVCacheTypesOn(..., stock)` keeps the legacy type (`XOLLAMA_KV_CACHE_TYPE` / `OLLAMA_KV_CACHE_TYPE`), and `startLlamaServer` relaunches with `stockKV`. A model's own `kv` is still refused. Guard `TestServerWideOpencotiTypesFallBackOnStock` (mutant killed).
+> - pandorum backup before any change: `J:\xollama-migration-backup\20260927` (Ollama app data, `~\.ollama`, machine `OLLAMA_*`, uninstall key).
+> - Left: the dry-run installer for the owner to test on pandorum; b160 still unpublished on HF (asked opencoti, #475); the Gemma-4 swallowed-key parser check must come from the fork (#476).
+
 > **2026-09-27 — The opencoti engine logs at ollama's level with --log-memory-plan, not at 5.**
 > - xollama forced `--log-verbosity 5` so the memory scrapers would see the buffer-size lines. opencoti shipped `--log-memory-plan` for exactly this (0302, requested 2026-09-18), but xollama never adopted it.
 > - Now `logArgs` in `llm/engine/opencoti.go` passes `--log-verbosity 4 --log-memory-plan` when the pin declares `feature log-memory-plan` (the committed pin does), and keeps 5 otherwise.

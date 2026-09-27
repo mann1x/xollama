@@ -108,19 +108,22 @@ XOLLAMA {"version": 1, "slots": {"max": 8, "tps_floor": 15}}
 |---|---|---|---|
 | On or off | `XOLLAMA_DYNAMIC_SLOTS` | `slots.dynamic` | on |
 | Ceiling | `XOLLAMA_MAX_PARALLEL` | `slots.max` | 4 |
-| Slots at load (opencoti) | `OLLAMA_NUM_PARALLEL` | `slots.live` | the server's count |
+| Slots at load (opencoti) | `XOLLAMA_PARALLEL` | `slots.live` | 1 |
 | Speed floor | `XOLLAMA_SLOTS_TPS_FLOOR` | `slots.tps_floor` | unset |
 | Memory reserve | `XOLLAMA_SLOTS_VRAM_RESERVE` | `slots.vram_reserve_mib` | engine default |
 
 The model's setting wins over the server's, as everywhere else.
 
-**Slots at load** are the slots a model starts with; on opencoti they grow up
-to the ceiling as requests arrive. `slots.live` sets them for one model in
-place of `OLLAMA_NUM_PARALLEL`, and only when opencoti serves it. On stock
-`llama.cpp` every slot is a KV copy reserved at launch, so the server's count
-stands there. Remember that the launch context is `num_ctx` × the slots at
-load: `OLLAMA_NUM_PARALLEL=4` on a 131k model asks the engine for 524k cells
-before anyone has sent a request.
+**Slots at load** are the slots a model starts with and never drops below; on
+opencoti they grow up to the ceiling as requests arrive. On opencoti they come
+from `XOLLAMA_PARALLEL` (or `slots.live` for one model), and
+`OLLAMA_NUM_PARALLEL` is **not read**: a stock ollama on the same machine shares
+that variable, and its value is sized for an engine that reserves a KV copy per
+slot. Set `XOLLAMA_MAX_PARALLEL` to the same number for slots that never grow.
+On stock `llama.cpp` every slot is a KV copy reserved at launch, so
+`OLLAMA_NUM_PARALLEL` stands there, as upstream has it. Remember that the launch
+context is `num_ctx` × the slots at load: `XOLLAMA_PARALLEL=4` on a 131k model
+asks the engine for 524k cells before anyone has sent a request.
 
 **The speed floor** is the more useful of the two brakes. It is the decode rate,
 in tokens per second, that each request should keep: another slot is not
@@ -138,8 +141,8 @@ XOLLAMA_DYNAMIC_SLOTS=0
 ```
 
 or `{"slots": {"dynamic": false}}` for one model. That restores Ollama's fixed
-split exactly: `OLLAMA_NUM_PARALLEL` slots, each with its own share of the
-cache.
+split: `XOLLAMA_PARALLEL` slots on opencoti (`OLLAMA_NUM_PARALLEL` on stock
+llama.cpp), each with its own share of the cache.
 
 Worth doing for a model where predictable per-request speed matters more than
 throughput — a fixed split cannot be slowed down by a neighbour, because there
@@ -153,7 +156,7 @@ mllama) give wrong answers with more than one sequence in flight on stock
 llama.cpp, and Ollama refuses to run them in parallel
 ([ollama#4165](https://github.com/ollama/ollama/issues/4165)). With
 `XOLLAMA_ENGINE=llamacpp` that list binds exactly as upstream's does. On
-opencoti it does not: those architectures take `OLLAMA_NUM_PARALLEL` and grow
+opencoti it does not: those architectures take `XOLLAMA_PARALLEL` and grow
 like any other model. If a load meant for opencoti ends up on stock llama.cpp
 (the artifact is missing, or the opt-in fallback retried), it starts at one
 sequence again. Embedding models stay at one slot on every engine.

@@ -188,3 +188,29 @@ func TestTheSuggestedCacheTypesAreOnesThePinnedEngineTakes(t *testing.T) {
 		}
 	}
 }
+
+// A server-wide XOLLAMA_K/V_CACHE_TYPE is chosen for opencoti. When stock
+// llama.cpp serves a load after all, a type it does not accept gives way to
+// the legacy one (OLLAMA_KV_CACHE_TYPE), a stock-valid one stays, the ring is
+// dropped -- and what the model asks for is left for the refusal to catch.
+func TestServerWideOpencotiTypesFallBackOnStock(t *testing.T) {
+	t.Setenv("XOLLAMA_K_CACHE_TYPE", "kvarn4")
+	t.Setenv("XOLLAMA_V_CACHE_TYPE", "q8_0")
+	t.Setenv("XOLLAMA_K_CACHE_TYPE_SWA", "q4_0")
+	t.Setenv("XOLLAMA_V_CACHE_TYPE_SWA", "q4_0")
+
+	if got, want := resolveKVCacheTypesOn(LlamaServerConfig{}, "q4_0", false), (kvCacheTypes{K: "kvarn4", V: "q8_0", KSWA: "q4_0", VSWA: "q4_0"}); got != want {
+		t.Errorf("on opencoti: %+v, want %+v", got, want)
+	}
+	stock := resolveKVCacheTypesOn(LlamaServerConfig{}, "q4_0", true)
+	if want := (kvCacheTypes{K: "q4_0", V: "q8_0"}); stock != want {
+		t.Errorf("on stock: %+v, want %+v", stock, want)
+	}
+	if why := stock.requiresEngineExtension(); why != "" {
+		t.Errorf("the fallback still needs opencoti: %s", why)
+	}
+	model := resolveKVCacheTypesOn(cfgWithKV(&xollama.KV{K: "kvarn3", V: "kvarn3"}), "q4_0", true)
+	if model.requiresEngineExtension() == "" {
+		t.Errorf("a model's own kvarn3 must still be refused on stock, got %+v", model)
+	}
+}

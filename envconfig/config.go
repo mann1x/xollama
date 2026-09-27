@@ -350,8 +350,16 @@ var (
 	// Needs an engine that can park and admit slots; on stock llama.cpp it is
 	// inert and nothing is passed.
 	DynamicSlots = func() bool { return BoolWithDefault("XOLLAMA_DYNAMIC_SLOTS")(true) }
-	// MaxParallel caps how far the number of live slots may grow. Zero picks a
-	// default from OLLAMA_NUM_PARALLEL.
+	// Parallel is how many slots a load on the opencoti engine starts with and
+	// never drops below. It replaces OLLAMA_NUM_PARALLEL there: that variable
+	// is shared with any stock ollama on the machine, sized for an engine that
+	// reserves a KV copy per slot, and would decide opencoti's floor by
+	// accident. Zero means one. On stock llama.cpp OLLAMA_NUM_PARALLEL stays
+	// in force, as upstream has it. A model's slots.live wins over both.
+	Parallel = Uint("XOLLAMA_PARALLEL", 0)
+	// MaxParallel caps how far the number of live slots may grow. Zero picks
+	// defaultMaxParallel (llm/engine_launch.go), never below Parallel; equal to
+	// Parallel makes the slots static.
 	MaxParallel = Uint("XOLLAMA_MAX_PARALLEL", 0)
 	// SlotsTPSFloor is the per-slot decode rate to protect: another slot is not
 	// admitted if the projected rate would fall below it. Zero leaves the
@@ -474,6 +482,7 @@ func AsMap() map[string]EnvVar {
 		"XOLLAMA_V_CACHE_TYPE_SWA":    {"XOLLAMA_V_CACHE_TYPE_SWA", VCacheTypeSWA(), "KV cache type for values in a sliding-window model's short-window cache"},
 		"XOLLAMA_DYNAMIC_SLOTS":       {"XOLLAMA_DYNAMIC_SLOTS", DynamicSlots(), "Grow the number of concurrent requests with demand instead of reserving them (default true)"},
 		"XOLLAMA_MAX_PARALLEL":        {"XOLLAMA_MAX_PARALLEL", MaxParallel(), "Ceiling on concurrent requests when slots are dynamic (default: derived)"},
+		"XOLLAMA_PARALLEL":            {"XOLLAMA_PARALLEL", Parallel(), "Concurrent requests always live on the opencoti engine, replacing OLLAMA_NUM_PARALLEL there (default 1)"},
 		"XOLLAMA_SLOTS_TPS_FLOOR":     {"XOLLAMA_SLOTS_TPS_FLOOR", SlotsTPSFloor(), "Per-slot decode rate to protect before admitting another slot"},
 		"XOLLAMA_SLOTS_VRAM_RESERVE":  {"XOLLAMA_SLOTS_VRAM_RESERVE", SlotsVRAMReserve(), "Free VRAM in MiB to keep before admitting another slot"},
 		"XOLLAMA_DCA":                 {"XOLLAMA_DCA", DCA(), "Serve a model past its trained context with dual chunk attention (needs a supported engine and architecture)"},

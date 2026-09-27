@@ -212,7 +212,9 @@ hooked from `app/updater/updater.go` / `app/updater/updater_windows.go`;
 `app/updater/fork_payload_windows.go` picks the small `xOllamaUpdate.exe`
 (no `lib\ollama`) over the full `xOllamaSetup.exe` when the installed
 `lib\ollama\PAYLOAD_ID` matches the release's `payload-id.txt` (`payloadId` in
-`scripts/build_windows.ps1`). The installer is `app/xollama.iss`; it always
+`scripts/build_windows.ps1`). The installer is `app/xollama.iss` (setup pages
+for Ollama-found, port, API key and KV cache in `app/xollama-setup-pages.iss`,
+full installer only); it always
 registers `xollama://` and registers `ollama://` only when nobody already owns
 it (`OllamaSchemeUnclaimed`). macOS declares both schemes and
 `app/cmd/app/app_darwin.m` handles both, because ollama.com picks the sign-in

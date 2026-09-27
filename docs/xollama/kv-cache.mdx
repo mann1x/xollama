@@ -69,6 +69,16 @@ this KV cache configuration needs the opencoti engine:
 kv.v / XOLLAMA_V_CACHE_TYPE = "kvarn3" is not a cache type stock llama.cpp accepts
 ```
 
+That refusal is for what **a model** asks for. A server-wide
+`XOLLAMA_K_CACHE_TYPE` / `XOLLAMA_V_CACHE_TYPE` is a choice made for opencoti,
+so when stock `llama.cpp` serves a load after all — a device opencoti does not
+cover, or the artifact missing — a half it does not accept falls back to the
+legacy type, `XOLLAMA_KV_CACHE_TYPE` (or `OLLAMA_KV_CACHE_TYPE`), and the ring
+is dropped. The server logs the fallback. Keep the legacy type to one stock
+accepts (`f16`, `q8_0`, `q4_0`); `XOLLAMA_KV_CACHE_TYPE` is read only by
+xOllama, so a stock ollama beside it keeps its own `OLLAMA_KV_CACHE_TYPE`.
+The Windows installer's last page sets all three.
+
 ## Sliding-window models have a second cache
 
 Gemma-4 and other sliding-window models keep a short-window cache — a "ring" —

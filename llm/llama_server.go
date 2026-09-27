@@ -219,6 +219,10 @@ type llamaServerLaunchConfig struct {
 	// forceStockEngine skips the engine hook entirely. Set only by the
 	// opt-in retry after an opencoti load failed; see XOLLAMA_ENGINE_FALLBACK.
 	forceStockEngine bool
+	// stockKV resolves the cache types for stock llama.cpp: set by the
+	// relaunch when a server-wide XOLLAMA_K/V_CACHE_TYPE stock does not
+	// accept met a load stock serves (resolveKVCacheTypesOn).
+	stockKV bool
 }
 
 func newLlamaServerHTTPClient() *http.Client {
@@ -450,7 +454,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	// The resolver keeps OLLAMA_KV_CACHE_TYPE as the default and lets the
 	// XOLLAMA_* variables and the model's own config override either half.
 	// See docs/xollama/kv-cache.mdx.
-	kvTypes := resolveKVCacheTypes(launch.config, launch.kvCacheType)
+	kvTypes := resolveKVCacheTypesOn(launch.config, launch.kvCacheType, launch.stockKV)
 	params = appendKVCacheArgs(params, kvTypes)
 
 	params = appendFlashAttentionArgs(params, launch.config, launch.gpus)
@@ -520,6 +524,13 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	// message names the setting, because "unknown argument" from a subprocess
 	// does not tell anyone which of four places set it.
 	if why := kvTypes.requiresEngineExtension(); why != "" && !usedOpencoti {
+		// A server-wide opencoti type falls back to the legacy one here; only
+		// what the model itself asks for is refused.
+		if !launch.stockKV && resolveKVCacheTypesOn(launch.config, launch.kvCacheType, true).requiresEngineExtension() == "" {
+			slog.Warn("stock llama-server serves this load; using the legacy KV cache type instead of XOLLAMA_K/V_CACHE_TYPE", "reason", why, "legacy", launch.kvCacheType)
+			launch.stockKV = true
+			return startLlamaServer(launch, out)
+		}
 		return nil, 0, false, fmt.Errorf("this KV cache configuration needs the opencoti engine: %s; set %s=opencoti, or choose a type stock llama.cpp accepts (%s)",
 			why, engine.EnvSelector, strings.Join(stockCacheTypes, ", "))
 	}
