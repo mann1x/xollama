@@ -192,3 +192,21 @@ func TestTheProbeKnowsAKeyedXollamaWithoutSendingTheKey(t *testing.T) {
 		}
 	}
 }
+
+// Off means off on the client too: with no key anywhere, nothing is added.
+func TestAClientWithoutAKeySendsNone(t *testing.T) {
+	var seen []http.Header
+	srv := recorder(t, &seen)
+	keyEnv(t, "")
+	t.Setenv("XOLLAMA_HOST", srv.URL)
+	c, _ := ClientFromEnvironment()
+	if c.HasAPIKey() {
+		t.Fatal("HasAPIKey with no key configured")
+	}
+	if _, err := c.Version(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if seen[0].Get("Authorization") != "" || seen[0].Get("x-api-key") != "" {
+		t.Fatalf("headers sent without a key: %v", seen[0])
+	}
+}

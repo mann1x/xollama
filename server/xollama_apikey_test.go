@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -299,5 +300,152 @@ func TestGenerateSetAndRemoveTheKey(t *testing.T) {
 	}
 	if w := adminCall(h, "127.0.0.1:4000", "rotate", "", nil); w.Code != http.StatusBadRequest {
 		t.Fatalf("unknown action: status = %d, want 400", w.Code)
+	}
+}
+
+// Positive twin of TestAKeyedServerRefusesEveryRouteWithoutTheKey: with the
+// key, every route is past the gate (its own answer may be anything but the
+// key's 401).
+func TestAKeyedServerLetsEveryRouteThroughWithTheKey(t *testing.T) {
+	setServerKey(t, testKey)
+	h := keyRoutes(t)
+	for _, r := range [][2]string{
+		{http.MethodGet, "/"},
+		{http.MethodHead, "/"},
+		{http.MethodGet, "/api/version"},
+		{http.MethodGet, "/api/tags"},
+		{http.MethodPost, "/api/show"},
+		{http.MethodGet, "/api/xollama"},
+		{http.MethodGet, "/api/engine"},
+		{http.MethodGet, "/v1/models"},
+		{http.MethodGet, "/api/ps"},
+	} {
+		for _, hdr := range []map[string]string{{"Authorization": "Bearer " + testKey}, {"x-api-key": testKey}} {
+			w := serve(h, r[0], r[1], hdr)
+			if w.Code == http.StatusUnauthorized || w.Header().Get("WWW-Authenticate") != "" {
+				t.Errorf("%s %s with %v: status %d, challenged", r[0], r[1], hdr, w.Code)
+			}
+		}
+	}
+}
+
+// The CLI signs some requests for ollama.com in Authorization (no Bearer
+// scheme) and then carries the local key in x-api-key.
+func TestASignedRequestPassesWithTheKeyInXAPIKey(t *testing.T) {
+	setServerKey(t, testKey)
+	h := keyRoutes(t)
+	signed := "c3NoLWVkMjU1MTkgQUFBQQ:c2lnbmF0dXJl"
+	if w := serve(h, http.MethodGet, "/api/version", map[string]string{"Authorization": signed, "x-api-key": testKey}); w.Code != http.StatusOK {
+		t.Fatalf("signed + right x-api-key: status %d, want 200", w.Code)
+	}
+	if w := serve(h, http.MethodGet, "/api/version", map[string]string{"Authorization": signed, "x-api-key": "wrong-wrong-wrong-wrong"}); w.Code != http.StatusUnauthorized {
+		t.Fatalf("signed + wrong x-api-key: status %d, want 401", w.Code)
+	}
+	if w := serve(h, http.MethodGet, "/api/version", map[string]string{"Authorization": signed}); w.Code != http.StatusUnauthorized {
+		t.Fatalf("signed alone: status %d, want 401", w.Code)
+	}
+}
+
+// A Bearer key is the key: a wrong one is not rescued by a right x-api-key.
+// Keys are compared exactly, case included.
+func TestBearerWinsAndKeysAreCaseSensitive(t *testing.T) {
+	setServerKey(t, testKey)
+	h := keyRoutes(t)
+	if w := serve(h, http.MethodGet, "/api/version", map[string]string{"Authorization": "Bearer wrong-wrong-wrong-wrong", "x-api-key": testKey}); w.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong Bearer + right x-api-key: status %d, want 401", w.Code)
+	}
+	if w := serve(h, http.MethodGet, "/api/version", map[string]string{"x-api-key": strings.ToUpper(testKey)}); w.Code != http.StatusUnauthorized {
+		t.Fatalf("upper-cased key: status %d, want 401", w.Code)
+	}
+	if w := serve(h, http.MethodGet, "/api/version", map[string]string{"Authorization": "Bearer   " + testKey + "  "}); w.Code != http.StatusOK {
+		t.Fatalf("key with surrounding spaces: status %d, want 200", w.Code)
+	}
+}
+
+// Failures below the limit are forgiven by one right key; a throttle ends
+// with its window.
+func TestTheThrottleForgivesAndExpires(t *testing.T) {
+	setServerKey(t, testKey)
+	h := keyRoutes(t)
+	wrong := map[string]string{"x-api-key": "wrong-wrong-wrong-wrong"}
+	for range maxKeyFailures - 1 {
+		serve(h, http.MethodGet, "/api/version", wrong)
+	}
+	if w := serve(h, http.MethodGet, "/api/version", map[string]string{"x-api-key": testKey}); w.Code != http.StatusOK {
+		t.Fatalf("right key under the limit: %d", w.Code)
+	}
+	for i := range maxKeyFailures - 1 {
+		if w := serve(h, http.MethodGet, "/api/version", wrong); w.Code != http.StatusUnauthorized {
+			t.Fatalf("after a success, failure %d: status %d, want 401 (count reset)", i, w.Code)
+		}
+	}
+
+	g := &apiKeyGate{failures: map[string]*keyFailures{}}
+	now := time.Now()
+	for range maxKeyFailures {
+		g.fail("192.0.2.9", now)
+	}
+	if g.throttled("192.0.2.9", now) <= 0 {
+		t.Fatal("not throttled at the limit")
+	}
+	if d := g.throttled("192.0.2.9", now.Add(keyFailureWindow)); d != 0 {
+		t.Fatalf("still throttled after the window: %v", d)
+	}
+}
+
+// A key changed on disk -- by `tweak server` or by hand -- is in force within
+// keyRecheck, without a restart.
+func TestAKeyChangedOnDiskIsPickedUpWithoutARestart(t *testing.T) {
+	setServerKey(t, testKey)
+	g := &apiKeyGate{failures: map[string]*keyFailures{}}
+	now := time.Now()
+	if d, src := g.current(now); src != "file" || d != envconfig.KeyDigest(testKey) {
+		t.Fatalf("first read: %q", src)
+	}
+	p, _ := envconfig.ServerKeyPath()
+	other := "xok_other-key-bbbbbbbbbbbbbbbbbbbb"
+	os.WriteFile(p, envconfig.ServerKeyFileContent(other), 0o600)
+	if d, _ := g.current(now.Add(keyRecheck / 2)); d != envconfig.KeyDigest(testKey) {
+		t.Fatal("re-read before keyRecheck")
+	}
+	if d, _ := g.current(now.Add(keyRecheck)); d != envconfig.KeyDigest(other) {
+		t.Fatal("not re-read after keyRecheck")
+	}
+	os.Remove(p)
+	if _, src := g.current(now.Add(2 * keyRecheck)); src != "" {
+		t.Fatalf("a removed key file still required a key (%q)", src)
+	}
+}
+
+func TestTheAdminRouteEdges(t *testing.T) {
+	keyHome(t)
+	h := keyRoutes(t)
+	// Open server: status from loopback, IPv4 or IPv6, needs no key.
+	for _, remote := range []string{"127.0.0.1:4000", "[::1]:4000"} {
+		if w := adminCall(h, remote, "status", "", nil); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"required":false`) {
+			t.Fatalf("status from %s: %d %s", remote, w.Code, w.Body)
+		}
+	}
+	if w := adminCall(h, "[::1]:4000", "set", testKey, nil); w.Code != http.StatusOK {
+		t.Fatalf("set from ::1: %d %s", w.Code, w.Body)
+	}
+	// Keyed: even the right key does not open the route to the network.
+	if w := adminCall(h, "192.0.2.10:4000", "remove", "", map[string]string{"x-api-key": testKey}); w.Code != http.StatusForbidden {
+		t.Fatalf("remote remove with the key: %d, want 403", w.Code)
+	}
+	if w := adminCall(h, "10.0.0.1:4000", "status", "", map[string]string{"x-api-key": testKey}); w.Code != http.StatusForbidden {
+		t.Fatalf("remote status with the key: %d, want 403", w.Code)
+	}
+	// A malformed body is a 400, not a change.
+	req := httptest.NewRequest(http.MethodPost, api.XollamaAPIKeyPath, strings.NewReader("{"))
+	req.RemoteAddr = "127.0.0.1:4000"
+	req.Header.Set("x-api-key", testKey)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("malformed body: %d, want 400", w.Code)
+	}
+	if w := serve(h, http.MethodGet, "/api/version", map[string]string{"x-api-key": testKey}); w.Code != http.StatusOK {
+		t.Fatalf("key changed by a refused call: %d", w.Code)
 	}
 }
