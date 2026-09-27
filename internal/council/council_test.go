@@ -514,3 +514,61 @@ func TestATurnResumesFromItsProgress(t *testing.T) {
 		t.Errorf("fit %v", got)
 	}
 }
+
+// The council kept across turns (10.5): with the previous deliberation, the
+// planner is offered continue, and continue runs the synthesizer alone on
+// the plan, findings and critiques it answered from, told to go on.
+func TestAContinuedTurnGoesStraightToTheSynthesizer(t *testing.T) {
+	prev := &Progress{
+		Route:  RouteCouncil,
+		Plan:   &Plan{Plan: "fix the game", Briefs: []string{"a", "b"}},
+		Rounds: []RoundProgress{{Findings: []string{"line 119 has a brace too many", "the loop is fine"}, Critiques: []string{"agree"}}},
+	}
+	cfg := FromModel(nil, 0.7)
+	cfg.Previous = prev
+	s := &stub{route: `{"route":"continue"}`}
+	res, err := Run(t.Context(), cfg, s, conv, func(Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Route != RouteContinue || s.count(Researcher) != 0 || s.count(Critic) != 0 || s.count(Synthesizer) != 1 {
+		t.Fatalf("route %q researchers %d critics %d synthesizer %d", res.Route, s.count(Researcher), s.count(Critic), s.count(Synthesizer))
+	}
+	var synth, route Request
+	for _, c := range s.calls {
+		switch {
+		case c.Role == Synthesizer:
+			synth = c
+		case c.Format != nil:
+			route = c
+		}
+	}
+	all := ""
+	for _, m := range synth.Messages {
+		all += m.Content
+	}
+	if !strings.Contains(all, "line 119 has a brace too many") || !strings.Contains(all, continueNote) {
+		t.Fatalf("the synthesizer read %q", all)
+	}
+	if !strings.Contains(string(route.Format), "continue") || !strings.Contains(route.Messages[len(route.Messages)-1].Content, "replies to that answer") {
+		t.Errorf("the planner was not offered continue: %s", route.Format)
+	}
+	if res.Kept == nil || res.Kept.Rounds[0].Findings[0] != "line 119 has a brace too many" {
+		t.Errorf("the continued deliberation is not kept for the next turn: %+v", res.Kept)
+	}
+
+	// Without a previous deliberation continue is neither offered nor taken.
+	cfg.Previous = nil
+	s2 := &stub{route: `{"route":"continue"}`}
+	res2, err := Run(t.Context(), cfg, s2, conv, func(Event) {})
+	if err != nil || res2.Route != RouteCouncil || s2.count(Researcher) != DefaultResearchers {
+		t.Fatalf("no previous: %v route %q researchers %d", err, res2.Route, s2.count(Researcher))
+	}
+	// A direct answer keeps the council alive for the next turn.
+	cfg.Previous = prev
+	s3 := &stub{route: `{"route":"direct"}`}
+	res3, _ := Run(t.Context(), cfg, s3, conv, func(Event) {})
+	if res3.Route != "direct" || res3.Kept != prev {
+		t.Errorf("direct: route %q kept %v", res3.Route, res3.Kept)
+	}
+}

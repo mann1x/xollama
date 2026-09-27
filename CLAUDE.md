@@ -185,7 +185,9 @@ pool, kept between turns — and `llm/engine_council.go` is its client;
 when `XOLLAMA_COUNCIL_HOSTS` allows it; `server/council_compaction.go` folds the
 conversation before a turn and after its answer, Cerebriline's agentic compaction
 ported, prompts in `server/council_compaction_prompts.go`; `server/council_state.go`
-seals the `council_chat_state` resume point a client sends back), reached from one
+seals the `council_chat_state` resume point a client sends back; `server/council_continue.go`
+keeps a turn's deliberation so the next message can `continue` the same council,
+`internal/council/continue.go`), reached from one
 `councilServes` line in
 `ChatHandler` (`council` hook); a `format` bypasses it, and tools reach it only
 with `council_chat_state` (`internal/council/tools.go`: read-only tools for

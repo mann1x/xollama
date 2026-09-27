@@ -268,6 +268,30 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
      {"role":"tool","tool_call_id":"r1:call_x","content":"Deadline: 14 October."}]}
   ```
 
+## One council for the whole conversation
+
+The council behind a chat stays alive between your messages. When a turn ends
+with the council's answer, it keeps what it answered from: the plan, the
+researchers' findings and the critiques. Your next message is feedback to that
+council, and the planner decides what it asks for:
+
+- **done, or trivial** ("thanks", "great"): answered directly, in one call;
+- **continue** ("it still fails, go on", a correction, a result to act on):
+  the synthesizer takes your message with the findings and critiques it
+  answered from, and carries on — no new plan, no new research;
+- **a new task**: the full council again.
+
+This is not specific to any kind of work: your system prompt and your messages
+say what the work is. A direct reply keeps the council's last deliberation, so
+a "thanks" in between does not end it; a new deliberation replaces it.
+
+It is offered only while you continue the same conversation: the kept
+deliberation is bound to the messages up to the one it answered, so an edited
+or rewound history, or another conversation, starts a fresh council. It is
+held in the server's memory for the session (`session_id`) and also travels in
+`council_chat_state`, so a client that sends the state back keeps it across a
+server restart.
+
 ## On opencoti: members share the conversation
 
 On the opencoti engine the members do not each read the conversation from

@@ -12,6 +12,8 @@ paths:
   - server/council_remote_test.go
   - server/council_state.go
   - server/council_state_test.go
+  - server/council_continue.go
+  - server/council_continue_test.go
   - server/council_tools.go
   - server/council_tools_test.go
   - api/xollama_tools.go
@@ -244,6 +246,17 @@ paths:
   critics on tool turns; the first confirmation cancels the other critics
   (`stoppedCritique`, their suspensions dropped), overrides `REVISE`, and
   `confirmedNote` tells the synthesizer to make that change first.
+- **One council across turns (10.5)**: `internal/council/continue.go`
+  (`RouteContinue`, `Kept`, `continueNote`), `server/council_continue.go`
+  (`councilKept` per session, `keepDeliberation`, `previousDeliberation`), state
+  fields 6-8 (`kept`, `kept_n`, `kept_prefix`). The planner is offered
+  `continue` only with `cfg.Previous`; continue runs the synthesizer alone on
+  the kept plan + last round, copied into this turn's progress (so a
+  suspended synthesizer resumes). A direct answer carries `cfg.Previous`
+  forward; a council/continue answer replaces it. Bound to a hash of role +
+  content of the messages up to the answered user turn; a newer user message
+  must extend it. Guards: `TestAContinuedTurnGoesStraightToTheSynthesizer`,
+  `TestTheNextTurnContinuesTheSameCouncil`.
 - **`slots.live`** replaces `OLLAMA_NUM_PARALLEL` only when opencoti serves
   (`server/slots_live.go`, `slots-live` hook). Never set the parallel env for
   a council on opencoti: `-c` is `num_ctx × slots`, and 4 × 131k did not fit.

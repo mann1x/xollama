@@ -160,9 +160,13 @@ func memberWhere(req Request) string {
 // council's own model even when the planner has another: the direct answer
 // continues the conversation, which is the council model's to give.
 func Decide(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message) (string, error) {
+	schema := routeSchema
+	if cfg.Previous != nil {
+		schema = routeSchemaContinue
+	}
 	out, err := m.Stream(ctx, Request{
 		Role: Planner, Messages: append(clone(conv), routeRequest(cfg)),
-		Seed: d.Decide.Seed, Temperature: d.Decide.Temperature, MaxTokens: 16, Format: routeSchema,
+		Seed: d.Decide.Seed, Temperature: d.Decide.Temperature, MaxTokens: 16, Format: schema,
 	}, func(string) {})
 	if err != nil {
 		return "", err
@@ -170,10 +174,15 @@ func Decide(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Messag
 	var v struct {
 		Route string `json:"route"`
 	}
-	if json.Unmarshal([]byte(strings.TrimSpace(out)), &v) == nil && v.Route == "direct" {
-		return "direct", nil
+	if json.Unmarshal([]byte(strings.TrimSpace(out)), &v) == nil {
+		switch {
+		case v.Route == "direct":
+			return "direct", nil
+		case v.Route == RouteContinue && cfg.Previous != nil:
+			return RouteContinue, nil
+		}
 	}
-	return "council", nil
+	return RouteCouncil, nil
 }
 
 // Direct answers a trivial message: an ordinary turn, streamed as content,
@@ -209,10 +218,14 @@ func IsPlannerRequest(s string) bool {
 // system message empty the decision has no other source for it (measured on
 // b133: without it, two of six storage questions were answered directly).
 func routeRequest(cfg Config) api.Message {
-	if c := cfg.charter(); c != "" {
-		return user(c + "\n\n" + routeMsg)
+	msg := routeMsg
+	if cfg.Previous != nil {
+		msg = routeMsgContinue
 	}
-	return user(routeMsg)
+	if c := cfg.charter(); c != "" {
+		return user(c + "\n\n" + msg)
+	}
+	return user(msg)
 }
 
 // planMsg is the planner's plan request. The charter opens it: every later
@@ -330,7 +343,7 @@ func Synthesize(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Me
 func synthesize(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, p Plan, findings, critiques []string, emit Emit, turns []api.Message) (string, []api.Message, error) {
 	msgs := append(base(cfg, conv, p), user(joinNumbered("FINDINGS OF RESEARCHER", findings)),
 		user(joinNumbered("CRITIQUE", critiques)),
-		user("ROLE: SYNTHESIZER. "+prompt(cfg, Synthesizer)+cfg.toolNote(Synthesizer)+confirmedNote(cfg, critiques)))
+		user("ROLE: SYNTHESIZER. "+prompt(cfg, Synthesizer)+cfg.toolNote(Synthesizer)+confirmedNote(cfg, critiques)+continuedNote(cfg)))
 	if cfg.System != "" {
 		msgs = append(msgs, user(systemIntro+cfg.System))
 	}

@@ -25,6 +25,8 @@ package server
 // Wire layout (field numbers are the contract; add, never renumber):
 //
 //	State     1 version(varint) 2 history(bytes) 3 turn(bytes) 4 progress(Progress) 5 record(Record)
+//	          6 kept(Progress) 7 kept_n(varint) 8 kept_prefix(bytes)  -- the deliberation an
+//	          answered turn leaves for the next (council_continue.go)
 //	Progress  1 route(string) 2 plan(Plan) 3 rounds(Round, repeated) 4 suspended(Member, repeated)
 //	Member    1 key(string) 2 turns(bytes: the member's []api.Message as JSON)
 //	Plan      1 plan(string) 2 briefs(string, repeated)
@@ -71,6 +73,7 @@ type councilState struct {
 	history, turn []byte // sha256 of the history before the user turn, and of that turn
 	progress      council.Progress
 	record        *compactionRecord
+	kept          *keptTurn
 }
 
 // councilTurnHashes binds a state to a request: the history before the last
@@ -109,6 +112,12 @@ func (s councilState) marshal() []byte {
 	b = appendBytes(b, 4, marshalProgress(s.progress))
 	if s.record != nil {
 		b = appendBytes(b, 5, marshalRecord(s.record))
+	}
+	if s.kept != nil {
+		b = appendBytes(b, 6, marshalProgress(s.kept.p))
+		b = protowire.AppendTag(b, 7, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(s.kept.n))
+		b = appendBytes(b, 8, s.kept.prefix)
 	}
 	return b
 }
@@ -242,6 +251,23 @@ func unmarshalCouncilState(b []byte) (councilState, error) {
 			r, err := unmarshalRecord(v)
 			s.record = r
 			return err
+		case num == 6 && typ == protowire.BytesType:
+			p, err := unmarshalProgress(v)
+			if s.kept == nil {
+				s.kept = &keptTurn{}
+			}
+			s.kept.p = p
+			return err
+		case num == 7 && typ == protowire.VarintType:
+			if s.kept == nil {
+				s.kept = &keptTurn{}
+			}
+			s.kept.n = int(n)
+		case num == 8 && typ == protowire.BytesType:
+			if s.kept == nil {
+				s.kept = &keptTurn{}
+			}
+			s.kept.prefix = append([]byte(nil), v...)
 		}
 		return nil
 	})

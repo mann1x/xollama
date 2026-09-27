@@ -126,6 +126,12 @@ type Config struct {
 	// Reads indexes the turn's reads so far (SharedReads): a member's read
 	// that repeats one is answered from that result, never forwarded.
 	Reads map[string]string
+	// Previous is the deliberation the turn before left (Kept), when this
+	// turn continues that conversation; it offers the planner the continue
+	// route (continue.go).
+	Previous *Progress
+	// continuing marks a synthesizer continuing the previous deliberation.
+	continuing bool
 	// ResultBudget is the characters of tool results a member carries whole
 	// in its own turns; past it the rest travel by ref. 0 is the default.
 	ResultBudget int
@@ -265,6 +271,9 @@ type Result struct {
 	// turn then has no answer yet, and Progress is what it resumes from.
 	Calls    []api.ToolCall
 	Progress Progress
+	// Kept is the deliberation an answered council turn leaves for the next
+	// turn to continue (Kept); nil for a direct answer or a suspended turn.
+	Kept *Progress
 }
 
 // ErrNoConversation is returned for an empty conversation.

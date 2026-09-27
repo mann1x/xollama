@@ -1722,8 +1722,12 @@ request's system and user messages drive it.
 - 10.3 Shared reads (`internal/council/reads.go`).
 - 10.4 `VERDICT: CONFIRMED path:line` from a critic.
 
-**Next:** 10.5 the council carried across turns (continue / done / again,
-decided by the planner); 10.6 the broadcast channel, behind a switch, A/B'd;
+- 10.5 The council carried across turns (built 2026-09-27): the planner
+  routes a follow-up `direct` / `continue` / `council`; continue runs the
+  synthesizer on the kept plan and last round; kept per session and in the
+  sealed state (fields 6-8), bound to the conversation it answered.
+
+**Next:** 10.6 the broadcast channel, behind a switch, A/B'd;
 10.7 ab-4 on eleven2go (v0.34.4-xollama.1 + a dev build): simple, then
 medium and hard, 3 pairs each.
 

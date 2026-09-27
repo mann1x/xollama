@@ -154,7 +154,33 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 		if res, ok := suspended(Result{Route: route, Draws: d}, member{Planner, key}); ok {
 			return res, nil
 		}
-		return Result{Route: route, Answer: ans, Draws: d}, nil
+		// A direct answer keeps the council's last deliberation alive: a
+		// "thanks" between two pieces of feedback does not end the work.
+		return Result{Route: route, Answer: ans, Draws: d, Kept: cfg.Previous}, nil
+	}
+
+	if route == RouteContinue {
+		// The synthesizer goes on from the deliberation it answered from,
+		// taken into this turn's progress so it resumes from its own record.
+		if p.Plan == nil {
+			pl, last, ok := continuing(cfg.Previous)
+			if !ok {
+				return Result{Route: route, Draws: d}, errNothingToContinue
+			}
+			mark(func() { p.Plan, p.Rounds = &pl, []RoundProgress{last} })
+		}
+		last := p.Rounds[len(p.Rounds)-1]
+		cfg.continuing = true
+		key := MemberKey(Synthesizer, 0, 0)
+		ans, turns, err := synthesize(ctx, m, cfg, d, conv, *p.Plan, last.Findings, last.Critiques, emit, p.Suspended[key])
+		if err != nil {
+			return Result{Route: route, Draws: d}, err
+		}
+		answered(key, turns)
+		if res, ok := suspended(Result{Route: route, Draws: d}, member{Synthesizer, key}); ok {
+			return res, nil
+		}
+		return Result{Route: route, Answer: ans, Draws: d, Kept: Kept(p)}, nil
 	}
 
 	if p.Plan == nil {
@@ -260,7 +286,7 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 	if res, ok := suspended(Result{Route: route, Rounds: round + 1, Draws: d}, member{Synthesizer, key}); ok {
 		return res, nil
 	}
-	return Result{Route: route, Answer: ans, Rounds: round + 1, Draws: d}, nil
+	return Result{Route: route, Answer: ans, Rounds: round + 1, Draws: d, Kept: Kept(p)}, nil
 }
 
 // member names one member of a step: its role, for the tool policy, and its key.
