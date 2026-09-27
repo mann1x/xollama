@@ -233,7 +233,8 @@ tarballs (`llama/runtime-pin-linux.txt`, sha256 + a README-excluded inputs
 digest), the engine (`llm/engine/pin.txt`, plus a second copy beside its CUDA 12
 payload in `lib/ollama/engines/cuda_v12`) and a Go-only `xollama`, and
 `Dockerfile.xollama` sets `XOLLAMA_HOST=0.0.0.0:22434` and prebuilds the engine's
-dlopen helper from `scripts/cosmo-dlopen-helper.c`, since the runtime image has
+dlopen helper from `scripts/cosmo-dlopen-helper.c` (cosmo's own compile command,
+both files given an old mtime), since the runtime image has
 no compiler (upstream's `Dockerfile`
 now sets it too and `EXPOSE 22434`, `docker-release` hook, but the published
 image still comes from `Dockerfile.xollama`). Publishes to Docker Hub and GHCR,
@@ -264,6 +265,8 @@ run as the `ollama` user (`.claude/rules/solidpc-testing.md`).
 - Commit subjects follow `CONTRIBUTING.md`: `<package>: <short description>`,
   lowercase, a continuation of "This changes Ollama to…".
 - Docs are Mintlify `.mdx` under `docs/`, indexed by `docs/docs.json`.
+  `docs/README.md` and `docs/docker.mdx` stay upstream's except for one
+  xollama block at the top (`docs-entry` hook).
 
 ## Before Committing
 
