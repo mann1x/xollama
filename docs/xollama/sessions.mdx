@@ -110,6 +110,10 @@ guaranteed window**: stock llama.cpp, an engine without elastic admission, or a
 council turn whose first byte left before its window was booked. A council turn
 reports its owner's window, the one all its members share.
 
+The windows come out of the model's pool, which is its `num_ctx` × the slots at
+load. How that pool is sized, and how several windows share it, is on
+[Concurrent requests](/xollama/slots#how-the-context-is-shared).
+
 To ask for a window, state it in `placement` (`client_placement_v1`) on
 `/api/chat`. Do not use `options.num_ctx` for this: it sizes the model's
 load, so changing it reloads the model.
