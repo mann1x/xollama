@@ -66,6 +66,12 @@
 #                       iSWA cache and the separate ring type is refused up
 #                       front. See llm/engine/capability.go.
 #
+#     log-memory-plan   --log-memory-plan (patch 0302): the buffer-size lines
+#                       the memory scrapers read print at any verbosity, so the
+#                       engine runs at threshold 4 instead of 5 (~3,600 log
+#                       lines per request down to ~32). See logArgs in
+#                       llm/engine/opencoti.go.
+#
 #   Why acceleration is declared too. The tested matrix in policy.go is a claim
 #   about the ENGINE; a pin is a claim about the BYTES, and they are not the
 #   same fact. A release bin embeds its GPU payloads and self-extracts, so it
@@ -266,6 +272,13 @@ channel  dev
 # or small-head probe it fails at context creation with "invalid KV allocation
 # group size", which is a runtime fact and not an argv one.
 feature  swa-cache-types
+
+# --log-memory-plan (opencoti 0302, requested by this integration 2026-09-18):
+# the allocation-summary lines print at any --log-verbosity, so the engine runs
+# at ollama's own threshold 4 instead of 5. Checked on these bytes: --server
+# --help lists it, and every non-zero buffer line, "using device ... MiB free"
+# and "offloaded N/M layers" print at 4 with it (llm/engine/opencoti.go).
+feature  log-memory-plan
 
 # CUDA on Linux x86_64 and Windows x86_64, from the dso rows (pin.go derives
 # accel from them; opencoti's dev publisher states no accel rows, #242). The

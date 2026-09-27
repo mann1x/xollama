@@ -23,7 +23,9 @@ paths:
   different repo whenever a cut is in flight. Tests check the `<owner>/<name>`
   shape only.
 - Engine capabilities come from `feature` rows, read through `pin.HasFeature`
-  (`featureSWACacheTypes` in `llm/engine/capability.go`), and are never inferred
+  (`featureSWACacheTypes` in `llm/engine/capability.go`, `featureLogMemoryPlan`
+  in `logArgs` in `llm/engine/opencoti.go`: `--log-verbosity 4 --log-memory-plan`
+  with the row, `--log-verbosity 5` without), and are never inferred
   from the cut number in `tag`: a dev build carries part of the next cut under
   the previous cut's tag.
 - `accel <arch> <backend>` rows declare what the pinned BYTES accelerate, which

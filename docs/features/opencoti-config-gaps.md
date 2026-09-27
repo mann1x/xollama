@@ -34,9 +34,11 @@ flag — which is why the other three exist.
 | Per-request | `session_id` / `pool_id` on the engine-session hook | Works (G5) |
 | Flags with no env twin | `XOLLAMA_ENGINE_ARGS`, appended last | Works, server-global, operator-side only (G2) |
 
-`llm/engine/opencoti.go:152` `Command()` adds exactly `--server`,
-`--log-verbosity 5` and `--gpu`, and strips any inherited `--log-verbosity`. It
-has no `extraArgs` equivalent; opencoti's own TS adapter does.
+`llm/engine/opencoti.go` `Command()` adds exactly `--server`, the logging
+flags and `--gpu`, and strips any inherited `--log-verbosity`. The logging flags
+are `--log-verbosity 4 --log-memory-plan` when the pin declares the
+`log-memory-plan` feature, else `--log-verbosity 5` (`logArgs`). It has no
+`extraArgs` equivalent; opencoti's own TS adapter does.
 
 ## G1 — no per-model engine options
 

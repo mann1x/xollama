@@ -195,8 +195,8 @@ func TestCommandRaisesVerbosityForTheMemoryScrapers(t *testing.T) {
 	if i < 0 {
 		t.Fatalf("argv has no --log-verbosity; ollama would scrape no memory at all: %v", args)
 	}
-	if i+1 >= len(args) || args[i+1] != logVerbosity {
-		t.Fatalf("--log-verbosity value = %v, want %q", args[i+1:], logVerbosity)
+	if want := logArgs()[1]; i+1 >= len(args) || args[i+1] != want {
+		t.Fatalf("--log-verbosity value = %v, want %q", args[i+1:], want)
 	}
 	// It must come *after* ollama's argv. ollama passes --log-verbosity 4 of
 	// its own and llama.cpp takes the last occurrence, so a leading flag is
@@ -232,8 +232,8 @@ func TestCommandLogVerbosityWinsOverOllamas(t *testing.T) {
 	if len(seen) != 1 {
 		t.Fatalf("argv carries %d --log-verbosity flags, want exactly 1: %v", len(seen), args)
 	}
-	if got := args[seen[0]+1]; got != logVerbosity {
-		t.Errorf("--log-verbosity = %q, want %q", got, logVerbosity)
+	if got, want := args[seen[0]+1], logArgs()[1]; got != want {
+		t.Errorf("--log-verbosity = %q, want %q", got, want)
 	}
 	// Everything else ollama asked for must survive.
 	for _, want := range []string{"--model", "/blobs/sha256-abc", "--port", "5991", "--no-log-prefix"} {
@@ -250,8 +250,47 @@ func TestCommandHandlesJoinedLogVerbosity(t *testing.T) {
 			t.Fatalf("joined form survived: %v", args)
 		}
 	}
-	if !slices.Contains(args, logVerbosity) {
+	if i := slices.Index(args, "--log-verbosity"); i < 0 || args[i+1] != logArgs()[1] {
 		t.Errorf("our verbosity missing: %v", args)
+	}
+}
+
+// The memory scrapers need the allocation-summary lines. An engine that
+// declares log-memory-plan prints them at ollama's own threshold, 4, which
+// logs ~32 lines per request instead of ~3,600 at 5 (measured 2026-09-27).
+// One that does not declare it must keep 5: at 4 alone the CUDA_Host model
+// line is filtered, and a partial offload would be understated.
+func TestTheMemoryPlanFlagNeedsThePinFeature(t *testing.T) {
+	base := Pin{Tag: "t", Channel: ChannelDev, Assets: []Asset{{Kind: "bin", Arch: "x86_64"}}}
+	for _, tt := range []struct {
+		features []string
+		want     []string
+		plan     bool
+	}{
+		{[]string{featureLogMemoryPlan}, []string{"--log-verbosity", "4"}, true},
+		{nil, []string{"--log-verbosity", "5"}, false},
+	} {
+		p := base
+		p.Features = tt.features
+		withPin(t, p)
+		_, args := Command("/e/oc.llamafile", []string{"--model", "m", "--log-verbosity", "4"}, nil, "linux")
+		i := slices.Index(args, "--log-verbosity")
+		if i < 0 || !slices.Equal(args[i:i+2], tt.want) {
+			t.Errorf("features %v: argv %v, want %v", tt.features, args, tt.want)
+		}
+		if got := slices.Contains(args, "--log-memory-plan"); got != tt.plan {
+			t.Errorf("features %v: --log-memory-plan present = %v, want %v", tt.features, got, tt.plan)
+		}
+	}
+}
+
+func TestTheCommittedPinLogsQuietly(t *testing.T) {
+	p, err := DefaultPin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.HasFeature(featureLogMemoryPlan) {
+		t.Fatalf("the pinned engine %s has --log-memory-plan; declare feature %s", p.Tag, featureLogMemoryPlan)
 	}
 }
 

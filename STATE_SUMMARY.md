@@ -5,6 +5,14 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — The opencoti engine logs at ollama's level with --log-memory-plan, not at 5.**
+> - xollama forced `--log-verbosity 5` so the memory scrapers would see the buffer-size lines. opencoti shipped `--log-memory-plan` for exactly this (0302, requested 2026-09-18), but xollama never adopted it.
+> - Now `logArgs` in `llm/engine/opencoti.go` passes `--log-verbosity 4 --log-memory-plan` when the pin declares `feature log-memory-plan` (the committed pin does), and keeps 5 otherwise.
+> - Measured on 2609271108001:
+>   - solidPC llama3 8B: every non-zero buffer line, "MiB free" and "offloaded N/M layers" still print; ~3,630 → 32 log lines per request; speed unchanged (~81 tok/s).
+>   - eleven2go, Windows build: the same flags, no memory-parsing warning, identical reported VRAM; qwen3:8b 4,265 / 123.0 tok/s, the same as at 5.
+> - Also measured: xollama vs ollama on eleven2go. Dense models are within 1% between xollama's defaults and an ollama-like setup (`xollama tweak --slots=off --kv-unified=off`); the gap to ollama is the engine (qwen3:8b −15% prefill, −4% gen). qwen3.6:35b-a3b loses ~18% gen under the defaults (elastic recurrent state on the CPU is the lead); a 7-model re-run is in progress, and opencoti gets the full report.
+
 > **2026-09-27 — v0.34.2-xollama.2 published as a pre-release (PR #2, merge 69f1a658) and verified on eleven2go.**
 > - Release run 36319352313: plan, windows, linux, publish all green. Six assets; `sha256sum -c` all OK; payload-id `fcdf0b73…`.
 > - eleven2go install (RELEASE.md step 6, scheduled task): `--version` names the tag, PAYLOAD_ID matches, `*:22434`, `/api/xollama` lists 9 features, the tray app names the fork's feed, and ollama on 11434 is untouched.
