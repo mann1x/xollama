@@ -18,6 +18,7 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >   - the fork's combined `llama/compat/README.md` (`3f1fcb62`) reaches no patch branch, so ours is the line-boundary copy until the fork puts it on one;
 >   - two lint findings in fork code (`server/think_budget_resolution_test.go` bodyclose, `server/routes_generate_test.go` trailing blank line) were sent to the fork;
 >   - the Windows runtime pin must be rebuilt (`xollama-runtime.yaml`) and the Linux pin waits for a fork v0.34.4 runtime release, both before a release PR.
+
 > **2026-09-27 — Promoted releases are announced on Discord.**
 > - New `.github/workflows/discord-announce.yaml`, copied from mann1x/osync's "Announce on Discord" step.
 > - It runs on `release: released`, so on the RELEASE.md step-8 promotion and never for a pre-release. It posts the notes as an embed via the `TECH_CORNER_DISCOWH` secret, which the repo already has. `workflow_dispatch -f tag=` re-announces a tag.
