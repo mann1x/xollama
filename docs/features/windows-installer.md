@@ -208,6 +208,11 @@ which is why that entry is `#ifndef CORE`.
 An interactive install walks four pages, all in `app/xollama-setup-pages.iss`
 (included from `xollama.iss`, full installer only). A silent install -- the
 updater's path -- shows none of them and changes nothing they would.
+In particular it never removes Ollama: `InitializeWizard` builds the Ollama
+page only when `not WizardSilent()`, and `NextButtonClick` checks it again.
+v0.34.4-xollama.1 built the page anyway, and a silent wizard takes every
+default, which was "uninstall Ollama". On eleven2go (2026-09-27) `/SILENT` ran
+Ollama's uninstaller, which gave up only because Ollama was running.
 
 1. **Ollama found.** Any Add/Remove Programs entry named `Ollama` or
    `Ollama <something>` (stock, or a fork such as `Ollama think-budget`), in

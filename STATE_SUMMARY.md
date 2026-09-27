@@ -5,6 +5,10 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — A silent install tried to uninstall Ollama; fixed before v0.34.4-xollama.2.**
+> - Installing v0.34.4-xollama.1 on eleven2go with `/SILENT` (RELEASE.md step 6) ran the think-budget Ollama's uninstaller: the Ollama-found page was built in silent mode and its default is "uninstall". Ollama survived (it was running; files, 210 GB of models, registry entry and app data all intact, app data also backed up). The in-app updater runs the full installer `/SILENT`, so every update on a host with Ollama was exposed. `app/xollama-setup-pages.iss` now never builds or acts on that page silently (bug-166).
+> - v0.34.4-xollama.1 is a published pre-release with this installer. Left: decide with the owner whether to withdraw it; install .2 on eleven2go once it is published.
+
 > **2026-09-27 — Council 10.6: a broadcast channel between parallel members, off by default.**
 > - `council.broadcast` (tweak `council-broadcast`): members with a same-role mate get a server-answered `council_post` tool, 200 chars and 4 notes per member per turn, delivered before the mate's next model call and never waited on; the board travels in the sealed state. Tests: `TestANoteReachesTheMateBesideIt` (40/40 under race), `TestTheNotesBoardTravelsInTheState`.
 > - Left: A/B it on and off in ab-4 (10.7) on eleven2go; drop it if it costs more turns than it saves.

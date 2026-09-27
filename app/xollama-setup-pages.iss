@@ -674,7 +674,13 @@ var
 begin
   DetectOllama();
   After := wpWelcome;
-  if OllamaFound then begin
+  // A silent install -- the in-app updater runs this installer /SILENT or
+  // /VERYSILENT -- never removes another product: the page's default is
+  // "uninstall Ollama", and a silent wizard takes every default. Only a person
+  // clicking Next on this page may choose it. (Found on eleven2go 2026-09-27:
+  // /SILENT ran Ollama's uninstaller, which gave up only because Ollama was
+  // running.)
+  if OllamaFound and not WizardSilent() then begin
     CreateOllamaPage(After);
     After := OllamaPage.ID;
   end;
@@ -693,7 +699,7 @@ function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
   if (OllamaPage <> nil) and (CurPageID = OllamaPage.ID) then begin
-    if OllamaRemoveRadio.Checked and not OllamaRemoved then begin
+    if OllamaRemoveRadio.Checked and not OllamaRemoved and not WizardSilent() then begin
       Result := UninstallOllama();
       OllamaRemoved := Result;
     end;
