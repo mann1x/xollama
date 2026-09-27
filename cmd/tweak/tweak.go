@@ -39,7 +39,7 @@ type Options struct {
 func Command(opts Options) *cobra.Command {
 	tweakCmd := &cobra.Command{
 		Use:   "tweak",
-		Short: "Adjust xollama's own settings on a model",
+		Short: "Adjust xollama's own settings on a model or the server",
 		Long: `Adjust xollama's own settings on a model.
 
 These are the settings the fork adds and upstream ollama has no field for -- the
@@ -55,7 +55,7 @@ sets and which settings need which others.`,
 			return cmd.Help()
 		},
 	}
-	tweakCmd.AddCommand(modelCommand(opts))
+	tweakCmd.AddCommand(modelCommand(opts), serverCommand(opts))
 	return tweakCmd
 }
 
@@ -123,6 +123,8 @@ func flagUsage(f field) string {
 		values = "N|unset"
 	case kindDevices:
 		values = "PCI-ID|index|integrated|discrete[,...]|all"
+	case kindText:
+		values = "TEXT|@file|unset"
 	}
 	return fmt.Sprintf("%s (%s); bare asks", f.path, values)
 }
@@ -206,7 +208,7 @@ func build(cmd *cobra.Command, name string, current *xollama.Config, a *asker) (
 	switch {
 	case len(scope) > 0:
 		// Scoped walk: only the named features, everything else left alone.
-		if err := walk(a, cfg, scope); err != nil {
+		if err := walk(a, cfg, scope, false); err != nil {
 			return nil, err
 		}
 	case len(set) > 0:
@@ -280,7 +282,7 @@ func settle(a *asker, cfg *xollama.Config) error {
 		}
 		a.printf("   ! %s\n", strings.TrimPrefix(err.Error(), "xollama config: "))
 		a.printf("   the settings it names are asked again; `unset` clears one.\n")
-		if err := walk(a, cfg, named); err != nil {
+		if err := walk(a, cfg, named, false); err != nil {
 			return err
 		}
 	}
@@ -319,7 +321,7 @@ func walkAll(a *asker, cfg, current *xollama.Config, name string) (*xollama.Conf
 	for _, f := range fields {
 		all = append(all, f.name)
 	}
-	if err := walk(a, cfg, all); err != nil {
+	if err := walk(a, cfg, all, true); err != nil {
 		return nil, err
 	}
 	return cfg, nil
@@ -327,15 +329,18 @@ func walkAll(a *asker, cfg, current *xollama.Config, name string) (*xollama.Conf
 
 // walk asks the named fields in table order, skipping the ones this config
 // cannot act on and saying why -- the skip is the consistency check happening
-// during setup rather than only at the end.
-func walk(a *asker, cfg *xollama.Config, names []string) error {
+// during setup rather than only at the end. A quiet field is skipped without
+// a word only in the full walk; a question someone named gets its reason.
+func walk(a *asker, cfg *xollama.Config, names []string, full bool) error {
 	for _, f := range fields {
 		if !contains(names, f.name) {
 			continue
 		}
 		if f.blocked != nil {
 			if why := f.blocked(cfg); why != "" {
-				a.printf("\n   skipped %s: %s\n", f.path, why)
+				if !f.quiet || !full {
+					a.printf("\n   skipped %s: %s\n", f.path, why)
+				}
 				continue
 			}
 		}

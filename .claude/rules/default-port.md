@@ -9,6 +9,11 @@
   the separate port worthless. This is the **only** exclusively-namespaced
   setting; every other `OLLAMA_*` var keeps its fallback, because a cache type
   is shareable and an address is not.
+- **The desktop app's Expose must set `XOLLAMA_HOST` too.** Upstream's
+  `OLLAMA_HOST=0.0.0.0` in `app/server/server.go` stays, plus one hook line
+  calling `exposeXollama` (`app/server/server_xollama.go`), which binds
+  `0.0.0.0` on the operator's port or `envconfig.DefaultPort`. Guard:
+  `TestExposeBindsXollamasAddress`.
 - **Binding and connecting are different questions.** `serve` binds
   `envconfig.Host()` and nothing else. Only the CLI's *connect* side, when no
   host is named, may fall back to 11434: `ResolveHost` in `api/xollama_host.go`,
@@ -17,7 +22,8 @@
   tells the fork apart by `/api/xollama` (`api/xollama_identity.go`,
   `server/identity.go`), then by the fork's name in `/api/version` — required,
   because every xollama built before the route 404s it exactly as a stock
-  ollama does.
+  ollama does. `api.IsXollama` is that same probe, exported for the council's
+  remote members (`server/council_remote.go`); do not write a second one.
 - **A stock ollama on the fallback port is a refusal naming `XOLLAMA_HOST`,
   never a silent connection.** `pull`, `rm` and `tweak model` write, and would
   write into *that* server's store.

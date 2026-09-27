@@ -168,6 +168,7 @@ func (s *Server) ollamaProxy() http.Handler {
 				newProxy.Director = func(req *http.Request) {
 					originalDirector(req)
 					req.Host = target.Host
+					withAPIKey(req) // xollama-hook: api-key
 					s.log().Debug("proxying request", "method", req.Method, "path", req.URL.Path, "target", target.Host)
 				}
 
@@ -990,6 +991,7 @@ func (s *Server) chat(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return err
 		}
+		councilThink(details, req.Think, chatReq) // xollama-hook: council — see app/ui/council.go
 
 		err = c.Chat(ctx, chatReq, func(res api.ChatResponse) error {
 			if loading {

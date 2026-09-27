@@ -209,6 +209,15 @@ type ChatRequest struct {
 	// each with an associated log probability. Only applies when Logprobs is true.
 	// Valid values are 0-20. Default is 0 (only return the selected token's logprob).
 	TopLogprobs int `json:"top_logprobs,omitempty"`
+
+	// xollama-hook: council — see plans/agentic-council-chat.md
+	// CouncilChatState is the latest council_chat_state the client received,
+	// sent back so a council turn resumes (council_chat_state_v1). Present,
+	// even empty, it also asks for the state chunks.
+	CouncilChatState *string `json:"council_chat_state,omitempty"`
+
+	// xollama-hook: council — see plans/agentic-council-chat.md
+	Placement *Placement `json:"placement,omitempty"`
 }
 
 type Tools []Tool
@@ -519,6 +528,12 @@ type ToolFunction struct {
 	Name        string                 `json:"name"`
 	Description string                 `json:"description,omitempty"`
 	Parameters  ToolFunctionParameters `json:"parameters"`
+
+	// xollama-hook: council — see plans/agentic-council-chat.md
+	// ReadOnly is the client's mark that the tool changes nothing
+	// (api/xollama_tools.go). It is never marshalled, so a rendered prompt
+	// stays upstream's.
+	ReadOnly bool `json:"-"`
 }
 
 func (t *ToolFunction) String() string {
@@ -587,6 +602,14 @@ type ChatResponse struct {
 	// working within, and tell a truncated answer caused by a thinking bound
 	// apart from one caused by the response cap.
 	ThinkBudgetTokens int `json:"think_budget_tokens,omitempty"`
+
+	// xollama-hook: council — see plans/agentic-council-chat.md
+	// CouncilChatState is an opaque, sealed resume point of a council turn:
+	// on a chunk of its own at each checkpoint, and on the done chunk.
+	CouncilChatState string `json:"council_chat_state,omitempty"`
+
+	// xollama-hook: council — see plans/agentic-council-chat.md
+	Council *CouncilTag `json:"council,omitempty"`
 
 	DebugInfo *DebugInfo `json:"_debug_info,omitempty"`
 

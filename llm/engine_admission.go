@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"time"
 )
@@ -33,6 +35,12 @@ import (
 // for as long as a client is willing to wait. The caller's context still wins
 // when it is shorter, which it usually is.
 const admissionRetryBudget = 2 * time.Minute
+
+// errNoAdmission is the engine refusing for longer than admissionRetryBudget.
+// It is a busy server, not a crashed one, and callers say so.
+var errNoAdmission = errors.New("the engine has had no room for this request for " +
+	admissionRetryBudget.String() + "; it is refusing new work rather than queueing it, " +
+	"which usually means the context or the slot ceiling is too large for the memory available")
 
 // admissionRetryFallback is how long to wait when the engine refuses without
 // saying for how long.
@@ -85,19 +93,28 @@ func (s *llamaServerRunner) postWaitingForAdmission(ctx context.Context, endpoin
 		// Everything except an admission refusal on an engine that has an
 		// admission gate is the caller's answer, untouched.
 		if res.StatusCode != http.StatusTooManyRequests || !s.usedOpencoti {
+			reportEngineWindow(ctx, res)
 			return res, nil
 		}
 
 		wait := retryAfter(res, time.Now())
 		// The body is not the caller's to see -- this response is being
 		// swallowed -- but it has to be drained so the connection is reusable.
+		body, _ := io.ReadAll(io.LimitReader(res.Body, 64<<10))
 		_, _ = io.Copy(io.Discard, res.Body)
 		res.Body.Close()
+		// A client negotiating its own window, or driving its own pool tree,
+		// gets the engine's answer now -- a request that can never fit
+		// included: that client can grow its owner.
+		if Negotiating(ctx) {
+			return nil, refuseWindow(ctx, body, wait)
+		}
+		if err := neverFits(body); err != nil {
+			return nil, err
+		}
 
 		if time.Now().Add(wait).After(deadline) {
-			return nil, errors.New("the engine has had no room for this request for " +
-				admissionRetryBudget.String() + "; it is refusing new work rather than queueing it, " +
-				"which usually means the context or the slot ceiling is too large for the memory available")
+			return nil, errNoAdmission
 		}
 
 		attempt++
@@ -111,4 +128,34 @@ func (s *llamaServerRunner) postWaitingForAdmission(ctx context.Context, endpoin
 		case <-timer.C:
 		}
 	}
+}
+
+// sessionFull is the engine's refusal of a request inside a session's window:
+// "session allocation full (worker of 'x': 15229 of 16384 cells free, needs
+// 15398)" or "session allocation full ('x': …)".
+var sessionFull = regexp.MustCompile(`session allocation full \([^)]*?(\d+) of (\d+) cells free, needs (\d+)`)
+
+// ErrNeverFits is a request that needs more cells than its whole window: no
+// wait can seat it.
+var ErrNeverFits = errors.New("the request needs more context than its window holds")
+
+// neverFits reads an admission refusal and reports one that no wait can
+// cure: a request needing more cells than its session's whole window.
+// Measured on b137: such a request was refused 52 times over 2 minutes before
+// errNoAdmission, when the first refusal already said it could never fit.
+// Anything else -- cells held by others, which they give back -- is waited
+// out as before.
+func neverFits(body []byte) error {
+	m := sessionFull.FindSubmatch(body)
+	if m == nil {
+		return nil
+	}
+	// The pattern admits digits only, so these parse; a number too large for
+	// an int reads as 0 and never refuses.
+	total, _ := strconv.Atoi(string(m[2]))
+	need, _ := strconv.Atoi(string(m[3]))
+	if total <= 0 || need <= total {
+		return nil
+	}
+	return fmt.Errorf("%w: it needs %d cells of a %d-cell window; shorten the conversation or raise num_ctx", ErrNeverFits, need, total)
 }

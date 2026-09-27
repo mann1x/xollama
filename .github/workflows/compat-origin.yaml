@@ -1,0 +1,39 @@
+# llama.cpp comes from the fork: refuse a change to what llama-server is built
+# from (LLAMA_CPP_VERSION, llama/server, llama/compat) unless it came from
+# mann1x/ollama or ollama/ollama. The rule and its two past violations are in
+# scripts/check-compat-origin.sh; the procedure is docs/protocols/FORK-SYNC.md.
+#
+# Fork-only and additive: no upstream file is edited, so it needs no hook.
+name: compat-origin
+
+on:
+  pull_request:
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Commits only, no file contents: reachability is all the check asks of
+      # these refs, and the fork shares upstream's history.
+      - name: fetch the fork and upstream
+        run: |
+          git fetch -q --filter=blob:none https://github.com/mann1x/ollama '+refs/heads/*:refs/remotes/fork/*'
+          git fetch -q --filter=blob:none https://github.com/ollama/ollama '+refs/heads/main:refs/remotes/upstream/main'
+
+      - name: check where llama.cpp changes came from
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # A new branch pushes with an all-zero `before`; measure it from main.
+          if [ -z "${BASE//0/}" ]; then BASE=$(git merge-base origin/main "$HEAD"); fi
+          scripts/check-compat-origin.sh "$BASE..$HEAD"

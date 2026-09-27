@@ -122,6 +122,12 @@ func boundedNumPredict(numPredict, numCtx int) int {
 // llamaServerRunner wraps an upstream llama-server process and implements the LlamaServer interface.
 // It communicates with llama-server over HTTP.
 type llamaServerRunner struct {
+	// xollama-hook: council -- the engine's feature set, read once per process.
+	polykvState
+	// xollama-hook: engine-select -- set by stopProcess, so a stop xollama
+	// asked for is not reported as the engine crashing.
+	stopping atomic.Bool
+
 	port               int
 	cmd                *exec.Cmd
 	done               chan struct{}
@@ -495,6 +501,19 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 			enginePin, engine.EnvSelector)
 	}
 
+	// xollama-hook: launch-config — the scheduler lifts the ollama/ollama#4165
+	// single-sequence rule when it predicts opencoti (WouldUseOpencoti). A
+	// prediction is not the launch: with the artifact missing, or on the
+	// opt-in retry after an opencoti failure, stock llama.cpp serves the load
+	// and gets upstream's one sequence back. Fewer sequences than planned only
+	// ever uses less memory than was reserved.
+	if n := servedSequences(launch.config, launch.numParallel, usedOpencoti); n != launch.numParallel {
+		slog.Warn("model architecture does not currently support parallel requests on stock llama-server; serving one sequence",
+			"requested", launch.numParallel)
+		launch.numParallel = n
+		return startLlamaServer(launch, out)
+	}
+
 	// xollama-hook: launch-config — a cache type stock llama.cpp does not know,
 	// or a sliding-window ring it has no flag for, must be refused here rather
 	// than handed to an engine that will reject the argument itself. The
@@ -522,8 +541,9 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	args = appendKVResidencyArgs(args, kvTypes, usedOpencoti)
 
 	// xollama-hook: launch-config — dynamic slots. See docs/xollama/slots.mdx.
-	slots := resolveSlotPlan(launch.config, launch.numParallel, launch.config.SingleSequenceOnly)
-	args = appendSlotArgs(args, slots, effectivePoolCount(launch.config, len(launch.projectors) > 0), kvTypes.Unified, usedOpencoti)
+	slots := resolveSlotPlan(launch.config, launch.numParallel, launch.config.singleSequence(usedOpencoti))
+	// xollama-hook: council -- the council's pool seats ride on the same flag.
+	args = appendSlotArgs(args, slots, enginePoolSeats(launch.config, len(launch.projectors) > 0), kvTypes.Unified, usedOpencoti)
 	args = appendSWABudgetArgs(args, slots, usedOpencoti)
 
 	// xollama-hook: launch-config — dual chunk attention. See docs/xollama/dca.mdx.
@@ -1264,7 +1284,7 @@ func (s *llamaServerRunner) startProcess() error {
 	// engine that had grown to four live slots would still be fed one request
 	// at a time. Resized here rather than at construction because it depends on
 	// which engine answered, which is only known now.
-	if plan := resolveSlotPlan(s.launch.config, s.launch.numParallel, s.launch.config.SingleSequenceOnly); usedOpencoti {
+	if plan := resolveSlotPlan(s.launch.config, s.launch.numParallel, s.launch.config.singleSequence(usedOpencoti)); usedOpencoti {
 		if n := plan.concurrency(); n > s.launch.numParallel {
 			slog.Info("dynamic slots: concurrency raised, engine admits slots as headroom allows",
 				"live", plan.Live, "max", n)
@@ -1275,6 +1295,9 @@ func (s *llamaServerRunner) startProcess() error {
 	s.cmd = cmd
 	s.port = port
 	s.usedOpencoti = usedOpencoti
+	if s.status != nil { // xollama-hook: engine-select -- see llm/engine_status.go
+		s.status.opencoti.Store(usedOpencoti)
+	}
 	// xollama-hook: engine-session — the pool registry is sized to the same
 	// number the engine was given seats for, and is rebuilt per process: pool
 	// ids belong to the engine that issued them.
@@ -1304,6 +1327,7 @@ func (s *llamaServerRunner) startProcess() error {
 	}
 	s.done = make(chan struct{})
 	s.doneErr = nil
+	s.stopping.Store(false) // xollama-hook: engine-select
 	s.loadStart = time.Now()
 	s.startLoadTracking(s.loadStart)
 
@@ -1312,7 +1336,15 @@ func (s *llamaServerRunner) startProcess() error {
 		err := cmd.Wait()
 		s.doneErr = err
 		if msg := s.lastErrMsg(); err != nil && msg != "" {
-			slog.Error("llama-server terminated", "error", err, "exit", ExitStatusFromError(err))
+			// xollama-hook: engine-select -- at load, opencoti prints a benign
+			// "Error: Jinja Exception: No messages provided." while probing the
+			// chat template. That line is the runner's last "error", so every
+			// unload was logged as a crash (bug-117).
+			if s.usedOpencoti && s.stopping.Load() {
+				slog.Debug("llama-server stopped as asked", "error", err)
+			} else {
+				slog.Error("llama-server terminated", "error", err, "exit", ExitStatusFromError(err))
+			}
 			s.doneErr = errors.New(msg)
 		}
 		close(done)
@@ -1775,6 +1807,10 @@ type llamaServerCompletionRequest struct {
 	// itself token-exactly. Omitted entirely on every other engine.
 	SessionID string `json:"session_id,omitempty"`
 	PoolID    *int   `json:"pool_id,omitempty"`
+	// xollama-hook: council -- the window a council owner books. Never set
+	// outside a council's placement, so every other body is unchanged.
+	NumCtx    int `json:"num_ctx,omitempty"`
+	NumCtxMin int `json:"num_ctx_min,omitempty"`
 }
 
 func llamaServerPreservedTokens(parserTokens []string, toolCallTag string) []string {
@@ -2030,6 +2066,15 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 		poolID = s.poolFor(req.PoolKey)
 	}
 	applySession(&lsReq, s.usedOpencoti, s.launch.config, req.SessionID, poolID)
+	// xollama-hook: council -- a placed call takes the council's pool and
+	// window, and teaches the automatic pools nothing.
+	if pool, n, nmin := placementFields(s.usedOpencoti, s.launch.config, req.Placement); pool != nil || n > 0 {
+		if pool != nil {
+			lsReq.PoolID = pool
+		}
+		lsReq.NumCtx, lsReq.NumCtxMin = n, nmin
+		pooled = poolSource{}
+	}
 	if poolID != nil {
 		// Already attached to a pool, so this request has nothing left to teach
 		// us about the prefix: it is the prefix, shared.
@@ -2088,6 +2133,15 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return err
+		}
+		if errors.Is(err, errNoAdmission) {
+			return api.StatusError{StatusCode: http.StatusServiceUnavailable, ErrorMessage: err.Error()}
+		}
+		if refused := (*WindowRefusedError)(nil); errors.As(err, &refused) { // xollama-hook: context-window
+			return api.StatusError{StatusCode: http.StatusTooManyRequests, ErrorMessage: refused.Message}
+		}
+		if errors.Is(err, ErrNeverFits) { // xollama-hook: context-window
+			return api.StatusError{StatusCode: http.StatusBadRequest, ErrorMessage: err.Error()}
 		}
 		slog.Error("llama-server completion error", "error", err)
 		if msg := s.lastErrMsg(); msg != "" {
@@ -2358,7 +2412,10 @@ func (s *llamaServerRunner) Chat(ctx context.Context, req ChatRequest, fn func(C
 	// Only a request that did NOT attach to a pool is worth learning from: one
 	// that attached already has its prefix shared.
 	var pooled poolSource
-	if req.PoolID == nil && s.poolFor(req.PoolKey) == nil {
+	// xollama-hook: council -- as on Completion, a placed call teaches the
+	// automatic pools nothing: its prefix is the client's pool, not ours.
+	placed := req.Placement != nil && (req.Placement.PoolID != nil || req.Placement.NumCtx > 0)
+	if req.PoolID == nil && s.poolFor(req.PoolKey) == nil && !placed {
 		chat := req
 		pooled = poolSource{chat: &chat}
 	}
@@ -2403,16 +2460,23 @@ func (s *llamaServerRunner) Chat(ctx context.Context, req ChatRequest, fn func(C
 	}
 
 	endpoint := fmt.Sprintf("http://127.0.0.1:%d/v1/chat/completions", s.port)
-	serverReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, buffer)
-	if err != nil {
-		return fmt.Errorf("error creating chat request: %v", err)
-	}
-	serverReq.Header.Set("Content-Type", "application/json")
-
-	res, err := s.httpClient().Do(serverReq)
+	// xollama-hook: launch-config — as on the completion path: an engine with
+	// an admission gate refuses with 429 and Retry-After instead of queueing,
+	// and a busy server queues. Council members and every native-template
+	// chat come this way (bug-118).
+	res, err := s.postWaitingForAdmission(ctx, endpoint, buffer.Bytes())
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			return err
+		}
+		if errors.Is(err, errNoAdmission) {
+			return api.StatusError{StatusCode: http.StatusServiceUnavailable, ErrorMessage: err.Error()}
+		}
+		if refused := (*WindowRefusedError)(nil); errors.As(err, &refused) { // xollama-hook: context-window
+			return api.StatusError{StatusCode: http.StatusTooManyRequests, ErrorMessage: refused.Message}
+		}
+		if errors.Is(err, ErrNeverFits) { // xollama-hook: context-window
+			return api.StatusError{StatusCode: http.StatusBadRequest, ErrorMessage: err.Error()}
 		}
 		slog.Error("llama-server chat error", "error", err)
 		if msg := s.lastErrMsg(); msg != "" {
@@ -2665,6 +2729,16 @@ func (s *llamaServerRunner) llamaServerChatRequest(req ChatRequest, stream bool)
 		}
 		if pool != nil {
 			body["pool_id"] = *pool
+		}
+	}
+
+	// xollama-hook: council -- the chat path's copy of the placement.
+	if pool, n, nmin := placementFields(s.usedOpencoti, s.launch.config, req.Placement); pool != nil || n > 0 {
+		if pool != nil {
+			body["pool_id"] = *pool
+		}
+		if n > 0 {
+			body["num_ctx"], body["num_ctx_min"] = n, nmin
 		}
 	}
 
@@ -3107,6 +3181,7 @@ func (s *llamaServerRunner) stopProcess() error {
 			return nil
 		}
 		slog.Debug("stopping llama-server", "pid", s.Pid())
+		s.stopping.Store(true) // xollama-hook: engine-select
 		if err := s.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			return err
 		}

@@ -249,6 +249,7 @@ func (s *Server) cmd(ctx context.Context) (*exec.Cmd, error) {
 	}
 	if settings.Expose {
 		env["OLLAMA_HOST"] = "0.0.0.0"
+		exposeXollama(env) // xollama-hook: host-namespace — see app/server/server_xollama.go
 	}
 	if settings.Browser {
 		env["OLLAMA_ORIGINS"] = "*"

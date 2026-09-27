@@ -353,7 +353,9 @@ COPY --from=image-archive /lib/ollama /usr/lib/ollama
 ENV LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 ENV NVIDIA_VISIBLE_DEVICES=all
-ENV OLLAMA_HOST=0.0.0.0:11434
-EXPOSE 11434
+# xollama-hook: docker-release -- xollama binds XOLLAMA_HOST only; OLLAMA_HOST
+# would leave it on the container's loopback at 22434. See docs/features/docker-release.md
+ENV XOLLAMA_HOST=0.0.0.0:22434
+EXPOSE 22434
 ENTRYPOINT ["/bin/xollama"]
 CMD ["serve"]

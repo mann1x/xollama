@@ -22,7 +22,8 @@ paths:
 - New routes go in `server/routes.go` with coverage in `server/routes_test.go`;
   scheduler changes need `server/sched_test.go`.
 - Pool ids on the `engine-session` hook are `*int` — `PoolID` in `llm/server.go`,
-  `llm/llama_server.go` and `poolFor` in `llm/engine_pool.go`. The engine numbers
+  `llm/llama_server.go`, `poolFor` in `llm/engine_pool.go` and the `council`
+  hook's `Placement.PoolID` (`placementFields` in `llm/engine_council.go`). The engine numbers
   its first pool `0`, so `nil` means "no pool"; a `> 0` guard or an `omitempty`
   plain `int` on the wire silently drops pool 0. See `docs/xollama/sessions.mdx`.
 - Run `golangci-lint run` before pushing — `.golangci.yaml` uses `gofumpt` and a

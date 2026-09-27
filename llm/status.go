@@ -13,6 +13,9 @@ type StatusWriter struct {
 	// Subprocess wrappers may wire both stdout and stderr to the same
 	// StatusWriter, and os/exec serializes Write calls in that case.
 	lastErrMsg atomic.Value
+
+	// xollama-hook: engine-select -- see llm/engine_status.go.
+	opencoti atomic.Bool
 }
 
 const maxCapturedErrorBytes = 8 * 1024
@@ -155,7 +158,7 @@ func (w *StatusWriter) Write(b []byte) (int, error) {
 			continue
 		}
 
-		if errMsg := statusErrorLine(line); errMsg != "" {
+		if errMsg := statusErrorLine(line); errMsg != "" && !w.benign(line) { // xollama-hook: engine-select
 			w.AppendError(errMsg)
 		}
 	}

@@ -94,6 +94,18 @@ type LlamaServerConfig struct {
 	// never grow past one here: that deny-list is a correctness decision, not
 	// a capacity preference. See docs/xollama/slots.mdx.
 	SingleSequenceOnly bool
+
+	// xollama-hook: launch-config — the only reason for SingleSequenceOnly is
+	// the ollama/ollama#4165 architecture deny-list. That list records what
+	// stock llama.cpp gets wrong; opencoti serves those architectures with
+	// several sequences in flight, so on opencoti the rule is lifted. An
+	// embedding model never sets this. See singleSequence.
+	SingleSequenceStockOnly bool
+
+	// xollama-hook: council -- engine pool seats reserved for a council's pool
+	// tree, over and above the automatic prefix pools. Zero for a model that
+	// is not a council, or whose council does not use PolyKV.
+	CouncilPools int
 }
 
 // enginePin returns the engine this model says it needs, or "".
@@ -169,6 +181,9 @@ func NewLlamaServer(systemInfo ml.SystemInfo, gpus []ml.DeviceInfo, modelPath st
 	// the one thing that makes a longer context safe. The clamp is otherwise
 	// upstream's, warning and all. See docs/xollama/dca.mdx.
 	trainCtx := f.KV().ContextLength()
+	// xollama-hook: polykv-window — the whole-pool mark becomes the trained
+	// context where the load runs PolyKV, upstream's minimum elsewhere.
+	opts.NumCtx = ResolveWholePool(opts.NumCtx, int(trainCtx), WouldUseOpencoti(config, gpus) && enginePoolSeats(config, len(projectors) > 0) > 0)
 	if opts.NumCtx > int(trainCtx) && trainCtx > 0 {
 		if DCAUnlocksContext(config, gpus, f) {
 			slog.Info("serving past the model's trained context with dual chunk attention",
@@ -329,6 +344,12 @@ type CompletionRequest struct {
 	// none does, the first such request creates one for the rest. An explicit
 	// PoolID from the caller always wins.
 	PoolKey string
+
+	// xollama-hook: council -- a council member's place on the engine: the
+	// pool the council built for it and, for the owner, the window it books.
+	// Applied only where sessions exist (llm/engine_council.go); nil for every
+	// request that is not a council's.
+	Placement *Placement
 }
 
 type ChatRequest struct {
@@ -357,6 +378,12 @@ type ChatRequest struct {
 	// none does, the first such request creates one for the rest. An explicit
 	// PoolID from the caller always wins.
 	PoolKey string
+
+	// xollama-hook: council -- a council member's place on the engine: the
+	// pool the council built for it and, for the owner, the window it books.
+	// Applied only where sessions exist (llm/engine_council.go); nil for every
+	// request that is not a council's.
+	Placement *Placement
 }
 
 type ChatResponse struct {

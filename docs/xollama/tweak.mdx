@@ -88,6 +88,97 @@ never served on other hardware instead. An unpinned model is never placed on an
 integrated Vulkan GPU while a discrete one is present — see
 [device selection](/features/device-selection).
 
+## Making a model a council
+
+What a council is, its settings and what a client sees are on
+[Council chat](/xollama/council). This section is about setting it with `tweak`.
+
+A council answers every chat turn with several calls to the model:
+- a planner decides whether the message needs the council at all, and answers
+  a greeting directly;
+- otherwise researchers investigate in parallel, then critics review the
+  findings in parallel;
+- a synthesizer writes the one answer the client receives.
+
+Clients ask for the model as they would any other, and the deliberation
+streams as thinking.
+
+`--council` walks the council's settings, and `--council=on` alone takes the
+tested defaults: 2 researchers and 2 critics, a random seed for every member,
+a ±2 % temperature spread on researchers and critics, one round, and the
+deliberation shown.
+
+```sh
+xollama tweak model qwen3.6-council:27b --council=on
+xollama tweak model qwen3.6-council:27b --council-researchers=3 --council-critics=3
+xollama tweak model qwen3.6-council:27b --council-critic-prompt=@critic.txt   # a prompt from a file
+xollama tweak model qwen3.6-council:27b --council-charter                      # asks the charter and every role's prompt
+```
+
+Every council setting other than the switch is skipped silently in the full
+walk while the council is off, because it could not apply. Named by a flag, it
+is skipped with the reason. `council.polykv on` needs the opencoti engine;
+`auto`, the default, uses shared KV where the engine offers it.
+
+A council changes how a turn is answered, and barely how the model loads: its
+members run on the council tag's own runner, with the model's launch settings.
+The only addition is on opencoti with shared KV, where the runner reserves a
+few pool seats for the council (four for one round). Like
+any two tags over the same weights, a council tag and the model it is built
+`FROM` do not share a runner, so alternating between them reloads. Use the
+council tag for both: a trivial message is answered directly, in one extra
+short call.
+
+### How a council turn runs
+
+- **Every member is an ordinary chat turn on the model**, served inside the
+  server with the model's own template, parser and engine. Thinking is off for
+  each member; the council's deliberation is the members' replies.
+- **Every member's system message is empty**, then comes the conversation:
+  one prefix all of them share, and the one a client's PolyKV pool is cut
+  from. The charter opens the planner's route and plan requests, which the
+  other members continue from. The system prompt, the client's or else the
+  model's, goes to the synthesizer only, as a message after its own role
+  prompt, and to the planner's direct answer. The members that answer the
+  user know what the user expects; the others research and review without
+  the answer's format rules.
+- **Each parallel member has its own engine session**, named after the
+  conversation's (`<session>~researcher-1`, `~critic-2`, `~synthesizer`), so
+  members never wait on one slot. The planner keeps the conversation's own
+  session: a direct answer is served from the same cache a plain chat would use.
+- **Thinking** carries the plan, the findings and the critiques, one member at
+  a time under a `### Researcher 2`-style heading: the member speaking streams
+  line by line, and a parallel member's text follows it whole.
+  A request with `think: false` gets the answer alone, as does
+  `council.show_deliberation off`.
+- **Tools or a `format`** in the request mean the client is steering the
+  model's output itself, so that turn is answered as a plain chat, without the
+  council.
+- **Parallel members need parallel slots.** On opencoti a council runs its
+  researchers and critics at once, including on Qwen3.5, Qwen3-Next, LFM2 and
+  Nemotron-H: the single-sequence rule upstream applies to those architectures
+  is stock llama.cpp's (see [dynamic slots](/xollama/slots)). On stock llama.cpp
+  they take turns.
+- **On opencoti, members share the conversation's cache** (`council.polykv`
+  `auto` or `on`). The conversation is cached once, the researchers share it
+  plus the plan, and the critics and the synthesizer share each further step.
+  Each member computes only the part that is new to it. Measured on a 27B
+  model, a council turn computed about 525 prompt tokens instead of 3,100, and
+  held about 40 % less cache. The saving grows with the length of the
+  conversation. When the turn ends, the shared parts are freed and the
+  members' sessions closed. The conversation keeps its window for the next
+  turn.
+- **The conversation's window follows the engine's pressure.** If other
+  requests are being refused, an idle council gives back the part of its
+  window it is not using, down to `council.context.floor`. When the pressure
+  clears, the next turn takes the window back. Past
+  `council.context.compact_at` of the window (0.85 by default), the older
+  turns are folded into a summary in front of the recent ones (see
+  [Long conversations](/xollama/council#long-conversations)).
+- **Watching it:** `GET /api/engine?model=<council>&endpoint=kv` shows the
+  window and the pressure, and `endpoint=polykv/pools` the shared parts during
+  a turn (see [Seeing what the engine did](/xollama/introspection)).
+
 ## Pinning a drafter's driver
 
 A drafter is attached at build time with a `DRAFT` line, and its driver is
@@ -247,3 +338,9 @@ The section appears only when the model states something, and lists only what
 it states. Settings are resolved at load time, so a change needs the model
 reloaded before it takes effect. [Seeing what the engine did](/xollama/introspection) shows what
 the running model was actually given.
+
+## The server's own settings
+
+`xollama tweak server` sets what belongs to the server rather than to a model.
+Today that is the [local API key](/xollama/api-key):
+`--api-key=generate|set|remove|status`, or no flag to be asked.

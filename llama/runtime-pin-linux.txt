@@ -1,0 +1,39 @@
+# llama/runtime-pin-linux.txt
+#
+# The Linux amd64 payload the container image ships, pinned as published
+# artifacts instead of built: read by scripts/docker-assemble.sh, which
+# .github/workflows/docker-release.yaml runs. Design: plans/docker-image.md.
+# The Windows counterpart is llama/runtime-pin.txt.
+#
+#   repo     GitHub repository that publishes the CPU runtime (the fork)
+#   tag      its release carrying the asset
+#   asset    archive name; its root is ollama/, i.e. lib/ollama
+#   sha256   of the asset, checked before it is unpacked
+#   inputs   sha256 of `git ls-tree -r <commit> -- LLAMA_CPP_VERSION
+#            llama/server llama/compat` WITHOUT the llama/compat/README.md
+#            line. The README is not a build input and the fork's copy is
+#            allowed to differ; every other byte must equal what the runtime
+#            was built from. The build refuses to assemble when the building
+#            commit's digest differs: move this pin in the same change that
+#            moves those paths.
+#   built    the fork commit the runtime was built at (provenance; its digest,
+#            README excluded, must equal inputs -- checked when reachable)
+#   upstream ollama/ollama release the GPU backends come from. Its
+#            LLAMA_CPP_VERSION must equal ours, or the build refuses.
+#   gpu      <asset> <sha256>, one row per upstream tarball unpacked for its
+#            lib/ollama: cuda_v12, cuda_v13, vulkan (and upstream's CPU
+#            llama-server, which the runtime above replaces), mlx_cuda_v13.
+#
+# This file is outside the digested paths on purpose, so committing it does not
+# invalidate itself.
+
+repo      mann1x/ollama
+tag       v0.34.2-2-thinkbudget
+asset     ollama-linux-amd64-runtime.tgz
+sha256    33ac42c1107c68604ed9c2e2c991e9a7cdfd00b33c2a4f2c2ce758273df36447
+inputs    eff6800e1f27383e5f9b880f109fb0e70aad0108f8a52716201d9f77c1fc54c6
+built     d6e24119a31245ac3a212342c49258db2aeea838
+
+upstream  v0.34.2
+gpu       ollama-linux-amd64.tar.zst      e155b83589986d2c581fdbf1381ea3ebdb16549883679cd5a0627f7cdc05b12b
+gpu       ollama-linux-amd64-mlx.tar.zst  aafb2f2d54dd0fca06d7503cff7a9c81bca561b1b7838fb45132d046ce6fe741

@@ -237,6 +237,11 @@ func (s *Server) scheduleRunner(ctx context.Context, model *Model, caps []model.
 		return nil, nil, nil, err
 	}
 
+	// xollama-hook: polykv-window — a whole-pool load answers with the context
+	// it took, so prompt truncation never reads the stated 0.
+	if opts.NumCtx == 0 && model.ModelPath != "" && llm.WantsWholePool(llamaServerConfigForModel(model)) {
+		opts.NumCtx = runner.llama.ContextLength()
+	}
 	return runner.llama, model, &opts, nil
 }
 
@@ -253,6 +258,7 @@ func signinURL() (string, error) {
 
 func (s *Server) GenerateHandler(c *gin.Context) {
 	checkpointStart := time.Now()
+	exposeContextWindow(c) // xollama-hook: context-window — see docs/xollama/sessions.mdx
 	var req api.GenerateRequest
 	if err := c.ShouldBindJSON(&req); errors.Is(err, io.EOF) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "missing request body"})
@@ -1967,6 +1973,7 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 		"User-Agent",
 		"Accept",
 		"X-Requested-With",
+		"x-api-key", // xollama-hook: api-key — Anthropic clients send the local key here
 
 		// OpenAI compatibility headers
 		"OpenAI-Beta",
@@ -1990,6 +1997,7 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.Use(
 		cors.New(corsConfig),
 		allowedHostsMiddleware(s.addr),
+		s.apiKeyMiddleware(), // xollama-hook: api-key — see docs/xollama/api-key.mdx
 	)
 
 	// General
@@ -2002,6 +2010,7 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.GET(api.XollamaIdentityPath, XollamaIdentityHandler)
 	// xollama-hook: device-select — see docs/features/device-selection.md
 	r.GET(api.XollamaDevicesPath, XollamaDevicesHandler)
+	r.POST(api.XollamaAPIKeyPath, s.APIKeyHandler) // xollama-hook: api-key
 	r.GET("/api/status", s.StatusHandler)
 	// Codex uses this existing Ollama listener for both native and Ollama
 	// models. The proxy selects the upstream per request.
@@ -2034,6 +2043,8 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.GET("/api/ps", s.PsHandler)
 	// xollama-hook: engine-introspect — see server/routes_engine.go
 	r.GET("/api/engine", s.EngineHandler)
+	r.POST("/api/engine", s.EngineHandler)
+	r.DELETE("/api/engine", s.EngineHandler)
 	r.POST("/api/generate", s.withInferenceRequestLogging("/api/generate", s.GenerateHandler)...)
 	r.POST("/api/chat", s.withInferenceRequestLogging("/api/chat", s.ChatHandler)...)
 	r.POST("/api/embed", s.EmbedHandler)
@@ -2657,10 +2668,16 @@ func llamaServerConfigForModel(m *Model) llm.LlamaServerConfig {
 		ManifestDigest:       m.Digest,
 		DraftModelPath:       m.DraftPath,
 		DraftModelShardPaths: slices.Clone(m.DraftShardPaths),
-		// xollama-hook: model-config
-		Xollama: m.Xollama,
+		// xollama-hook: model-config -- the launch part only: a council changes
+		// how a turn is answered, not how the model loads, and must not give a
+		// council tag its own runner (types/xollama LaunchConfig).
+		Xollama: m.Xollama.LaunchConfig(),
 		// xollama-hook: launch-config
-		SingleSequenceOnly: singleSequenceOnly(m),
+		SingleSequenceOnly:      singleSequenceOnly(m),
+		SingleSequenceStockOnly: parallelUnsafeArchitecture(m),
+
+		// xollama-hook: council -- pool seats for the council's pool tree.
+		CouncilPools: councilPoolSeats(m),
 	}
 }
 
@@ -2683,6 +2700,19 @@ func singleSequenceOnly(m *Model) bool {
 	}
 	if m.CheckCapabilities(model.CapabilityCompletion) != nil {
 		return true // an embedding model
+	}
+	return parallelUnsafeArchitecture(m)
+}
+
+// parallelUnsafeArchitecture reports whether a completion model is held to one
+// sequence only by the ollama/ollama#4165 deny-list.
+//
+// xollama-hook: launch-config -- that list records what stock llama.cpp gets
+// wrong, so it binds only there: on opencoti these architectures run with
+// several sequences (llm.LlamaServerConfig.SingleSequenceStockOnly).
+func parallelUnsafeArchitecture(m *Model) bool {
+	if m == nil || m.CheckCapabilities(model.CapabilityCompletion) != nil {
+		return false
 	}
 	return slices.Contains(parallelUnsafeArchitectures, m.Config.ModelFamily)
 }
@@ -2757,6 +2787,7 @@ func writeChatResponse(c *gin.Context, req api.ChatRequest, ch chan any) {
 
 func (s *Server) ChatHandler(c *gin.Context) {
 	checkpointStart := time.Now()
+	exposeContextWindow(c) // xollama-hook: context-window — see docs/xollama/sessions.mdx
 
 	var req api.ChatRequest
 	if err := c.ShouldBindJSON(&req); errors.Is(err, io.EOF) {
@@ -2922,6 +2953,15 @@ func (s *Server) ChatHandler(c *gin.Context) {
 			return
 		}
 
+		return
+	}
+
+	// xollama-hook: council -- a model whose config makes it a council answers
+	// the turn with its members (server/council.go); everything else, and every
+	// member's own turn, continues below unchanged.
+	clientPlacement(c, req)
+	if councilServes(c, m, req) {
+		s.councilChat(c, req, m)
 		return
 	}
 
@@ -3111,6 +3151,9 @@ func (s *Server) ChatHandler(c *gin.Context) {
 				ThinkingStartTag:           thinkStartTag,
 				ThinkingEndTag:             thinkEndTag,
 				ThinkBudgetResetTag:        thinkBudgetResetTagForCompletion(builtinParser),
+
+				// xollama-hook: council -- a council member's pool and window.
+				Placement: councilPlacement(c),
 			}, func(r llm.CompletionResponse) {
 				metrics := api.Metrics{
 					PromptEvalCount:       r.PromptEvalCount,
@@ -3378,6 +3421,8 @@ func (s *Server) handleNativeChat(c *gin.Context, req api.ChatRequest, m *Model,
 		TopLogprobs: req.TopLogprobs,
 		SessionID:   sessionIDForRequest(req.SessionID, m, msgs, req.Tools),
 		PoolKey:     poolKeyForRequest(m, msgs, req.Tools),
+		// xollama-hook: council -- a council member's pool and window.
+		Placement: councilPlacement(c),
 	}, truncate)
 	if err != nil {
 		slog.Error("chat template prompt error", "error", err)

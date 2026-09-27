@@ -161,6 +161,9 @@ func (a *asker) render(cfg *xollama.Config, f field, current string) []string {
 		}
 		a.printf("   a number%s, or `unset`\n", unit)
 		return nil
+	case kindText:
+		a.printf("   type it, `@path` to read it from a file, or `unset`\n")
+		return nil
 	}
 
 	for i, o := range options {
@@ -315,5 +318,6 @@ func clone(c *xollama.Config) *xollama.Config {
 		d.IDs = slices.Clone(c.Devices.IDs)
 		out.Devices = &d
 	}
+	out.Council = c.Council.Clone()
 	return &out
 }

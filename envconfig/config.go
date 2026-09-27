@@ -303,6 +303,11 @@ var (
 	// setting is inert and nothing is sent, so the off path stays upstream's.
 	// A model's xollama.json overrides this for that model.
 	SessionAffinity = func() bool { return BoolWithDefault("XOLLAMA_SESSION_AFFINITY")(true) }
+	// CouncilHosts are the servers a council role may be served on
+	// (council.<role>.host), as host names or host:port, comma separated; "*"
+	// allows any. Empty allows none. Operator-side only: a council model can be
+	// pulled, and the host it names receives every conversation it serves.
+	CouncilHosts = String("XOLLAMA_COUNCIL_HOSTS")
 	// SessionPool opts in to sharing one physical copy of a common prefix --
 	// a system prompt and tool definitions -- between the conversations of a
 	// model, instead of one copy each. Off by default: it changes how KV is
@@ -377,6 +382,9 @@ var (
 	// sliding-window model that costs a window exactly as a slot does, so this
 	// is sized by distinct system prompts rather than by conversations.
 	PolyKVMaxPools = Uint("XOLLAMA_POLYKV_MAX_POOLS", 0)
+	// PolyKVClientPools is how many pool seats a model keeps for a client's
+	// own pools when its config names none (session.client_pools).
+	PolyKVClientPools = Uint("XOLLAMA_POLYKV_CLIENT_POOLS", 0)
 	// SWASeqBudget sizes a sliding-window model's short cache for this many
 	// sequences instead of for every slot and pool it could open.
 	//
@@ -457,6 +465,7 @@ func AsMap() map[string]EnvVar {
 		"XOLLAMA_ENGINE_ARGS":         {"XOLLAMA_ENGINE_ARGS", EngineArgs(), "Extra llama-server arguments appended to the engine command line, for flags with no env twin"},
 		"XOLLAMA_SESSION_AFFINITY":    {"XOLLAMA_SESSION_AFFINITY", SessionAffinity(), "Return a conversation to the slot holding its KV, on the opencoti engine (default true)"},
 		"XOLLAMA_SESSION_POOL":        {"XOLLAMA_SESSION_POOL", SessionPool(), "Share one copy of a common prefix between conversations, on the opencoti engine (default false)"},
+		"XOLLAMA_COUNCIL_HOSTS":       {"XOLLAMA_COUNCIL_HOSTS", CouncilHosts(), "Servers a council role may run on (council.<role>.host): host or host:port, comma separated, * for any (default none)"},
 		"XOLLAMA_K_CACHE_TYPE":        {"XOLLAMA_K_CACHE_TYPE", KCacheType(), "KV cache type for keys, overriding OLLAMA_KV_CACHE_TYPE for that half"},
 		"XOLLAMA_V_CACHE_TYPE":        {"XOLLAMA_V_CACHE_TYPE", VCacheType(), "KV cache type for values, overriding OLLAMA_KV_CACHE_TYPE for that half"},
 		"XOLLAMA_UPDATE_FEED":         {"XOLLAMA_UPDATE_FEED", UpdateFeed(), "Where the desktop app looks for updates (default: this fork's GitHub releases)"},
@@ -470,6 +479,9 @@ func AsMap() map[string]EnvVar {
 		"XOLLAMA_DCA":                 {"XOLLAMA_DCA", DCA(), "Serve a model past its trained context with dual chunk attention (needs a supported engine and architecture)"},
 		"XOLLAMA_DCA_CHUNK_SIZE":      {"XOLLAMA_DCA_CHUNK_SIZE", DCAChunkSize(), "DCA chunk length in tokens (0 = the model's own pretrain window)"},
 		"XOLLAMA_POLYKV_MAX_POOLS":    {"XOLLAMA_POLYKV_MAX_POOLS", PolyKVMaxPools(), "Shared prefix pools a model may hold at once (0 = the model decides)"},
+		"XOLLAMA_POLYKV_CLIENT_POOLS": {"XOLLAMA_POLYKV_CLIENT_POOLS", PolyKVClientPools(), "Pool seats a model keeps for a client's own PolyKV pools (0 = none unless the model says)"},
+		// Masked: serve logs these values, and the key must never reach a log.
+		"XOLLAMA_API_KEY":             {"XOLLAMA_API_KEY", maskedKey(APIKeyEnv()), "Local API key: the server requires it on every endpoint; clients send it (see docs/xollama/api-key.mdx)"},
 		"XOLLAMA_SWA_SEQ_BUDGET":      {"XOLLAMA_SWA_SEQ_BUDGET", SWASeqBudget(), "Size a sliding-window model's short cache for this many sequences (0 = one per sequence)"},
 		"OLLAMA_DEBUG":                {"OLLAMA_DEBUG", LogLevel(), "Show additional debug information (e.g. XOLLAMA_DEBUG=1)"},
 		"OLLAMA_DEBUG_LOG_REQUESTS":   {"OLLAMA_DEBUG_LOG_REQUESTS", DebugLogRequests(), "Log inference request bodies and replay curl commands to a temp directory"},

@@ -1,0 +1,798 @@
+# xollama — State Summary
+
+Newest entry first. Each entry is dated and says what changed (commit shas,
+release tags, measurements) and what is left. The fixed sections below the
+entries are rewritten in place so they always describe *now*. Plans are
+indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
+
+> **2026-09-27 — Engine pin moves to opencoti 2609271108001, the first with a Windows CUDA engine; tested live on eleven2go.**
+> - Pin: HF rev `ed6430b9`, bin `32287454` (one APE for x86_64, aarch64 and Windows), dso `868ed520` (Linux CUDA) and `ee622711` (Windows CUDA DLL), mail #439. It carries the b145 line: council/PolyKV surface plus opencoti's media runtime and STT.
+> - Windows packaging now accepts a dev snapshot's shape (`bin win-x86_64` + `dso win-x86_64`):
+>   - `Pin.ArchFor` falls back to it when no `win-x86_64-gpu` bin exists; `cmake/opencoti-engine.cmake` and `xollama-release.yaml` make the same choice.
+>   - The engine is staged as `<name>.exe` with `ggml-cuda.dll` in `lib\ollama\engines`, not beside `llama-server.exe`: ggml's loader falls back to `ggml-cuda.dll` in the exe's directory.
+> - New pin directive `cuda-sass 86 120`: the payloads carry SASS for sm_86 and sm_120f only, so `Pin.CoversCUDA` routes 7.5/8.0/9.0/10.x to llama.cpp, naming why, instead of letting them run on the CPU.
+> - Measured on eleven2go (RTX 3090), with a cross-built xollama installed over the manual install:
+>   - qwen3:8b ran on the engine on CUDA0 at 123.7 tok/s.
+>   - omnimerge-v4 MTP IQ2_M at 128k made a correct tool call, at 60.7 tok/s with a 131072 window.
+>   - `XOLLAMA_ENGINE=llamacpp` stays on stock llama-server on the GPU (109.5 tok/s, no header).
+> - Linux A/B on solidPC (`phase2-engine-ab.py` as ollama) against b111:
+>   - compat 8/8; llama3 75.4 vs 75.6 tok/s.
+>   - multislot 590 vs 461 tok/s; 70B overflow 3.69 vs 1.21 tok/s (single run).
+>   - gemma4 tool call and thinking split correct.
+>   - No defect row accuses a dev build, so none is retired.
+> - CI red on PR #2 since the API key commit, fixed: `app/ui/apikey.go` lacked the `windows || darwin` tag its only caller has (lint `unused` on Linux); `TestLiveAppUpdate` now skips when GitHub rate-limits the unauthenticated feed (403) instead of failing. Release dry run `36317134651` passed (plan, windows, linux, publish).
+> - Left: merge PR #2 and the CI pre-release.
+
+> **2026-09-27 — A client's pooled worker is refused fast too; a never-fitting request is a 400, not a "runner stopped".**
+> - Cerebriline's first live run of both paths (mail #430) worked on dev 58cd5bf1, b137, omnimerge-v4-mtp:IQ2_M:
+>   - The lead pooled (n_pool_shared 941–960) with `X-Context-Window: 31827`.
+>   - The swarm owner got 98304, and its workers pooled.
+>   - Negotiating asks got fast 429s.
+> - Their ask 2 is done: a plain `/api/chat` with `placement.pool_id >= 0` now negotiates as `placement.num_ctx` does. The engine's 429 comes through at once, including the "session allocation full" of a full owner, on which their worker grows its owner. `X-Context-Largest-Admissible` is sent only when the engine names one; `Retry-After` is always sent.
+> - Bug found on the way (bug-157): `ErrNeverFits` was never mapped in `Completion` or `Chat`. So the fail-fast of a01f3043 reached clients as "model runner has unexpectedly stopped". It is now a 400 naming the numbers, for requests that do not negotiate.
+> - Their ask 1: omnimerge-v4-mtp:IQ2_M went to `session.client_pools: 3`, and the re-test (#433) attached all 3 swarm layers. A lead with a window beside the swarm then exhausted the reservoir (lead 2 + swarm 3 = 5 > 4), so the model is now at 5. `model-settings.mdx` says to count the client pools alive at once: 2 per windowed lead, 3 per swarm tree.
+> - The re-test also passed ask 2: a full owner's 429 arrived in 0.4 s with the engine's reason, and their resize-and-grow path works through `/api/engine`.
+> - Mutants: 5 more, all killed.
+
+> **2026-09-27 — The engine's granted window reaches the client (`X-Context-Window`), and a window a client negotiates is refused fast.**
+> - Cerebriline asked for this in #418. opencoti sets `X-Context-Window: <granted>` on every admitted response when it books windows; before this, xollama dropped it.
+>   - The header is now on `/api/chat` and `/api/generate`, streamed or not, and on the OpenAI and Anthropic routes.
+>   - A council turn reports its owner's grant.
+>   - No header still means no guaranteed window: stock llama.cpp is unchanged.
+>   - The value reaches the handler through a collector on the request context. A writer wrapper sets it before the first byte, on the handler's goroutine, so nothing races.
+> - A client that states `placement.num_ctx` is negotiating. When the engine cannot book even `num_ctx_min`, the client gets the engine's 429 at once, with `X-Context-Largest-Admissible`, `Retry-After` and the engine's reason, instead of waiting 2 minutes for a 503. Requests that state no window still queue.
+> - Feature `context_window_v1`. Registry row `context-window`. Docs in `docs/xollama/sessions.mdx` ("The session's window").
+> - Tests in `server/context_window_test.go` and `llm/engine_slots_test.go`. 21 compiling mutants, all killed.
+> - Live on solidPC: a throwaway server on :22500, CPU-only, engine b137, tinyllama, run as `ollama`.
+>   - The header appeared on every route.
+>   - Placement 1536/512 was granted 1536; the continuation held 1536.
+>   - Asking 2048/1024 with 512 free gave 429 in 0.0 s, with largest 512 and Retry-After 2.
+>   - 2048/256 was granted 512.
+> - Limits:
+>   - The OpenAI and Anthropic shims do not carry `session_id` or `placement`, so negotiation is `/api/chat` only.
+>   - `options.num_ctx` still reloads the model; `placement.num_ctx` is the way to ask for a window.
+> - API key tests extended with positive twins and edges: every route with the key, the ollama.com-signed request plus `x-api-key`, Bearer precedence, case sensitivity, throttle forgiveness and expiry, key rotation without a restart, `::1`, remote callers refused even with the key, a client with no key, and the desktop proxy (`app/ui/apikey_test.go`, runs on Windows/macOS CI). 7 more mutants killed; 2 equivalent ones noted.
+
+> **2026-09-27 — A local API key for incoming connections (`xollama tweak server --api-key`).**
+> - Upstream accepts `api_key="ollama"` and ignores it. xollama can now require
+>   a real key on every route, as `Authorization: Bearer` or `x-api-key`
+>   (`401` + `WWW-Authenticate: Bearer realm="xollama"` otherwise). It is a local
+>   key only: registry and cloud keep ollama.com signing, and `OLLAMA_API_KEY` is
+>   never read for it. Set with `xollama tweak server --api-key=generate|set|remove|status`
+>   (the key is never on the command line) or `XOLLAMA_API_KEY` on the server,
+>   which wins. The server stores only the SHA-256 (`~/.ollama/xollama-server.json`,
+>   0600). The client sends `XOLLAMA_API_KEY` or `~/.ollama/xollama-api-key`.
+> - Hardening:
+>   - constant-time digest compare;
+>   - 10 wrong keys per peer per minute → 429, keyed on the TCP peer (not
+>     `X-Forwarded-For`), and a missing key does not count;
+>   - the key is stripped before handlers, so the cloud passthrough cannot
+>     forward it;
+>   - the management route is loopback-only and refuses proxied requests;
+>   - `ClientFromEnvironment` alone carries the key, and never follows a
+>     cross-host redirect with it;
+>   - the host probe never sends it and recognises a keyed xollama by its
+>     challenge;
+>   - the CLI warns before sending it over plain HTTP to another host;
+>   - the server's self-calls use a per-process token;
+>   - the desktop proxy injects the user's key;
+>   - feature `api_key_v1`.
+> - Docs: `docs/xollama/api-key.mdx`, with a Warning that the key is clear text
+>   over HTTP and the connection must be TLS-encapsulated; Caddy, nginx and SSH
+>   tunnel recipes. Registry row `api-key`.
+> - Tests in five files, and 20 compiling mutants, all killed. Live on solidPC
+>   with a throwaway server on :22500 as `ollama`: open → generate → 401 without
+>   the key / 200 with it (Bearer, x-api-key, LAN) → CLI error naming
+>   `XOLLAMA_API_KEY` → plain-HTTP warning → remote and proxied admin 403 →
+>   429 after 10 wrong keys from the LAN while loopback kept 200 → remove →
+>   open. The key never appeared in the server log.
+> - Also today: eleven2go's xollama (0.34.2-xollama.1) is exposed on
+>   `192.168.178.161:22434`. It uses `XOLLAMA_HOST=0.0.0.0:22434` as a user
+>   variable, because that build predates the Expose fix, plus a firewall rule
+>   "xOllama 22434" (Private). The solidPC dev server is on `*:22434`. Both are
+>   reached from pandorum.
+> - Left: remote council members (`council.<role>.host`) send no key yet; the
+>   engine subprocess port is loopback-only and not keyed; mail Cerebriline the
+>   header contract.
+
+> **2026-09-27 — Plain models can host a client's own PolyKV pools (`session.client_pools`).**
+> - Cerebriline asked (mail #411) to drive PolyKV itself on non-council models.
+>   The engine had no seats for that: `--polykv-max-pools` defaults to 0, and
+>   xollama passed it only for its own automatic pooling or a council.
+>   `session.client_pools` / `XOLLAMA_POLYKV_CLIENT_POOLS` now adds seats for
+>   the client, counted in the memory estimate, never in xollama's registry.
+> - A native chat placed on a client's pool no longer feeds automatic capture
+>   (it already did not on the completion path).
+> - Contract answered per question in mail #414.
+
+> **2026-09-27 — A council member's own results fit its window; never-fitting requests fail at once; Expose binds.**
+> - A member's own tool results fold to refs past three quarters of the window
+>   (characters): older turns first, then its last turn's largest, searched
+>   with `council_evidence`. A refusal needing more than the whole window is an
+>   immediate error, not 2 minutes of retries.
+> - The desktop app's Expose set only `OLLAMA_HOST`, which xollama ignores, so
+>   an exposed install stayed on 127.0.0.1 (eleven2go). It now sets
+>   `XOLLAMA_HOST=0.0.0.0:<port>`.
+
+> **2026-09-27 — Council tools: narrated calls stopped; long results travel by ref (`council_evidence`).**
+> - A researcher's first reply that names a tool without calling it is dropped
+>   and asked again once. With the stronger note it never fired: live 10+10,
+>   council 10/10, plain 8/10.
+> - Results over 1,500 characters travel in findings as a ref plus ten lines;
+>   members read ranges or patterns back with the council's own
+>   `council_evidence` tool, answered in the server. A member's own older
+>   results fold to refs past 12,000 characters.
+> - Live, 20 KB log + 8 KB config: every completed run right and byte-exact on
+>   both sides (council 9/9, plain 12/12). Three council runs never completed:
+>   a member whose own results outgrew the owner's window, waited out for 2
+>   minutes, then 503. Open, with the owner.
+
+> **2026-09-27 — A council worker with no pool layer runs inside the owner's window.**
+> - Booked on its own session it could wait out admission beside an owner
+>   holding the whole cache. It now runs on the owner, inside its window, one
+>   at a time, as compaction calls do. The test fails without the branch.
+
+> **2026-09-27 — 9.5 fixed: the council is as reliable with tools as the plain model.**
+> - The owner rejected "less reliable" as a finding. A per-member debug trace
+>   found three faults of ours, with compaction and thinking both ruled out:
+>   - tool results stayed private to the member that called for them, so
+>     the synthesizer (the only writer) never saw the file it edited, and
+>     critics re-read everything. Findings now carry their evidence;
+>   - the charter contradicted the tools ("only their own knowledge");
+>   - a resumed member's PolyKV layer was cut after its own tool results.
+>     That meant a private pool per round trip, or none: it booked cells
+>     beside a full owner, and waited out admission.
+> - Live A/B after the fixes, interleaved: council 6/6, 27–38 s; plain 6/6,
+>   5–7 s. No critic tool calls, no unpooled members.
+> - A procedure fault on the way (bug-144): the dev server was found by
+>   name, so a build named `xollama-trace` survived a restart and served one
+>   batch on the old binary. That batch was discarded. Find it by its port.
+
+> **2026-09-26 — Phase 9.5: the council uses the client's tools (`council_tools_v1`).**
+> - A council turn with tools and `council_chat_state` uses the tools.
+>   Researchers and critics call only the tools marked `x_read_only` (or MCP
+>   `readOnlyHint`); the synthesizer and a direct answer call any. A member's
+>   call ends the response like a model's, under an id naming the member
+>   (`r2:call_x`); the results plus the state resume it. Without the state,
+>   tools stay a plain chat. Every member carries the tools, and so does the
+>   PolyKV root.
+> - Live on b137, a client loop over a fake repository: parallel members'
+>   calls travel together, each round trip resumes only who waits, and only
+>   the synthesizer writes. The first prompts made researchers invent tool
+>   results, because the charter still said "their own knowledge". With a
+>   tools paragraph and role notes, 4/6 runs were fully right. The plain model
+>   got 6/6 in about a sixth of the time.
+> - bug-143 (a race on the suspended members) caught by `-race` and fixed.
+> - Open for the owner: whether easy tool turns should go to the council at
+>   all.
+
+> **2026-09-26 — Hugging Face pulls work again; upstream's Dockerfile listens where it says.**
+> - Hugging Face now redirects downloads across its own hosts (hf.co →
+>   huggingface.co → its CDN), and the v0.34.2 base followed same-host
+>   redirects only, so every `hf.co/…` pull failed with "blocked redirect to a
+>   different host". Upstream fixed it in v0.34.4 (6383a0fa, #18533:
+>   redirects allowed among hf.co, huggingface.co, ollama.com, ollama.ai and
+>   their subdomains); cherry-picked with `-x`, so the next sync meets the
+>   same hunks. Live: `hf.co/bartowski/SmolLM2-135M-Instruct-GGUF:Q4_K_M`
+>   pulls on the dev server. Reported by a user's test suite, which skips that
+>   scenario on xollama until this ships.
+> - Upstream's `Dockerfile` set `OLLAMA_HOST=0.0.0.0:11434`, which xollama
+>   ignores: an image built from it bound the container's loopback at 22434
+>   and was unreachable. It now sets `XOLLAMA_HOST=0.0.0.0:22434` and
+>   `EXPOSE 22434` like `Dockerfile.xollama` (`docker-release` hook). The
+>   published image was already right; it is built from `Dockerfile.xollama`.
+
+> **2026-09-26 — Phase 9.4: a council turn resumes from the client's state (`council_chat_state_v1`).**
+> - A client that sends `"council_chat_state": ""` gets a sealed state blob
+>   after the route, the plan and each member, and on the done chunk.
+>   Sending the newest back resumes the turn: finished members are not
+>   asked again. The done blob carries the compaction record, which a
+>   restarted server takes back. Protobuf (`protowire`), AES-256-GCM, key at
+>   `<models>/council-state.key`, bound to hashes of the history and the last
+>   user turn.
+> - Live on b137: a turn broken off after 4 states (26.8 s), resent with the
+>   newest: only the 2 critics and the synthesizer ran, 28.3 s, first token
+>   12.9 s.
+> - bug-142 fixed on the way: a client leaving mid-turn left the turn waiting
+>   forever. The scheduler drops a cancelled request unanswered, so a member
+>   being scheduled never returned, the root was never promoted, and the next
+>   turn on that conversation waited on it. The member's read now ends with
+>   the context.
+> - Next: mail the Cerebriline session; then 9.5, tools on council turns.
+
+> **2026-09-26 — The compaction writer fits its window: compact instruction, measured on b137.**
+> - The writer's instruction went from 2.5–3k tokens to about 500: a compact
+>   replay prompt (565 → 247), marker (156 → 63), and no requests block (the
+>   summary still quotes them). The trigger is capped so the writer fits.
+> - A/B on opencoti b137 (0412 in): both arms 6/6 turns and 6/6 recall, the
+>   same wall time; mean first token 19.2 s against 24.1 s. At 16k the
+>   writer now fits (pooled folds), with no text path and no refused-root fold.
+> - opencoti b137's pool-owner-evict fired in the council's pattern: no
+>   500s, bug-139 closed.
+
+> **2026-09-26 — Phase 9.3: the council shares one prefix.**
+> - Every member sends an empty system message, then the conversation. The
+>   charter opens the planner's route and plan requests. The client's system
+>   prompt goes only to the synthesizer and a direct answer.
+> - A/B on b133, today's layout against 9.3: same routing (6/6 once the route
+>   request carries the charter; 4/6 without it) and the same format adherence
+>   (9/9). A council turn takes 38.6 s instead of 26.4 s, because researchers
+>   and critics are no longer held to the client's answer format and write to
+>   their caps.
+> - A live check of 9.3: a Cerebriline-style P0 (`[{system:""},{user:…}]`,
+>   8 tokens, owned by the session) is now what a council's root forks from.
+>   No fallback; 5,249 of 6,033 prompt tokens were cached.
+> - bug-141 fixed: roots the engine made unowned (their session had ended) are
+>   no longer kept, which leaked pinned pool seats.
+> - Left: tools on council turns (9.5) and the sealed state (9.4); the
+>   compact-writer A/B waits for opencoti 0412.
+
+> **2026-09-26 — Phase 9.2: client placement (`client_placement_v1`).**
+> - `placement {pool_id, num_ctx, num_ctx_min}` on `/api/chat`. A plain turn
+>   hands all three to the engine. A council turn forks its conversation root
+>   from the named pool when its prompt starts with it, else builds its own.
+>   It never releases the client's pool.
+> - Live on b133: a plain turn served 285 of 316 prompt tokens from a client
+>   pool. A council turn with a pool it does not start with fell back cleanly
+>   (engine 400), and the pool was left alone. Findings for clients: the model
+>   needs pools on (`XOLLAMA_SESSION_POOL`), the pool must be rendered from the
+>   exact text sent, and on a council model it must belong to the conversation's
+>   session.
+> - `chat_render_v1`: `_debug_render_only` on `/api/chat` is the renderer a
+>   client cuts P0 from (Cerebriline, mail #390); on a council model it now
+>   renders what the members send instead of convening the council.
+> - Left: sharing on council turns needs 9.3's layout (Cerebriline's P0 =
+>   render([{system:""},{user:SENTINEL}] + tools) cut at the sentinel, #390);
+>   the compact-writer A/B waits for opencoti 0412.
+
+> **2026-09-26 — Phase 9.1: `/api/xollama` lists features; council thinking is tagged per member.**
+> - `features: ["council", "council_compaction_v1", "council_tags_v1"]` on
+>   `/api/xollama`. Cerebriline gates each piece on these names.
+> - Every thinking chunk of a council turn carries `council: {role, index,
+>   round}` and holds one member only. Content (the answer) and the done chunk
+>   are untagged; the text headings stay for clients that do not read tags.
+> - Cerebriline decisions recorded in the plan (mails #379–#384): the state is
+>   `council_chat_state`, a sealed protobuf blob for resume only, emitted at
+>   every checkpoint; Cerebriline sends `placement.pool_id` on council turns.
+> - Left: the compact-writer A/B on b133 (running; compaction changes held
+>   back until it is measured), the opencoti 500 on pool create (#385, fix in
+>   a new build), then 9.2 client placement.
+
+> **2026-09-26 — Council compaction live on b133: five faults fixed, six turns clean of stalls.**
+> - Live runs (six turns, 16k council, ~9.5k tokens of history) found and
+>   fixed bug-134…138: the writer is asked only when it fits, the text path
+>   goes in pieces on the owner (serially), the kept root is released before
+>   a fold from text, a resize's new window is `window_new` (misread since
+>   Phase 6), and a review with no room to fork is skipped.
+> - Fifth run: every turn 45–77 s, first token 10–34 s; idle folds 2–3 min;
+>   no admission waits. Turn 2 went from 153.9 s (first token 100.4 s) to
+>   57.7 s (11.2 s).
+> - Open: the writer rarely fits at the trigger on a 16k window (every fold
+>   came from text), and bug-139 (text calls leave private cells on the
+>   owner, so the next root is refused once); asked opencoti (#376).
+
+> **2026-09-26 — Council compaction: fits its window; dev server on b133.**
+> - The first live run (b128) failed on turn 2's idle fold: the owner held a
+>   6,656 grant under a 9.5k conversation, so the writer was refused three
+>   times, and the one-piece text request waited out admission while holding
+>   the next turn (bug-134).
+> - Fixed: the writer runs only when conversation, instruction and reply fit;
+>   the text path goes in pieces that fit; the budget floor scales to
+>   window/8 below 32k. New test and 6 mutants.
+> - The dev server (22434) runs opencoti b133 `2609261655001` (b128 + 0410
+>   ckpt-periodic + 0411 adm-running-priority), copied from bs2 and
+>   hash-checked, as the owner asked; `council-b133.sh`.
+> - Cerebriline provider design (mails #366/#367): the owner's decisions are
+>   recorded — sealed council state in-band, PolyKV driven by the client,
+>   tools on council turns with read-only members and a writing synthesizer,
+>   the council compacting, and one prompt layout (empty system, tools,
+>   conversation; role prompts as user messages; the client's system prompt
+>   after the synthesizer's). Answered in #370–#372.
+
+> **2026-09-26 — Council compaction: Phase 8 built, Cerebriline's ported.**
+> - `server/council_compaction.go` and `council_compaction_prompts.go`
+>   replace Phase 6's compaction: a record per conversation applied every
+>   turn, the writer as the owner's next turn on the root, two critics on
+>   the replay's halves and a synthesizer on a fork of it, a retrospective,
+>   incremental folds, and Cerebriline's fallbacks. It runs on every engine.
+> - Settings: `council.context.compaction` (`agentic`/`basic`), `review`,
+>   `retrospective` (schema v4, unreleased).
+> - Faults found while building it: an unowned tree's per-request grant was
+>   taken as the window, and hung the idle fold; the refused-root retry
+>   compared message counts; a fold could grow the conversation.
+> - Tests under `-race`; 28 compiling mutants, all caught but one
+>   equivalent. Live run on b128 pending.
+
+> **2026-09-26 — Council compaction: Phase 8 proposed, a port of Cerebriline's.**
+> - The owner asked whether the council's compaction followed Cerebriline's
+>   agentic council compaction. It did not: only the 0.85 pressure trigger
+>   came from the guide. Reading the code also showed faults:
+>   - it forgets a compaction, so it likely flips between compacted and full
+>     turns;
+>   - it re-summarises all the old turns;
+>   - its budget is wrong;
+>   - it edits the system message, which breaks the cached prefix.
+> - The plan's Phase 8 now ports Cerebriline's flow, read from
+>   `/shared/dev/cline`:
+>   - trigger min(0.9 × usable, room) and target 0.25 of the message budget;
+>   - the kept tail by recency bounds;
+>   - one user-role summary message at the front: the user's requests
+>     verbatim, a retrospective and the replay;
+>   - a writer, two critics on the replay's halves, and a synthesizer;
+>   - carried forward and incremental, with Cerebriline's fallbacks.
+> - Approved 2026-09-26, sized on the granted window as Cerebriline does;
+>   being built.
+
+> **2026-09-26 — The council holds the conversation once; idle compaction tested live.**
+> - Scripting the idle test found a design flaw: the planner's session and P1
+>   were two copies of the conversation, both charged to the owner. The tree
+>   was full at ~45 % of the window, so compaction never fired, and refused
+>   pools ended the turn with a 503 after 2 min.
+> - Fixed as the owner chose (guide §6.2 arm C, `server/council_polykv.go`):
+>   - P1 is built first and the planner attached to it.
+>   - The first turn's P1 is unowned (`pool_unowned_v1`), and the idle council
+>     promotes it to an owned one. The next turn waits for that and forks it.
+>   - The summary is asked as a turn of the conversation.
+>   - A root refused with "compact the session" (`llm.ErrSessionFull`)
+>     compacts and retries.
+>   - Seats: `councilPoolSeats` + 2 for the root chain.
+> - Live on b128, `omni-council-idle` at 16k, ~7,000 tokens of history. With
+>   the idle summary the next message's first token came at 2.5 s (turn 47 s);
+>   without it, 18.3 s (turn 64.5 s). The owner's pressure after turn N was
+>   0.867.
+> - Phases 6 and 7 closed. Left: the pin moves to a published build with
+>   `pool_unowned_v1`, on a measurement.
+
+> **2026-09-26 — opencoti fixed #349 (b128); `num_ctx 0` and `slots.live` tested live on it.**
+> - opencoti b128 `2609261427001` (dev, local only) builds the recurrent
+>   state before the attention window and reserves the MTP draft context.
+>   Their gate: b125 fails our `-c 524288 -np 4` launch, and b128 loads it.
+> - Our councils on b128 (a copy in `/srv/ml/xollama-phase2/engines/`, dev
+>   launcher `council-b128.sh`):
+>   - `num_ctx 0` → `-c 262144`, the trained context, 22.9 GB. The pools
+>     were created `owner ''` (unowned), and the turn took 74 s.
+>   - `slots.live: 4` at 131k → `-c 524288 -np 4`, 23.0 GB, turn 86 s.
+> - The pin stays on b111 until opencoti publishes to the HF dev repo and it
+>   is measured. Left: idle compaction on a long conversation.
+
+> **2026-09-26 — Council roles on eleven2go tested live; three bugs fixed.**
+> - Researchers ran on eleven2go's ollama (the think-budget fork, `:11434`,
+>   treated as stock: `think=true`, 56 s), on its xollama through an SSH
+>   tunnel (`think=2048`, 66 s), and on a cloud model through that xollama
+>   (`think=true`, 53 s). A tunnel killed mid-reply fell back (58 s).
+> - Fixed:
+>   - A cloud reference's `/api/show` carries no `remote_host`. A cloud
+>     reference is now cloud by name on every server.
+>   - A dropped connection ended the stream silently, and the council went on
+>     with no research. A remote reply now needs its `done` line.
+>   - A role on another model had `think` cleared to nil, which upstream reads
+>     as true, so `qwen3:8b` reasoned away its whole cap and answered nothing.
+>     `think: false` is now kept, and an empty reply from elsewhere falls back.
+> - opencoti #356: #349's cause is found (rs built after the attention
+>   window; draft context not reserved). b126 boots the main context, and
+>   the draft-aware sizer is in progress. We stay on 131k.
+
+> **2026-09-26 — Cloud roles tested live; think budgets only where understood.**
+> - `gemma4:31b-cloud` as researchers, critics, planner and synthesizer,
+>   and in all four roles: every turn answered, 17–54 s. The all-cloud
+>   council took 17 s. A researcher on a missing model fell back to the
+>   council's model and said so (59 s, 9 members).
+> - The owner's "hang" on `omni-council-think` was the pre-2048 build.
+>   `on` was `medium`, 32,768 tokens per member, and each researcher ran to
+>   the cap at about 40 tok/s (13.5 and 14 min). The same question on the
+>   current build takes 2 min 11 s.
+> - Found live: ollama.com refuses a numeric `think`. `councilTakesBudget`
+>   now sends a token budget only to this server's own models and to a model
+>   another xollama serves itself. Cloud is decided by manifest or
+>   `remote_host`, as cerebriline does, never by name. Everything else gets
+>   `think: true`. Retest: 47 s, no error.
+> - The dev home's unregistered key is linked to the service's signed-in key
+>   (the old one kept as `id_ed25519.dev-unregistered`), at the owner's
+>   request.
+> - opencoti #353: 0408 does not fix #349. b125 fails the 4 × 131k launch
+>   the same way, and they are investigating.
+
+> **2026-09-26 — Council Phase 7 built: roles on cloud models and other servers.**
+> - The owner decided the open points. A researcher or critic that fails on
+>   another model or host is answered by the council's own model, and the
+>   turn goes on; a planner or synthesizer failure fails the turn. A literal
+>   host URL is fine. `host` joins schema v4, which no release has shipped.
+> - A cloud role already worked: `council.<role>.model: …:cloud` goes
+>   through `ChatHandler`'s cloud proxy.
+> - New `council.<role>.host` (needs `model`; tweak
+>   `--council-<role>-host`). It is served by `server/council_remote.go`
+>   over `api.Client`, with no session and no pool.
+> - Hosts are gated by the operator's `XOLLAMA_COUNCIL_HOSTS` (default
+>   none): a pulled council model could otherwise send every conversation to
+>   the host it names.
+> - Unit tests with a stub ollama over HTTP; every guard fails under a
+>   mutation. The live test is pending.
+
+> **2026-09-26 — Council Phase 6 built: think 2048, pressure and idle compaction, `num_ctx 0` as unowned pools, `slots.live`; Phase 7 proposed.**
+> - The owner approved Phase 6. A role's `think: on` is now a 2048-token
+>   budget (`DefaultCouncilThinkBudget`), and mode and budget stay per role.
+> - Compaction follows the owner's raw `/kv` pressure: at `compact_at`
+>   (0.85) before a turn, and at the new `council.context.idle_compact_at`
+>   (0.75, tweak `--council-idle-compact-at`) in the background after the
+>   answer, so the next message finds the summary ready. Without a pressure
+>   reading, the token budget still decides.
+> - `num_ctx 0` under PolyKV only (hook `polykv-window`,
+>   `llm/engine_window.go`): the launch takes the trained context as the
+>   pool, and with `pool_unowned_v1` the council's pools are unowned and the
+>   planner sends no `num_ctx`. Stock llama.cpp and opencoti without pools
+>   keep upstream's clamp to 4.
+> - `slots.live` (hook `slots-live`): the slots a model loads with, in place
+>   of `OLLAMA_NUM_PARALLEL`, on opencoti only.
+> - Unit tests at every layer, each mutation-checked. No live run: the owner
+>   tests it on the next promoted build. Not built: warming the owner session
+>   with the compacted prefix after an idle summary.
+> - opencoti #350 on #349: the fit bug is the main context's two-pass window
+>   re-size ignoring its recurrent-state cells, not the MTP context. Fix
+>   0408 comes in the next dev build.
+> - Phase 7 proposed: a role on another model **or another ollama instance**
+>   (a cloud model, or another machine), via `council.<role>.host`.
+
+> **2026-09-26 — Council members can think; the MTP IQ2_M runs councils at 131k; Phase 6 proposed.**
+> - `council.<role>.think` (`off` | `on` = medium | level | token count), with
+>   `tweak --council-<role>-think`. The council resolves the level against the
+>   member's window and sends an explicit token budget. It raises
+>   `num_predict` to the reply cap plus the budget. It never shows the
+>   reasoning, and the model's `think_budget_message` closes it at the cap.
+>   The routing call never reasons. Tests at the schema, runner and server
+>   level; each fails under a mutation.
+> - Live, the defaults proved unusable. `medium` at a 131,072 window is
+>   32,768 tokens per member, and a researcher looped ("Wait, I should
+>   check…") past 29k tokens. The run was stopped after 11 min. The default
+>   budget for members is an open decision.
+> - Stores: `mannix/omnimerge-v4-mtp:IQ2_M` (MTP, 65 blocks) replaces the
+>   non-MTP IQ2_M in both. The service store's
+>   `omnimerge-v4-mtp_tb:27b-iq2m-128k` is recreated on it. The old tag's
+>   CRLF Modelfile had swallowed its RENDERER, PARSER and think_budget into
+>   the TEMPLATE, so the new tag takes them from `…:27b-q4km-128k`. The
+>   council store holds `omni-council` and `omni-council-think` (qwen3.5
+>   renderer, `num_ctx 131072`, `kv {k: f16, v: q8_0}`).
+> - 131k with MTP: it failed only because the test script set
+>   `XOLLAMA_NUM_PARALLEL=4`, which makes `-c = 4 × 131072`. Without it: `-c
+>   131072 -np 1 --max-parallel 4`, 10.4 GB, and a full council turn in 52 s.
+>   The engine's fit omits the MTP context's recurrent-state cells
+>   (opencoti #349).
+> - Phase 6 is proposed in the plan: PolyKV-only sizing, `num_ctx 0`,
+>   compaction on the owner's pressure (0.85, and 0.75 while idle), per-model
+>   `slots.live`. Stock llama.cpp and opencoti without PolyKV stay as they are.
+
+> **2026-09-26 — `continue_pool` planned, waiting for an HF dev publish.**
+> - New plan [`plans/council-continue-pool.md`](plans/council-continue-pool.md)
+>   (WAITING). It starts when an opencoti build carrying patch 0406
+>   (`continue_pool`, unowned pools; b124 is local only) is published to
+>   the HF dev repo, as the owner decided. Phase 0 measures turn-over-turn
+>   prefill, dense and hybrid, at 16k and 131k.
+> - The Docker image plan's row is brought up to date: the first `:dev`
+>   image is published and GHCR is public; user testing remains.
+> - The installed service (`/usr/local/bin/xollama`, `05c16dfa`, 11434)
+>   predates the council and refuses a council model. Councils are tested
+>   with the `dev` build on 22434 against the isolated store.
+
+> **2026-09-26 — Desktop app shows councils (option C); GHCR confirmed public.**
+> - A council model gets a *council* badge in the model picker, and a
+>   **Deliberation** toggle in place of the Think button. The toggle is on
+>   by default and remembered per browser. The app's backend dropped every
+>   `think:false`, so nothing could hide the deliberation before. It now
+>   forwards `false` for a council only (`app/ui/council.go`, `council`
+>   hook). The UI builds, vitest passes 201 of 201, and the Go test runs on
+>   Linux and compiles for Windows. Not yet tried in the running desktop app.
+> - `ghcr.io/mann1x/xollama` was created public by its first push. An
+>   anonymous token lists `dev` and `0.34.2-dev.1f14838e`;
+>   `docs/features/docker-release.md` says so.
+> - opencoti b124 (dev build, not published) adds `continue_pool` and unowned
+>   pools (#343). They are request fields on routes `/api/engine` already
+>   proxies, so it needs no change. The pin stays on b111.
+
+> **2026-09-26 — Council Chat Phase 5 closed: docs, the one-shot CLI turn,
+> councils at 131k on a hybrid model; bug-117 fixed.**
+> - Docs: `docs/xollama/council.mdx` (users, in the navigation and the index)
+>   and `docs/features/council.md` (maintainers). `compact_at` wording
+>   corrected in the schema, `tweak` and the validation error.
+> - CLI walked live as `ollama` on b111. One-shot `xollama run <council> "…"`
+>   went to `/api/generate` and silently skipped the council; it is now sent
+>   as a chat turn (`cmd/council_run.go`, `council` hook in `cmd/cmd.go`).
+> - bug-118, at the model's own 131k (`-c 524288`, `-np 4`). The engine's
+>   elastic recurrent-state cache stayed at 4 committed cells and refused a
+>   critic with 429. Three things went wrong in turn, each fixed. The chat path did not wait out a 429,
+>   as the completion path does, and now it does (503 after 2 min). ggml's
+>   routine `failed to allocate graph, reserving` line read as a runtime OOM
+>   and expired every model; on opencoti it is no longer an error. And the
+>   tree's four pinned layers held every cell, so the synthesizer could never
+>   be seated. On a recurrent engine the tree now releases each finished
+>   stage's layer. Live: 3 of 3 full council turns (115, 66, 54 s), 0
+>   refusals, 0 errors, no expiry.
+> - bug-117: a runner swap no longer waits on stock-llama-server discovery
+>   for devices opencoti serves (`discover/refresh_opencoti.go`; timed-out
+>   dirs cool down 15 min). The reaper no longer logs a stop it asked for as
+>   an ERROR. Refresh-to-load went from 9.3 s to about 1 s, and a swap's
+>   round trip from 15.8–20.2 s to 10.1–11.8 s.
+> - Desktop toggle not built. The app already serves a council tag, with
+>   the deliberation shown as thinking; the options are under Open
+>   decisions.
+> - Sent to opencoti: the elastic `rs` cache grew 4 → 8 at 16k but not at
+>   `-c 524288`.
+
+> **2026-09-26 — b65 vs b111 re-measured, paired and interleaved (opencoti
+> #329): the pin stays on b111.**
+> - Five repeats per cell, order alternating, never more than one compute
+>   app on the 3090 in any cell (sampled every second).
+> - Multislot aggregate: b65 median 541.9, b111 500.8 tok/s (−7.6 %). Each
+>   build's range is about 18 %; b111 was lower in 3 of 5 pairs. At most a
+>   small effect.
+> - 70B overflow: b65 median 1.39, b111 1.87 gen tok/s; b111 faster in 4 of
+>   5. The earlier deficit does not reproduce. Both builds follow load time
+>   (host page cache), not the build.
+> - Sent to opencoti (#336). Raw data:
+>   `/srv/ml/xollama-phase2/as-ollama/regress-paired/`.
+
+> **2026-09-26 — Council Chat Phase 4: members share the conversation's KV
+> through PolyKV; `/api/engine` reaches every opencoti route.**
+> - `llm/engine_council.go` is the PolyKV client: a per-request `Placement`,
+>   plus pools, fork, release, session close, `/kv` and resize.
+>   `server/council_polykv.go` is the per-turn tree. The owner books the
+>   window; P1, P2r, P2f and P3s are each built once; workers attach and are
+>   closed; pools are released newest first. The owner's window shrinks,
+>   deferred, under `/kv` pressure and grows back when the pressure clears,
+>   and the conversation is compacted past `compact_at`. A PolyKV council
+>   launches with `2 + 2 × rounds` pool seats. Hunks: `council` Registry row.
+> - A/B on b111 (omnimerge v4 IQ2_M, 16k, `-np 4`, ABAB, 4 council turns per
+>   arm): computed prefill 3,139 → 525 tokens per turn (−83 %), cache hit
+>   48–52 % → 89–94 %, peak KV cells about −40 %, 4 of 4 pool seats used, no
+>   refusals, no pools left after a turn. Wall time at parity (60.2 s vs
+>   57.6 s): the turn is decode-bound. Plan Phase 4 has the table.
+> - `/api/engine` now serves GET, POST and DELETE over opencoti's whole
+>   management surface (`kv`, `elastic`, pools and their capacity, `tps` SSE,
+>   sessions close and resize, locks, `apply-template`…), from a route table
+>   mirrored from the engine's registration. Inference, `/cors-proxy` and
+>   `/tools` stay out. `?live=1` and other queries are forwarded.
+> - Fixed: the members saw the model's `MESSAGE` turns twice (bug-116). Open:
+>   every runner swap waits about 2.3 s for a discovery subprocess and logs an
+>   ERROR killing it (bug-117).
+> - Docker `:dev` run 36221348282 (the b111 image) succeeded.
+> - Left: Phase 5 (surfaces, `docs/xollama/council.mdx`).
+
+> **2026-09-26 — Council Chat Phase 3: a council model answers through
+> every chat API.**
+> - `internal/council/` (the errgroup runner) and `server/council.go`
+>   (members as in-process chat turns, each on its own engine session), plus
+>   one `council` hook line in `ChatHandler`. Tools, a `format` and every
+>   member's own turn bypass it.
+> - Live on b111 (omnimerge v4 IQ2_M council tag): "Hello!" answered
+>   directly in 1.4 s warm; a council turn in 54–102 s with 7 members; the
+>   second turn, OpenAI (`reasoning` + content) and Anthropic all correct.
+> - Corrected: a council tag does not share its base tag's runner (upstream's
+>   `ManifestDigest` is in the launch config); the docs said it did.
+>
+> Next: Phase 4, the PolyKV path (owner session, pools, pressure and resize).
+
+> **2026-09-26 — Engine pin moved to b111 (2609252051001).**
+> - `llm/engine/pin.txt`: rev `1d0f1dcd`, bin `a66e9e27`, CUDA dso
+>   `f32ebf54`. b111 brings `kv_pressure_v1`, `kv_resize_v1` and
+>   `kv_resize_deferred_v1`, the surface Council Chat Phase 4 builds on.
+> - Cost: **no Linux Vulkan payload** in these bytes, so the Vulkan dso and
+>   accel rows are retired and Vulkan loads route to llama.cpp again.
+> - Measured as `ollama` beside b65: compat 8/8, throughput and gemma4 parsing
+>   equal; argv surface unchanged. Medians lower on b111 for multislot
+>   (485 vs 595 tok/s) and the 70B overflow (2.17 vs 3.18 tok/s), spreads
+>   overlapping, reported to opencoti. No engine-defect row changes.
+>
+> Next: Council Phase 3 live on b111; the `:dev` image picks this pin up.
+
+> **2026-09-26 — ollama#4165's single-sequence rule binds only stock
+> llama.cpp.**
+> - Qwen3.5, Qwen3-Next, Qwen3-VL, LFM2, Nemotron-H and mllama now take
+>   `OLLAMA_NUM_PARALLEL` and dynamic slots when opencoti serves them. The
+>   scheduler asks `llm.WouldUseOpencoti` before capping; with
+>   `XOLLAMA_ENGINE=llamacpp` the cap is upstream's, unchanged.
+> - A load predicted for opencoti that lands on stock anyway (artifact
+>   missing, or the opt-in retry) relaunches at one sequence
+>   (`servedSequences`). Embedding models stay at one on every engine.
+> - Measured on b111 as `ollama`: qwen3.5:2b launched `-np 4`, 4 streams at
+>   ~107 tok/s each. `probe/parallel_correctness.py` (4 checkable tasks,
+>   serial then concurrent, greedy, 3 rounds): omnimerge v4 IQ2_M 12/12
+>   correct, 12/12 identical to serial; qwen3.5:2b the same 9/12 correct
+>   serial and parallel (the misses are the model's), 0 cross-task bleed.
+>
+> Next: the b111 pin (a multislot/overflow gap against b65 is being
+> re-measured) and Council Phase 3 live.
+
+> **2026-09-26 — Docker image: assembled on hosted runners from pinned
+> artifacts.**
+> - `docker-release.yaml` no longer compiles anything, and no longer needs
+>   the bs2 runner, which was never registered. On `ubuntu-latest` it runs
+>   `scripts/docker-assemble.sh`, which stages:
+>   - the fork's CPU runtime tgz (`33ac42c1…`);
+>   - upstream v0.34.2's GPU and MLX tarballs, pinned by sha256;
+>   - the engine from `llm/engine/pin.txt`;
+>   - a Go-only `xollama` (go1.26.8, AlmaLinux 8).
+>
+>   `Dockerfile.xollama` then builds, smoke-tests and pushes the image.
+> - The pins are in `llama/runtime-pin-linux.txt`. Its inputs digest leaves
+>   out `llama/compat/README.md`; the fork at `d6e24119` and `dev` both come
+>   to `eff6800e…`.
+> - Validated locally:
+>   - the assembly, and a 5.43 GB image;
+>   - the container answers `/api/xollama` on `0.0.0.0:22434`;
+>   - actionlint and shellcheck are clean.
+> - The channel is now the GitHub pre-release flag, not the hyphen, and
+>   `:latest` never moves from a branch.
+> - Found: upstream's `Dockerfile` sets `OLLAMA_HOST`, so an image built from
+>   it would be unreachable. The new image sets `XOLLAMA_HOST`.
+>
+> Next: push `dev`, then
+> `gh workflow run docker-release.yaml --ref dev -f push=true -f channel=dev`
+> for the first `:dev` image, then user testing.
+
+> **2026-09-26 — Council Chat Phase 2: a council is a model setting.**
+> - `council` in `xollama.json` (schema v4, `types/xollama/council.go`),
+>   with 23 `xollama tweak model` rows (`--council`, `--council-charter`,
+>   prompts from `@file`), `show` rows and the Modelfile round-trip, all
+>   tested.
+> - Fixed before it could ship: a council tag would have had its own runner,
+>   a second copy of the weights. The launch config now leaves the council
+>   out (`LaunchConfig`, inside the `model-config` hook).
+> - Found for Phase 3: qwen35 (omnimerge) is on upstream's single-sequence
+>   list, so through xollama its council members would run one at a time.
+> - The eval harness no longer holds the library implementations (their
+>   notes are kept), so no `go.mod` in the repo links eino, langgraphgo or
+>   trpc-agent-go.
+> - The plan gains "Context, pressure and compaction": every member states
+>   its context, and compaction follows the owner's PolyKV pressure.
+>
+> Next: Phase 3, the runner on the llama.cpp path.
+
+> **2026-09-25 — Council Chat Phase 1: the in-house `errgroup` runner wins
+> the library bake-off.** The same council was built in eino, langgraphgo,
+> trpc-agent-go and on `errgroup`, all over one shared core and one suite, in
+> `plans/council-eval/` (its own module). All four pass 11 tests under
+> `-race`, but every library needed sibling cancellation and error ordering
+> added by hand. Per request the baseline costs 56 µs per council and 3.2 µs
+> per direct turn; langgraphgo costs 69/17 µs, eino 130–180/60 µs, and
+> trpc-agent-go 0.9 ms/278 µs, rising to 22.5 ms and 33 MB at 1 MB of state.
+> The libraries would bump sonic, protobuf, go-sqlite3 and testify in
+> xollama's go.mod. Against b65 with omnimerge v4 IQ2_M, all four run a
+> council in 65–70 s, which is noise. Also found:
+> - On the hybrid qwen35 model the pools share on exact matches: 33–77
+>   tokens prefilled per member, and 54 s pooled against 65–69 s unpooled.
+> - Members must state `num_ctx`. Without it the second parallel member is
+>   refused with a 429.
+> - The planner's calls must share a session: the direct path takes 3.3 s
+>   that way, against 6.1 s.
+> - The IQ2_M omnimerge tag has no MTP head.
+> - One unexplained session leak in 18 runs; the TTL reclaimed it.
+>
+> Next: Phase 2, the `Council` config in `types/xollama` and `tweak`.
+
+> **2026-09-25 — Council Chat Phase 0 measured on b65.** On b65 with
+> llama3.1:8b, the council's pool tree shares as designed. Researchers,
+> critics and the synthesizer each prefilled 29–73 tokens of 2.5k–3.4k-token
+> prompts, and the owner held 3,343 cells for the whole tree against ~16k
+> unpooled. The council's wall time was 13–17 s. Close released everything.
+> Confirmed: a request with a `session_id` and no `num_ctx` books the full
+> 65,536-cell `session_ctx_max` per request. Routing is the weak link, so the
+> planner's decision becomes route-only: 86/100 trivial messages direct,
+> 60/60 hard messages to the council, +0.13 s to the first token. Probes are
+> in `plans/council-eval/probe/`. Next: the same probes on b111 when it is on
+> HF, and Phase 1 over a stub model.
+
+> **2026-09-25 — Project record started; Agentic Council Chat planned.**
+> `STATE_SUMMARY.md` and `plans/` created, with a standing rule in `CLAUDE.md`
+> to keep them current. New plan
+> [`plans/agentic-council-chat.md`](plans/agentic-council-chat.md), now at
+> Phase 0. The target is opencoti **b111**; development and smoke tests run on
+> the pinned b65 until b111 is on the HF dev repo. The library research
+> shortlisted cloudwego/eino, smallnest/langgraphgo and trpc-agent-go, plus an
+> in-house `errgroup` baseline, for the Phase 1 bake-off. The Docker image
+> design is written down as [`plans/docker-image.md`](plans/docker-image.md)
+> (PARKED).
+
+> **2026-09-25 — Toolchain and dependency security (`ad5842ce`).** Releases
+> build on upstream's `go` line (go.mod `go 1.26.0`) at its newest patch,
+> derived from go.dev in the `plan` job. Today that is go1.26.8, and every
+> binary is checked for it. `golang.org/x/{crypto,image,net,sync,sys,mod,term,text}`
+> are bumped under the `security-deps` hook. govulncheck went from 25
+> reachable vulnerabilities to 0. The 88 UI lockfile Dependabot alerts are
+> inherited from upstream (50 are dev-only) and were left as they are.
+
+> **2026-09-25 — llama.cpp comes from the fork, enforced (`10a88f1b`).**
+> `scripts/check-compat-origin.sh` and `.github/workflows/compat-origin.yaml`
+> refuse any change to `LLAMA_CPP_VERSION`, `llama/server` or `llama/compat`
+> that is not reachable from a mann1x/ollama or ollama/ollama ref. For a merge,
+> every file must match one of its parents. The fork's 005 was merged by sha
+> (`89ae39d3`). The inputs digest is now `73387c282b7f` on both sides.
+> `llama/compat/README.md` is agreed to become static, with each patch
+> documenting itself; the fork commits that change first.
+
+> **2026-09-25 — First release: `v0.34.2-xollama.1` (PR #1, `990e35e2`).**
+> Built on hosted CI and promoted to latest after the eleven2go install check:
+> 126.4 tok/s, and the installed exe's sha256 matched the release. The Windows
+> legs are pinned to `windows-2022`: the `windows-latest` and `windows-2025`
+> images both ship VS2026, which breaks CUDA 13.0 and ROCm 7.1. Payload-id is
+> `54e16442…`. First-time-contributor auto-approval was removed on
+> mann1x/xollama and mann1x/ollama.
+
+## Where we are
+
+`v0.34.2-xollama.1` is the latest release. The Agentic Council Chat has
+closed Phases 0–7, tested live on the b128 dev build, the cloud and
+eleven2go: PolyKV sizing, pressure and idle compaction with the conversation
+held once, `num_ctx 0`, `slots.live`, and roles on cloud models and other
+servers. The engine pin stays on b111 until a build with `pool_unowned_v1` is
+published and measured.
+
+## What exists today
+
+- Soft fork of ollama v0.34.2 with full upstream history. The engine seam is
+  opencoti-llamafile, pinned to b65 in `llm/engine/pin.txt`.
+- Release protocol and hosted CI: `docs/protocols/RELEASE.md` and
+  `.github/workflows/xollama-release.yaml`. The Windows CPU runtime is pinned
+  in `llama/runtime-pin.txt`, and delta updates are keyed on `payload-id.txt`.
+- Model config and `xollama tweak model`, device selection, store ownership,
+  the 22434 port with the `XOLLAMA_HOST` namespace, the rebrand, and the
+  Windows installer. See the `docs/features/` list in `CLAUDE.md`.
+- Guards: `scripts/check-hooks.sh`, the compat-origin check, and gitleaks.
+
+## In flight / waiting on others
+
+- **opencoti:** the pin is on b111. The paired re-run (#336) did not
+  reproduce the overflow deficit, and multislot is at most −7.6 % median,
+  inside the spread; no bisect, agreed with opencoti (#339). Also waiting
+  on: an HF dev publish
+  of patch 0406 (`continue_pool`, #343), and of the #349 fix (b128,
+  verified locally). The Linux Vulkan `.so`
+  comes in their next dev publish. Also waiting on the spent-response port
+  and the E2B/E4B gate, which needs an HF repo@rev.
+- **mann1x/ollama (fork):** the static `llama/compat/README.md` commit. When
+  it lands, xollama takes it by sha.
+
+## Known gaps
+
+- The Docker image is published to `:dev` (run 36221348282). It is amd64
+  only, and b111 carries no Vulkan payload, so Vulkan loads go to llama.cpp.
+- Upstream's `Dockerfile` still sets `OLLAMA_HOST`/`EXPOSE 11434`, which
+  xollama ignores; only `Dockerfile.xollama` makes a reachable image.
+- `/api/engine` control routes are unauthenticated, like the rest of the
+  Ollama API. On a server bound beyond localhost, anyone who can reach the
+  port can close sessions or release pools (stated in
+  `docs/xollama/introspection.mdx`).
+- On a hybrid model at a large context (b111, `-c 524288`) the engine keeps
+  4 recurrent-state cells and refuses a fifth sequence. This is intended
+  (opencoti #348): the cache grows only into free VRAM beyond a 1 GiB margin
+  (`OPENCOTI_RS_VRAM_MARGIN_MIB`), and the base KV reservation leaves none.
+  A council copes by releasing finished layers, and other parallel work
+  queues.
+- Open fork-sync items: `docs/protocols/FORK-SYNC.md` § "Open items".
+- Carried upstream PRs: `docs/protocols/CARRIED-PATCHES.md`.
+- UI lockfile Dependabot alerts are inherited from upstream and not addressed.
+
+## Immediate next steps (in order)
+
+1. Run the Phase 8 compaction live on b128 over four and more turns
+   (`council-idle.py`): tokens sent per turn, time to first token, and the
+   summary's size by generation. Then assess the council's use of the
+   shared prefix on PolyKV (the owner's request).
+2. When b128 (or later) is on the HF dev repo, measure it with
+   `scripts/phase2-engine-ab.py` and move the pin; then retire the #349
+   workaround notes (a 4 × 131k launch loads on b128).
+3. Try the council badge and the Deliberation toggle in the running desktop
+   app, which needs a Windows or macOS build.
+4. Move the engine pin only on a measurement. The `rs` question (#345) is
+   answered: working as intended.
+5. When an opencoti build with patch 0406 is on the HF dev repo, start
+   `plans/council-continue-pool.md` Phase 0.
+
+## Open decisions
+
+- None open on the council; the next choices come from the live tests.
+
+## Maintenance protocol
+
+Every session that changes code, releases, pins or plans adds a dated entry
+at the top of this file, in the same commit as the change. That session also
+rewrites any fixed section the change makes stale. When a plan changes status
+or phase, update its row in `plans/MASTER_PLAN.md` and the plan itself in the
+same commit. Keep entries factual: shas, tags, numbers, and what is left.

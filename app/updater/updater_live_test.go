@@ -44,14 +44,18 @@ func TestLiveAppUpdate(t *testing.T) {
 	// xollama-hook: update-feed -- production here is this fork's GitHub
 	// releases, not ollama.com. Every release starts as a pre-release, and
 	// before the first one there is nothing to update to: say so rather than
-	// fail, and let the test run for real from then on.
+	// fail, and let the test run for real from then on. The feed is GitHub's
+	// unauthenticated API, which rate-limits a shared CI runner's address
+	// (403); a feed this test cannot read says nothing about the updater.
 	oldAllowPrerelease := AllowPrerelease
 	defer func() { AllowPrerelease = oldAllowPrerelease }()
 	AllowPrerelease = true
-	if releases, err := fetchForkReleases(ctx); err == nil {
-		if rel, _ := pickForkRelease(releases, Installer, true); rel == nil {
-			t.Skip("xollama: the fork has published no release with an installer yet")
-		}
+	releases, err := fetchForkReleases(ctx)
+	if err != nil {
+		t.Skipf("xollama: the update feed is unreachable from here: %v", err)
+	}
+	if rel, _ := pickForkRelease(releases, Installer, true); rel == nil {
+		t.Skip("xollama: the fork has published no release with an installer yet")
 	}
 
 	expectedFilename := ""

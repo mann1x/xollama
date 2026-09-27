@@ -6,7 +6,7 @@ Soft fork of ollama. `main` = upstream release v0.34.2 + fork changes, carrying 
 full upstream history so every `git merge upstream/main` has a real merge-base.
 Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING.md
 
-## Two standing rules
+## Standing rules
 
 1. **Never rename the Go module path.** It stays upstream's, exactly as declared
    on the first line of `go.mod`. Renaming costs a ~33% conflict rate per sync
@@ -15,9 +15,16 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
 2. **Off means off.** With `XOLLAMA_ENGINE=llamacpp` and no xollama flags,
    behaviour must be byte-identical to upstream. That is what keeps an A/B
    against vanilla honest.
+3. **Keep the record current.** Every session that changes code, releases,
+   pins or plans adds a dated entry to `STATE_SUMMARY.md` and, when a plan's
+   status or phase moves, updates its row in `plans/MASTER_PLAN.md` and the
+   plan itself, in the same commit as the change.
 
 ## Read before touching the upstream tree
 
+- `STATE_SUMMARY.md` — where the work stands, newest entry first.
+- `plans/MASTER_PLAN.md` — the index of every plan in `plans/`, with status and
+  phase.
 - `docs/protocols/UPSTREAM-SYNC.md` — every change is either an additive file or
   a marked surgical hook, and hooks go in the Registry in the same commit.
 - `docs/protocols/CARRIED-PATCHES.md` — the open upstream PRs this fork carries.
@@ -28,18 +35,25 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   from `think-budget`** — that is how `model/parsers/gemma4.go` ended up three
   different things across two trees. xollama never files upstream PRs, nor asks
   the fork to — that is the repository owner's call; `fork-only` entries stay so.
+  The fork **supplies** llama.cpp: `LLAMA_CPP_VERSION`, `llama/server` and
+  `llama/compat` (README included) change in the fork first, never here —
+  enforced by `.github/workflows/compat-origin.yaml` running
+  `scripts/check-compat-origin.sh origin/main..HEAD` (needs `git fetch fork`
+  and `git fetch upstream` locally).
 - `docs/protocols/RELEASE.md` — how a release is cut: a PR `dev`→`main` titled
   `release: v<upstream>-xollama.<n>` whose body is the notes; hosted CI
   (`.github/workflows/xollama-release.yaml`) builds and publishes a pre-release
   from pinned artifacts only — the Windows CPU runtime comes from
   `llama/runtime-pin.txt`, built once by `.github/workflows/xollama-runtime.yaml`
   and moved in the same PR that changes `LLAMA_CPP_VERSION`, `llama/server` or
-  `llama/compat`; promote after the eleven2go install check. Never push a `v*`
-  tag, never copy exes onto a host as an "update".
+  `llama/compat`; the Go binaries build with the newest patch release on the
+  `go` line of `go.mod`, never `GOTOOLCHAIN: auto`; promote after the eleven2go
+  install check. Never push a `v*` tag, never copy exes onto a host as an "update".
 - `docs/features/engine-opencoti-llamafile.md` · `docs/features/rebrand.md` ·
   `docs/features/store-ownership.md` · `docs/features/windows-installer.md` ·
   `docs/features/model-config.md` · `docs/features/modelfile-roundtrip.md` ·
-  `docs/features/docker-release.md` · `docs/features/device-selection.md`
+  `docs/features/docker-release.md` · `docs/features/device-selection.md` ·
+  `docs/features/council.md`
 - `docs/evaluations/phase0-engine-compat.md` — measured engine-compat baseline.
 
 Remotes: `origin` = mann1x/xollama · `upstream` = ollama/ollama ·
@@ -90,6 +104,18 @@ scheduling `server/sched.go`, model IO `server/images.go` `server/create.go`
 `XOLLAMA_ENGINE_ARGS` last on the engine command line. `llm/drafter.go` holds
 the drafter rules (built-in vs attached head, `--spec-type`) as pure functions
 shared by the launch and `show` (`server/drafter_show.go`), so the two cannot drift.
+The ollama#4165 single-sequence deny-list binds only on stock llama.cpp:
+`server/sched.go` asks `llm.WouldUseOpencoti` before clamping, and
+`servedSequences` (`llm/engine_estimate.go`) drops a launch that lands on stock
+after all back to one — see `.claude/rules/dynamic-slots.md`.
+`/api/engine` (`server/routes_engine.go` + `llm/engine_introspect.go`, the
+`engine-introspect` hook) proxies the engine's own management routes — GET,
+POST and DELETE, by name from `engineRoutes`, inference excluded — see
+`.claude/rules/engine-introspect.md`.
+opencoti's granted window (`X-Context-Window`) reaches the client through the
+`llm.ContextWindow` collector (`llm/engine_context_window.go`) and
+`server/context_window.go`; stock llama.cpp stays header-free — see
+`.claude/rules/context-window.md`.
 **Prompting**: `model/renderers/` (per-model `Render`) ↔ `model/parsers/`
 (streaming output), plus `template/`, `thinking/`, `harmony/`.
 **API shims**: `api/types.go`, `openai/openai.go`, `anthropic/anthropic.go`,
@@ -100,6 +126,13 @@ set is `api/xollama_host.go` (`ResolveHost`), run once from `cmd/xollama_host.go
 it tells the fork apart via `/api/xollama` (`api/xollama_identity.go`,
 `server/identity.go`), then the fork's name in `/api/version`, and refuses a
 stock ollama found on the 11434 fallback rather than driving it.
+**Local API key** (`api-key` hook, off unless a key is configured):
+`XOLLAMA_API_KEY` or the key file (`envconfig/xollama_apikey.go`) is checked by
+`apiKeyMiddleware` in `server/xollama_apikey.go`; the loopback-only admin route
+`/api/xollama/api-key` is `server/xollama_apikey_admin.go`; the CLI sends it via
+`api/xollama_apikey_client.go` and sets it with `xollama tweak server --api-key`
+(`cmd/tweak/server.go`); the desktop UI via `app/ui/apikey.go` — see
+`.claude/rules/api-key.md` and `docs/xollama/api-key.mdx`.
 **Discovery** `discover/` · **Transfers** `x/transfer/` · **GGUF** `fs/gguf/`,
 `fs/safetensors/` · **Types** `types/model/`.
 **CLI support packages**: Modelfile parsing in `parser/` (`parser.go`,
@@ -126,12 +159,37 @@ fixtures in `integration/testdata/`; they need a running server and pulled model
 **Launchers**: `cmd/launch/` (`claude.go`, `opencode.go`, `codex_app_profile.go`…)
 with the Bubble Tea menu in `cmd/tui/tui.go`.
 **Model settings**: `xollama tweak model` lives in `cmd/tweak/` (`tweak.go`,
-`fields.go`, `prompt.go`, `reconcile.go`, `devices.go`), registered from `cmd/cmd.go` under the
-`model-config` hook. It reads the model's config layer through `/api/show`
-(`api.ShowResponse.Xollama`), validates against `types/xollama/config.go`, and
-replaces only that layer — see `docs/xollama/tweak.mdx`. `xollama show` lists the
-stated settings in an `xOllama` table via `tweak.SettingRows` (same hook, in
-`showInfo`); unstated ones are omitted.
+`fields.go`, `prompt.go`, `reconcile.go`, `devices.go`, `council.go`), registered
+from `cmd/cmd.go` under the `model-config` hook. It reads the model's config
+layer through `/api/show` (`api.ShowResponse.Xollama`), validates against
+`types/xollama/config.go` (schema v4; the `council` block is
+`types/xollama/council.go`), and replaces only that layer — see
+`docs/xollama/tweak.mdx`. `xollama show` lists the stated settings in an
+`xOllama` table via `tweak.SettingRows` (same hook, in `showInfo`); unstated ones
+are omitted. A council's settings stay out of the launch: `llamaServerConfigForModel`
+in `server/routes.go` passes `LaunchConfig()`. The one thing a council adds to the
+launch is its PolyKV pool seats (`CouncilPools`, from `councilPoolSeats`), and
+only when `polykv` is not `off`. A council tag and its `FROM` base swap the
+runner anyway, as any two tags do: upstream's `ManifestDigest` is in the launch
+config. A council turn is served by `internal/council/` (the
+errgroup runner: route-only decision, researchers and critics in parallel,
+synthesizer) and `server/council.go` (members as in-process chat turns, each
+on its own engine session; on opencoti with PolyKV, `server/council_polykv.go`
+builds the turn's pool tree — the planner attached to the conversation's root
+pool, kept between turns — and `llm/engine_council.go` is its client; a role with
+`council.<role>.host` is sent to that server by `server/council_remote.go`, only
+when `XOLLAMA_COUNCIL_HOSTS` allows it; `server/council_compaction.go` folds the
+conversation before a turn and after its answer, Cerebriline's agentic compaction
+ported, prompts in `server/council_compaction_prompts.go`; `server/council_state.go`
+seals the `council_chat_state` resume point a client sends back), reached from one
+`councilServes` line in
+`ChatHandler` (`council` hook); a `format` bypasses it, and tools reach it only
+with `council_chat_state` (`internal/council/tools.go`: read-only tools for
+researchers and critics, writes by the synthesizer; `internal/council/evidence.go`:
+the server-answered `council_evidence` tool that reads a large result back by ref;
+`server/council_tools.go`), and a one-shot
+`xollama run <council> "…"` goes through chat (`cmd/council_run.go`) — see
+`.claude/rules/model-config.md` and `.claude/rules/council.md`.
 **Device selection**: a model's device pin (`types/xollama/devices.go`) is
 applied by `selectModelDevices` in `server/device_select.go`, hooked from
 `server/sched.go` — a missing pinned device refuses the load, never falls back,
@@ -139,10 +197,15 @@ and unpinned models are kept off an integrated Vulkan GPU when a discrete GPU
 exists. `/api/xollama/devices` (`api/xollama_devices.go`, `XollamaDevicesHandler`
 in `server/identity.go`) feeds the `tweak` device menu (`cmd/tweak/devices.go`)
 with the server's view. Where opencoti serves a backend, discovery takes the
-engine's own device list (`discover/opencoti.go`, `llm/engine/enumerate.go`) —
+engine's own device list (`discover/opencoti.go`, `llm/engine/enumerate.go`),
+and refreshes free memory from it before a load (`discover/refresh_opencoti.go`) —
 see `docs/features/device-selection.md`.
 **Desktop UI**: `app/ui/app/src/routes/` (React 19 + TanStack Router + Vite),
-sibling to the `app` workspace (`vite.config.ts`, `vitest.config.ts`).
+sibling to the `app` workspace (`vite.config.ts`, `vitest.config.ts`). A council
+model gets a badge and a Deliberation toggle (`hooks/useCouncil.ts`,
+`components/CouncilBadge.tsx`, `components/DeliberationButton.tsx`);
+`councilThink` in `app/ui/council.go` (the `council` hook in `app/ui/ui.go`)
+keeps its explicit `think:false`.
 **Desktop updates**: `app/updater/fork.go` reads this fork's GitHub releases
 (`XOLLAMA_UPDATE_FEED`, `XOLLAMA_UPDATE_PRERELEASE`) instead of `ollama.com`,
 hooked from `app/updater/updater.go` / `app/updater/updater_windows.go`;
@@ -155,12 +218,18 @@ it (`OllamaSchemeUnclaimed`). macOS declares both schemes and
 `app/cmd/app/app_darwin.m` handles both, because ollama.com picks the sign-in
 redirect scheme; `app/cmd/app/app.go` accepts either — see
 `docs/features/windows-installer.md`.
-**Container image**: `.github/workflows/docker-release.yaml` publishes to Docker
-Hub and GHCR on a `v*` tag, on the self-hosted `xollama-build` runner (bs2, set
-up by `scripts/setup-bs2-runner.sh`; label declared in `.github/actionlint.yaml`)
-— separate from upstream's `release.yaml`, see `docs/features/docker-release.md`.
-A plain `v1.2.3` tag runs in the `release` environment and moves `:latest`; a
-pre-release tag (`-rc1`, `-dev.4`) runs in `dev` and moves `:dev`, never `:latest`.
+**Container image**: `.github/workflows/docker-release.yaml` ASSEMBLES the image
+on `ubuntu-latest` from pinned artifacts — nothing native is compiled:
+`scripts/docker-assemble.sh` stages the fork's CPU runtime and upstream's GPU
+tarballs (`llama/runtime-pin-linux.txt`, sha256 + a README-excluded inputs
+digest), the engine (`llm/engine/pin.txt`) and a Go-only `xollama`, and
+`Dockerfile.xollama` sets `XOLLAMA_HOST=0.0.0.0:22434` (upstream's `Dockerfile`
+now sets it too and `EXPOSE 22434`, `docker-release` hook, but the published
+image still comes from `Dockerfile.xollama`). Publishes to Docker Hub and GHCR,
+amd64 only; see `docs/features/docker-release.md`. The channel is the GitHub
+pre-release flag of the tag's release: a full release moves `:latest`, a
+pre-release or any branch run (`gh workflow run docker-release.yaml --ref dev`)
+moves `:dev`, never `:latest`.
 Upstream's `.github/workflows/latest.yaml` job is guarded to `ollama/ollama`
 (`docker-release` hook), since `docker-release.yaml` already pushes `:latest`;
 `release.yaml`'s `darwin-build` job is guarded off on the fork and dropped from
@@ -168,7 +237,7 @@ the `release` job's `needs`.
 Pinned natives: `LLAMA_CPP_VERSION`, `MLX_VERSION`, `MLX_C_VERSION`,
 orchestrated by `CMakeLists.txt` / `CMakePresets.json`; the opencoti engine
 artifact is pinned by `llm/engine/pin.txt` (`repo`, `rev` commit sha, `tag`,
-`channel`, `feature`, `accel`, plus `bin` / `dso` asset rows), read by both
+`channel`, `feature`, `accel`, `cuda-sass`, plus `bin` / `dso` asset rows), read by both
 `llm/engine/pin.go` and `cmake/opencoti-fetch.cmake`. Moving that pin retires
 only the rows in `llm/engine_defects.go` the new bytes are *measured* to fix —
 a changelog is not a measurement; the measurement is `scripts/phase2-engine-ab.py`,

@@ -77,6 +77,7 @@ model you are building. `tweak` is for changing one you already have.
 | `session.affinity` | Return a conversation to the slot already holding its cache. | `XOLLAMA_SESSION_AFFINITY` |
 | `session.pool` | Share one copy of a common prefix between conversations. | `XOLLAMA_SESSION_POOL` |
 | `session.max_pools` | How many distinct prefixes to hold. | `XOLLAMA_POLYKV_MAX_POOLS` |
+| `session.client_pools` | Pool seats kept for a client that creates its own pools through `/api/engine` and attaches with `placement.pool_id`. Independent of `session.pool`. Count the client pools alive at once on the model: a lead that books a window holds 2 (its pool and its private sub-pool), each concurrent swarm tree 3 (the owner's root plus two forks), so a lead beside one swarm needs 5. With fewer, the deepest layers go unpooled ("pool seq-id reservoir exhausted"). | `XOLLAMA_POLYKV_CLIENT_POOLS` |
 | `dca.enabled` | Serve past the context the model was trained on. | `XOLLAMA_DCA` |
 | `dca.chunk_size` | Chunk length for that. | `XOLLAMA_DCA_CHUNK_SIZE` |
 | `kv.unified` | One shared pool of cells, or a fixed split per slot. Schema v2. | — (derived) |

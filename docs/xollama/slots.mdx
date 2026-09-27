@@ -108,10 +108,19 @@ XOLLAMA {"version": 1, "slots": {"max": 8, "tps_floor": 15}}
 |---|---|---|---|
 | On or off | `XOLLAMA_DYNAMIC_SLOTS` | `slots.dynamic` | on |
 | Ceiling | `XOLLAMA_MAX_PARALLEL` | `slots.max` | 4 |
+| Slots at load (opencoti) | `OLLAMA_NUM_PARALLEL` | `slots.live` | the server's count |
 | Speed floor | `XOLLAMA_SLOTS_TPS_FLOOR` | `slots.tps_floor` | unset |
 | Memory reserve | `XOLLAMA_SLOTS_VRAM_RESERVE` | `slots.vram_reserve_mib` | engine default |
 
 The model's setting wins over the server's, as everywhere else.
+
+**Slots at load** are the slots a model starts with; on opencoti they grow up
+to the ceiling as requests arrive. `slots.live` sets them for one model in
+place of `OLLAMA_NUM_PARALLEL`, and only when opencoti serves it. On stock
+`llama.cpp` every slot is a KV copy reserved at launch, so the server's count
+stands there. Remember that the launch context is `num_ctx` × the slots at
+load: `OLLAMA_NUM_PARALLEL=4` on a 131k model asks the engine for 524k cells
+before anyone has sent a request.
 
 **The speed floor** is the more useful of the two brakes. It is the decode rate,
 in tokens per second, that each request should keep: another slot is not
@@ -138,12 +147,16 @@ is no neighbour.
 
 ## Things that are decided for you
 
-**A model that must be served one at a time is never grown.** Some
-architectures give wrong answers with more than one sequence in flight, and
-Ollama already refuses to run them in parallel. Dynamic slots respect that: a
-model on that list stays at one slot no matter what you set, because that is a
-correctness decision and not a capacity preference. Embedding models are the
-same.
+**On stock llama.cpp, a model that must be served one at a time is never
+grown.** Some architectures (Qwen3.5, Qwen3-Next, Qwen3-VL, LFM2, Nemotron-H,
+mllama) give wrong answers with more than one sequence in flight on stock
+llama.cpp, and Ollama refuses to run them in parallel
+([ollama#4165](https://github.com/ollama/ollama/issues/4165)). With
+`XOLLAMA_ENGINE=llamacpp` that list binds exactly as upstream's does. On
+opencoti it does not: those architectures take `OLLAMA_NUM_PARALLEL` and grow
+like any other model. If a load meant for opencoti ends up on stock llama.cpp
+(the artifact is missing, or the opt-in fallback retried), it starts at one
+sequence again. Embedding models stay at one slot on every engine.
 
 **A busy engine waits rather than failing.** When there is no room, the engine
 refuses the request immediately rather than queueing it — which is right for the

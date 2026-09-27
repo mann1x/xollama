@@ -41,6 +41,9 @@ const (
 	// kindDevices is a multi-select over the server's live devices, with any
 	// typed selector accepted too.
 	kindDevices
+	// kindText is free text kept exactly as typed -- a prompt, a model name --
+	// or `@path` to read it from a file, because a prompt is rarely one line.
+	kindText
 )
 
 // field is one setting in the xollama.json layer.
@@ -96,6 +99,12 @@ type field struct {
 	// single authority for them; duplicating those here is how the two would
 	// drift.
 	blocked func(*xollama.Config) string
+	// quiet skips a blocked field in the walk without saying so. It is for a
+	// feature whose settings are only questions once it is switched on --
+	// the council has 22, and a line per skipped question on every model
+	// that is not a council would bury the questions that are asked. A flag
+	// naming a quiet field still gets the reason.
+	quiet bool
 }
 
 // tri renders a *bool for the review and the current-value line.
@@ -251,14 +260,14 @@ func prune(c *xollama.Config) {
 	if c.KV != nil && *c.KV == (xollama.KV{}) {
 		c.KV = nil
 	}
-	if c.Slots != nil && c.Slots.Dynamic == nil && c.Slots.Max == 0 && c.Slots.TPSFloor == 0 &&
+	if c.Slots != nil && c.Slots.Dynamic == nil && c.Slots.Max == 0 && c.Slots.Live == 0 && c.Slots.TPSFloor == 0 &&
 		c.Slots.VRAMReserveMiB == 0 && c.Slots.SWASeqBudget == 0 {
 		c.Slots = nil
 	}
 	if c.DCA != nil && c.DCA.Enabled == nil && c.DCA.ChunkSize == 0 {
 		c.DCA = nil
 	}
-	if c.Session != nil && c.Session.Affinity == nil && c.Session.Pool == nil && c.Session.MaxPools == 0 {
+	if c.Session != nil && c.Session.Affinity == nil && c.Session.Pool == nil && c.Session.MaxPools == 0 && c.Session.ClientPools == 0 {
 		c.Session = nil
 	}
 	if c.Draft != nil && c.Draft.SpecType == "" {
@@ -267,6 +276,7 @@ func prune(c *xollama.Config) {
 	if c.Devices.IsZero() {
 		c.Devices = nil
 	}
+	c.Council = c.Council.Prune()
 }
 
 // opencotiOnly is the reason a setting cannot be stated on a model that pins
@@ -480,7 +490,7 @@ var fields = []field{
 			"headroom. Unset leaves XOLLAMA_DYNAMIC_SLOTS in charge.",
 		kind:  kindTri,
 		head:  true,
-		group: []string{"slots", "slots-max", "slots-tps-floor", "slots-vram-reserve", "slots-swa-budget"},
+		group: []string{"slots", "slots-max", "slots-live", "slots-tps-floor", "slots-vram-reserve", "slots-swa-budget"},
 		get: func(c *xollama.Config) string {
 			return orEmpty(c.Slots != nil, func() string { return tri(c.Slots.Dynamic) })
 		},
@@ -499,6 +509,20 @@ var fields = []field{
 			return orEmpty(c.Slots != nil, func() string { return showInt(c.Slots.Max) })
 		},
 		set: func(c *xollama.Config, v string) error { return setInt(v, &slots(c).Max) },
+	},
+	{
+		name:  "slots-live",
+		path:  "slots.live",
+		title: "Live slots — the slots the model loads with, on opencoti",
+		help: "Replaces OLLAMA_NUM_PARALLEL for this model when opencoti serves it; its slots\n" +
+			"then grow up to the ceiling as requests arrive. Stock llama.cpp keeps the\n" +
+			"server's count. Unset leaves OLLAMA_NUM_PARALLEL in charge.",
+		kind: kindInt,
+		unit: "slots",
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Slots != nil, func() string { return showInt(c.Slots.Live) })
+		},
+		set: func(c *xollama.Config, v string) error { return setInt(v, &slots(c).Live) },
 	},
 	{
 		name:  "slots-tps-floor",
@@ -630,6 +654,23 @@ var fields = []field{
 			return orEmpty(c.Session != nil, func() string { return showInt(c.Session.MaxPools) })
 		},
 		set: func(c *xollama.Config, v string) error { return setInt(v, &session(c).MaxPools) },
+	},
+	{
+		name:  "session-client-pools",
+		env:   "XOLLAMA_POLYKV_CLIENT_POOLS",
+		path:  "session.client_pools",
+		title: "Pool seats kept for a client's own PolyKV pools",
+		help: "For a client that creates and manages its own pools through /api/engine\n" +
+			"(Cerebriline's agents, for one) and attaches requests with placement.pool_id.\n" +
+			"The engine has no seats unless someone asks, and refuses a create without one.\n" +
+			"Each seat reserves a sequence id for the life of the runner. Independent of\n" +
+			"session.pool, which is xollama's own automatic pooling.",
+		kind: kindInt,
+		unit: "pools",
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Session != nil, func() string { return showInt(c.Session.ClientPools) })
+		},
+		set: func(c *xollama.Config, v string) error { return setInt(v, &session(c).ClientPools) },
 	},
 	{
 		name:  "spec-type",

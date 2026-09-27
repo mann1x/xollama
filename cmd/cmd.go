@@ -1031,6 +1031,9 @@ func RunHandler(cmd *cobra.Command, args []string) error {
 
 		return generateInteractive(cmd, opts)
 	}
+	if runsAsCouncil(info, opts) { // xollama-hook: council — see cmd/council_run.go
+		return runCouncilOnce(cmd, opts)
+	}
 	if err := generate(cmd, opts); err != nil {
 		if handleCloudAuthorizationError(err) {
 			return nil

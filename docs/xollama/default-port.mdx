@@ -13,6 +13,12 @@ xollama serve
 XOLLAMA_HOST=0.0.0.0:22434 xollama serve   # bind every interface
 ```
 
+<Tip>
+Binding every interface opens every endpoint to the network. Set a
+[local API key](/xollama/api-key) with `xollama tweak server --api-key=generate`,
+and put the server behind TLS: over plain HTTP the key travels in clear text.
+</Tip>
+
 ## Running xollama and Ollama on the same machine
 
 It will work. **It is not supported, and we recommend against it.**

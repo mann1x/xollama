@@ -323,7 +323,7 @@ func TestScopeOfExpandsHeadsAndPairs(t *testing.T) {
 		want []string
 	}{
 		{"dca", []string{"dca", "dca-chunk"}},
-		{"slots", []string{"slots", "slots-max", "slots-tps-floor", "slots-vram-reserve", "slots-swa-budget"}},
+		{"slots", []string{"slots", "slots-max", "slots-live", "slots-tps-floor", "slots-vram-reserve", "slots-swa-budget"}},
 		{"kv-k", []string{"kv-k", "kv-v"}},
 		{"kv-residency", []string{"kv-residency"}},
 	} {

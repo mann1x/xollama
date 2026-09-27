@@ -1,35 +1,32 @@
-# Publish the xollama container image on every release.
+# Publish the xollama container image.
 #
-# ADDITIVE and fork-only. Upstream's release.yaml already carries a complete
-# Docker pipeline (docker-build-push + docker-merge-push), and this file
-# deliberately does not edit it: those jobs target upstream's own self-hosted
-# runners (`linux`, `linux-arm64`), require an `environment: release` this fork
-# does not define, and are documented as "cache-hit-only" against
-# `ollama/release:cache-*` -- a registry nobody but upstream can push to.
-# Editing a 37k-line upstream workflow to change four of those things would
-# conflict on every `git merge upstream/main`; a separate file never does.
+# ADDITIVE and fork-only. Upstream's release.yaml carries its own Docker
+# pipeline, which compiles every native piece on upstream's self-hosted runners
+# and caches against a registry only upstream can write to; this file does not
+# touch it, so it never conflicts on `git merge upstream/main`.
 #
-# Inherited from upstream: the SHAPE -- build each architecture on its own and
-# merge the results into one multi-arch manifest, so a slow or failing arch
-# cannot take the other one down with it.
+# NOTHING NATIVE IS COMPILED HERE. Every native piece already exists as a
+# published, sha256-pinned artifact, so the image is ASSEMBLED on a
+# GitHub-hosted runner (plans/docker-image.md):
 #
-# Inherited from the fork's acproxycam workflow: only the PUBLISHING half --
-# the two-registry login, the tag derivation, and pushing one image to both
-# Docker Hub and GHCR.
+#   llama.cpp CPU runtime  the fork's release tgz        llama/runtime-pin-linux.txt
+#   CUDA / Vulkan / MLX    upstream's release tarballs   llama/runtime-pin-linux.txt
+#   opencoti engine        HF, whatever the pin names    llm/engine/pin.txt
+#   xollama                Go-only build, AlmaLinux 8    this commit
 #
-# THIS DOES NOT BUILD OPENCOTI, and must not be confused with the opencoti
-# build images (`opencoti/dso-build:cuda13.3-glibc2.28` and its siblings under
-# opencoti's vendors/docker/). Those produce the ENGINE -- the CUDA DSO, the
-# Vulkan build, the Windows DLL -- and run from opencoti's own BUILD_CYCLE
-# protocol on bs2. The xollama image consumes a published engine instead: the
-# `opencoti-engine` stage in Dockerfile downloads the artifact named by
-# llm/engine/pin.txt through cmake/opencoti-fetch.cmake and ships it inside the
-# image, which is the whole reason xollama never fetches an engine at runtime.
-# A pin move, not a CI change, is how this image gets new engine bytes.
+# scripts/docker-assemble.sh does the assembly and is the same script used to
+# validate it locally; Dockerfile.xollama is the runtime layer. New engine bytes
+# reach the image through a pin move, not a CI change.
 #
-# The glibc floor that forces opencoti's DSO lane onto a Rocky-8 container does
-# not need solving again here either: upstream's Dockerfile already builds its
-# llama-server stages on almalinux:8 (glibc 2.28).
+# CHANNELS. `:dev` is the only thing a branch build can move. `:latest` moves
+# only from a tag whose GitHub release is a full release -- the pre-release
+# flag decides, as it does for the desktop updater, not the hyphen in the tag
+# (every `v<upstream>-xollama.<n>` tag has one). A release created by
+# xollama-release.yaml with GITHUB_TOKEN triggers no workflow, so the image for
+# a release is a manual run on its tag: `gh workflow run docker-release.yaml
+# --ref v0.34.2-xollama.2`.
+#
+# amd64 only, for now (plans/docker-image.md); arm64 follows user testing.
 
 name: docker-release
 
@@ -40,247 +37,158 @@ on:
   workflow_dispatch:
     inputs:
       push:
-        description: 'Push the images (off = build only, to test the workflow)'
+        description: 'Push the image (off = assemble, build and smoke-test only)'
         required: true
         default: true
         type: boolean
       version:
-        description: 'Version to tag, without the leading v (defaults to the git tag)'
+        description: 'Version to tag, without the leading v (default: the tag, or <upstream>-dev.<sha> on a branch)'
         required: false
         type: string
       channel:
-        description: 'Which channel to publish to (auto = decide from the tag)'
+        description: 'auto = the GitHub pre-release flag on a tag, dev on a branch'
         required: false
         default: auto
         type: choice
         options: [auto, release, dev]
-      ignore_busy_host:
-        description: 'Build even if bs2 looks busy (overrides the BUILD_CYCLE preflight)'
-        required: false
-        default: false
-        type: boolean
 
-# bs2 is a shared build AND gate host. Two releases building at once would put
-# 64 threads on 32 cores and make both slow; they are serialised rather than
-# cancelled, because a half-pushed manifest is worse than a queued one.
+# A half-pushed set of tags is worse than a queued one.
 concurrency:
   group: docker-release
   cancel-in-progress: false
+
+permissions:
+  contents: read
 
 env:
   # ghcr.io/mann1x/xollama -- github.repository is already <owner>/<repo>.
   GHCR_IMAGE: ghcr.io/${{ github.repository }}
   # The Docker Hub namespace is the account's, not the repository's.
   DOCKERHUB_IMAGE: docker.io/mannixita/xollama
+  GH_TOKEN: ${{ github.token }}
 
 jobs:
-  # Decide the version and the channel before anything touches bs2. This runs on
-  # a GitHub-hosted runner on purpose: it is pure metadata, and it must still
-  # report what WOULD be published when the build host is busy.
-  #
-  # A tag carrying a pre-release suffix -- v1.2.3-rc1, v1.2.3-dev.4 -- is a dev
-  # build and is kept away from the tags people pull by default. It publishes
-  # :<version> and moves :dev; only a plain v1.2.3 moves :latest. Separating the
-  # two is the whole point of having the two environments.
   plan:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.plan.outputs.version }}
-      prerelease: ${{ steps.plan.outputs.prerelease }}
       environment: ${{ steps.plan.outputs.environment }}
       moving_tag: ${{ steps.plan.outputs.moving_tag }}
-    steps:
-      - id: plan
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ -n "${{ inputs.version }}" ]; then
-            version="${{ inputs.version }}"
-          else
-            version="${GITHUB_REF_NAME#v}"
-          fi
-
-          # Semver calls anything after the first hyphen a pre-release.
-          case "$version" in
-            *-*) prerelease=true ;;
-            *)   prerelease=false ;;
-          esac
-
-          channel="${{ inputs.channel }}"
-          case "${channel:-auto}" in
-            release) prerelease=false ;;
-            dev)     prerelease=true ;;
-          esac
-
-          if [ "$prerelease" = true ]; then
-            environment=dev
-            moving_tag=dev
-          else
-            environment=release
-            moving_tag=latest
-          fi
-
-          {
-            echo "version=${version}"
-            echo "prerelease=${prerelease}"
-            echo "environment=${environment}"
-            echo "moving_tag=${moving_tag}"
-          } >>"$GITHUB_OUTPUT"
-
-          echo "publishing ${version} to the ${environment} channel (moving tag :${moving_tag})"
-
-  # opencoti's BUILD_CYCLE.md makes this preflight mandatory before any
-  # 32-thread job on bs2: a build must not run while a CPU-bound eval is live,
-  # because host contention depresses that eval's decode rate by 15-30% and
-  # silently corrupts whatever it was measuring. CI fires on a tag push with no
-  # idea what the box is doing, so it has to ask.
-  preflight:
-    runs-on: [self-hosted, linux, X64, xollama-build]
-    outputs:
-      busy: ${{ steps.check.outputs.busy }}
-    steps:
-      - id: check
-        shell: bash
-        run: |
-          set -uo pipefail
-          busy=no
-          # Named processes only -- never a bare pattern match that could catch
-          # this very job's own command line.
-          if pgrep -x nvcc >/dev/null 2>&1 || pgrep -x cicc >/dev/null 2>&1 || pgrep -x ptxas >/dev/null 2>&1; then
-            echo "::warning::an opencoti compile is running on this host"
-            busy=yes
-          fi
-          load=$(cut -d' ' -f1 /proc/loadavg)
-          cores=$(nproc)
-          echo "load ${load} over ${cores} cores"
-          # "well under 32" from BUILD_CYCLE.md, taken as half the core count.
-          if awk -v l="$load" -v c="$cores" 'BEGIN{exit !(l > c/2)}'; then
-            echo "::warning::load ${load} is high for ${cores} cores"
-            busy=yes
-          fi
-          echo "busy=${busy}" >>"$GITHUB_OUTPUT"
-          if [ "$busy" = yes ] && [ "${{ inputs.ignore_busy_host }}" != "true" ]; then
-            echo "::error::bs2 is busy; refusing to start a 32-thread build. Re-run with ignore_busy_host=true to override."
-            exit 1
-          fi
-
-  # One job per architecture. fail-fast is off on purpose: the emulated arm64
-  # leg is the slow and fragile one and must not cancel a finished amd64 build.
-  build:
-    needs: [plan, preflight]
-    environment: ${{ needs.plan.outputs.environment }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            platform: linux/amd64
-            emulated: false
-          - arch: arm64
-            platform: linux/arm64
-            # bs2 is x86_64, so this leg runs under QEMU. It is worth
-            # publishing -- opencoti ships an aarch64 artifact and the fork
-            # targets DGX Spark and Raspberry Pi -- but note that the CURRENT
-            # dev pin declares `accel x86_64 CUDA` and carries no aarch64 dso
-            # row, so today's arm64 image gets the portable engine binary with
-            # NO CUDA payload beside it. The release channel does publish
-            # dso/<ver>/ggml-cuda-sbsa-aarch64.so; when a dev pin carries it,
-            # add the `dso aarch64` row to llm/engine/pin.txt and this image
-            # gains arm64 acceleration with no change here.
-            emulated: true
-          # The `-rocm` flavour upstream also publishes is DELIBERATELY ABSENT
-          # until a ROCm build has been developed and validated for this fork.
-          # llm/engine/pin.txt declares no ROCm acceleration for the pinned
-          # engine, so an image advertising it would be untested. Re-add a
-          # `{ arch: amd64, suffix: '-rocm', build-args: FLAVOR=rocm }` entry
-          # here, and its suffix in `merge`, once it is measured.
-    runs-on: [self-hosted, linux, X64, xollama-build]
-    permissions:
-      contents: read
-      packages: write
+      gotoolchain: ${{ steps.plan.outputs.gotoolchain }}
     steps:
       - uses: actions/checkout@v4
 
-      # Only the emulated leg needs binfmt handlers registered, which is a
-      # host-level change; the native leg skips it entirely.
-      - name: Set up QEMU
-        if: matrix.emulated
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
+      - id: plan
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -euo pipefail
+          out() { echo "$1=$2" >> "$GITHUB_OUTPUT"; }
+          fail() { echo "::error::$*"; exit 1; }
 
-      - uses: docker/setup-buildx-action@v3
+          upstream=$(awk '$1=="upstream" {print $2}' llama/runtime-pin-linux.txt)
+          if [ -n "${INPUT_VERSION:-}" ]; then
+            version=$INPUT_VERSION
+          elif [ "$GITHUB_REF_TYPE" = tag ]; then
+            version=${GITHUB_REF_NAME#v}
+          else
+            version="${upstream#v}-dev.$(git rev-parse --short=8 HEAD)"
+          fi
+          [[ "$version" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] || fail "'$version' is not a valid image tag"
 
-      - name: Log in to GHCR
-        if: inputs.push != false
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          # The channel: the release's pre-release flag on a tag, dev anywhere
+          # else. :latest is never moved from a branch, whatever was asked.
+          prerelease=true
+          if [ "$GITHUB_REF_TYPE" = tag ] \
+              && flag=$(gh release view "$GITHUB_REF_NAME" --json isPrerelease,isDraft \
+                          --jq 'if .isDraft then "draft" else (.isPrerelease|tostring) end' 2> /dev/null); then
+            [ "$flag" = false ] && prerelease=false
+          fi
+          case "${INPUT_CHANNEL:-auto}" in
+            dev) prerelease=true ;;
+            release)
+              [ "$GITHUB_REF_TYPE" = tag ] || fail "the release channel moves :latest and needs a tag ref, not $GITHUB_REF_NAME"
+              prerelease=false ;;
+          esac
+          if [ "$prerelease" = true ]; then
+            out environment dev; out moving_tag dev
+          else
+            out environment release; out moving_tag latest
+          fi
+          out version "$version"
 
-      - name: Log in to Docker Hub
-        if: inputs.push != false
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          # The Go toolchain, as xollama-release.yaml picks it: upstream's line
+          # from go.mod, the newest patch on it. Never GOTOOLCHAIN=auto.
+          gomod=$(awk '$1=="go" {print $2; exit}' go.mod)
+          line=$(cut -d. -f1,2 <<< "$gomod")
+          toolchain=$(curl -fsSL 'https://go.dev/dl/?mode=json&include=all' \
+            | jq -r --arg l "go$line" '[.[] | select(.stable) | .version | select(. == $l or startswith($l + "."))] | first // empty')
+          [ -n "$toolchain" ] || fail "no stable Go release found on the go$line line (go.mod says go $gomod)"
+          out gotoolchain "$toolchain"
 
-      # Per-architecture tags. The multi-arch manifest users actually pull is
-      # assembled from these by `merge`; these stay published because they are
-      # what makes a broken architecture diagnosable afterwards.
-      - name: Derive tags
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: |
-            ${{ env.GHCR_IMAGE }}
-            ${{ env.DOCKERHUB_IMAGE }}
-          flavor: |
-            latest=false
-            suffix=-${{ matrix.arch }}
-          tags: |
-            type=raw,value=${{ needs.plan.outputs.version }}
+          echo "image $version, channel $( [ "$prerelease" = true ] && echo dev || echo release ), Go $toolchain"
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: ${{ matrix.platform }}
-          push: ${{ inputs.push != false }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          provenance: false
-          sbom: false
-          build-args: |
-            CGO_CFLAGS=-O3
-            CGO_CXXFLAGS=-O3
-          # Upstream caches against `ollama/release:cache-*`, which this fork
-          # cannot write to. Cache in our own GHCR repository instead, one
-          # entry per architecture so the legs never evict each other.
-          cache-from: type=registry,ref=${{ env.GHCR_IMAGE }}:cache-${{ matrix.arch }}
-          cache-to: type=registry,ref=${{ env.GHCR_IMAGE }}:cache-${{ matrix.arch }},mode=max
-
-  # Assemble one multi-arch manifest per registry from the per-arch tags.
-  # imagetools copies within a registry, so each registry is merged from its own
-  # architecture tags rather than across the two.
-  merge:
-    needs: [plan, build]
-    if: inputs.push != false
-    runs-on: [self-hosted, linux, X64, xollama-build]
+  build:
+    needs: plan
+    runs-on: ubuntu-latest
     environment: ${{ needs.plan.outputs.environment }}
+    timeout-minutes: 90
     permissions:
       contents: read
       packages: write
-    strategy:
-      fail-fast: false
-      matrix:
-        registry: [ghcr, dockerhub]
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      GO_TOOLCHAIN: ${{ needs.plan.outputs.gotoolchain }}
+      MOVING_TAG: ${{ needs.plan.outputs.moving_tag }}
     steps:
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v4
+
+      # The fork commit the runtime was built at, trees only, so the assembly
+      # can prove the pin's inputs digest against it and not just trust it.
+      - name: fetch the runtime's provenance
+        run: |
+          built=$(awk '$1=="built" {print $2}' llama/runtime-pin-linux.txt)
+          git fetch -q --depth 1 --filter=blob:none https://github.com/mann1x/ollama "$built"
+
+      # The payload is ~5.5 GB unpacked, the image as much again; the runner
+      # starts with about 20 GB free. Tools this job never uses go first.
+      - name: make room
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker image prune -af > /dev/null
+          df -h /
+
+      - name: assemble
+        run: |
+          ASSET_DIR="$RUNNER_TEMP/assets" scripts/docker-assemble.sh "$RUNNER_TEMP/ctx"
+          rm -rf "$RUNNER_TEMP/assets"
+
+      - name: build
+        run: |
+          docker build -t "xollama:$VERSION" "$RUNNER_TEMP/ctx"
+          rm -rf "$RUNNER_TEMP/ctx"
+          docker image ls "xollama:$VERSION"
+
+      # Serve on the image's own XOLLAMA_HOST and ask it who it is. A server
+      # bound to the container's loopback -- what upstream's OLLAMA_HOST would
+      # have produced -- fails here rather than in a user's hands.
+      - name: smoke
+        run: |
+          docker run -d --name smoke -p 127.0.0.1:22434:22434 "xollama:$VERSION"
+          for _ in $(seq 1 30); do
+            got=$(curl -fsS --max-time 2 http://127.0.0.1:22434/api/xollama 2> /dev/null) && break
+            sleep 1
+          done
+          docker logs smoke 2>&1 | tail -20
+          docker rm -f smoke > /dev/null
+          echo "${got:-no answer}"
+          [ "$(jq -r .version <<< "${got:-null}" 2> /dev/null)" = "$VERSION" ] \
+            || { echo "::error::the image did not answer /api/xollama as $VERSION"; exit 1; }
 
       - name: Log in to GHCR
-        if: matrix.registry == 'ghcr'
+        if: inputs.push != false
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -288,46 +196,21 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Log in to Docker Hub
-        if: matrix.registry == 'dockerhub'
+        if: inputs.push != false
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Create the multi-arch manifest
-        shell: bash
-        env:
-          VERSION: ${{ needs.plan.outputs.version }}
-          MOVING_TAG: ${{ needs.plan.outputs.moving_tag }}
+      # :<version>, :<version>-amd64 (so a later multi-arch manifest can be
+      # assembled from it), and the channel's moving tag -- :dev or :latest,
+      # never both.
+      - name: push
+        if: inputs.push != false
         run: |
-          set -euo pipefail
-          if [ "${{ matrix.registry }}" = "ghcr" ]; then
-            image="${{ env.GHCR_IMAGE }}"
-          else
-            image="${{ env.DOCKERHUB_IMAGE }}"
-          fi
-
-          # Merge only the architectures that actually produced a tag. A failed
-          # arm64 leg degrades to an amd64-only manifest rather than failing the
-          # release: an image that exists for one architecture beats no image.
-          sources=()
-          for arch in amd64 arm64; do
-            if docker buildx imagetools inspect "${image}:${VERSION}-${arch}" >/dev/null 2>&1; then
-              sources+=("${image}:${VERSION}-${arch}")
-            else
-              echo "::warning::${image}:${VERSION}-${arch} is missing; excluding ${arch} from the manifest"
-            fi
+          for image in "$GHCR_IMAGE" "$DOCKERHUB_IMAGE"; do
+            for tag in "$VERSION" "$VERSION-amd64" "$MOVING_TAG"; do
+              docker tag "xollama:$VERSION" "$image:$tag"
+              docker push -q "$image:$tag"
+            done
           done
-          if [ ${#sources[@]} -eq 0 ]; then
-            echo "::error::no architecture images were published for ${VERSION}"
-            exit 1
-          fi
-
-          # :latest on a release, :dev on a pre-release -- never both, so a
-          # pre-release can never become what `docker pull <image>` returns.
-          docker buildx imagetools create \
-            -t "${image}:${VERSION}" \
-            -t "${image}:${MOVING_TAG}" \
-            "${sources[@]}"
-
-          docker buildx imagetools inspect "${image}:${VERSION}"

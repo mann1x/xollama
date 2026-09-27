@@ -348,8 +348,15 @@ func GPUDevices(ctx context.Context, runners []ml.FilteredRunnerDiscovery) []ml.
 			// and keep remapped IDs aligned.
 			devFilter := ml.GetDevicesEnv(devices)
 
+			// xollama-hook: opencoti-discover — see discover/refresh_opencoti.go
+			fork := forkRefresh(rctx, devices, updated)
+
 			for dir := range libDirs {
+				if fork.skip(dir, devices, updated) { // xollama-hook: opencoti-discover
+					continue
+				}
 				updatedDevices := bootstrapDevicesWithMetalRetry(rctx, ctx, 3*time.Second, []string{ml.LibOllamaPath, dir}, devFilter)
+				fork.ran(dir, rctx, len(updatedDevices)) // xollama-hook: opencoti-discover
 				for _, u := range updatedDevices {
 					for i := range devices {
 						if sameRefreshDevice(u, devices[i]) {

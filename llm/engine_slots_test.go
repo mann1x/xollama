@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -317,6 +318,62 @@ func TestCompletionWaitsForAdmission(t *testing.T) {
 	}
 }
 
+// The native chat path waits the same way. A council's members come this way,
+// and a refused critic used to fail the whole turn -- and, through upstream's
+// out-of-memory heuristic, expire the model (bug-118).
+func TestChatWaitsForAdmission(t *testing.T) {
+	var refusals atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/health":
+			fmt.Fprint(w, `{"status":"ok"}`)
+		case "/v1/chat/completions":
+			if refusals.Add(1) <= 2 {
+				w.Header().Set("Retry-After", "0.01")
+				w.WriteHeader(http.StatusTooManyRequests)
+				fmt.Fprint(w, `{"error":{"code":429,"message":"admission rejected: rs pool exhausted","type":"rate_limit_error"}}`)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprintln(w, `data: {"choices":[{"delta":{"content":"seated"}}]}`)
+			fmt.Fprintln(w, `data: {"choices":[{"delta":{},"finish_reason":"stop"}]}`)
+			fmt.Fprintln(w, `data: [DONE]`)
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	parts := strings.Split(srv.URL, ":")
+	var port int
+	fmt.Sscanf(parts[len(parts)-1], "%d", &port)
+
+	runner := &llamaServerRunner{
+		port:         port,
+		cmd:          fakeRunningCmd(),
+		sem:          semaphore.NewWeighted(1),
+		options:      api.Options{Runner: api.Runner{NumCtx: 2048}},
+		usedOpencoti: true,
+	}
+
+	opts := api.DefaultOptions()
+	var got string
+	err := runner.Chat(t.Context(), ChatRequest{
+		Messages: []api.Message{{Role: "user", Content: "hi"}},
+		Options:  &opts,
+	}, func(r ChatResponse) { got += r.Message.Content })
+	if err != nil {
+		t.Fatalf("a refused chat should have been waited out, not returned: %v", err)
+	}
+	if got != "seated" {
+		t.Errorf("content = %q, want %q", got, "seated")
+	}
+	if n := refusals.Load(); n != 3 {
+		t.Errorf("expected two refusals then a seat, got %d attempts", n)
+	}
+}
+
 // The wait is the caller's to cancel. A request whose context ends while the
 // engine is still refusing must come back promptly, not sit out the budget.
 func TestAdmissionWaitHonoursTheCaller(t *testing.T) {
@@ -427,5 +484,224 @@ func TestTheResidencyTacticIsOpencotiOnly(t *testing.T) {
 	}
 	if got := appendKVResidencyArgs(nil, kvCacheTypes{}, true); len(got) != 0 {
 		t.Errorf("an unstated tactic must add nothing, got %v", got)
+	}
+}
+
+// A refusal that says the request needs more than its whole window is the
+// answer at once: no wait can seat it. One that others' cells explain is
+// still waited out.
+func TestARequestThatCanNeverFitIsNotWaitedOut(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		never      bool
+	}{
+		{"worker over the window", `{"error":{"code":429,"message":"session allocation full (worker of 'tools-1': 15229 of 16384 cells free, needs 16500) — compact the session"}}`, true},
+		{"owner over the window", `{"error":{"message":"session allocation full ('tools-1': 100 of 8192 cells free, needs 9000)"}}`, true},
+		{"held by others", `{"error":{"code":429,"message":"session allocation full (worker of 'tools-1': 11101 of 16384 cells free, needs 11767) — compact the session"}}`, false},
+		{"exhausted", `{"error":{"message":"context allocation exhausted"}}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var refusals atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if refusals.Add(1) > 1 {
+					w.WriteHeader(http.StatusOK)
+					return
+				}
+				w.Header().Set("Retry-After", "0.01")
+				w.WriteHeader(http.StatusTooManyRequests)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+			runner := &llamaServerRunner{client: newLlamaServerHTTPClient(), usedOpencoti: true}
+			res, err := runner.postWaitingForAdmission(t.Context(), srv.URL, []byte(`{}`))
+			if res != nil {
+				res.Body.Close()
+			}
+			if got := errors.Is(err, ErrNeverFits); got != tc.never {
+				t.Fatalf("never fits = %v (err %v), want %v", got, err, tc.never)
+			}
+			if tc.never && refusals.Load() != 1 {
+				t.Fatalf("asked %d times", refusals.Load())
+			}
+		})
+	}
+}
+
+// The window the engine granted, from X-Context-Window on the admitted
+// response, is reported to the request's collector; a refused or failed
+// response reports nothing.
+func TestTheGrantedWindowIsReported(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		switch r.URL.Path {
+		case "/queue":
+			if calls == 1 {
+				w.Header().Set("Retry-After", "0")
+				w.Header().Set(ContextWindowHeader, "999")
+				w.WriteHeader(http.StatusTooManyRequests)
+				return
+			}
+			w.Header().Set(ContextWindowHeader, "12288")
+		case "/bad":
+			w.Header().Set(ContextWindowHeader, "777")
+			w.WriteHeader(http.StatusBadRequest)
+		case "/stock":
+		}
+	}))
+	defer srv.Close()
+	runner := &llamaServerRunner{client: newLlamaServerHTTPClient(), usedOpencoti: true}
+	for path, want := range map[string]int{"/queue": 12288, "/bad": 0, "/stock": 0} {
+		calls = 0
+		ctx, w := WithContextWindow(t.Context())
+		res, err := runner.postWaitingForAdmission(ctx, srv.URL+path, []byte(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if w.Get() != want {
+			t.Errorf("%s: window = %d, want %d", path, w.Get(), want)
+		}
+	}
+}
+
+// A client negotiating its own window is answered at once with the engine's
+// refusal and the largest window it would admit; without negotiation the
+// same refusal is waited out.
+func TestANegotiatingClientGetsTheRefusalAtOnce(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Retry-After", "2")
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte(`{"error":{"code":429,"message":"cannot book 4096: 512 free","type":"rate_limit_error","largest_admissible":512}}`))
+	}))
+	defer srv.Close()
+	runner := &llamaServerRunner{client: newLlamaServerHTTPClient(), usedOpencoti: true}
+
+	ctx, w := WithContextWindow(t.Context())
+	res, err := runner.postWaitingForAdmission(WithNegotiation(ctx), srv.URL, []byte(`{}`))
+	if res != nil {
+		res.Body.Close()
+	}
+	var refused *WindowRefusedError
+	if !errors.As(err, &refused) || refused.LargestAdmissible != 512 || !strings.Contains(refused.Message, "512 free") {
+		t.Fatalf("err = %v, want a WindowRefusedError with largest 512", err)
+	}
+	if calls != 1 {
+		t.Fatalf("engine asked %d times, want once", calls)
+	}
+	largest, retry, ok := w.Refusal()
+	if !ok || largest != 512 || retry != 2*time.Second {
+		t.Fatalf("refusal = %d %v %v", largest, retry, ok)
+	}
+
+	// Not negotiating: the refusal is a queue, waited on until the caller's
+	// deadline.
+	calls = 0
+	wctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	res, err = runner.postWaitingForAdmission(wctx, srv.URL, []byte(`{}`))
+	if res != nil {
+		res.Body.Close()
+	}
+	if errors.As(err, &refused) {
+		t.Fatalf("a plain request got the negotiation refusal: %v", err)
+	}
+}
+
+func TestLargestAdmissibleIsReadWhereverTheEngineSaysIt(t *testing.T) {
+	for body, want := range map[string]int{
+		`{"largest_admissible":256}`:           256,
+		`{"error":{"largest_admissible":768}}`: 768,
+		`{"error":"no room"}`:                  0,
+		`not json`:                             0,
+	} {
+		if got := largestAdmissible([]byte(body)); got != want {
+			t.Errorf("%s: %d, want %d", body, got, want)
+		}
+	}
+}
+
+// Both paths turn a negotiating client's refusal into a 429 carrying the
+// engine's reason, not the 503 a request waited out gets.
+func TestANegotiationRefusalIsA429OnBothPaths(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			fmt.Fprint(w, `{"status":"ok"}`)
+			return
+		}
+		w.Header().Set("Retry-After", "2")
+		w.WriteHeader(http.StatusTooManyRequests)
+		fmt.Fprint(w, `{"error":{"code":429,"message":"cannot book 4096: 512 free","type":"rate_limit_error","largest_admissible":512}}`)
+	}))
+	defer srv.Close()
+	parts := strings.Split(srv.URL, ":")
+	var port int
+	fmt.Sscanf(parts[len(parts)-1], "%d", &port)
+	runner := &llamaServerRunner{port: port, cmd: fakeRunningCmd(), sem: semaphore.NewWeighted(1), options: api.Options{Runner: api.Runner{NumCtx: 2048}}, usedOpencoti: true}
+	opts := api.DefaultOptions()
+	ctx := WithNegotiation(t.Context())
+	for name, err := range map[string]error{
+		"completion": runner.Completion(ctx, CompletionRequest{Prompt: "hi", Options: &opts}, func(CompletionResponse) {}),
+		"chat":       runner.Chat(ctx, ChatRequest{Messages: []api.Message{{Role: "user", Content: "hi"}}, Options: &opts}, func(ChatResponse) {}),
+	} {
+		var se api.StatusError
+		if !errors.As(err, &se) || se.StatusCode != http.StatusTooManyRequests || !strings.Contains(se.ErrorMessage, "512 free") {
+			t.Errorf("%s: err = %#v, want a 429 naming the engine's reason", name, err)
+		}
+	}
+}
+
+func TestTheRefusalMessageIsTheEnginesReason(t *testing.T) {
+	for body, want := range map[string]string{
+		`{"error":{"code":429,"message":"admission rejected: largest admissible 512"}}`: "admission rejected: largest admissible 512",
+		` no room `: "no room",
+	} {
+		if got := refusalMessage([]byte(body)); got != want {
+			t.Errorf("%s: %q, want %q", body, got, want)
+		}
+	}
+}
+
+// A pooled worker whose owner's window is full gets the engine's refusal at
+// once when negotiating -- even one that can never fit, which its client
+// answers by growing the owner. Not negotiating (a council member), the
+// never-fitting request is a 400 naming the numbers, not a runner crash.
+func TestASessionFullRefusal(t *testing.T) {
+	body := `{"error":{"code":429,"message":"session allocation full (worker of 'o': 100 of 4096 cells free, needs 5000)","type":"rate_limit_error"}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			fmt.Fprint(w, `{"status":"ok"}`)
+			return
+		}
+		w.Header().Set("Retry-After", "1")
+		w.WriteHeader(http.StatusTooManyRequests)
+		fmt.Fprint(w, body)
+	}))
+	defer srv.Close()
+	parts := strings.Split(srv.URL, ":")
+	var port int
+	fmt.Sscanf(parts[len(parts)-1], "%d", &port)
+	runner := &llamaServerRunner{port: port, cmd: fakeRunningCmd(), sem: semaphore.NewWeighted(1), options: api.Options{Runner: api.Runner{NumCtx: 2048}}, usedOpencoti: true}
+	opts := api.DefaultOptions()
+
+	ctx, w := WithContextWindow(t.Context())
+	err := runner.Chat(WithNegotiation(ctx), ChatRequest{Messages: []api.Message{{Role: "user", Content: "hi"}}, Options: &opts}, func(ChatResponse) {})
+	var se api.StatusError
+	if !errors.As(err, &se) || se.StatusCode != http.StatusTooManyRequests || !strings.Contains(se.ErrorMessage, "session allocation full") {
+		t.Fatalf("negotiating: err = %#v, want the engine's 429 and reason", err)
+	}
+	if largest, retry, ok := w.Refusal(); !ok || largest != 0 || retry != time.Second {
+		t.Fatalf("refusal = %d %v %v", largest, retry, ok)
+	}
+
+	for name, err := range map[string]error{
+		"chat":       runner.Chat(t.Context(), ChatRequest{Messages: []api.Message{{Role: "user", Content: "hi"}}, Options: &opts}, func(ChatResponse) {}),
+		"completion": runner.Completion(t.Context(), CompletionRequest{Prompt: "hi", Options: &opts}, func(CompletionResponse) {}),
+	} {
+		if !errors.As(err, &se) || se.StatusCode != http.StatusBadRequest || !strings.Contains(se.ErrorMessage, "needs 5000 cells of a 4096-cell window") {
+			t.Errorf("%s not negotiating: err = %#v, want a 400 naming the numbers", name, err)
+		}
 	}
 }

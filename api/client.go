@@ -38,11 +38,18 @@ import (
 type Client struct {
 	base *url.URL
 	http *http.Client
+
+	// xollama-hook: api-key — the local key sent to base; see api/xollama_apikey_client.go.
+	apiKey string
 }
 
 func checkError(resp *http.Response, body []byte) error {
 	if resp.StatusCode < http.StatusBadRequest {
 		return nil
+	}
+
+	if err := localKeyError(resp, body); err != nil { // xollama-hook: api-key
+		return err
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized {
@@ -72,10 +79,10 @@ func checkError(resp *http.Response, body []byte) error {
 // If the variable is not specified, a default ollama host and port will be
 // used.
 func ClientFromEnvironment() (*Client, error) {
-	return &Client{
+	return keyedClient(&Client{
 		base: envconfig.Host(),
 		http: http.DefaultClient,
-	}, nil
+	}), nil // xollama-hook: api-key
 }
 
 func NewClient(base *url.URL, http *http.Client) *Client {
@@ -141,6 +148,7 @@ func (c *Client) do(ctx context.Context, method, path string, reqData, respData 
 	if token != "" {
 		request.Header.Set("Authorization", token)
 	}
+	c.setAPIKey(request) // xollama-hook: api-key
 
 	respObj, err := c.http.Do(request)
 	if err != nil {
@@ -207,6 +215,7 @@ func (c *Client) stream(ctx context.Context, method, path string, data any, fn f
 	if token != "" {
 		request.Header.Set("Authorization", token)
 	}
+	c.setAPIKey(request) // xollama-hook: api-key
 
 	response, err := c.http.Do(request)
 	if err != nil {

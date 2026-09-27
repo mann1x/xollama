@@ -2,6 +2,7 @@ package xollama
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -69,7 +70,7 @@ func TestParseRejects(t *testing.T) {
 			// schema as if it were this one would serve the model differently
 			// from how its publisher meant, and say nothing.
 			name:    "newer schema",
-			in:      `{"version":4}`,
+			in:      fmt.Sprintf(`{"version":%d}`, SchemaVersion+1),
 			wantErr: "newer than this build understands",
 		},
 		{name: "unknown engine", in: `{"version":1,"engine":"vllm"}`, wantErr: `unknown engine "vllm"`},
@@ -274,6 +275,10 @@ func TestValidateSlots(t *testing.T) {
 		{"a rate floor with the mechanism off", &Slots{Dynamic: &off, TPSFloor: 10}, true},
 		{"a reserve with the mechanism off", &Slots{Dynamic: &off, VRAMReserveMiB: 512}, true},
 		{"a negative ceiling", &Slots{Max: -1}, true},
+		{"negative live slots", &Slots{Live: -1}, true},
+		{"live slots above the ceiling", &Slots{Dynamic: &on, Max: 2, Live: 3}, true},
+		{"live slots at the ceiling", &Slots{Dynamic: &on, Max: 3, Live: 3}, false},
+		{"live slots without a ceiling", &Slots{Live: 3}, false},
 		{"a negative rate floor", &Slots{TPSFloor: -1}, true},
 		{"a negative reserve", &Slots{VRAMReserveMiB: -1}, true},
 	} {
@@ -520,5 +525,15 @@ func TestIsZeroSeesTheV2Fields(t *testing.T) {
 		if c.IsZero() {
 			t.Fatalf("IsZero() = true for %+v", c.KV)
 		}
+	}
+}
+
+func TestClientPoolsMustNotBeNegative(t *testing.T) {
+	if err := (&Config{Version: SchemaVersion, Session: &Session{ClientPools: -1}}).Validate(); err == nil {
+		t.Fatal("a negative client_pools validated")
+	}
+	c := &Config{Version: SchemaVersion, Session: &Session{ClientPools: 2}}
+	if err := c.Validate(); err != nil || c.IsZero() {
+		t.Fatalf("client_pools 2: err %v, zero %v", err, c.IsZero())
 	}
 }
