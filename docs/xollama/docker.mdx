@@ -191,7 +191,7 @@ them to Docker: `--gpus '"device=0,1"'`. Without `--gpus` the server runs on
 the CPU.
 
 Which engine serves a load depends on the card. With the engine the image
-currently pins (opencoti build `2609271900001`, b171):
+currently pins (opencoti build `2609272353001`, b177):
 
 | The load's NVIDIA GPUs | Served by |
 |---|---|
@@ -334,7 +334,7 @@ Set `OLLAMA_FLASH_ATTENTION=1` with any quantised values. Put `kvarn*` in the
 `XOLLAMA_*` variables and keep `OLLAMA_KV_CACHE_TYPE` to `f16`, `q8_0` or
 `q4_0`. Do not mix a `kvarn` width with a plain type. On a V100 start with
 `q8_0` / `q8_0`. Every accepted value, the mixing and ring rules, and the
-`q6_0` pairs that crash on CUDA are in
+`q6_0` pairs are in
 [Values and the combinations that work](/xollama/kv-cache#values-and-the-combinations-that-work).
 
 ### Concurrent requests

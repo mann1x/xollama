@@ -102,7 +102,7 @@ The ring needs an engine that has a separate short-window cache; stock
 `llama.cpp` has no such flag, so asking for one there is refused the same way as
 an unknown type.
 
-The pinned engine (`opencoti-0.10.5-c7-2609271900001`) has the ring: its pin
+The pinned engine (`opencoti-0.10.5-c7-2609272353001`) has the ring: its pin
 carries `feature swa-cache-types`. On a build without that feature, `k_swa` /
 `v_swa` are refused at load, naming the build.
 
@@ -111,7 +111,7 @@ carries `feature swa-cache-types`. On a build without that feature, `k_swa` /
 There are four settings: the keys (`k`), the values (`v`), and the two halves
 of a sliding-window model's ring (`k_swa`, `v_swa`). The rules below come from
 opencoti, who read them from the source of the pinned engine
-(`opencoti-0.10.5-c7-2609271900001`) and probed the crashes. The ring rules
+(`opencoti-0.10.5-c7-2609271900001`) and probed the crashes; the accepted values and ring rules were re-probed on the current pin. The ring rules
 were also probed from xollama, one run per row of
 `llm/engine_ring_shape_test.go`.
 
@@ -136,7 +136,7 @@ portable route, which has not been measured on that card yet.
 | `f16`, `f32` | yes | yes | no | yes | yes | yes |
 | `bf16` | yes | yes | no | yes | only as `bf16` / `bf16` | yes |
 | `q8_0`, `q4_0`, `q4_1`, `q5_0`, `q5_1` | yes | yes | as `v` | yes | yes | yes |
-| `q6_0` (opencoti) | yes | yes | as `v` | see the warning below | yes | yes |
+| `q6_0` (opencoti) | yes | yes | as `v` | yes (see the note below) | yes | yes |
 | `iq4_nl` | yes | yes | as `v` | no kernel as `v` | no kernel as `v` | yes |
 | `kvarn2` `kvarn3` `kvarn4` `kvarn5` `kvarn6` `kvarn8` (opencoti) | yes | yes | forced on | yes | yes (attention runs on an `f16` copy) | yes |
 
@@ -166,12 +166,11 @@ model. Hybrid models are fine.
    `OLLAMA_FLASH_ATTENTION=1` whenever `v` is quantised.
 
 <Warning>
-  **`q6_0` mixed with another type crashes on CUDA** with the pinned engine:
-  `q4_0` / `q6_0`, `q6_0` / `q8_0` and `q6_0` / `q4_1` abort. The pairs that
-  work are `q6_0` / `q6_0`, `q8_0` / `q6_0`, `q6_0` / `q5_0`,
-  `q6_0` / `q4_0`, `q6_0` / `f16` and `f16` / `q6_0`. A fix is in the engine
-  (opencoti bug-3705) and has not been pinned yet. Until it is, use `q6_0`
-  only in those pairs, or not at all.
+  **`q6_0` mixed with another type crashed on CUDA** on engine builds before
+  the current pin: `q4_0` / `q6_0`, `q6_0` / `q8_0` and `q6_0` / `q4_1`
+  aborted. The pinned engine carries the fix (opencoti bug-3705, patch 0432):
+  those pairs now run on the kernels that convert to `f16`, so they work but
+  are slower than a matching pair. Prefer `q6_0` / `q6_0` or `q8_0` / `q6_0`.
 </Warning>
 
 ### The ring

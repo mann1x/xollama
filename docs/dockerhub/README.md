@@ -241,7 +241,7 @@ needs only the NVIDIA Windows driver.
 3 is missing.
 
 Which engine serves a load depends on the card. With the currently pinned
-engine (opencoti build `2609271900001`):
+engine (opencoti build `2609272353001`):
 
 | The load's GPUs | Served by |
 |---|---|
@@ -321,7 +321,7 @@ On a **V100** start with `q8_0` / `q8_0`.
 |---|---|---|---|---|
 | `f16` `f32` `bf16` | yes | yes | not needed | `bf16` on Vulkan only as `bf16` / `bf16` |
 | `q8_0` `q5_1` `q5_0` `q4_1` `q4_0` | yes | yes | needed for values | |
-| `q6_0` | yes | yes | needed for values | some mixed pairs crash on CUDA, see below |
+| `q6_0` | yes | yes | needed for values | some mixed pairs are slower on CUDA, see below |
 | `iq4_nl` | yes | yes | needed for values | no GPU kernel as values; CPU only |
 | `kvarn2` `kvarn3` `kvarn4` `kvarn5` `kvarn6` `kvarn8` | yes | yes | forced on | the engine's compressed cache; there is no `kvarn7` |
 
@@ -334,8 +334,9 @@ On a **V100** start with `q8_0` / `q8_0`.
 - A ring needs `kvarn` on **both** keys and values. Set both ring halves, both
   `kvarn` or both plain. They may differ from each other (`q8_0` / `q4_0`).
 - Quantised values need flash attention: set `OLLAMA_FLASH_ATTENTION=1`.
-- On CUDA, `q6_0` mixed with another type crashes in `q4_0`/`q6_0`,
-  `q6_0`/`q8_0` and `q6_0`/`q4_1`. Use `q6_0` / `q6_0` or skip `q6_0`.
+- `q6_0` mixed with another type runs, but some pairs (`q4_0`/`q6_0`,
+  `q6_0`/`q8_0`, `q6_0`/`q4_1`) take a slower path on CUDA. Prefer
+  `q6_0` / `q6_0`.
 - Put `kvarn` and `q6_0` in the `XOLLAMA_*` variables. Keep
   `OLLAMA_KV_CACHE_TYPE` to `f16`, `q8_0` or `q4_0`: it is the fallback when
   stock llama.cpp serves a device the engine does not cover.

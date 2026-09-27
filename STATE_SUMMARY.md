@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — Engine pin moved to b177 for v0.34.4-xollama.2 (owner's ruling).**
+> - `llm/engine/pin.txt` → `opencoti-0.10.5-c7-2609272353001`, rev `7fc93cc8` (#515): fit growth-free (MTP reserve as it runs, no RS for idle slots), the KV-window sizer fix, the bundled dlopen helper, q6_0 mixed pairs served. sha256 of bin, DSO and CUDA 12 payload checked on download.
+> - Re-probed: every cache type and ring shape as on b171, except a KVarN key over a plain value with a ring, now accepted by the engine (promoted); xollama keeps refusing it. A/B vs b171: compat 8/8 (was 7/8), llama3 75.5 tok/s, multislot 142, gemma4 identical, 70B overflow 3.85 tok/s (was 3.05).
+> - Docs name b177; the q6_0 warning says the pairs now run, slower. Left: the `:dev` image on this pin, verified on the 3090; then merge PR #4.
+
 > **2026-09-27 — xollama was passing opencoti a fit target for every vision model; stopped.**
 > - Chris's V100 (32 GB, 18 GB model) ran at 2.9 tok/s with 4 GB of KV on the host and 4.9 GB of VRAM free. The engine's "runtime margin 1909" was ours: upstream's mmproj stopgap (ollama#16996) sets `LLAMA_ARG_FIT_TARGET` = projector + 1 GiB (885 + 1024), and an explicit target switches opencoti's automatic 256 MiB margin off. The `engine-fit` hook (`llm/engine_fit_target.go`) drops the pad on opencoti; stock keeps it (bug-167).
 > - Left with opencoti (#510/#511): the MTP booking (2360 MiB held, 1348 used) and RS growth held for slots that are not live (1122 MiB for 3 slots at live 1).
