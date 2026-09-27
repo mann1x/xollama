@@ -30,5 +30,10 @@ paths:
   plus the helpers in `model/renderers/testhelpers_test.go` (`testArgs`,
   `testPropsMap`, `testArgsOrdered`).
 - Thinking-budget plumbing spans `thinking/chat_template.go`, `api/types.go`
-  (`api.ThinkValue`) and `server/prompt.go` — it is a carried patch, so read
+  (`api.ThinkValue`), `types/model/thinking.go` (`ThinkValue` as bool, level
+  or positive `int` token budget; `BudgetTokens(window)` maps the levels
+  `minimal`..`max`, alias `xhigh`, to a share of the window; `Level()` clamps
+  them to low/medium/high), `model/renderers/thinking.go` (`ResolveThinking`:
+  an `int` budget turns thinking on without choosing a level) and
+  `server/prompt.go` — it is a carried patch, so read
   `docs/protocols/CARRIED-PATCHES.md` before changing its shape.

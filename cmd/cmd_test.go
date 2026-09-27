@@ -2973,7 +2973,8 @@ func TestParseThinkFlag(t *testing.T) {
 		{value: "8192", want: 8192},
 		{value: "0", wantErr: true},
 		{value: "-1", wantErr: true},
-		{value: "none", wantErr: true},
+		{value: "xhigh", want: "xhigh"},
+		{value: "none", want: "none"},
 		{value: "8192.5", wantErr: true},
 	}
 

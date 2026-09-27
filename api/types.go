@@ -104,7 +104,8 @@ type GenerateRequest struct {
 	Options map[string]any `json:"options"`
 
 	// Think controls whether thinking/reasoning models will think before
-	// responding. Can be a boolean (true/false) or a model-defined thinking level.
+	// responding. Can be a boolean (true/false), a model-defined thinking level,
+	// or a positive integer giving an explicit thinking-token budget.
 	// Needs to be a pointer so we can distinguish between false (request that
 	// thinking _not_ be used) and unset (use the old behavior
 	// before this option was introduced)
@@ -170,7 +171,8 @@ type ChatRequest struct {
 	Options map[string]any `json:"options"`
 
 	// Think controls whether thinking/reasoning models will think before
-	// responding. Can be a boolean (true/false) or a model-defined thinking level.
+	// responding. Can be a boolean (true/false), a model-defined thinking level,
+	// or a positive integer giving an explicit thinking-token budget.
 	Think *ThinkValue `json:"think,omitempty"`
 
 	// SessionID names the conversation this request belongs to, so an engine
@@ -1373,7 +1375,8 @@ func DefaultOptions() Options {
 	}
 }
 
-// ThinkValue represents a boolean or model-defined thinking level.
+// ThinkValue represents a boolean, a model-defined thinking level, or a
+// positive integer thinking-token budget.
 type ThinkValue = model.ThinkValue
 
 // ValidateLegacyThinking checks named levels for models without thinking metadata.
@@ -1382,12 +1385,39 @@ func ValidateLegacyThinking(think *ThinkValue) error {
 	if !think.IsString() {
 		return nil
 	}
-	switch think.String() {
-	case "low", "medium", "high", "max":
+	if IsThinkLevel(think.String()) {
 		return nil
-	default:
-		return fmt.Errorf("invalid think value: %q (must be \"high\", \"medium\", \"low\", \"max\", true, or false)", think.String())
 	}
+	return fmt.Errorf("invalid think value: %q (must be one of %q, true, false, or a positive thinking-token budget)", think.String(), ThinkLevels())
+}
+
+// ThinkLevels returns the effort levels that carry a thinking budget, weakest
+// first. The OpenAI- and Anthropic-compatible endpoints validate their own
+// effort fields against this for models without thinking metadata, so a level
+// cannot be accepted by one entry point and rejected by another.
+func ThinkLevels() []string {
+	return model.ThinkLevels()
+}
+
+// IsThinkLevel reports whether a string is an effort level with a budget.
+func IsThinkLevel(level string) bool {
+	return model.IsThinkLevel(level)
+}
+
+// ThinkBudgetWindow returns the room a level is a share of. A level bounds
+// thinking so a model still has room left to answer, which makes the response
+// length the thing to divide: when the caller caps it with num_predict, a share
+// of the context length can equal or exceed that cap and then bounds nothing —
+// the model can spend the whole response thinking and stop at the cap with no
+// answer. Prefer num_predict when it is set, and never exceed the context.
+func ThinkBudgetWindow(numCtx, numPredict int) int {
+	if numPredict <= 0 {
+		return numCtx
+	}
+	if numCtx > 0 {
+		return min(numPredict, numCtx)
+	}
+	return numPredict
 }
 
 type Duration struct {
