@@ -38,14 +38,8 @@ type LFM2Parser struct {
 	hasThinkingSupport       bool
 	needsThinkingLeadingTrim bool // trim leading whitespace after <think> tag
 	needsContentLeadingTrim  bool // trim leading whitespace after </think> tag
-	// discardThinking drops a reasoning block instead of reporting it. It is set
-	// when the request turns thinking off for a model that reasons anyway:
-	// LFM2.5-8B-A1B is reasoning-tuned and its chat template has no switch to
-	// stop it, so "think": false cannot prevent the <think> block -- only keep
-	// it out of the answer. Without this it arrived verbatim in content.
-	discardThinking bool
-	toolNames       map[string]struct{}
-	hasTools        bool
+	toolNames                map[string]struct{}
+	hasTools                 bool
 }
 
 func (p *LFM2Parser) HasToolSupport() bool {
@@ -56,10 +50,11 @@ func (p *LFM2Parser) HasThinkingSupport() bool {
 	return p.hasThinkingSupport
 }
 
-// ThinkingTags reports the delimiters of this parser's thinking block so a
-// thinking-token budget can force the block closed.
-func (p *LFM2Parser) ThinkingTags() (string, string) {
-	return lfm2ThinkingOpenTag, lfm2ThinkingCloseTag
+func (p *LFM2Parser) ThinkingClose() []string {
+	if p.state == LFM2LookingForThinking || p.state == LFM2CollectingThinking {
+		return []string{lfm2ThinkingCloseTag}
+	}
+	return nil
 }
 
 func (p *LFM2Parser) PreservedTokens() []string {
@@ -77,22 +72,13 @@ func (p *LFM2Parser) setInitialState(lastMessage *api.Message, thinkValue *api.T
 	// Check both model capability AND request preference
 	thinkingEnabled := p.HasThinkingSupport() && (thinkValue != nil && thinkValue.Bool())
 
-	p.discardThinking = false
-
-	if prefill && lastMessage.Content != "" {
+	if !thinkingEnabled {
 		p.state = LFM2CollectingContent
 		return
 	}
 
-	if !thinkingEnabled {
-		if !p.HasThinkingSupport() {
-			p.state = LFM2CollectingContent
-			return
-		}
-		// Thinking is off but the model may reason regardless: recognise a
-		// leading <think> block exactly as when it is on, and drop it.
-		p.discardThinking = true
-		p.state = LFM2LookingForThinking
+	if prefill && lastMessage.Content != "" {
+		p.state = LFM2CollectingContent
 		return
 	}
 
@@ -159,9 +145,7 @@ func (p *LFM2Parser) Add(s string, done bool) (content string, thinking string, 
 		case lfm2EventToolCall:
 			toolCalls = append(toolCalls, event.toolCall)
 		case lfm2EventThinkingContent:
-			if !p.discardThinking {
-				thinkingSb.WriteString(event.content)
-			}
+			thinkingSb.WriteString(event.content)
 		case lfm2EventContent:
 			contentSb.WriteString(event.content)
 		}

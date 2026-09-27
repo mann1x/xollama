@@ -21,7 +21,6 @@ const (
 )
 
 const (
-	thinkingOpenTag  = "<think>"
 	thinkingCloseTag = "</think>"
 )
 
@@ -41,10 +40,11 @@ func (p *Qwen3VLParser) HasThinkingSupport() bool {
 	return p.hasThinkingSupport
 }
 
-// ThinkingTags reports the delimiters of this parser's thinking block so a
-// thinking-token budget can force the block closed.
-func (p *Qwen3VLParser) ThinkingTags() (string, string) {
-	return thinkingOpenTag, thinkingCloseTag
+func (p *Qwen3VLParser) ThinkingClose() []string {
+	if p.state == CollectingThinkingContent {
+		return []string{thinkingCloseTag}
+	}
+	return nil
 }
 
 func (p *Qwen3VLParser) PreservedTokens() []string {

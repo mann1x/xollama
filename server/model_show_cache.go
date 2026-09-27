@@ -623,6 +623,7 @@ func cloneShowResponse(in *api.ShowResponse) *api.ShowResponse {
 	}
 
 	out := *in
+	out.Thinking = in.Thinking.Clone()
 	out.Details.Families = slices.Clone(in.Details.Families)
 	out.Messages = cloneMessages(in.Messages)
 	out.Capabilities = slices.Clone(in.Capabilities)

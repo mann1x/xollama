@@ -268,6 +268,7 @@ type HarmonyMessageHandler struct {
 	FunctionNameMap *FunctionNameMap
 	toolAccumulator *HarmonyToolCallAccumulator
 	convertedTools  map[string]struct{}
+	contentPrefill  bool // the prompt continues a final-channel message
 }
 
 // NewHarmonyMessageHandler creates a new message handler
@@ -406,6 +407,7 @@ func (h *HarmonyMessageHandler) Init(tools []api.Tool, lastMessage *api.Message,
 	} else {
 		h.HarmonyParser.AddImplicitStart()
 	}
+	h.contentPrefill = lastMessage != nil && lastMessage.Role == "assistant" && lastMessage.Content != ""
 
 	// Initialize tool accumulator
 	h.toolAccumulator = h.CreateToolParser()
@@ -461,14 +463,21 @@ func (h *HarmonyMessageHandler) HasThinkingSupport() bool {
 	return true
 }
 
-// ThinkingTags reports the delimiters of the analysis channel so a
-// thinking-token budget can force it closed. The opening tag has to name the
-// channel: <|channel|> on its own also opens the final channel, and forcing
-// <|end|> there would cut off the answer rather than the reasoning. Analysis
-// messages that carry a recipient are tool calls and put " to=..." before
-// <|message|>, so they do not match either.
-func (h *HarmonyMessageHandler) ThinkingTags() (string, string) {
-	return "<|channel|>analysis<|message|>", "<|end|>"
+// The analysis ends when the model opens a message whose body is content: the
+// final channel in any constrain spelling parseHeader accepts, a commentary
+// message with no recipient, or a message with no channel.
+func (h *HarmonyMessageHandler) ThinkingClose() []string {
+	if h.contentPrefill {
+		return nil
+	}
+	return []string{
+		"<|end|><|start|>assistant<|channel|>final<|message|>",
+		"<|end|><|start|>assistant<|channel|>final <|constrain|>json<|message|>",
+		"<|end|><|start|>assistant<|channel|>final<|constrain|>json<|message|>",
+		"<|end|><|start|>assistant<|channel|>final json<|message|>",
+		"<|end|><|start|>assistant<|channel|>commentary<|message|>",
+		"<|end|><|start|>assistant<|message|>",
+	}
 }
 
 func (h *HarmonyMessageHandler) PreservedTokens() []string {

@@ -104,10 +104,9 @@ type GenerateRequest struct {
 	Options map[string]any `json:"options"`
 
 	// Think controls whether thinking/reasoning models will think before
-	// responding. For supported models it can be a boolean (true/false), a
-	// string ("minimal", "low", "medium", "high", "max") or a positive integer giving an
-	// explicit thinking-token budget. Needs to be a pointer so we can distinguish between false
-	// (request that thinking _not_ be used) and unset (use the old behavior
+	// responding. Can be a boolean (true/false) or a model-defined thinking level.
+	// Needs to be a pointer so we can distinguish between false (request that
+	// thinking _not_ be used) and unset (use the old behavior
 	// before this option was introduced)
 	Think *ThinkValue `json:"think,omitempty"`
 
@@ -171,9 +170,7 @@ type ChatRequest struct {
 	Options map[string]any `json:"options"`
 
 	// Think controls whether thinking/reasoning models will think before
-	// responding. For supported models it can be a boolean (true/false), a
-	// string ("minimal", "low", "medium", "high", "max") or a positive integer giving an
-	// explicit thinking-token budget.
+	// responding. Can be a boolean (true/false) or a model-defined thinking level.
 	Think *ThinkValue `json:"think,omitempty"`
 
 	// SessionID names the conversation this request belongs to, so an engine
@@ -882,6 +879,7 @@ type ShowRequest struct {
 
 // ShowResponse is the response returned from [Client.Show].
 type ShowResponse struct {
+	Thinking      *model.Thinking    `json:"thinking,omitempty"`
 	License       string             `json:"license,omitempty"`
 	Modelfile     string             `json:"modelfile,omitempty"`
 	Parameters    string             `json:"parameters,omitempty"`
@@ -1028,23 +1026,10 @@ type ModelRecommendation struct {
 	Thinking        *ModelRecommendationThinking `json:"thinking,omitempty"`
 }
 
-// ModelRecommendationThinking advertises the exact values accepted by
-// Ollama's think field and the model's default. Values may be booleans for
-// binary thinking controls or strings for adjustable effort levels.
-type ModelRecommendationThinking struct {
-	Values  []any `json:"values,omitempty"`
-	Default any   `json:"default,omitempty"`
-}
-
-// Clone returns an independent copy.
-func (t *ModelRecommendationThinking) Clone() *ModelRecommendationThinking {
-	if t == nil {
-		return nil
-	}
-	clone := *t
-	clone.Values = append([]any(nil), t.Values...)
-	return &clone
-}
+// ModelRecommendationThinking advertises the controls a model honors and its
+// default. Values may be booleans or named effort levels; other strings may
+// still be accepted by the endpoint and fall back to the default.
+type ModelRecommendationThinking = model.Thinking
 
 // ProcessResponse is the response from [Client.Process].
 type ProcessResponse struct {
@@ -1388,264 +1373,21 @@ func DefaultOptions() Options {
 	}
 }
 
-// ThinkValue represents a value that can be a boolean, a level ("minimal",
-// "low", "medium", "high", "max") or a positive integer thinking-token budget
-type ThinkValue struct {
-	// Value can be a bool, string or int
-	Value interface{}
-}
+// ThinkValue represents a boolean or model-defined thinking level.
+type ThinkValue = model.ThinkValue
 
-// thinkLevels are the effort levels think accepts. Models that understand a
-// level directly are handed it as a string, so a level is checked against this
-// set and never against the budget table below, which it does not have to
-// appear in.
-var thinkLevels = []string{"minimal", "low", "medium", "high", "max"}
-
-// thinkBudgetFraction maps an effort level to the share of the context window
-// the model is allowed to spend on thinking. Without a cap, models that
-// support long reasoning traces can loop until the context is exhausted and
-// never emit an answer. The steps halve rather than crowding the top of the
-// range: how long a model thinks depends on the prompt, not on how much room
-// it was given, so shares near the whole context stop bounding anything once
-// the context is large. A level absent from this table stays valid: it reaches
-// the model as a string and simply carries no budget.
-var thinkBudgetFraction = map[string][2]int{
-	"max":     {4, 5},
-	"high":    {1, 2},
-	"medium":  {1, 4},
-	"low":     {1, 8},
-	"minimal": {1, 16},
-}
-
-// thinkLevelAliases are alternative spellings of a level in thinkLevels. The
-// AI SDK calls the top of its effort scale "xhigh", which is the position
-// "max" holds here, so a client built on that vocabulary sends it verbatim.
-// Rejecting it would put the strongest level out of reach over spelling.
-var thinkLevelAliases = map[string]string{
-	"xhigh": "max",
-}
-
-// canonicalThinkLevel resolves an alias to the level it names and leaves
-// everything else alone, so the tables above only ever have to carry one entry
-// per level.
-func canonicalThinkLevel(level string) string {
-	if canonical, ok := thinkLevelAliases[level]; ok {
-		return canonical
-	}
-	return level
-}
-
-func isThinkLevel(level string) bool {
-	return slices.Contains(thinkLevels, canonicalThinkLevel(level))
-}
-
-// quotedThinkLevels renders the accepted levels for an error message, so a
-// level added to thinkLevels cannot go missing from what a caller is told.
-func quotedThinkLevels() string {
-	quoted := make([]string, len(thinkLevels))
-	for i, level := range thinkLevels {
-		quoted[i] = strconv.Quote(level)
-	}
-	return strings.Join(quoted, ", ")
-}
-
-// ThinkLevels returns the effort levels think accepts, weakest first. The
-// OpenAI- and Anthropic-compatible endpoints validate their own effort fields
-// against this so a level cannot be accepted by one entry point and rejected
-// by another.
-func ThinkLevels() []string {
-	return slices.Clone(thinkLevels)
-}
-
-// IsThinkLevel reports whether a string is an effort level think accepts.
-func IsThinkLevel(level string) bool {
-	return isThinkLevel(level)
-}
-
-// IsValid checks if the ThinkValue is valid
-func (t *ThinkValue) IsValid() bool {
-	if t == nil || t.Value == nil {
-		return true // nil is valid (means not set)
-	}
-
-	switch v := t.Value.(type) {
-	case bool:
-		return true
-	case string:
-		return isThinkLevel(v)
-	case int:
-		return v > 0
-	default:
-		return false
-	}
-}
-
-// IsBool returns true if the value is a boolean
-func (t *ThinkValue) IsBool() bool {
-	if t == nil || t.Value == nil {
-		return false
-	}
-	_, ok := t.Value.(bool)
-	return ok
-}
-
-// IsString returns true if the value is a string
-func (t *ThinkValue) IsString() bool {
-	if t == nil || t.Value == nil {
-		return false
-	}
-	_, ok := t.Value.(string)
-	return ok
-}
-
-// IsInt returns true if the value is an explicit thinking-token budget
-func (t *ThinkValue) IsInt() bool {
-	if t == nil || t.Value == nil {
-		return false
-	}
-	_, ok := t.Value.(int)
-	return ok
-}
-
-// Bool returns the value as a bool (true if enabled in any way)
-func (t *ThinkValue) Bool() bool {
-	if t == nil || t.Value == nil {
-		return false
-	}
-
-	switch v := t.Value.(type) {
-	case bool:
-		return v
-	case string:
-		// Any level means thinking is enabled
-		return isThinkLevel(v)
-	case int:
-		// A budget only makes sense when thinking is on
-		return v > 0
-	default:
-		return false
-	}
-}
-
-// BudgetTokens returns the number of tokens the model may spend inside a
-// thinking block, or 0 when thinking is unrestricted. An explicit integer
-// value is used as-is; effort levels are a share of window, the room the
-// response has to work in — see ThinkBudgetWindow.
-func (t *ThinkValue) BudgetTokens(window int) int {
-	if t == nil || t.Value == nil {
-		return 0
-	}
-
-	switch v := t.Value.(type) {
-	case int:
-		if v > 0 {
-			return v
-		}
-	case string:
-		frac, ok := thinkBudgetFraction[canonicalThinkLevel(v)]
-		if !ok || window <= 0 {
-			return 0
-		}
-		// Round down so the budget never consumes the whole window
-		if budget := window * frac[0] / frac[1]; budget > 0 {
-			return budget
-		}
-	}
-
-	return 0
-}
-
-// ThinkBudgetWindow returns the room a level is a share of. A level bounds
-// thinking so a model still has room left to answer, which makes the response
-// length the thing to divide: when the caller caps it with num_predict, a share
-// of the context length can equal or exceed that cap and then bounds nothing —
-// the model can spend the whole response thinking and stop at the cap with no
-// answer. Prefer num_predict when it is set, and never exceed the context.
-func ThinkBudgetWindow(numCtx, numPredict int) int {
-	if numPredict <= 0 {
-		return numCtx
-	}
-	if numCtx > 0 {
-		return min(numPredict, numCtx)
-	}
-	return numPredict
-}
-
-// Level returns the effort level to hand a model that consumes levels
-// directly, or "" when there is none to send. Models that take a level as a
-// string recognise low, medium and high, and gpt-oss writes whatever it is
-// given straight into its system prompt, so the levels outside that range are
-// reported as the nearest one they know. The budget is unaffected and keeps
-// the share of the context the requested level asked for.
-func (t *ThinkValue) Level() string {
-	switch level := canonicalThinkLevel(t.String()); level {
-	case "max":
-		return "high"
-	case "minimal":
-		return "low"
-	default:
-		return level
-	}
-}
-
-// String returns the value as a string
-func (t *ThinkValue) String() string {
-	if t == nil || t.Value == nil {
-		return ""
-	}
-
-	switch v := t.Value.(type) {
-	case string:
-		return v
-	case bool:
-		if v {
-			return "medium" // Default level when just true
-		}
-		return ""
-	default:
-		return ""
-	}
-}
-
-// UnmarshalJSON implements json.Unmarshaler
-func (t *ThinkValue) UnmarshalJSON(data []byte) error {
-	// Try to unmarshal as bool first
-	var b bool
-	if err := json.Unmarshal(data, &b); err == nil {
-		t.Value = b
+// ValidateLegacyThinking checks named levels for models without thinking metadata.
+// Transport types are checked by ThinkValue.UnmarshalJSON or IsValid.
+func ValidateLegacyThinking(think *ThinkValue) error {
+	if !think.IsString() {
 		return nil
 	}
-
-	// Try to unmarshal as string
-	var s string
-	if err := json.Unmarshal(data, &s); err == nil {
-		// Validate string values
-		if !isThinkLevel(s) {
-			return fmt.Errorf("invalid think value: %q (must be one of %s, true, or false)", s, quotedThinkLevels())
-		}
-		t.Value = s
+	switch think.String() {
+	case "low", "medium", "high", "max":
 		return nil
+	default:
+		return fmt.Errorf("invalid think value: %q (must be \"high\", \"medium\", \"low\", \"max\", true, or false)", think.String())
 	}
-
-	// Try to unmarshal as an explicit thinking-token budget
-	var n int
-	if err := json.Unmarshal(data, &n); err == nil {
-		if n <= 0 {
-			return fmt.Errorf("invalid think budget: %d (must be greater than 0; use false to disable thinking)", n)
-		}
-		t.Value = n
-		return nil
-	}
-
-	return fmt.Errorf("think must be a boolean, one of %s, or a positive thinking-token budget", quotedThinkLevels())
-}
-
-// MarshalJSON implements json.Marshaler
-func (t *ThinkValue) MarshalJSON() ([]byte, error) {
-	if t == nil || t.Value == nil {
-		return []byte("null"), nil
-	}
-	return json.Marshal(t.Value)
 }
 
 type Duration struct {

@@ -117,9 +117,10 @@ opencoti's granted window (`X-Context-Window`) reaches the client through the
 `server/context_window.go`; stock llama.cpp stays header-free — see
 `.claude/rules/context-window.md`.
 **Prompting**: `model/renderers/` (per-model `Render`) ↔ `model/parsers/`
-(streaming output), plus `template/`, `thinking/`, `harmony/`.
+(streaming output), plus `template/`, `thinking/`, `harmony/`; a model's named
+thinking efforts are `types/model/thinking.go`.
 **API shims**: `api/types.go`, `openai/openai.go`, `anthropic/anthropic.go`,
-`middleware/`. **Config**: `envconfig/config.go` holds every `OLLAMA_*` var;
+`middleware/` (`middleware/thinking.go` maps OpenAI/Anthropic efforts). **Config**: `envconfig/config.go` holds every `OLLAMA_*` var;
 the listen address is `envconfig.DefaultPort` (22434), read from `XOLLAMA_HOST`
 only — see `.claude/rules/default-port.md`. Where the CLI *connects* with no host
 set is `api/xollama_host.go` (`ResolveHost`), run once from `cmd/xollama_host.go`;
