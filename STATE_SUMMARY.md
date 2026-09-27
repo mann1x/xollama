@@ -5,6 +5,10 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — The Docker image could not use any NVIDIA GPU; fixed. A V100 is kept through discovery.**
+> - Chris (V100) got `support for --gpu nvidia was explicitly requested, but it wasn't available`. Reproduced on solidPC's 3090 with `:dev`: the engine (a Cosmopolitan APE) found `ggml-cuda.so` but `dlopen() isn't supported on this platform` -- it builds a libc helper with the system `cc` into `$HOME/.cosmo`, and the image has no compiler. `Dockerfile.xollama` now builds the helper in a gcc stage and ships it in both engine homes; a derived test image loaded qwen3:0.6b 100% on GPU at 195 tok/s. Bare-metal Linux hosts without `cc` are affected too: reported to opencoti.
+> - Discovery listed CUDA devices through the main (CUDA 13) engine only, so a V100 on a 570 driver would have been dropped; it now also asks the `engines/cuda_v12` engine and keeps the longer list (`discover/opencoti_cuda12.go`).
+
 > **2026-09-27 — v0.34.4-xollama.1 pre-release published; council Phase 10 started from the ab-3 analysis.**
 > - PR #3 merged (`dd739034`); release run 36345410380 published the pre-release (setup 797 MB, update 14 MB, both binaries, sha256sum, payload-id). Docker image for the tag: run 36346010621 (`:dev`, a pre-release). Promotion waits on the eleven2go install check.
 > - Upstream's `test-llamacpp-update.yaml` guarded to `ollama/ollama` (`docker-release` hook): it fired on the release PR because `LLAMA_CPP_VERSION` moved, and targets runners the fork lacks.

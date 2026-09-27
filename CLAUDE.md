@@ -202,7 +202,8 @@ and unpinned models are kept off an integrated Vulkan GPU when a discrete GPU
 exists. `/api/xollama/devices` (`api/xollama_devices.go`, `XollamaDevicesHandler`
 in `server/identity.go`) feeds the `tweak` device menu (`cmd/tweak/devices.go`)
 with the server's view. Where opencoti serves a backend, discovery takes the
-engine's own device list (`discover/opencoti.go`, `llm/engine/enumerate.go`),
+engine's own device list (`discover/opencoti.go`, `llm/engine/enumerate.go`;
+CUDA is also asked of the CUDA 12 engine, `discover/opencoti_cuda12.go`),
 and refreshes free memory from it before a load (`discover/refresh_opencoti.go`) —
 see `docs/features/device-selection.md`.
 **Desktop UI**: `app/ui/app/src/routes/` (React 19 + TanStack Router + Vite),
@@ -231,7 +232,9 @@ on `ubuntu-latest` from pinned artifacts — nothing native is compiled:
 tarballs (`llama/runtime-pin-linux.txt`, sha256 + a README-excluded inputs
 digest), the engine (`llm/engine/pin.txt`, plus a second copy beside its CUDA 12
 payload in `lib/ollama/engines/cuda_v12`) and a Go-only `xollama`, and
-`Dockerfile.xollama` sets `XOLLAMA_HOST=0.0.0.0:22434` (upstream's `Dockerfile`
+`Dockerfile.xollama` sets `XOLLAMA_HOST=0.0.0.0:22434` and prebuilds the engine's
+dlopen helper from `scripts/cosmo-dlopen-helper.c`, since the runtime image has
+no compiler (upstream's `Dockerfile`
 now sets it too and `EXPOSE 22434`, `docker-release` hook, but the published
 image still comes from `Dockerfile.xollama`). Publishes to Docker Hub and GHCR,
 amd64 only; see `docs/features/docker-release.md`. The channel is the GitHub

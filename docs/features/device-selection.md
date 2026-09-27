@@ -159,6 +159,15 @@ Per load, `cudaPayload` in `llm/engine/policy.go` decides:
 An explicit `XOLLAMA_ENGINE_PATH` is used as given. Guards:
 `llm/engine/pin_cuda12_test.go`.
 
+Discovery asks the same payloads. The CUDA listing that replaces llama.cpp's
+runs through the main engine and, when `engines/cuda_v12` holds a second
+engine, through that one too; the longer list wins, and the free-memory
+refresh then asks only that engine (`discover/opencoti_cuda12.go`). Before
+this, a V100 with a 570-series driver was listed by neither the CUDA 13
+payload (driver 580, no Volta) nor anything else, and was dropped as "a
+device the engine that serves it does not list". Guard:
+`TestAV100ListedOnlyByTheCUDA12PayloadIsKept`.
+
 Coverage is **derived from the `dso` rows themselves**: a bare `x86_64` label is
 CUDA, and `<arch>-vulkan` names Vulkan for that arch. Explicit `accel` rows are
 still honoured and only ever add to it. That matters because the published pin

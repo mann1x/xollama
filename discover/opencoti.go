@@ -132,8 +132,7 @@ func overlayOpencotiDevices(ctx context.Context, devices []ml.DeviceInfo) []ml.D
 
 	for _, b := range backends {
 		start := time.Now()
-		output, err := opencotiListDevices(ctx, artifact, b)
-		listed := parseOpencotiDevices(output, string(b))
+		listed, err := opencotiListing(ctx, artifact, b) // xollama: CUDA 12 payload too
 		slog.Debug("opencoti device enumeration", "backend", b, "devices", len(listed), "duration", time.Since(start), "error", err)
 		if err != nil && len(listed) == 0 {
 			// Nothing to be authoritative with; the engine may simply have no

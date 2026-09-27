@@ -10,6 +10,24 @@
 # matters: xollama binds XOLLAMA_HOST only (envconfig.DefaultPort, 22434) and
 # never reads OLLAMA_HOST, so upstream's OLLAMA_HOST=0.0.0.0:11434 would leave
 # the server on the container's loopback, unreachable from outside.
+#
+# The engine is a Cosmopolitan APE. On Linux it loads its GPU library through
+# a small helper linked against the system's libc, which it compiles with the
+# system `cc` on first use into $HOME/.cosmo -- and the runtime image has no
+# compiler, so every GPU load failed with "dlopen() isn't supported on this
+# platform" / "support for --gpu nvidia was explicitly requested, but it
+# wasn't available" (the V100 tester, 2026-09-27; the 3090 too). The helper
+# is built here, on the same base, and placed in both homes the engine runs
+# under: root's, for device discovery, and the private one xollama gives the
+# engine (llm/engine/payload.go: <lib>/engines/payload). The source is the
+# one the engine writes, byte for byte (scripts/cosmo-dlopen-helper.c).
+FROM ubuntu:24.04 AS cosmo-helper
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
+COPY cosmo-dlopen-helper.c /cosmo/dlopen-helper.c
+RUN cc -O2 -o /cosmo/dlopen-helper /cosmo/dlopen-helper.c -ldl
+
 FROM ubuntu:24.04
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates libvulkan1 libopenblas0 \
@@ -17,6 +35,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY rootfs/bin/xollama /usr/bin/xollama
 COPY rootfs/lib/ollama /usr/lib/ollama
+COPY --from=cosmo-helper /cosmo/ /root/.cosmo/
+COPY --from=cosmo-helper /cosmo/ /usr/lib/ollama/engines/payload/.cosmo/
 ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ENV LD_LIBRARY_PATH=/usr/local/nvidia/lib:/usr/local/nvidia/lib64
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
