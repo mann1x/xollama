@@ -313,6 +313,13 @@ gh release edit v0.34.2-xollama.1 --repo mann1x/xollama --prerelease=false --lat
 From that point every installed xOllama on the stable channel is offered the
 release. Nothing is rebuilt.
 
+The promotion also announces the release on Discord:
+`.github/workflows/discord-announce.yaml` runs on the `released` event, posts
+the release notes through the `TECH_CORNER_DISCOWH` webhook (the same one
+mann1x/osync uses), and never fires for a pre-release. Re-announce a tag with
+`gh workflow run discord-announce.yaml --repo mann1x/xollama -f tag=<tag>`.
+A failed post is a warning, not a failed release.
+
 A release that fails step 7 stays a pre-release. Fix it on `dev` and cut
 `xollama.<n+1>`. A published tag is never moved or reused. If the bad
 pre-release should not stay on offer, delete the release (`gh release delete`,
