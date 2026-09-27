@@ -103,7 +103,10 @@ scheduling `server/sched.go`, model IO `server/images.go` `server/create.go`
 `llm/llama_server.go`, built from `llama/server/CMakePresets.json`; MLX via
 `mlxrunner/` (`runner.go`, `pipeline.go`, `prefix_cache.go`, `cache/`, `model/`,
 `tokenizer/`, `xgrammar/`). `llm/engine_args.go` appends the operator's
-`XOLLAMA_ENGINE_ARGS` last on the engine command line. `llm/drafter.go` holds
+`XOLLAMA_ENGINE_ARGS` last on the engine command line. On opencoti,
+`llm/engine_fit_target.go` drops upstream's vision-projector padding from
+`LLAMA_ARG_FIT_TARGET` (`engine-fit` hook) — see `.claude/rules/engine-fit.md`.
+`llm/drafter.go` holds
 the drafter rules (built-in vs attached head, `--spec-type`) as pure functions
 shared by the launch and `show` (`server/drafter_show.go`), so the two cannot drift.
 The ollama#4165 single-sequence deny-list binds only on stock llama.cpp:
@@ -180,7 +183,8 @@ synthesizer) and `server/council.go` (members as in-process chat turns, each
 on its own engine session; on opencoti with PolyKV, `server/council_polykv.go`
 builds the turn's pool tree — the planner attached to the conversation's root
 pool, kept between turns — and `llm/engine_council.go` is its client;
-`llm/engine_council_slots.go` launches a council with a slot per parallel member; a role with
+`llm/engine_council_slots.go` launches a council with a slot per parallel member
+(its `--kv-unified` is never repeated by `appendSlotArgs` in `llm/engine_launch.go`); a role with
 `council.<role>.host` is sent to that server by `server/council_remote.go`, only
 when `XOLLAMA_COUNCIL_HOSTS` allows it; `server/council_compaction.go` folds the
 conversation before a turn and after its answer, Cerebriline's agentic compaction

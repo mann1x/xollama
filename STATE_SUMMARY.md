@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — v0.34.4-xollama.2 published (pre-release) and installed on eleven2go; a council says --kv-unified once.**
+> - PR #4 merged as `ac1af15c` (23 checks green); release run 36356726357 published the pre-release, not promoted. Installed on eleven2go with `/SILENT` through the scheduled task: 22 s, exit 0, the think-budget Ollama untouched (same process, files, models and uninstall entry); `xollama.exe` byte-identical to the release, PAYLOAD_ID equal. Docker image dispatched on the tag.
+> - ab-4 simple on eleven2go: the council launched `-np 2` (live 2), both researchers in the engine at once (slots 0 and 1 interleaved, no "defer task"). The run was stopped at round 6: the model's `num_ctx 16384` gave the whole council one 16k pool; it is re-run with kvarn3 at the largest context that fits.
+> - The council launch carried `--kv-unified` twice (`councilSlotArgs` and `appendSlotArgs`); `appendSlotArgs` now writes it only when the argv lacks it. Guard `TestACouncilWithPoolsSaysKVUnifiedOnce`, checked by removing the fix.
+
 > **2026-09-28 — Engine pin moved to b177 for v0.34.4-xollama.2 (owner's ruling).**
 > - `llm/engine/pin.txt` → `opencoti-0.10.5-c7-2609272353001`, rev `7fc93cc8` (#515): fit growth-free (MTP reserve as it runs, no RS for idle slots), the KV-window sizer fix, the bundled dlopen helper, q6_0 mixed pairs served. sha256 of bin, DSO and CUDA 12 payload checked on download.
 > - Re-probed: every cache type and ring shape as on b171, except a KVarN key over a plain value with a ring, now accepted by the engine (promoted); xollama keeps refusing it. A/B vs b171: compat 8/8 (was 7/8), llama3 75.5 tok/s, multislot 142, gemma4 identical, 70B overflow 3.85 tok/s (was 3.05).

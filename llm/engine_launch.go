@@ -396,8 +396,8 @@ func resolvePoolCount(cfg LlamaServerConfig) int {
 // load would move the off path away from upstream's for no gain, since nothing
 // there can park a slot or hold a pool.
 //
-// --kv-unified is emitted here and only here, because two separate features
-// need it and neither may emit it twice: parked slots have nothing to be
+// --kv-unified is emitted here (or already by councilSlotArgs, for a council)
+// and never twice, because two separate features need it: parked slots have nothing to be
 // admitted into when every slot owns a fixed share of the cells, and a pool's
 // reserved sequence id is a share of the same pool of cells.
 func appendSlotArgs(args []string, plan slotPlan, pools int, unified *bool, usedOpencoti bool) []string {
@@ -413,13 +413,16 @@ func appendSlotArgs(args []string, plan slotPlan, pools int, unified *bool, used
 	// parked slots or a pool to admit into"; the model asks "may one
 	// conversation use every cell". types/xollama refuses `unified: false`
 	// together with dynamic slots or a pool, so the two cannot disagree here.
+	// A council's launch has already said --kv-unified (councilSlotArgs), so
+	// it is written only when the argv does not carry it yet: once, whichever
+	// feature asked first.
 	switch {
-	case unified != nil && *unified:
-		args = append(args, "--kv-unified")
+	case unified != nil && *unified, unified == nil && needsUnified:
+		if !slices.Contains(args, "--kv-unified") {
+			args = append(args, "--kv-unified")
+		}
 	case unified != nil && !*unified:
 		args = append(args, "--no-kv-unified")
-	case needsUnified:
-		args = append(args, "--kv-unified")
 	}
 
 	if !needsUnified {

@@ -54,3 +54,23 @@ func TestCouncilSlotsLeaveEveryOtherLaunchAlone(t *testing.T) {
 		})
 	}
 }
+
+// eleven2go (2026-09-28): a council with PolyKV pool seats launched with
+// "--kv-unified --kv-unified" -- councilSlotArgs and appendSlotArgs each wrote
+// it. Whichever says it first, the argv carries it once.
+func TestACouncilWithPoolsSaysKVUnifiedOnce(t *testing.T) {
+	args := councilSlotArgs([]string{"--model", "m", "-c", "16384", "-np", "1"}, 2, 1)
+	yes := true
+	for name, unified := range map[string]*bool{"derived from the pools": nil, "stated by the model": &yes} {
+		got := appendSlotArgs(slices.Clone(args), slotPlan{Live: 2, Max: 4, Dynamic: true}, 6, unified, true)
+		n := 0
+		for _, a := range got {
+			if a == "--kv-unified" {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Errorf("%s: --kv-unified %d times: %v", name, n, got)
+		}
+	}
+}
