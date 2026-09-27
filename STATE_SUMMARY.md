@@ -5,6 +5,16 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — Plain models can host a client's own PolyKV pools (`session.client_pools`).**
+> - Cerebriline asked (mail #411) to drive PolyKV itself on non-council models.
+>   The engine had no seats for that: `--polykv-max-pools` defaults to 0, and
+>   xollama passed it only for its own automatic pooling or a council.
+>   `session.client_pools` / `XOLLAMA_POLYKV_CLIENT_POOLS` now adds seats for
+>   the client, counted in the memory estimate, never in xollama's registry.
+> - A native chat placed on a client's pool no longer feeds automatic capture
+>   (it already did not on the completion path).
+> - Contract answered per question in mail #414.
+
 > **2026-09-27 — A council member's own results fit its window; never-fitting requests fail at once; Expose binds.**
 > - A member's own tool results fold to refs past three quarters of the window
 >   (characters): older turns first, then its last turn's largest, searched

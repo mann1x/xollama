@@ -35,17 +35,21 @@ paths:
   sized by `resolvePoolCount` for every architecture, read through
   `effectivePoolCount` by `llm/engine_launch.go`; the launch flag is
   `enginePoolSeats` (`llm/engine_council.go`), which adds a council's
-  `CouncilPools` on top, in `startLlamaServer` in `llm/llama_server.go` and
+  `CouncilPools` and the client's seats (`clientPoolSeats`:
+  `session.client_pools`, else `XOLLAMA_POLYKV_CLIENT_POOLS`) on top, in
+  `startLlamaServer` in `llm/llama_server.go` and
   counted again in `PredictServerSlotVRAM` (`llm/engine_estimate.go`). The
   launch reserves no seats on a multimodal load, where the engine refuses the
   create (HTTP 501). The estimate cannot tell a multimodal load (it gets no
   projector), so it counts the seats anyway: it over-plans there, never
   under-plans.
+- Client seats are the client's to create and release through `/api/engine`;
+  xollama's own pool registry never counts or evicts them.
 - Pool ids are `*int` and the engine numbers its first pool `0` — including
   a council's `Placement.PoolID` (`llm/engine_council.go`); see the
   `engine-session` bullet in `.claude/rules/upstream-tree.md`.
-- Cover changes in `llm/engine_pool_test.go` and
-  `llm/engine_pool_boundary_test.go`
+- Cover changes in `llm/engine_pool_test.go`,
+  `llm/engine_pool_boundary_test.go` and `llm/engine_client_pools_test.go`
   (`TestPoolStopsAtTheTemplateNotAtWhatTwoUsersHappenedToShare`,
   `TestPoolStopsAtTheTemplateOnTheOllamaRenderedPath`,
   `TestRecurrentModelIsNotPooledWithoutAMeasuredBoundary`,

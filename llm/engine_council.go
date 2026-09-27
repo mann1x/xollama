@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/ollama/ollama/envconfig"
 )
 
 // Placement puts one council call on the engine: the pool it attaches to, and
@@ -422,11 +424,22 @@ type polykvState struct {
 	features     map[string]bool
 }
 
-// enginePoolSeats is --polykv-max-pools: the automatic prefix pools plus the
-// seats a council reserved. A multimodal load has neither.
+// enginePoolSeats is --polykv-max-pools: the automatic prefix pools, the
+// seats a council reserved, and those kept for a client's own pools. A
+// multimodal load has none.
 func enginePoolSeats(cfg LlamaServerConfig, multimodal bool) int {
 	if multimodal {
 		return 0
 	}
-	return effectivePoolCount(cfg, false) + max(cfg.CouncilPools, 0)
+	return effectivePoolCount(cfg, false) + max(cfg.CouncilPools, 0) + clientPoolSeats(cfg)
+}
+
+// clientPoolSeats is session.client_pools, else XOLLAMA_POLYKV_CLIENT_POOLS.
+// xollama's own pool registry never counts or evicts them: they are the
+// client's to create and release.
+func clientPoolSeats(cfg LlamaServerConfig) int {
+	if cfg.Xollama != nil && cfg.Xollama.Session != nil && cfg.Xollama.Session.ClientPools > 0 {
+		return cfg.Xollama.Session.ClientPools
+	}
+	return int(envconfig.PolyKVClientPools())
 }

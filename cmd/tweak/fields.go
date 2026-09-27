@@ -267,7 +267,7 @@ func prune(c *xollama.Config) {
 	if c.DCA != nil && c.DCA.Enabled == nil && c.DCA.ChunkSize == 0 {
 		c.DCA = nil
 	}
-	if c.Session != nil && c.Session.Affinity == nil && c.Session.Pool == nil && c.Session.MaxPools == 0 {
+	if c.Session != nil && c.Session.Affinity == nil && c.Session.Pool == nil && c.Session.MaxPools == 0 && c.Session.ClientPools == 0 {
 		c.Session = nil
 	}
 	if c.Draft != nil && c.Draft.SpecType == "" {
@@ -654,6 +654,23 @@ var fields = []field{
 			return orEmpty(c.Session != nil, func() string { return showInt(c.Session.MaxPools) })
 		},
 		set: func(c *xollama.Config, v string) error { return setInt(v, &session(c).MaxPools) },
+	},
+	{
+		name:  "session-client-pools",
+		env:   "XOLLAMA_POLYKV_CLIENT_POOLS",
+		path:  "session.client_pools",
+		title: "Pool seats kept for a client's own PolyKV pools",
+		help: "For a client that creates and manages its own pools through /api/engine\n" +
+			"(Cerebriline's agents, for one) and attaches requests with placement.pool_id.\n" +
+			"The engine has no seats unless someone asks, and refuses a create without one.\n" +
+			"Each seat reserves a sequence id for the life of the runner. Independent of\n" +
+			"session.pool, which is xollama's own automatic pooling.",
+		kind: kindInt,
+		unit: "pools",
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Session != nil, func() string { return showInt(c.Session.ClientPools) })
+		},
+		set: func(c *xollama.Config, v string) error { return setInt(v, &session(c).ClientPools) },
 	},
 	{
 		name:  "spec-type",

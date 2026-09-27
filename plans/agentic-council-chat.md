@@ -1678,6 +1678,10 @@ unpooled members, 0 admission waits.
   `llm.ErrNeverFits` at once instead of a 2-minute wait
   (`TestARequestThatCanNeverFitIsNotWaitedOut`). The desktop app's Expose now
   sets `XOLLAMA_HOST` (it set only `OLLAMA_HOST`, which xollama ignores).
+- **Cerebriline's own pools on plain models (mail #411, answered #414):**
+  `session.client_pools` / `XOLLAMA_POLYKV_CLIENT_POOLS` gives a plain model
+  engine pool seats for the client (none existed unless xollama pooled or a
+  council loaded); a placed native chat feeds no automatic capture.
 
 ## Decision log
 

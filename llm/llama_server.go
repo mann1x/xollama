@@ -2406,7 +2406,10 @@ func (s *llamaServerRunner) Chat(ctx context.Context, req ChatRequest, fn func(C
 	// Only a request that did NOT attach to a pool is worth learning from: one
 	// that attached already has its prefix shared.
 	var pooled poolSource
-	if req.PoolID == nil && s.poolFor(req.PoolKey) == nil {
+	// xollama-hook: council -- as on Completion, a placed call teaches the
+	// automatic pools nothing: its prefix is the client's pool, not ours.
+	placed := req.Placement != nil && (req.Placement.PoolID != nil || req.Placement.NumCtx > 0)
+	if req.PoolID == nil && s.poolFor(req.PoolKey) == nil && !placed {
 		chat := req
 		pooled = poolSource{chat: &chat}
 	}

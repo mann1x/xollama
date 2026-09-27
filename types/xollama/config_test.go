@@ -527,3 +527,13 @@ func TestIsZeroSeesTheV2Fields(t *testing.T) {
 		}
 	}
 }
+
+func TestClientPoolsMustNotBeNegative(t *testing.T) {
+	if err := (&Config{Version: SchemaVersion, Session: &Session{ClientPools: -1}}).Validate(); err == nil {
+		t.Fatal("a negative client_pools validated")
+	}
+	c := &Config{Version: SchemaVersion, Session: &Session{ClientPools: 2}}
+	if err := c.Validate(); err != nil || c.IsZero() {
+		t.Fatalf("client_pools 2: err %v, zero %v", err, c.IsZero())
+	}
+}

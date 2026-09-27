@@ -266,6 +266,7 @@ it was last used. See [Seeing what the engine did](/xollama/introspection).
 | Session name | — | — | `session_id` | derived |
 | Shared prefix pool | `XOLLAMA_SESSION_POOL` | `session.pool` | — | off |
 | Pools per model | `XOLLAMA_POLYKV_MAX_POOLS` | `session.max_pools` | — | 2 |
+| Pool seats for a client's own pools | `XOLLAMA_POLYKV_CLIENT_POOLS` | `session.client_pools` | — | 0 |
 | Pool to attach to | — | — | `pool_id` | chosen for you |
 
 Most specific wins: the request names the session, the model decides whether

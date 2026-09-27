@@ -207,6 +207,17 @@ type Session struct {
 	// is the shape to size it by, not one per conversation -- conversations
 	// sharing a prompt share the pool, which is the point.
 	MaxPools int `json:"max_pools,omitempty"`
+
+	// ClientPools is how many PolyKV pool seats this model keeps for a
+	// client's own pools -- created, forked and released through /api/engine
+	// and attached with placement.pool_id -- beside xollama's automatic ones
+	// and a council's. The engine refuses a pool create with no free seat, and
+	// has none unless someone asks. Independent of Pool: a client that owns
+	// its pools wants xollama's automatic pooling off. Zero means none.
+	//
+	// It raises no schema floor: an older build ignores it, and the client's
+	// creates are then refused by the engine -- loudly, not served wrong.
+	ClientPools int `json:"client_pools,omitempty"`
 }
 
 // KV holds this model's KV cache types.
@@ -418,6 +429,9 @@ func (c *Config) Validate() error {
 			c.Session.Affinity != nil && !*c.Session.Affinity {
 			return fmt.Errorf("xollama config: session.pool requires session.affinity; a shared prefix pool has nothing to attach to without session identity")
 		}
+		if c.Session.ClientPools < 0 {
+			return fmt.Errorf("xollama config: session.client_pools %d must not be negative", c.Session.ClientPools)
+		}
 		if c.Session.MaxPools < 0 {
 			return fmt.Errorf("xollama config: session.max_pools %d must not be negative", c.Session.MaxPools)
 		}
@@ -509,7 +523,7 @@ func (c *Config) IsZero() bool {
 		(c.Slots == nil || (c.Slots.Dynamic == nil && c.Slots.Max == 0 && c.Slots.Live == 0 && c.Slots.TPSFloor == 0 &&
 			c.Slots.VRAMReserveMiB == 0 && c.Slots.SWASeqBudget == 0)) &&
 		(c.DCA == nil || (c.DCA.Enabled == nil && c.DCA.ChunkSize == 0)) &&
-		(c.Session == nil || (c.Session.Affinity == nil && c.Session.Pool == nil && c.Session.MaxPools == 0)) &&
+		(c.Session == nil || (c.Session.Affinity == nil && c.Session.Pool == nil && c.Session.MaxPools == 0 && c.Session.ClientPools == 0)) &&
 		c.Devices.IsZero() &&
 		c.Council.IsZero()
 }
