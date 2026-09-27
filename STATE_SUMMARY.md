@@ -5,6 +5,12 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — Promoted releases are announced on Discord.**
+> - New `.github/workflows/discord-announce.yaml`, copied from mann1x/osync's "Announce on Discord" step.
+> - It runs on `release: released`, so on the RELEASE.md step-8 promotion and never for a pre-release. It posts the notes as an embed via the `TECH_CORNER_DISCOWH` secret, which the repo already has. `workflow_dispatch -f tag=` re-announces a tag.
+> - Validated with actionlint and a local payload dry run on the v0.34.2-xollama.1 notes. Nothing was posted.
+> - It takes effect once it reaches `main` with the next release PR.
+
 > **2026-09-27 — Installer setup pages; XOLLAMA_PARALLEL replaces OLLAMA_NUM_PARALLEL on opencoti; server-wide KV types fall back on stock.**
 > Owner's requests, for moving pandorum (RTX 5080, an `Ollama think-budget` install) to xOllama.
 > - **Installer** (`app/xollama-setup-pages.iss`, included from `app/xollama.iss`, full installer only): the pages are Ollama found (uninstall `/SILENT` after backing up `%LOCALAPPDATA%\Ollama`, or keep it), port (22434 / 11434 greyed out while an Ollama stays / custom), API key (generate / copy / skip) and KV cache (opencoti K and V + legacy type). Silent installs change nothing. Compiled clean with Inno Setup 6.7.1 (CI's version) on pandorum against a stub payload; the real installer comes from the dry-run release build.
