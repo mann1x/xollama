@@ -2,7 +2,7 @@
 
 @.wolf/OPENWOLF.md
 
-Soft fork of ollama. `main` = upstream release v0.34.2 + fork changes, carrying the
+Soft fork of ollama. `main` = upstream release v0.34.4 + fork changes, carrying the
 full upstream history so every `git merge upstream/main` has a real merge-base.
 Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING.md
 
