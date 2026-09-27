@@ -610,6 +610,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	// nothing and is launched with the environment it inherited.
 	envs := launch.extraEnvsForStart()
 	if usedOpencoti {
+		envs = launch.opencotiEnvsForStart() // xollama-hook: engine-fit -- no vision pad on the fit target; see llm/engine_fit_target.go
 		userHome, _ := os.UserHomeDir()
 		if payloadHome := engine.PreparePayloadHome(engine.ArtifactOf(name, args), engine.DefaultPayloadRoots(ml.LibOllamaPath, userHome)...); payloadHome != "" {
 			envs = cloneStringMap(envs)

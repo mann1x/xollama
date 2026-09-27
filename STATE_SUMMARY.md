@@ -5,6 +5,10 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — xollama was passing opencoti a fit target for every vision model; stopped.**
+> - Chris's V100 (32 GB, 18 GB model) ran at 2.9 tok/s with 4 GB of KV on the host and 4.9 GB of VRAM free. The engine's "runtime margin 1909" was ours: upstream's mmproj stopgap (ollama#16996) sets `LLAMA_ARG_FIT_TARGET` = projector + 1 GiB (885 + 1024), and an explicit target switches opencoti's automatic 256 MiB margin off. The `engine-fit` hook (`llm/engine_fit_target.go`) drops the pad on opencoti; stock keeps it (bug-167).
+> - Left with opencoti (#510/#511): the MTP booking (2360 MiB held, 1348 used) and RS growth held for slots that are not live (1122 MiB for 3 slots at live 1).
+
 > **2026-09-27 — A silent install tried to uninstall Ollama; fixed before v0.34.4-xollama.2.**
 > - Installing v0.34.4-xollama.1 on eleven2go with `/SILENT` (RELEASE.md step 6) ran the think-budget Ollama's uninstaller: the Ollama-found page was built in silent mode and its default is "uninstall". Ollama survived (it was running; files, 210 GB of models, registry entry and app data all intact, app data also backed up). The in-app updater runs the full installer `/SILENT`, so every update on a host with Ollama was exposed. `app/xollama-setup-pages.iss` now never builds or acts on that page silently (bug-166).
 > - v0.34.4-xollama.1 had this installer; withdrawn to draft on the owner's word (23:40), so the updater no longer offers it (the tag stays, on `dd739034`). Left: install .2 on eleven2go once it is published.
