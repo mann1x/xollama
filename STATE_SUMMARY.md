@@ -5,6 +5,16 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — Engine pin b171 with a CUDA 12 (V100) payload; runtime pins on v0.34.4 (owner: assemble the pre-release and the Docker image).**
+> - `llm/engine/pin.txt`: rev `7b836910` (b171 plus `ggml-cuda-cu12-x86_64.so`, sm_70, driver ≥ 570, opencoti #498).
+>   - It is read from `#! dso-cuda12` / `#! cuda12-sass`.
+>   - `cudaPayload` sends a 7.0 card to `engines/cuda_v12`, where `docker-assemble.sh` stages the payload beside a copy of the engine; a load spanning both payloads goes to llama.cpp.
+>   - Guard: `llm/engine/pin_cuda12_test.go`.
+>   - Pinned on the owner's say-so despite the b171 gate: its 70B first-load failure is bug-3702, which b145 also has; the fix is in opencoti's next build.
+> - Linux runtime pin: `v0.34.4-thinkbudget` (tgz `9769cb4b`, inputs `17ab8578` = ours) with upstream v0.34.4's GPU tarballs.
+> - Windows runtime pin: `runtime-windows-amd64-b11081-3023ebe12b5e` (zip `2b5fbffa`, run 36342602471).
+> - Docs: device-selection, docker-release, and the engine-pin rule.
+
 > **2026-09-27 — Manifest e314b235 consumed: lint fixed, compat README by sha, inputs digest now equals the fork's.**
 > - Merged `up-think-budget`@b463e532 → `9b2b56a6`, the new `up-compat-readme`@ddde8473 → `20ad1fd4` (README conflict taken from its side, as the fork predicted), and the rebuilt `up-response-scope-think-budget`@87d417bf → `4fd3de2c`.
 > - Now: `golangci-lint` 0 issues; digest `3023ebe12b5e` (= the fork's); build, vet and test pass.

@@ -227,7 +227,8 @@ redirect scheme; `app/cmd/app/app.go` accepts either — see
 on `ubuntu-latest` from pinned artifacts — nothing native is compiled:
 `scripts/docker-assemble.sh` stages the fork's CPU runtime and upstream's GPU
 tarballs (`llama/runtime-pin-linux.txt`, sha256 + a README-excluded inputs
-digest), the engine (`llm/engine/pin.txt`) and a Go-only `xollama`, and
+digest), the engine (`llm/engine/pin.txt`, plus a second copy beside its CUDA 12
+payload in `lib/ollama/engines/cuda_v12`) and a Go-only `xollama`, and
 `Dockerfile.xollama` sets `XOLLAMA_HOST=0.0.0.0:22434` (upstream's `Dockerfile`
 now sets it too and `EXPOSE 22434`, `docker-release` hook, but the published
 image still comes from `Dockerfile.xollama`). Publishes to Docker Hub and GHCR,
@@ -242,7 +243,8 @@ the `release` job's `needs`.
 Pinned natives: `LLAMA_CPP_VERSION`, `MLX_VERSION`, `MLX_C_VERSION`,
 orchestrated by `CMakeLists.txt` / `CMakePresets.json`; the opencoti engine
 artifact is pinned by `llm/engine/pin.txt` (`repo`, `rev` commit sha, `tag`,
-`channel`, `feature`, `accel`, `cuda-sass`, plus `bin` / `dso` asset rows), read by both
+`channel`, `feature`, `accel`, `cuda-sass`, `cuda12-sass`, plus `bin` / `dso` /
+`dso-cuda12` asset rows), read by both
 `llm/engine/pin.go` and `cmake/opencoti-fetch.cmake`. Moving that pin retires
 only the rows in `llm/engine_defects.go` the new bytes are *measured* to fix —
 a changelog is not a measurement; the measurement is `scripts/phase2-engine-ab.py`,
