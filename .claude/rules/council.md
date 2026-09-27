@@ -12,6 +12,8 @@ paths:
   - server/council_remote_test.go
   - server/council_state.go
   - server/council_state_test.go
+  - server/council_continue.go
+  - server/council_continue_test.go
   - server/council_tools.go
   - server/council_tools_test.go
   - api/xollama_tools.go
@@ -221,6 +223,40 @@ paths:
 - **A remote reply is whole only with its `done` line.** A dropped connection
   ends the stream without an error; `remote()` fails it, and the runner treats
   an empty reply from a member elsewhere as a failure too.
+- **A council starts with a slot per parallel member** (`CouncilSlots`, from
+  `councilSlots` in `server/council_polykv.go`; `councilLive` /
+  `councilSlotArgs` in `llm/engine_council_slots.go`, `council` hooks in
+  `llm/llama_server.go` and `llm/engine_estimate.go`). Workers are charged to
+  the owner, so they need no cells, but each needs a slot: with `-np 1` the
+  engine deferred researcher 2 until researcher 1 released slot 0 (ab-3,
+  opencoti #501), and the elastic controller did not grow (3 s saturation +
+  512 MiB free-VRAM guard). `-np` = widest local step, `-c` unchanged (never
+  × the width), `--kv-unified` forced; not on stock, a single-sequence model
+  or `kv.unified: false`. The estimate counts the width as sequences only.
+- **Defaults: 2 researchers, 1 critic** (owner's ruling 2026-09-27: a second
+  critic of the same model added nothing; it pays when it is another model).
+  Server tests state two critics in `councilOn()` to cover indices.
+- **Shared reads** (`internal/council/reads.go`): `SharedReads` indexes the
+  turn's read-only results from the client's tail (key = tool + canonical
+  args → the forwarded id that answered it; a non-read-only result clears
+  it); `cfg.result` answers a member from it in place, `forwarded` skips it,
+  `once` forwards a repeated read of one step once. Never pushed to a member
+  that did not ask (owner's condition). Evidence points at the source ref.
+- **`VERDICT: CONFIRMED path:line`** (`Confirmed`, steps.go): offered to
+  critics on tool turns; the first confirmation cancels the other critics
+  (`stoppedCritique`, their suspensions dropped), overrides `REVISE`, and
+  `confirmedNote` tells the synthesizer to make that change first.
+- **One council across turns (10.5)**: `internal/council/continue.go`
+  (`RouteContinue`, `Kept`, `continueNote`), `server/council_continue.go`
+  (`councilKept` per session, `keepDeliberation`, `previousDeliberation`), state
+  fields 6-8 (`kept`, `kept_n`, `kept_prefix`). The planner is offered
+  `continue` only with `cfg.Previous`; continue runs the synthesizer alone on
+  the kept plan + last round, copied into this turn's progress (so a
+  suspended synthesizer resumes). A direct answer carries `cfg.Previous`
+  forward; a council/continue answer replaces it. Bound to a hash of role +
+  content of the messages up to the answered user turn; a newer user message
+  must extend it. Guards: `TestAContinuedTurnGoesStraightToTheSynthesizer`,
+  `TestTheNextTurnContinuesTheSameCouncil`.
 - **`slots.live`** replaces `OLLAMA_NUM_PARALLEL` only when opencoti serves
   (`server/slots_live.go`, `slots-live` hook). Never set the parallel env for
   a council on opencoti: `-c` is `num_ctx × slots`, and 4 × 131k did not fit.
@@ -311,3 +347,11 @@ paths:
   `OLLAMA_DEBUG=1` and the `council member` lines. Live A/Bs compare against
   the same model as a plain chat (no state, `think: false`). Find the dev
   server by its port.
+- **Broadcast (10.6, `council.broadcast`, off by default)** is
+  `internal/council/broadcast.go`: `council_post` is added to every member's
+  tools by `WithBroadcast` (one list, one shared prefix), answered in
+  `transcript` (`local`), offered only by `canPost` (a same-role mate exists).
+  `unread` inserts the mates' notes before each model call in `callTools`;
+  the board persists through `Progress.Notes`/`Seen` (state Progress fields
+  5-6). Keep the caps (`maxNoteChars`, `maxNotes`) and the "do not wait"
+  wording: the named risk is members chatting instead of working.

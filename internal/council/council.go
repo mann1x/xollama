@@ -100,7 +100,12 @@ type Config struct {
 	Seed             *int64
 	MaxRounds        int
 	ShowDeliberation bool
-	MaxTokens        map[Role]int
+	// Broadcast offers council_post to members working side by side
+	// (broadcast.go).
+	Broadcast bool
+	// board is the turn's notes, shared by the members of RunFrom.
+	board     *board
+	MaxTokens map[Role]int
 	// Prompts replace a role's built-in instruction; Models serve a role on
 	// another model.
 	Prompts map[Role]string
@@ -123,15 +128,28 @@ type Config struct {
 	// client's answers to the calls a turn forwarded, by forwarded id.
 	Tools   api.Tools
 	Results map[string]string
+	// Reads indexes the turn's reads so far (SharedReads): a member's read
+	// that repeats one is answered from that result, never forwarded.
+	Reads map[string]string
+	// Previous is the deliberation the turn before left (Kept), when this
+	// turn continues that conversation; it offers the planner the continue
+	// route (continue.go).
+	Previous *Progress
+	// continuing marks a synthesizer continuing the previous deliberation.
+	continuing bool
 	// ResultBudget is the characters of tool results a member carries whole
 	// in its own turns; past it the rest travel by ref. 0 is the default.
 	ResultBudget int
 }
 
-// Built-in defaults: the owner's specification, measured in Phase 0 and 1.
+// Built-in defaults: two researchers, which find more between them than one,
+// and one critic, since a second critic of the same model added nothing in
+// the ab-3 run (owner's ruling 2026-09-27: a second critic pays only when it
+// is a different model).
 const (
-	DefaultWidth  = 2
-	DefaultJitter = 0.02
+	DefaultResearchers = 2
+	DefaultCritics     = 1
+	DefaultJitter      = 0.02
 )
 
 var defaultMaxTokens = map[Role]int{Planner: 512, Researcher: 384, Critic: 256, Synthesizer: 1024}
@@ -140,7 +158,7 @@ var defaultMaxTokens = map[Role]int{Planner: 512, Researcher: 384, Critic: 256, 
 // temperature is the model's own, after request and Modelfile options.
 func FromModel(c *xollama.Council, temperature float64) Config {
 	cfg := Config{
-		Researchers: DefaultWidth, Critics: DefaultWidth,
+		Researchers: DefaultResearchers, Critics: DefaultCritics,
 		Temperature: temperature, Jitter: DefaultJitter,
 		MaxRounds: 1, ShowDeliberation: true,
 		MaxTokens: map[Role]int{}, Prompts: map[Role]string{}, Models: map[Role]string{},
@@ -163,6 +181,7 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 	if c.ShowDeliberation != nil {
 		cfg.ShowDeliberation = *c.ShowDeliberation
 	}
+	cfg.Broadcast = c.Broadcast != nil && *c.Broadcast
 	for _, r := range []Role{Planner, Researcher, Critic, Synthesizer} {
 		role := c.Role(string(r))
 		if role == nil {
@@ -258,6 +277,9 @@ type Result struct {
 	// turn then has no answer yet, and Progress is what it resumes from.
 	Calls    []api.ToolCall
 	Progress Progress
+	// Kept is the deliberation an answered council turn leaves for the next
+	// turn to continue (Kept); nil for a direct answer or a suspended turn.
+	Kept *Progress
 }
 
 // ErrNoConversation is returned for an empty conversation.

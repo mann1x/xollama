@@ -109,6 +109,9 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	// Tools (9.5): the members carry the client's and the council's own
 	// evidence lookup, one list for all, so the shared prefix holds it once.
 	req.Tools = council.WithEvidence(req.Tools)
+	if cfg.Broadcast {
+		req.Tools = council.WithBroadcast(req.Tools) // 10.6, behind council.broadcast
+	}
 
 	conv, system := councilConversation(m, req.Messages)
 	cfg.System = system
@@ -154,12 +157,15 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	// fold is applied, and the conversation folded again if a trigger fires.
 	// A client's state (council_chat_state_v1) restores the compaction record
 	// this server may have lost, and resumes the turn it was made for.
-	from, turnHistory, turnHash := councilResume(req, members.session)
+	from, turnHistory, turnHash, previous := councilResume(req, members.session)
+	cfg.Previous = previous // xollama: the council kept across turns (council_continue.go)
 	// Tools (9.5): every member carries them; a resumed turn's own calls and
 	// results leave the conversation for the members that made them.
 	cfg.Tools, members.tools = req.Tools, req.Tools
 	if from.Route != "" {
+		all := conv
 		conv, cfg.Results = councilToolTurn(conv)
+		cfg.Reads = council.SharedReads(cfg.Tools, all[len(conv):])
 		full = conv
 	}
 	compactor := s.councilCompactorFor(ctx, m, req, members, tree, cfg, reserve)
@@ -210,10 +216,11 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		}
 		send := func(msg api.Message) { sendTagged(msg, nil) }
 		var checkpoint func(council.Progress)
+		var kept *keptTurn
 		state := func(p council.Progress) string { return "" }
 		if req.CouncilChatState != nil {
 			state = func(p council.Progress) string {
-				blob, err := sealCouncilState(councilState{history: turnHistory, turn: turnHash, progress: p, record: councilCompactions.get(members.session)})
+				blob, err := sealCouncilState(councilState{history: turnHistory, turn: turnHash, progress: p, record: councilCompactions.get(members.session), kept: kept})
 				if err != nil {
 					slog.Warn("council: could not seal the turn's state", "error", err)
 				}
@@ -262,6 +269,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 			}
 		} else {
 			answer.Store(&res.Answer)
+			kept = keepDeliberation(members.session, req.Messages, res.Kept)
 		}
 		slog.Info("council turn", "model", req.Model, "route", res.Route, "rounds", res.Rounds,
 			"members", members.calls.Load(), "tool_calls", len(res.Calls), "duration", time.Since(start),
@@ -714,16 +722,17 @@ func (m *memberWriter) status() int {
 // and returns the progress to resume when the state was made for this very
 // turn: the same history, the same user message. Anything else is a fresh
 // start. It also returns the turn's binding, for the states this turn sends.
-func councilResume(req api.ChatRequest, key string) (council.Progress, []byte, []byte) {
+func councilResume(req api.ChatRequest, key string) (council.Progress, []byte, []byte, *council.Progress) {
 	history, turn := councilTurnHashes(req.Messages)
 	if req.CouncilChatState == nil || *req.CouncilChatState == "" {
-		return council.Progress{}, history, turn
+		return council.Progress{}, history, turn, previousDeliberation(key, req.Messages, nil)
 	}
 	st, err := openCouncilState(*req.CouncilChatState)
 	if err != nil {
 		slog.Info("council: the client's state was not used; starting fresh", "error", err)
-		return council.Progress{}, history, turn
+		return council.Progress{}, history, turn, previousDeliberation(key, req.Messages, nil)
 	}
+	prev := previousDeliberation(key, req.Messages, st.kept)
 	if st.record != nil && key != "" {
 		if cur := councilCompactions.get(key); cur == nil || cur.gen < st.record.gen {
 			councilCompactions.put(key, st.record)
@@ -731,10 +740,10 @@ func councilResume(req api.ChatRequest, key string) (council.Progress, []byte, [
 		}
 	}
 	if !bytes.Equal(st.history, history) || !bytes.Equal(st.turn, turn) {
-		return council.Progress{}, history, turn
+		return council.Progress{}, history, turn, prev
 	}
 	if st.progress.Route != "" {
 		slog.Info("council: resuming the turn from the client's state", "session", key, "route", st.progress.Route, "rounds", len(st.progress.Rounds))
 	}
-	return st.progress, history, turn
+	return st.progress, history, turn, prev
 }

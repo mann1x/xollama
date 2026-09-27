@@ -48,6 +48,54 @@ side: one model store with two writers and one GPU with two schedulers are
 still one of each. See [`docs/features/rebrand.md`](docs/features/rebrand.md)
 and [`docs/xollama/default-port.mdx`](docs/xollama/default-port.mdx).
 
+## Docker
+
+An amd64 image with the CUDA v12, CUDA v13 and Vulkan backends and the
+opencoti engine is published to Docker Hub and GHCR. `:latest` is the newest
+full release, `:dev` the newest pre-release or `dev` build, and every build
+also has its own version tag.
+
+With an NVIDIA GPU:
+
+```sh
+docker run -d --gpus=all -v xollama:/root/.ollama -p 22434:22434 --name xollama mannixita/xollama
+```
+
+CPU only:
+
+```sh
+docker run -d -v xollama:/root/.ollama -p 22434:22434 --name xollama mannixita/xollama
+```
+
+Until the first full release moves `:latest`, use `mannixita/xollama:dev`.
+The same image is `ghcr.io/mann1x/xollama`.
+
+**NVIDIA GPU passthrough.** `--gpus=all` needs the NVIDIA driver on the host
+and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+registered with Docker. On Debian or Ubuntu, once NVIDIA's apt repository is
+added as that guide describes:
+
+```sh
+sudo apt-get install -y nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker
+docker run --rm --gpus=all ubuntu nvidia-smi   # must list your GPUs
+```
+
+The container runs as root and keeps its models in `/root/.ollama/models`;
+mount `/root/.ollama` (a named volume as above, or a host directory) so they
+survive the container. The image listens on `0.0.0.0:22434` via
+`XOLLAMA_HOST`; `OLLAMA_HOST` is not read. Then:
+
+```sh
+curl http://localhost:22434/api/version
+docker exec -it xollama xollama run qwen3.6
+```
+
+Ports, volumes, file ownership, GPU routing, every environment variable,
+slots and KV cache settings, Compose and updating:
+[`docs/xollama/docker.mdx`](docs/xollama/docker.mdx).
+
 ## The engine
 
 ollama 0.34 already runs GGUF models as a `llama-server` subprocess, so the

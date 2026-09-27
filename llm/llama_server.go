@@ -554,7 +554,10 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	args = appendKVResidencyArgs(args, kvTypes, usedOpencoti)
 
 	// xollama-hook: launch-config — dynamic slots. See docs/xollama/slots.mdx.
-	slots := resolveSlotPlan(launch.config, launch.numParallel, launch.config.singleSequence(usedOpencoti))
+	// xollama-hook: council -- a council starts with a slot per parallel member.
+	live := councilLive(launch.config, launch.numParallel, usedOpencoti)
+	args = councilSlotArgs(args, live, launch.numParallel)
+	slots := resolveSlotPlan(launch.config, live, launch.config.singleSequence(usedOpencoti))
 	// xollama-hook: council -- the council's pool seats ride on the same flag.
 	args = appendSlotArgs(args, slots, enginePoolSeats(launch.config, len(launch.projectors) > 0), kvTypes.Unified, usedOpencoti)
 	args = appendSWABudgetArgs(args, slots, usedOpencoti)
@@ -607,6 +610,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	// nothing and is launched with the environment it inherited.
 	envs := launch.extraEnvsForStart()
 	if usedOpencoti {
+		envs = launch.opencotiEnvsForStart() // xollama-hook: engine-fit -- no vision pad on the fit target; see llm/engine_fit_target.go
 		userHome, _ := os.UserHomeDir()
 		if payloadHome := engine.PreparePayloadHome(engine.ArtifactOf(name, args), engine.DefaultPayloadRoots(ml.LibOllamaPath, userHome)...); payloadHome != "" {
 			envs = cloneStringMap(envs)
@@ -1297,7 +1301,8 @@ func (s *llamaServerRunner) startProcess() error {
 	// engine that had grown to four live slots would still be fed one request
 	// at a time. Resized here rather than at construction because it depends on
 	// which engine answered, which is only known now.
-	if plan := resolveSlotPlan(s.launch.config, s.launch.numParallel, s.launch.config.singleSequence(usedOpencoti)); usedOpencoti {
+	// xollama-hook: council -- the council's live slots, as in the launch.
+	if plan := resolveSlotPlan(s.launch.config, councilLive(s.launch.config, s.launch.numParallel, usedOpencoti), s.launch.config.singleSequence(usedOpencoti)); usedOpencoti {
 		if n := plan.concurrency(); n > s.launch.numParallel {
 			slog.Info("dynamic slots: concurrency raised, engine admits slots as headroom allows",
 				"live", plan.Live, "max", n)

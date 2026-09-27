@@ -2,6 +2,7 @@ package discover
 
 import (
 	"context"
+	"os"
 	"runtime"
 	"testing"
 
@@ -44,9 +45,14 @@ func solidPCLlamaCppDevices() []ml.DeviceInfo {
 
 func withOpencoti(t *testing.T, listings map[engine.Backend]string) {
 	t.Helper()
-	restoreList, restoreFind := opencotiListDevices, opencotiArtifact
-	t.Cleanup(func() { opencotiListDevices, opencotiArtifact = restoreList, restoreFind })
+	restoreList, restoreFind, restore12 := opencotiListDevices, opencotiArtifact, opencotiCUDA12Artifact
+	t.Cleanup(func() {
+		opencotiListDevices, opencotiArtifact, opencotiCUDA12Artifact = restoreList, restoreFind, restore12
+		cudaLister.artifact = ""
+	})
+	cudaLister.artifact = ""
 	opencotiArtifact = func() (string, error) { return "/lib/ollama/opencoti", nil }
+	opencotiCUDA12Artifact = func() (string, error) { return "", os.ErrNotExist }
 	opencotiListDevices = func(_ context.Context, _ string, b engine.Backend) (string, error) {
 		return listings[b], nil
 	}

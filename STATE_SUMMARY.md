@@ -5,6 +5,42 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — Engine pin moved to b177 for v0.34.4-xollama.2 (owner's ruling).**
+> - `llm/engine/pin.txt` → `opencoti-0.10.5-c7-2609272353001`, rev `7fc93cc8` (#515): fit growth-free (MTP reserve as it runs, no RS for idle slots), the KV-window sizer fix, the bundled dlopen helper, q6_0 mixed pairs served. sha256 of bin, DSO and CUDA 12 payload checked on download.
+> - Re-probed: every cache type and ring shape as on b171, except a KVarN key over a plain value with a ring, now accepted by the engine (promoted); xollama keeps refusing it. A/B vs b171: compat 8/8 (was 7/8), llama3 75.5 tok/s, multislot 142, gemma4 identical, 70B overflow 3.85 tok/s (was 3.05).
+> - Docs name b177; the q6_0 warning says the pairs now run, slower. Left: the `:dev` image on this pin, verified on the 3090; then merge PR #4.
+
+> **2026-09-27 — xollama was passing opencoti a fit target for every vision model; stopped.**
+> - Chris's V100 (32 GB, 18 GB model) ran at 2.9 tok/s with 4 GB of KV on the host and 4.9 GB of VRAM free. The engine's "runtime margin 1909" was ours: upstream's mmproj stopgap (ollama#16996) sets `LLAMA_ARG_FIT_TARGET` = projector + 1 GiB (885 + 1024), and an explicit target switches opencoti's automatic 256 MiB margin off. The `engine-fit` hook (`llm/engine_fit_target.go`) drops the pad on opencoti; stock keeps it (bug-167).
+> - Left with opencoti (#510/#511): the MTP booking (2360 MiB held, 1348 used) and RS growth held for slots that are not live (1122 MiB for 3 slots at live 1).
+
+> **2026-09-27 — A silent install tried to uninstall Ollama; fixed before v0.34.4-xollama.2.**
+> - Installing v0.34.4-xollama.1 on eleven2go with `/SILENT` (RELEASE.md step 6) ran the think-budget Ollama's uninstaller: the Ollama-found page was built in silent mode and its default is "uninstall". Ollama survived (it was running; files, 210 GB of models, registry entry and app data all intact, app data also backed up). The in-app updater runs the full installer `/SILENT`, so every update on a host with Ollama was exposed. `app/xollama-setup-pages.iss` now never builds or acts on that page silently (bug-166).
+> - v0.34.4-xollama.1 had this installer; withdrawn to draft on the owner's word (23:40), so the updater no longer offers it (the tag stays, on `dd739034`). Left: install .2 on eleven2go once it is published.
+
+> **2026-09-27 — Council 10.6: a broadcast channel between parallel members, off by default.**
+> - `council.broadcast` (tweak `council-broadcast`): members with a same-role mate get a server-answered `council_post` tool, 200 chars and 4 notes per member per turn, delivered before the mate's next model call and never waited on; the board travels in the sealed state. Tests: `TestANoteReachesTheMateBesideIt` (40/40 under race), `TestTheNotesBoardTravelsInTheState`.
+> - Left: A/B it on and off in ab-4 (10.7) on eleven2go; drop it if it costs more turns than it saves.
+
+> **2026-09-27 — Council 10.5: one council across turns; v0.34.4-xollama.2 cut (not promoted).**
+> - A follow-up message is feedback to the same council: the planner routes `direct` (done/trivial), `continue` (the synthesizer carries on from the kept plan, findings and critiques) or `council` (fresh). Kept per session in memory and in `council_chat_state` fields 6-8, bound to the conversation it answered. ab-3's nudges restarted the whole council twice; they now continue it.
+> - Release PR #4 `release: v0.34.4-xollama.2` (the Docker GPU fix, V100 discovery, council 10.1-10.6, Docker and KV docs). Owner: not promoted.
+
+> **2026-09-27 — KV cache values and combinations documented, from opencoti's matrix (#507).**
+> - `docs/xollama/kv-cache.mdx` "Values and the combinations that work": presets (quality / balanced / max context, dense vs sliding-window), every accepted type with its flash-attention and backend limits, the mixing rules (plain+plain and KVarN+KVarN may differ; KVarN+plain is silently promoted, so not offered), the ring rules, and the CUDA `q6_0` mixed-pair crash (opencoti bug-3705, fix not pinned). The stale "ring not in this build" Warning is gone: the pin carries `feature swa-cache-types`.
+> - `docs/xollama/docker.mdx` and the Docker Hub page carry the presets and link the section; the Hub page is published.
+> - Left: `CacheShapeError` does not yet refuse KVarN+plain or the three crashing `q6_0` pairs; opencoti 0431 (a bundled dlopen helper) lands with the next snapshot, after which the image's own helper is redundant but harmless.
+
+> **2026-09-27 — The Docker image could not use any NVIDIA GPU; fixed. A V100 is kept through discovery.**
+> - Chris (V100) got `support for --gpu nvidia was explicitly requested, but it wasn't available`. Reproduced on solidPC's 3090 with `:dev`: the engine (a Cosmopolitan APE) found `ggml-cuda.so` but `dlopen() isn't supported on this platform` -- it builds a libc helper with the system `cc` into `$HOME/.cosmo`, and the image has no compiler. `Dockerfile.xollama` now builds the helper in a gcc stage and ships it in both engine homes; a derived test image loaded qwen3:0.6b 100% on GPU at 195 tok/s. Bare-metal Linux hosts without `cc` are affected too: reported to opencoti.
+> - Docker docs: README `## Docker` (ollama-style one-liners, GPU passthrough), `docs/xollama/docker.mdx` (tags, volumes, every operator env var, slots/KV, NVIDIA toolkit setup), `docs/dockerhub/README.md` for the Hub page; `engines.mdx` coverage corrected for the V100 payload.
+> - Discovery listed CUDA devices through the main (CUDA 13) engine only, so a V100 on a 570 driver would have been dropped; it now also asks the `engines/cuda_v12` engine and keeps the longer list (`discover/opencoti_cuda12.go`).
+
+> **2026-09-27 — v0.34.4-xollama.1 pre-release published; council Phase 10 started from the ab-3 analysis.**
+> - PR #3 merged (`dd739034`); release run 36345410380 published the pre-release (setup 797 MB, update 14 MB, both binaries, sha256sum, payload-id). Docker image for the tag: run 36346010621 (`:dev`, a pre-release). Promotion waits on the eleven2go install check.
+> - Upstream's `test-llamacpp-update.yaml` guarded to `ollama/ollama` (`docker-release` hook): it fired on the release PR because `LLAMA_CPP_VERSION` moved, and targets runners the fork lacks.
+> - ab-3 finding: the council's members were serialized by the engine (`-np 1`, no slot for the second worker, opencoti #501) and the council restarted on each nudge. Built: a slot per parallel member (`-c` unchanged), one critic by default, shared reads, `VERDICT: CONFIRMED`. Next: the council kept across turns, broadcast, ab-4 on eleven2go. See plans/agentic-council-chat.md Phase 10.
+
 > **2026-09-27 — Engine pin b171 with a CUDA 12 (V100) payload; runtime pins on v0.34.4 (owner: assemble the pre-release and the Docker image).**
 > - `llm/engine/pin.txt`: rev `7b836910` (b171 plus `ggml-cuda-cu12-x86_64.so`, sm_70, driver ≥ 570, opencoti #498).
 >   - It is read from `#! dso-cuda12` / `#! cuda12-sass`.

@@ -1,0 +1,456 @@
+---
+title: Running in Docker
+---
+
+xollama publishes a container image for **linux/amd64**, to two registries:
+
+| Registry | Image |
+|---|---|
+| Docker Hub | `mannixita/xollama` |
+| GitHub Container Registry | `ghcr.io/mann1x/xollama` |
+
+Both carry the same tags. The image holds the `xollama` binary, stock
+`llama.cpp` with upstream's CUDA v12, CUDA v13 and Vulkan backends, and the
+[opencoti engine](/xollama/engines) with its CUDA 13 payload and a separate
+CUDA 12 payload for Volta cards. It listens on **22434**, not Ollama's 11434.
+
+```shell
+docker run -d --name xollama --gpus all \
+  -p 22434:22434 \
+  -v xollama:/root/.ollama \
+  mannixita/xollama:latest
+
+curl http://localhost:22434/api/version
+docker exec -it xollama xollama run qwen3.6
+```
+
+## Tags
+
+| Tag | What it is |
+|---|---|
+| `latest` | The newest **full release**. Moves only when a release is promoted. |
+| `dev` | The newest **pre-release**, or the newest build from the `dev` branch. Moves often. |
+| `<version>` | One build, never moved: `0.34.4-xollama.1` for a release tag, `0.34.4-dev.86de2b7d` for a branch build (upstream version, `dev`, commit). |
+| `<version>-amd64` | The same image under an architecture-specific name, so a multi-architecture manifest can later be assembled from it. |
+
+A build moves `latest` or `dev`, never both. Which one depends on the GitHub
+release of the tag it was built from: a full release moves `latest`; a
+pre-release, a draft, a tag with no release or any branch build moves `dev`.
+
+<Note>
+  If `docker pull mannixita/xollama:latest` finds nothing, no full release has
+  been published as an image yet. Use `:dev`, or pin a `<version>` tag from the
+  [tag list](https://hub.docker.com/r/mannixita/xollama/tags).
+</Note>
+
+Only amd64 is published. There is no arm64 image yet, and no ROCm build: the
+pinned engine declares no ROCm acceleration.
+
+## What is in the image
+
+| Path | Contents |
+|---|---|
+| `/usr/bin/xollama` | The server and CLI. It is the entrypoint; the default command is `serve`. |
+| `/usr/lib/ollama/` | The runtime: `llama-server` and CPU libraries, the CUDA and Vulkan backends, the opencoti engine. |
+| `/usr/lib/ollama/engines/cuda_v12/` | A second copy of the opencoti engine beside its CUDA 12 payload, used for Volta cards. |
+| `/usr/lib/ollama/PAYLOAD` | Which bytes the image carries: the xollama version and Go toolchain, the runtime release and sha256, the upstream tarballs, the engine tag and revision. |
+| `/root/.ollama/` | Nothing at first. The server's home: models, keys, settings. Mount a volume here. |
+
+The base is `ubuntu:24.04`. The container runs as **root**.
+
+Nothing native in the image is compiled when it is built. Every piece is a
+published artifact pinned by sha256 in the repository, and CI assembles the
+image from them and checks that the server answers before it pushes anything.
+[`docs/features/docker-release.md`](https://github.com/mann1x/xollama/blob/main/docs/features/docker-release.md)
+lists every source and pin. To see what a given image holds:
+
+```shell
+docker run --rm --entrypoint cat mannixita/xollama:latest /usr/lib/ollama/PAYLOAD
+```
+
+## Ports and the listen address
+
+The image sets `XOLLAMA_HOST=0.0.0.0:22434` and exposes **22434**.
+
+xollama takes its listen address from `XOLLAMA_HOST` **only**. `OLLAMA_HOST` is
+not read for it, so passing `-e OLLAMA_HOST=...` to the container changes
+nothing. See [The default port](/xollama/default-port) for why.
+
+| You want | Do this |
+|---|---|
+| The default | `-p 22434:22434` |
+| Only this machine can connect | `-p 127.0.0.1:22434:22434` |
+| A client that insists on 11434 | `-p 11434:22434` — the host port is yours to choose; the container keeps 22434 |
+| A different port inside the container | `-e XOLLAMA_HOST=0.0.0.0:<port> -p <port>:<port>` |
+
+Keep the address inside the container at `0.0.0.0`. A server bound to
+`127.0.0.1` there is reachable only from inside the container.
+
+<Warning>
+  With a published port, anyone who can reach it can use every endpoint,
+  including [the engine's own controls](/xollama/introspection). Publish on
+  `127.0.0.1` unless other machines need it, and when they do, set an
+  [API key](#api-key) and put the server behind TLS.
+</Warning>
+
+## Storage
+
+The server's home inside the container is `/root/.ollama`. Models go to
+`/root/.ollama/models` unless `OLLAMA_MODELS` says otherwise. The same
+directory also holds the server's identity key and the stored digest of the
+local API key, so mount the whole of `/root/.ollama`, not only `models`.
+
+A named volume is the simplest:
+
+```shell
+-v xollama:/root/.ollama
+```
+
+A host directory works too, and makes the models visible from the host:
+
+```shell
+-v /srv/xollama:/root/.ollama
+```
+
+**Who owns the files.** The container runs as root, but xollama does not leave
+root-owned files in a model store that belongs to someone else. A file it
+creates is handed to the owner (numeric uid and gid) of the nearest existing
+directory above it, when that owner is not root, and new directories get the
+setgid bit and group write. So if you mount a host directory owned by your own
+account, the models it pulls belong to your account on the host. If the
+directory is owned by root, the files stay root's. See
+[`docs/features/store-ownership.md`](https://github.com/mann1x/xollama/blob/main/docs/features/store-ownership.md).
+
+<Note>
+  The server also looks for an opencoti engine in `/root/.ollama/engines/`, and
+  the newest file by modification time wins over the one in the image. If the
+  directory you mount already has an `engines` folder from another install,
+  the container may run that engine instead. `XOLLAMA_ENGINE_PATH` names one
+  exactly.
+</Note>
+
+<Warning>
+  **Do not point the container at a store a running Ollama also uses.** One
+  model store with two writers, one GPU with two schedulers that do not know
+  about each other: none of that goes away because the two are in different
+  containers or on different ports. Running xollama beside a stock Ollama is
+  not supported — see
+  [Running xollama and Ollama on the same machine](/xollama/default-port#running-xollama-and-ollama-on-the-same-machine).
+  Give xollama its own directory, or stop the other server first.
+</Warning>
+
+## GPUs
+
+### NVIDIA
+
+A container sees an NVIDIA GPU only when Docker passes it in, which takes three
+things on the host:
+
+1. **The NVIDIA driver**, working on the host: `nvidia-smi` lists the GPUs.
+   The CUDA 13 payload wants a 580-series driver or newer; the CUDA 12 payload
+   (Volta) wants 570 or newer.
+2. **The [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).**
+   Add NVIDIA's package repository as that guide describes, then:
+
+   ```shell
+   # Debian / Ubuntu
+   sudo apt-get install -y nvidia-container-toolkit
+   # Fedora / RHEL / Rocky / Alma
+   sudo dnf install -y nvidia-container-toolkit
+   ```
+3. **Docker told about it**, and restarted:
+
+   ```shell
+   sudo nvidia-ctk runtime configure --runtime=docker
+   sudo systemctl restart docker
+   ```
+
+Check it before starting xollama; this must list your GPUs:
+
+```shell
+docker run --rm --gpus=all ubuntu nvidia-smi
+```
+
+Then pass the GPUs to xollama:
+
+```shell
+docker run -d --gpus=all -v xollama:/root/.ollama -p 22434:22434 --name xollama mannixita/xollama
+```
+
+With Docker Desktop on Windows (WSL 2 backend), the NVIDIA Windows driver is
+enough: no toolkit to install, and `--gpus=all` works as above.
+
+If `docker run` fails with `could not select device driver "" with
+capabilities: [[gpu]]`, step 2 or 3 is missing. If the container starts but
+the log (`docker logs xollama`) shows no `inference compute` line for your
+GPU, the container was started without `--gpus`.
+
+The image already sets `NVIDIA_VISIBLE_DEVICES=all` and
+`NVIDIA_DRIVER_CAPABILITIES=compute,utility`. To give it some GPUs only, name
+them to Docker: `--gpus '"device=0,1"'`. Without `--gpus` the server runs on
+the CPU.
+
+Which engine serves a load depends on the card. With the engine the image
+currently pins (opencoti build `2609272353001`, b177):
+
+| The load's NVIDIA GPUs | Served by |
+|---|---|
+| all compute capability 8.6–8.9 or 12.x (RTX 30xx, 40xx, 50xx, A6000, L40…) | opencoti, CUDA 13 payload |
+| all compute capability 7.0 (Tesla V100, Titan V) | opencoti, CUDA 12 payload (host driver 570 or newer) |
+| a mix of the two groups above | stock `llama.cpp` |
+| any other card (7.5, 8.0, 9.0, 10.x, older) | stock `llama.cpp`, on upstream's CUDA backends |
+
+The engine chosen for each load, and the reason, are in the server log
+(`docker logs xollama`). The table moves with the engine pin; the rules behind
+it are in [Choosing an engine](/xollama/engines) and
+[`docs/features/device-selection.md`](https://github.com/mann1x/xollama/blob/main/docs/features/device-selection.md).
+Loads served by stock `llama.cpp` have Ollama's own requirements; see
+[GPU support](/gpu).
+
+### Vulkan
+
+The image carries upstream's Vulkan backend and the Vulkan loader, as
+upstream's own image does. Pass the device nodes in with
+`--device /dev/dri`. `OLLAMA_VULKAN=0` turns Vulkan discovery off, and
+`GGML_VK_VISIBLE_DEVICES` picks devices. The engine the image currently pins
+carries no Vulkan payload, so Vulkan loads are served by stock `llama.cpp`.
+
+## Using it
+
+The entrypoint is `xollama`, so any subcommand runs against the server inside
+the container:
+
+```shell
+docker exec -it xollama xollama pull qwen3.6
+docker exec -it xollama xollama run qwen3.6
+docker exec -it xollama xollama ps
+docker exec -it xollama xollama show qwen3.6
+```
+
+From the host, or another machine, use the API on the published port. The
+Ollama API, the OpenAI-compatible routes under `/v1` and the Anthropic route
+`/v1/messages` all work as they do on Ollama:
+
+```shell
+curl http://localhost:22434/api/version
+curl http://localhost:22434/api/xollama     # which xollama answered, and its version
+curl http://localhost:22434/api/chat -d '{
+  "model": "qwen3.6",
+  "messages": [{ "role": "user", "content": "Hello" }]
+}'
+```
+
+An `xollama` CLI on the host reaches it with `XOLLAMA_HOST=127.0.0.1:22434`, or
+with nothing set when the default port is published.
+
+### Per-model settings
+
+[The settings that belong to a model](/xollama/model-settings) — KV cache
+types, slots, the engine, the device pin, DCA — are changed with
+`xollama tweak model`, which runs fine inside the container:
+
+```shell
+docker exec -it xollama xollama tweak model qwen3.6
+docker exec -it xollama xollama tweak model qwen3.6 --kv-k=q8_0 --kv-v=q8_0
+docker exec -it xollama xollama tweak model qwen3.6 --slots-live=2
+```
+
+They are stored in the model, in the volume, so they survive a new container.
+See [Changing a model's settings](/xollama/tweak).
+
+## Environment variables
+
+Pass them with `-e NAME=value` or in the compose file's `environment:`.
+
+Every `OLLAMA_` variable can also be written `XOLLAMA_`, and the `XOLLAMA_`
+spelling wins where both are set. The one exception is the listen address,
+which is `XOLLAMA_HOST` only. The tables use whichever name the rest of these
+docs use.
+
+### Server
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `XOLLAMA_HOST` | `0.0.0.0:22434` in the image | Listen address. `OLLAMA_HOST` is not read. |
+| `OLLAMA_MODELS` | `/root/.ollama/models` | Where models are stored. |
+| `OLLAMA_KEEP_ALIVE` | `5m` | How long a model stays loaded after its last request. A negative value keeps it loaded. |
+| `OLLAMA_MAX_LOADED_MODELS` | 3 per GPU (3 on CPU) | How many models may be loaded at once. |
+| `OLLAMA_MAX_QUEUE` | `512` | Requests that may wait before the server answers busy. |
+| `OLLAMA_LOAD_TIMEOUT` | `5m` | How long a load may stall before it is given up. |
+| `OLLAMA_CONTEXT_LENGTH` | by VRAM: 4k, 32k with 24 GB, 256k with 48 GB or more | Context length for a model with no `num_ctx` of its own. |
+| `OLLAMA_FLASH_ATTENTION` | unset: on where the devices support it | `1` forces flash attention on, `0` off. Needed for a quantised KV cache. |
+| `OLLAMA_ORIGINS` | local origins only | Extra browser origins allowed to call the API, comma separated. |
+| `OLLAMA_DEBUG` | `0` | `1` for debug logging, `2` for trace. |
+| `OLLAMA_NOPRUNE` | off | Do not prune unused blobs at startup. |
+| `OLLAMA_GPU_OVERHEAD` | `0` | VRAM to leave unused on each GPU, in bytes. |
+| `CUDA_VISIBLE_DEVICES` | all | Which NVIDIA GPUs the server may use, inside what Docker gave it. |
+
+### API key
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `XOLLAMA_API_KEY` | none | A local API key. When set, every endpoint needs it, sent as `Authorization: Bearer <key>` or `x-api-key: <key>`. |
+
+The key guards connections **to this server**. It is not an ollama.com key
+and has nothing to do with pulling models; `OLLAMA_API_KEY` is not read for it.
+The `xollama` CLI inside the container sends `XOLLAMA_API_KEY` from its own
+environment, so `docker exec` commands keep working. Over plain HTTP the key
+travels in clear text: put a TLS reverse proxy in front of any port other
+machines use. See [The local API key](/xollama/api-key).
+
+Instead of the variable you can run
+`docker exec -it xollama xollama tweak server --api-key=generate`. The server
+then stores the key's digest in `/root/.ollama`, so it needs that directory on
+a volume to survive the container. The variable, when set, wins over it.
+
+### Engine
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `XOLLAMA_ENGINE` | `auto` | `auto` routes each load by the tested device matrix. `opencoti` forces the opencoti engine; `llamacpp` forces stock `llama.cpp`, identical to upstream. |
+| `XOLLAMA_ENGINE_FALLBACK` | off | Retry a failed opencoti load once on stock `llama.cpp` instead of failing. |
+| `XOLLAMA_ENGINE_PATH` | unset | An exact engine artifact to use instead of the bundled one. |
+| `XOLLAMA_ENGINE_ARGS` | unset | Extra arguments appended last to the engine's command line, for flags with no variable of their own. Some flags are refused by name. See [Passing your own engine flags](/xollama/engine-args). |
+
+### KV cache
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `OLLAMA_KV_CACHE_TYPE` | unset: `f16` | Cache type for keys and values together. |
+| `XOLLAMA_K_CACHE_TYPE` | the type above | Cache type for keys only. |
+| `XOLLAMA_V_CACHE_TYPE` | the type above | Cache type for values only. |
+| `XOLLAMA_K_CACHE_TYPE_SWA` | unset | Keys in a sliding-window model's short-window cache (the ring). Set with the next one; needs KVarN on both `K` and `V`. |
+| `XOLLAMA_V_CACHE_TYPE_SWA` | unset | Values in the short-window cache. |
+
+A model's own `kv` setting wins over these. Quick picks, keys / values:
+
+| Preset | Dense model | Sliding-window model |
+|---|---|---|
+| Quality | `q8_0` / `q8_0` | `q8_0` / `q8_0` |
+| Balanced | `q8_0` / `q4_0` | `kvarn4` / `kvarn4`, ring `q8_0` / `q8_0` |
+| Max context | `kvarn3` / `kvarn3` | `kvarn3` / `kvarn3`, ring `q4_0` / `q4_0` |
+
+Set `OLLAMA_FLASH_ATTENTION=1` with any quantised values. Put `kvarn*` in the
+`XOLLAMA_*` variables and keep `OLLAMA_KV_CACHE_TYPE` to `f16`, `q8_0` or
+`q4_0`. Do not mix a `kvarn` width with a plain type. On a V100 start with
+`q8_0` / `q8_0`. Every accepted value, the mixing and ring rules, and the
+`q6_0` pairs are in
+[Values and the combinations that work](/xollama/kv-cache#values-and-the-combinations-that-work).
+
+### Concurrent requests
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `XOLLAMA_PARALLEL` | `1` | Slots a model starts with on the opencoti engine. The load's context pool is `num_ctx` × this. |
+| `XOLLAMA_MAX_PARALLEL` | `4` | How many requests may run at once on opencoti, each in the window it asked for. |
+| `XOLLAMA_DYNAMIC_SLOTS` | on | Slots grow with demand instead of being reserved at load. `0` restores a fixed split. |
+| `XOLLAMA_SLOTS_TPS_FLOOR` | unset | Decode rate per request, in tokens per second, below which no further slot is admitted. |
+| `XOLLAMA_SLOTS_VRAM_RESERVE` | engine default | Free VRAM, in MiB, to keep before admitting another slot. |
+| `OLLAMA_NUM_PARALLEL` | `1` | Slots per model on **stock `llama.cpp` only**. Not read on opencoti. |
+
+How these fit together is explained in the next section.
+
+### Council
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `XOLLAMA_COUNCIL_HOSTS` | none | Servers a [council](/xollama/council) role may be sent to (`council.<role>.host`): host or host:port, comma separated, `*` for any. |
+
+The server logs every variable it knows, with its current value, in the
+`server config` line at startup (`docker logs xollama`), and
+`xollama serve --help` describes them.
+
+## Slots and the context pool
+
+On the opencoti engine, a model's KV cache is **one pool**:
+`num_ctx` × the slots it loads with. The slots at load are the model's
+`slots.live` if it states one, else `XOLLAMA_PARALLEL`, else one.
+`OLLAMA_NUM_PARALLEL` is **not read** on opencoti. With nothing set, a model
+with no context of its own on a 24 GB card loads with a 32k × 1 pool.
+
+A request that states no window is guaranteed the whole pool. So with the
+defaults, requests to one model take turns, exactly as on Ollama. Concurrency
+comes in one of two ways:
+
+- **Clients book windows.** A request to `/api/chat` that asks for a window
+  with `placement.num_ctx` gets that window, and up to `XOLLAMA_MAX_PARALLEL`
+  of them run side by side while the pool has room. A model loaded with
+  `num_ctx 262144` can serve one 256k conversation, two of 128k, or four of
+  64k, from the same load. The `X-Context-Window` response header says what was
+  granted. See [the session's window](/xollama/sessions#the-sessions-window).
+- **The operator sizes the pool.** `XOLLAMA_PARALLEL=4` loads four contexts'
+  worth of pool, and four requests that state no window each get a whole
+  context. That is Ollama's `OLLAMA_NUM_PARALLEL=4`, with the same memory cost:
+  the pool is allocated at load.
+
+The OpenAI and Anthropic routes carry no `placement`, so their requests take the
+whole pool and run one after another unless the pool is sized with
+`XOLLAMA_PARALLEL`. Do not vary `options.num_ctx` per request to get a window:
+it sizes the load, and a different value reloads the model.
+
+```shell
+docker run -d --name xollama --gpus all -p 22434:22434 \
+  -v xollama:/root/.ollama \
+  -e XOLLAMA_PARALLEL=2 \
+  -e OLLAMA_CONTEXT_LENGTH=65536 \
+  -e OLLAMA_FLASH_ATTENTION=1 \
+  -e OLLAMA_KV_CACHE_TYPE=q8_0 \
+  mannixita/xollama:latest
+```
+
+That pool is 64k × 2 per model, with a `q8_0` cache. On a load that stock
+`llama.cpp` serves, every slot is its own reserved copy of the cache and
+`OLLAMA_NUM_PARALLEL` decides how many, as upstream has it.
+
+Full details: [Concurrent requests](/xollama/slots).
+
+## Docker Compose
+
+```yaml
+services:
+  xollama:
+    image: mannixita/xollama:latest
+    container_name: xollama
+    restart: unless-stopped
+    ports:
+      - "22434:22434"
+    volumes:
+      - xollama:/root/.ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: 10m
+      # XOLLAMA_API_KEY: change-me-to-a-long-random-key
+      # XOLLAMA_PARALLEL: 2
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  xollama:
+```
+
+```shell
+docker compose up -d
+docker compose exec xollama xollama run qwen3.6
+```
+
+## Updating
+
+Pull the new image and recreate the container. Models and settings are in the
+volume, so nothing is downloaded again:
+
+```shell
+docker pull mannixita/xollama:latest
+docker rm -f xollama
+docker run -d --name xollama --gpus all -p 22434:22434 \
+  -v xollama:/root/.ollama mannixita/xollama:latest
+```
+
+With Compose: `docker compose pull && docker compose up -d`.
+
+To stay on one build, use a `<version>` tag instead of `latest` or `dev`; it
+never moves. `curl http://localhost:22434/api/xollama` reports the version a
+running server was built as.

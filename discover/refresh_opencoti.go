@@ -80,8 +80,7 @@ func forkRefresh(ctx context.Context, devices []ml.DeviceInfo, updated []bool) *
 			continue
 		}
 		start := time.Now()
-		output, err := opencotiListDevices(ctx, artifact, b)
-		listed := parseOpencotiDevices(output, string(b))
+		listed, err := opencotiListing(ctx, artifact, b)
 		if len(listed) == 0 {
 			// No payload for this backend (b111 has no Vulkan), or no answer
 			// in time: nothing to be authoritative with, and asking again on

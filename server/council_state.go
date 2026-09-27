@@ -25,7 +25,12 @@ package server
 // Wire layout (field numbers are the contract; add, never renumber):
 //
 //	State     1 version(varint) 2 history(bytes) 3 turn(bytes) 4 progress(Progress) 5 record(Record)
+//	          6 kept(Progress) 7 kept_n(varint) 8 kept_prefix(bytes)  -- the deliberation an
+//	          answered turn leaves for the next (council_continue.go)
 //	Progress  1 route(string) 2 plan(Plan) 3 rounds(Round, repeated) 4 suspended(Member, repeated)
+//	          5 notes(Note, repeated) 6 seen(Seen, repeated)
+//	Note      1 id(string) 2 from(string) 3 text(string)
+//	Seen      1 key(string) 2 n(varint)
 //	Member    1 key(string) 2 turns(bytes: the member's []api.Message as JSON)
 //	Plan      1 plan(string) 2 briefs(string, repeated)
 //	Round     1 findings(string, repeated) 2 critiques(string, repeated)
@@ -71,6 +76,7 @@ type councilState struct {
 	history, turn []byte // sha256 of the history before the user turn, and of that turn
 	progress      council.Progress
 	record        *compactionRecord
+	kept          *keptTurn
 }
 
 // councilTurnHashes binds a state to a request: the history before the last
@@ -110,6 +116,12 @@ func (s councilState) marshal() []byte {
 	if s.record != nil {
 		b = appendBytes(b, 5, marshalRecord(s.record))
 	}
+	if s.kept != nil {
+		b = appendBytes(b, 6, marshalProgress(s.kept.p))
+		b = protowire.AppendTag(b, 7, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(s.kept.n))
+		b = appendBytes(b, 8, s.kept.prefix)
+	}
 	return b
 }
 
@@ -144,6 +156,20 @@ func marshalProgress(p council.Progress) []byte {
 		mb = appendString(mb, 1, k)
 		mb = appendBytes(mb, 2, turns)
 		b = appendBytes(b, 4, mb)
+	}
+	for _, n := range p.Notes {
+		var nb []byte
+		nb = appendString(nb, 1, n.ID)
+		nb = appendString(nb, 2, n.From)
+		nb = appendString(nb, 3, n.Text)
+		b = appendBytes(b, 5, nb)
+	}
+	for _, k := range slices.Sorted(maps.Keys(p.Seen)) {
+		var sb []byte
+		sb = appendString(sb, 1, k)
+		sb = protowire.AppendTag(sb, 2, protowire.VarintType)
+		sb = protowire.AppendVarint(sb, uint64(p.Seen[k]))
+		b = appendBytes(b, 6, sb)
 	}
 	return b
 }
@@ -242,6 +268,23 @@ func unmarshalCouncilState(b []byte) (councilState, error) {
 			r, err := unmarshalRecord(v)
 			s.record = r
 			return err
+		case num == 6 && typ == protowire.BytesType:
+			p, err := unmarshalProgress(v)
+			if s.kept == nil {
+				s.kept = &keptTurn{}
+			}
+			s.kept.p = p
+			return err
+		case num == 7 && typ == protowire.VarintType:
+			if s.kept == nil {
+				s.kept = &keptTurn{}
+			}
+			s.kept.n = int(n)
+		case num == 8 && typ == protowire.BytesType:
+			if s.kept == nil {
+				s.kept = &keptTurn{}
+			}
+			s.kept.prefix = append([]byte(nil), v...)
 		}
 		return nil
 	})
@@ -307,6 +350,44 @@ func unmarshalProgress(b []byte) (council.Progress, error) {
 					p.Suspended = map[string][]api.Message{}
 				}
 				p.Suspended[key] = turns
+			}
+		case 5:
+			var n council.Note
+			if err := fields(v, func(num protowire.Number, typ protowire.Type, v []byte, _ uint64) error {
+				if typ == protowire.BytesType {
+					switch num {
+					case 1:
+						n.ID = string(v)
+					case 2:
+						n.From = string(v)
+					case 3:
+						n.Text = string(v)
+					}
+				}
+				return nil
+			}); err != nil {
+				return err
+			}
+			p.Notes = append(p.Notes, n)
+		case 6:
+			var key string
+			var seen uint64
+			if err := fields(v, func(num protowire.Number, typ protowire.Type, v []byte, n uint64) error {
+				switch {
+				case num == 1 && typ == protowire.BytesType:
+					key = string(v)
+				case num == 2 && typ == protowire.VarintType:
+					seen = n
+				}
+				return nil
+			}); err != nil {
+				return err
+			}
+			if key != "" {
+				if p.Seen == nil {
+					p.Seen = map[string]int{}
+				}
+				p.Seen[key] = int(seen)
 			}
 		}
 		return nil

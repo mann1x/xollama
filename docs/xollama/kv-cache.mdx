@@ -102,20 +102,112 @@ The ring needs an engine that has a separate short-window cache; stock
 `llama.cpp` has no such flag, so asking for one there is refused the same way as
 an unknown type.
 
-<Warning>
-  **The engine build xollama currently ships cannot do this yet.** The
-  `--cache-type-k-swa` / `--cache-type-v-swa` flags arrive in opencoti **c8**;
-  the pinned cut is c7, and the c7-r2 re-cut is c7 plus one crash fix and
-  nothing else. Setting `k_swa` / `v_swa` is refused at load, naming the build,
-  rather than being sent to an engine that would reject the whole command line
-  over it.
+The pinned engine (`opencoti-0.10.5-c7-2609272353001`) has the ring: its pin
+carries `feature swa-cache-types`. On a build without that feature, `k_swa` /
+`v_swa` are refused at load, naming the build.
 
-  On this engine `k` and `v` set **both** halves of the cache together, so a
-  quantised global type still reaches the ring — you simply cannot give the ring
-  a *different* type from the global cache. On a sliding-window model that is
-  where most of the memory is, so `{"k": "q8_0", "v": "q8_0"}` is still worth
-  setting; it is the separate, more aggressive ring type that has to wait.
+## Values and the combinations that work
+
+There are four settings: the keys (`k`), the values (`v`), and the two halves
+of a sliding-window model's ring (`k_swa`, `v_swa`). The rules below come from
+opencoti, who read them from the source of the pinned engine
+(`opencoti-0.10.5-c7-2609271900001`) and probed the crashes; the accepted values and ring rules were re-probed on the current pin. The ring rules
+were also probed from xollama, one run per row of
+`llm/engine_ring_shape_test.go`.
+
+### Pick a preset
+
+Most people need one of these three.
+
+| Preset | Dense model | Sliding-window model (Gemma-4, …) |
+|---|---|---|
+| **Quality** | `q8_0` / `q8_0` (or `f16` / `f16` if memory allows) | `q8_0` / `q8_0` |
+| **Balanced** | `q8_0` / `q4_0` | `kvarn4` / `kvarn4`, ring `q8_0` / `q8_0` |
+| **Max context** | `kvarn3` / `kvarn3` or `kvarn2` / `kvarn2` (stock: `q5_1` / `q4_0`) | `kvarn3` / `kvarn3`, ring `q4_0` / `q4_0` |
+
+A `q4_0` ring costs more quality than dropping the base one width. On a
+**V100** start with `q8_0` / `q8_0`. KVarN runs there only on a slower,
+portable route, which has not been measured on that card yet.
+
+### Values
+
+| Type | `k` / `v` | Ring | Needs flash attention | CUDA | Vulkan | CPU |
+|---|---|---|---|---|---|---|
+| `f16`, `f32` | yes | yes | no | yes | yes | yes |
+| `bf16` | yes | yes | no | yes | only as `bf16` / `bf16` | yes |
+| `q8_0`, `q4_0`, `q4_1`, `q5_0`, `q5_1` | yes | yes | as `v` | yes | yes | yes |
+| `q6_0` (opencoti) | yes | yes | as `v` | yes (see the note below) | yes | yes |
+| `iq4_nl` | yes | yes | as `v` | no kernel as `v` | no kernel as `v` | yes |
+| `kvarn2` `kvarn3` `kvarn4` `kvarn5` `kvarn6` `kvarn8` (opencoti) | yes | yes | forced on | yes | yes (attention runs on an `f16` copy) | yes |
+
+Stock llama.cpp accepts only `f32`, `f16`, `bf16`, `q8_0`, `q5_1`, `q5_0`,
+`q4_1`, `q4_0` and `iq4_nl`, and has no ring. There is no `kvarn1` and no
+`kvarn7`: the engine refuses both on purpose. The old `turbo*` and `*_tcq`
+types still parse but are frozen, so xollama does not offer them.
+
+Quantised types need a head dimension that is a multiple of 32. KVarN needs a
+head dimension of 128, 256 or 512. It is refused outright, with no fallback, on
+a purely recurrent model, on MLA / DeepSeek-3.2 / DSV4, and on a non-causal
+model. Hybrid models are fine.
+
+### Mixing keys and values
+
+1. **Two plain types may differ**: `q8_0` keys with `q4_0` values is a good
+   cache. A quantised `v` needs flash attention, and a quantised `k` with an
+   `f16` `v` does not.
+2. **Two KVarN widths may differ**: `kvarn4` keys with `kvarn3` values. All
+   pairs are valid.
+3. **Do not mix KVarN with a plain type** (`kvarn3` with `q8_0`). The engine
+   does not refuse it. It quietly promotes the plain half to the same KVarN
+   width and logs a warning, so you do not get what you asked for.
+4. **KVarN turns flash attention on** even if you set it off.
+5. **Flash attention `auto` can turn it off**: on a CPU-only host, or where
+   the device cannot run it. A quantised `v` then refuses to load. Set
+   `OLLAMA_FLASH_ATTENTION=1` whenever `v` is quantised.
+
+<Warning>
+  **`q6_0` mixed with another type crashed on CUDA** on engine builds before
+  the current pin: `q4_0` / `q6_0`, `q6_0` / `q8_0` and `q6_0` / `q4_1`
+  aborted. The pinned engine carries the fix (opencoti bug-3705, patch 0432):
+  those pairs now run on the kernels that convert to `f16`, so they work but
+  are slower than a matching pair. Prefer `q6_0` / `q6_0` or `q8_0` / `q6_0`.
 </Warning>
+
+### The ring
+
+6. Set `k_swa` **and** `v_swa`, or neither.
+7. A ring needs a KVarN base on **both** `k` and `v`. An `f16` or `q8_0` base
+   cannot carry one.
+8. The two ring halves must both be KVarN or both be plain. They may differ:
+   `q8_0` / `q4_0` and `kvarn4` / `kvarn3` both work.
+9. With no ring set, the ring uses the base KVarN width. On a model with no
+   sliding-window layers the ring settings are accepted and ignored.
+
+| `k` / `v` | `k_swa` / `v_swa` | Result |
+|---|---|---|
+| `kvarn3` / `kvarn3` | `q4_0` / `q4_0` | Works. |
+| `kvarn4` / `kvarn4` | `q8_0` / `q4_0` | Works. |
+| `kvarn3` / `kvarn3` | `kvarn4` / `kvarn3` | Works. |
+| `f16` / `f16` or `q8_0` / `q8_0` | `q4_0` / `q4_0` | Refused: the base is not KVarN. |
+| `kvarn3` / `f16` | `q4_0` / `q4_0` | Refused: only one half of the base is KVarN. |
+| `kvarn3` / `kvarn3` | `q4_0` / `kvarn3` | Refused: the ring mixes KVarN and plain. |
+| `kvarn3` / `kvarn3` | `q4_0` / unset | Refused: half a ring. |
+
+### Setting it for a container
+
+```shell
+-e OLLAMA_FLASH_ATTENTION=1 \
+-e OLLAMA_KV_CACHE_TYPE=q8_0 \
+-e XOLLAMA_K_CACHE_TYPE=kvarn4 -e XOLLAMA_V_CACHE_TYPE=kvarn4 \
+-e XOLLAMA_K_CACHE_TYPE_SWA=q8_0 -e XOLLAMA_V_CACHE_TYPE_SWA=q8_0
+```
+
+Put KVarN and `q6_0` in the `XOLLAMA_*` variables, never in
+`OLLAMA_KV_CACHE_TYPE`. When stock llama.cpp serves a load (a device opencoti
+does not cover), it falls back to `OLLAMA_KV_CACHE_TYPE` and drops the ring,
+so that variable must hold a type stock accepts: `f16`, `q8_0` or `q4_0`.
+For one model, use `xollama tweak model <name>` or the `kv` block in the
+Modelfile shown above.
 
 ## Settings summary
 
@@ -128,7 +220,7 @@ an unknown type.
 | Ring values | `XOLLAMA_V_CACHE_TYPE_SWA` | `kv.v_swa` | as above | unset |
 
 <Warning>
-  Flash attention is required for quantised KV on most builds
-  (`OLLAMA_FLASH_ATTENTION=1`). Without it a quantised cache is silently
-  ignored or the load fails, depending on the model.
+  Flash attention is required for any `kvarn` width, and for quantised KV on
+  most builds (`OLLAMA_FLASH_ATTENTION=1`). Without it a quantised cache is
+  silently ignored or the load fails, depending on the model.
 </Warning>

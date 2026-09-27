@@ -104,15 +104,17 @@ func (cfg Config) transcript(r Role, key string, turns []api.Message) []api.Mess
 			res := noResult
 			if ok, why := cfg.may(r, c); !ok {
 				res = why
+			} else if c.Function.Name == PostTool {
+				res = cfg.postAnswer(r, key, c)
 			} else if local(c) {
 				res = cfg.lookup(c)
 				if folded[c.ID] {
 					res = droppedLookup
 				}
-			} else if s, ok := cfg.Results[ForwardedID(key, c.ID)]; ok {
+			} else if s, ref, ok := cfg.result(key, c); ok {
 				res = s
 				if folded[c.ID] {
-					res = indexed(ForwardedID(key, c.ID), s)
+					res = indexed(ref, s)
 				}
 			}
 			out = append(out, api.Message{Role: "tool", Content: res, ToolName: c.Function.Name, ToolCallID: c.ID})
@@ -144,7 +146,7 @@ func (cfg Config) forwarded(r Role, key string, turns []api.Message) []api.ToolC
 	}
 	var out []api.ToolCall
 	for _, c := range turns[len(turns)-1].ToolCalls {
-		if ok, _ := cfg.may(r, c); ok && !local(c) {
+		if ok, _ := cfg.may(r, c); ok && !local(c) && !cfg.cachedRead(c) {
 			c.ID = ForwardedID(key, c.ID)
 			out = append(out, c)
 		}
@@ -189,7 +191,7 @@ func (cfg Config) toolNote(r Role) string {
 	}
 	var ro []string
 	for _, t := range cfg.Tools {
-		if t.Function.ReadOnly && t.Function.Name != EvidenceTool {
+		if t.Function.ReadOnly && t.Function.Name != EvidenceTool && t.Function.Name != PostTool {
 			ro = append(ro, t.Function.Name)
 		}
 	}
@@ -203,7 +205,7 @@ func (cfg Config) toolNote(r Role) string {
 		// Measured live: critics re-read every file the researchers had read.
 		note += " The findings carry the tool results the researchers read; call a tool only for what they lack."
 	}
-	return note + cfg.lookupNote(r)
+	return note + cfg.lookupNote(r) + cfg.postNote(r)
 }
 
 // replyText is a member's reply over its turns: its last text, or -- when
@@ -216,6 +218,9 @@ func replyText(turns []api.Message, last string) string {
 	}
 	var parts []string
 	for _, t := range turns {
+		if t.Role != "assistant" {
+			continue // a mate's notes (broadcast.go), not the member's words
+		}
 		if s := strings.TrimSpace(t.Content); s != "" {
 			parts = append(parts, s)
 		}
@@ -238,13 +243,17 @@ func (cfg Config) evidence(r Role, key string, turns []api.Message) string {
 			continue
 		}
 		for _, c := range m.ToolCalls {
-			ref := ForwardedID(key, c.ID)
-			res, ok := cfg.Results[ref]
+			res, ref, ok := cfg.result(key, c)
 			if ok2, _ := cfg.may(r, c); !ok || !ok2 || local(c) {
 				continue
 			}
 			if b.Len() == 0 {
 				b.WriteString("\n\nEvidence (the tools called and what they returned):")
+			}
+			if ref != ForwardedID(key, c.ID) {
+				// A shared read: the other member's evidence carries it.
+				fmt.Fprintf(&b, "\n- %s %s returned the same as %s.", c.Function.Name, c.Function.Arguments.String(), ref)
+				continue
 			}
 			if len(res) > inlineEvidence && cfg.canLookup() {
 				res = indexed(ref, res)
@@ -283,6 +292,11 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 	refusals, lookups := 0, 0
 	nudged := false
 	for {
+		if n := cfg.unread(req.Role, key); n != nil {
+			// Into the member's own turns, so its prefix stays and a resume
+			// reads them where they were.
+			turns = append(slices.Clone(turns), *n)
+		}
 		req.Messages = append(clone(own), cfg.transcript(req.Role, key, turns)...)
 		rep, err := tm.StreamTools(ctx, req, onToken)
 		if err != nil && fallsBack(ctx, req) {
@@ -312,11 +326,13 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 			return out, nil, nil
 		}
 		turns = append(slices.Clone(turns), api.Message{Role: "assistant", Content: rep.Content, ToolCalls: named(rep.Calls, len(turns))})
+		cfg.post(req.Role, key, turns[len(turns)-1].ToolCalls)
 		if len(cfg.forwarded(req.Role, key, turns)) > 0 {
 			return "", turns, nil
 		}
-		// A turn that only read evidence back is answered here, at once.
-		if slices.ContainsFunc(rep.Calls, local) && cfg.canLookup() {
+		// A turn that only read evidence back, or repeated reads the turn has
+		// made, is answered here, at once.
+		if (slices.ContainsFunc(rep.Calls, local) && (cfg.canLookup() || cfg.canPost(req.Role))) || slices.ContainsFunc(rep.Calls, cfg.cachedRead) {
 			if lookups++; lookups > maxLookups {
 				return replyText(turns, ""), nil, nil
 			}

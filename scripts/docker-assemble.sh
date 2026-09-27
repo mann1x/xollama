@@ -163,6 +163,7 @@ got=$(GOTOOLCHAIN=local go version "$rootfs/bin/xollama" 2>/dev/null | awk '{pri
 [ -z "$got" ] || [ "$got" = "$GO_TOOLCHAIN" ] || fail "built with $got, not $GO_TOOLCHAIN"
 
 cp "$repo/Dockerfile.xollama" "$out/Dockerfile"
+cp "$repo/scripts/cosmo-dlopen-helper.c" "$out/cosmo-dlopen-helper.c"
 cat > "$out/.dockerignore" <<'EOF'
 .assets
 EOF

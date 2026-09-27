@@ -179,17 +179,22 @@ errgroup runner: route-only decision, researchers and critics in parallel,
 synthesizer) and `server/council.go` (members as in-process chat turns, each
 on its own engine session; on opencoti with PolyKV, `server/council_polykv.go`
 builds the turn's pool tree — the planner attached to the conversation's root
-pool, kept between turns — and `llm/engine_council.go` is its client; a role with
+pool, kept between turns — and `llm/engine_council.go` is its client;
+`llm/engine_council_slots.go` launches a council with a slot per parallel member; a role with
 `council.<role>.host` is sent to that server by `server/council_remote.go`, only
 when `XOLLAMA_COUNCIL_HOSTS` allows it; `server/council_compaction.go` folds the
 conversation before a turn and after its answer, Cerebriline's agentic compaction
 ported, prompts in `server/council_compaction_prompts.go`; `server/council_state.go`
-seals the `council_chat_state` resume point a client sends back), reached from one
+seals the `council_chat_state` resume point a client sends back; `server/council_continue.go`
+keeps a turn's deliberation so the next message can `continue` the same council,
+`internal/council/continue.go`), reached from one
 `councilServes` line in
 `ChatHandler` (`council` hook); a `format` bypasses it, and tools reach it only
 with `council_chat_state` (`internal/council/tools.go`: read-only tools for
 researchers and critics, writes by the synthesizer; `internal/council/evidence.go`:
 the server-answered `council_evidence` tool that reads a large result back by ref;
+`internal/council/reads.go`: shared reads, a repeated read-only call answered in place;
+`internal/council/broadcast.go`: the opt-in `council_post` notes between same-role members;
 `server/council_tools.go`), and a one-shot
 `xollama run <council> "…"` goes through chat (`cmd/council_run.go`) — see
 `.claude/rules/model-config.md` and `.claude/rules/council.md`.
@@ -200,7 +205,8 @@ and unpinned models are kept off an integrated Vulkan GPU when a discrete GPU
 exists. `/api/xollama/devices` (`api/xollama_devices.go`, `XollamaDevicesHandler`
 in `server/identity.go`) feeds the `tweak` device menu (`cmd/tweak/devices.go`)
 with the server's view. Where opencoti serves a backend, discovery takes the
-engine's own device list (`discover/opencoti.go`, `llm/engine/enumerate.go`),
+engine's own device list (`discover/opencoti.go`, `llm/engine/enumerate.go`;
+CUDA is also asked of the CUDA 12 engine, `discover/opencoti_cuda12.go`),
 and refreshes free memory from it before a load (`discover/refresh_opencoti.go`) —
 see `docs/features/device-selection.md`.
 **Desktop UI**: `app/ui/app/src/routes/` (React 19 + TanStack Router + Vite),
@@ -229,7 +235,10 @@ on `ubuntu-latest` from pinned artifacts — nothing native is compiled:
 tarballs (`llama/runtime-pin-linux.txt`, sha256 + a README-excluded inputs
 digest), the engine (`llm/engine/pin.txt`, plus a second copy beside its CUDA 12
 payload in `lib/ollama/engines/cuda_v12`) and a Go-only `xollama`, and
-`Dockerfile.xollama` sets `XOLLAMA_HOST=0.0.0.0:22434` (upstream's `Dockerfile`
+`Dockerfile.xollama` sets `XOLLAMA_HOST=0.0.0.0:22434` and prebuilds the engine's
+dlopen helper from `scripts/cosmo-dlopen-helper.c` (cosmo's own compile command,
+both files given an old mtime), since the runtime image has
+no compiler (upstream's `Dockerfile`
 now sets it too and `EXPOSE 22434`, `docker-release` hook, but the published
 image still comes from `Dockerfile.xollama`). Publishes to Docker Hub and GHCR,
 amd64 only; see `docs/features/docker-release.md`. The channel is the GitHub
@@ -259,6 +268,8 @@ run as the `ollama` user (`.claude/rules/solidpc-testing.md`).
 - Commit subjects follow `CONTRIBUTING.md`: `<package>: <short description>`,
   lowercase, a continuation of "This changes Ollama to…".
 - Docs are Mintlify `.mdx` under `docs/`, indexed by `docs/docs.json`.
+  `docs/README.md` and `docs/docker.mdx` stay upstream's except for one
+  xollama block at the top (`docs-entry` hook).
 
 ## Before Committing
 

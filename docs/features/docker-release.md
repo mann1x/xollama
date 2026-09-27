@@ -42,6 +42,20 @@ the same change that moves those paths.
 A new engine reaches the image through a pin move, not a CI change. The same
 goes for a new runtime or new GPU backends.
 
+**The engine's dlopen helper.** The engine is a Cosmopolitan APE; on Linux it
+loads `ggml-cuda.so` through a small helper linked against the system libc,
+which it compiles with the system `cc` into `$HOME/.cosmo` the first time. The
+runtime image has no compiler, so every GPU load in the first images failed
+with `dlopen() isn't supported on this platform` and then `support for --gpu
+nvidia was explicitly requested, but it wasn't available` (found by the V100
+tester, reproduced on solidPC's 3090, 2026-09-27). `Dockerfile.xollama` now
+builds the helper from `scripts/cosmo-dlopen-helper.c` (the source the engine
+writes) in a gcc stage on the same base, and places it in `/root/.cosmo` and
+in the engine's private home `/usr/lib/ollama/engines/payload/.cosmo`.
+Verified on solidPC: discovery lists the 3090 through the engine and a load
+runs 100% on GPU. A bare-metal Linux host without a C compiler has the same
+problem; that is open with opencoti.
+
 ## The listen address
 
 xollama binds `XOLLAMA_HOST` only and never reads `OLLAMA_HOST`

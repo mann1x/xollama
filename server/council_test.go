@@ -134,7 +134,13 @@ func (e *councilEngine) complete(ctx context.Context, r llm.CompletionRequest, f
 		reply = e.route
 	}
 	if name := e.tools[role]; name != "" && !strings.Contains(r.Prompt[at:], "<tool>") {
-		reply = fmt.Sprintf(`{"name": %q, "arguments": {"path": "notes.txt"}}`, name)
+		// Each brief reads its own file: the same read twice would go out
+		// once (internal/council SharedReads).
+		path := "notes.txt"
+		if strings.Contains(r.Prompt[at:], "history") {
+			path = "history.txt"
+		}
+		reply = fmt.Sprintf(`{"name": %q, "arguments": {"path": %q}}`, name, path)
 	}
 	if role == "compaction-writer" && e.gate != nil {
 		select {
@@ -270,7 +276,13 @@ func councilServerTemplate(t *testing.T, mock llm.LlamaServer, council *xollama.
 	return s
 }
 
-func councilOn() *xollama.Council { yes := true; return &xollama.Council{Enabled: &yes} }
+// councilOn is the council these tests exercise: two researchers and two
+// critics, so every member's tag, index and session is covered. The default
+// is one critic (internal/council DefaultCritics).
+func councilOn() *xollama.Council {
+	yes := true
+	return &xollama.Council{Enabled: &yes, Critic: &xollama.CouncilRole{Count: 2}}
+}
 
 func chatChunks(t *testing.T, s *Server, req api.ChatRequest) []api.ChatResponse {
 	t.Helper()

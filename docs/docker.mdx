@@ -1,3 +1,22 @@
+{/* xollama-hook: docs-entry -- the xollama image first; upstream's page follows unchanged. */}
+<Note>
+  This page is upstream Ollama's, for the `ollama/ollama` image on port 11434.
+  **xollama** publishes its own image, `mannixita/xollama` (also
+  `ghcr.io/mann1x/xollama`), which listens on **22434**:
+
+  ```shell
+  # NVIDIA GPU (needs the NVIDIA Container Toolkit, below)
+  docker run -d --gpus=all -v xollama:/root/.ollama -p 22434:22434 --name xollama mannixita/xollama
+  # CPU only
+  docker run -d -v xollama:/root/.ollama -p 22434:22434 --name xollama mannixita/xollama
+  ```
+
+  Until the first full release, use `mannixita/xollama:dev`. Tags, volumes,
+  environment variables, slots and KV cache: [Running xollama in
+  Docker](/xollama/docker). The NVIDIA Container Toolkit steps below apply to
+  both images.
+</Note>
+
 ## CPU only
 
 ```shell

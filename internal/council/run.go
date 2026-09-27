@@ -4,6 +4,7 @@ import (
 	"context"
 	"maps"
 	"sync"
+	"sync/atomic"
 
 	"golang.org/x/sync/errgroup"
 
@@ -20,6 +21,10 @@ type Progress struct {
 	Plan      *Plan
 	Rounds    []RoundProgress
 	Suspended map[string][]api.Message
+	// Notes is the turn's broadcast board and Seen how far each member has
+	// read it (broadcast.go).
+	Notes []Note
+	Seen  map[string]int
 }
 
 // RoundProgress is one round's research and review.
@@ -29,7 +34,10 @@ type RoundProgress struct {
 }
 
 func (p Progress) clone() Progress {
-	out := Progress{Route: p.Route}
+	out := Progress{Route: p.Route, Notes: append([]Note(nil), p.Notes...)}
+	if len(p.Seen) > 0 {
+		out.Seen = maps.Clone(p.Seen)
+	}
 	if p.Plan != nil {
 		pl := Plan{Plan: p.Plan.Plan, Briefs: append([]string(nil), p.Plan.Briefs...)}
 		out.Plan = &pl
@@ -85,6 +93,15 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 			checkpoint(p.clone())
 		}
 	}
+	if cfg.Broadcast {
+		// Kept in the progress without a checkpoint of its own: the next
+		// member that settles carries it.
+		cfg.board = newBoard(p, func(notes []Note, seen map[string]int) {
+			mu.Lock()
+			p.Notes, p.Seen = notes, seen
+			mu.Unlock()
+		})
+	}
 	// settle records one member's outcome: its reply, or its turns while it
 	// waits on the client.
 	settle := func(key string, turns []api.Message, done func()) {
@@ -127,6 +144,7 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 		if len(res.Calls) == 0 {
 			return res, false
 		}
+		res.Calls = once(cfg.Tools, res.Calls)
 		for i := range res.Calls {
 			res.Calls[i].Function.Index = i
 		}
@@ -152,7 +170,33 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 		if res, ok := suspended(Result{Route: route, Draws: d}, member{Planner, key}); ok {
 			return res, nil
 		}
-		return Result{Route: route, Answer: ans, Draws: d}, nil
+		// A direct answer keeps the council's last deliberation alive: a
+		// "thanks" between two pieces of feedback does not end the work.
+		return Result{Route: route, Answer: ans, Draws: d, Kept: cfg.Previous}, nil
+	}
+
+	if route == RouteContinue {
+		// The synthesizer goes on from the deliberation it answered from,
+		// taken into this turn's progress so it resumes from its own record.
+		if p.Plan == nil {
+			pl, last, ok := continuing(cfg.Previous)
+			if !ok {
+				return Result{Route: route, Draws: d}, errNothingToContinue
+			}
+			mark(func() { p.Plan, p.Rounds = &pl, []RoundProgress{last} })
+		}
+		last := p.Rounds[len(p.Rounds)-1]
+		cfg.continuing = true
+		key := MemberKey(Synthesizer, 0, 0)
+		ans, turns, err := synthesize(ctx, m, cfg, d, conv, *p.Plan, last.Findings, last.Critiques, emit, p.Suspended[key])
+		if err != nil {
+			return Result{Route: route, Draws: d}, err
+		}
+		answered(key, turns)
+		if res, ok := suspended(Result{Route: route, Draws: d}, member{Synthesizer, key}); ok {
+			return res, nil
+		}
+		return Result{Route: route, Answer: ans, Draws: d, Kept: Kept(p)}, nil
 	}
 
 	if p.Plan == nil {
@@ -201,7 +245,11 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 		critiques = append([]string(nil), p.Rounds[round].Critiques...)
 		froms = resumes()
 		step = nil
-		g, gctx = errgroup.WithContext(ctx)
+		// The first critic to confirm where the error is stops the others:
+		// the synthesizer starts on it rather than wait for them.
+		cctx, stop := context.WithCancel(ctx)
+		var confirm atomic.Bool
+		g, gctx = errgroup.WithContext(cctx)
 		for i := range cfg.Critics {
 			if critiques[i] != "" {
 				continue
@@ -211,14 +259,32 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 			from := froms[key]
 			g.Go(func() error {
 				out, turns, err := critique(gctx, m, cfg, d, conv, plan, findings, i, round, emit, from)
+				if err != nil && confirm.Load() && ctx.Err() == nil {
+					out, turns, err = stoppedCritique, nil, nil
+				}
 				if err == nil {
 					settle(key, turns, func() { critiques[i], p.Rounds[round].Critiques[i] = out, out })
+					if _, ok := confirmed(out); ok && turns == nil {
+						confirm.Store(true)
+						stop()
+					}
 				}
 				return err
 			})
 		}
-		if err := g.Wait(); err != nil {
+		err := g.Wait()
+		stop()
+		if err != nil {
 			return Result{Route: route, Draws: d}, err
+		}
+		if confirm.Load() {
+			// A critic that was waiting on the client is not asked again.
+			for i := range cfg.Critics {
+				key := MemberKey(Critic, i, round)
+				if _, waiting := p.Suspended[key]; waiting {
+					settle(key, nil, func() { critiques[i], p.Rounds[round].Critiques[i] = stoppedCritique, stoppedCritique })
+				}
+			}
 		}
 		if res, ok := suspended(Result{Route: route, Draws: d}, step...); ok {
 			return res, nil
@@ -236,7 +302,7 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 	if res, ok := suspended(Result{Route: route, Rounds: round + 1, Draws: d}, member{Synthesizer, key}); ok {
 		return res, nil
 	}
-	return Result{Route: route, Answer: ans, Rounds: round + 1, Draws: d}, nil
+	return Result{Route: route, Answer: ans, Rounds: round + 1, Draws: d, Kept: Kept(p)}, nil
 }
 
 // member names one member of a step: its role, for the tool policy, and its key.

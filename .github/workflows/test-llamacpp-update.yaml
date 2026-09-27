@@ -18,6 +18,10 @@ env:
 
 jobs:
   setup-environment:
+    # xollama-hook: docker-release -- upstream's llama.cpp validation build.
+    # The fork takes llama.cpp from mann1x/ollama's release artifacts, and these
+    # jobs target runners it does not have; every other job needs this one.
+    if: github.repository == 'ollama/ollama'
     runs-on: ubuntu-latest
     outputs:
       GOFLAGS: ${{ steps.goflags.outputs.GOFLAGS }}

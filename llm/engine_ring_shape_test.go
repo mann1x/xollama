@@ -4,8 +4,10 @@ import "testing"
 
 // TestRingShapeMatchesWhatTheEngineAccepts encodes a probe of the pinned
 // artifact, not a reading of the vendor's flag table. Every row here was first
-// run against opencoti-0.10.5-c7-2609200554001, and re-run unchanged against
-// opencoti-0.10.5-c7-2609230556001 on 2026-09-23 when the pin moved there, as
+// run against opencoti-0.10.5-c7-2609200554001, re-run unchanged against
+// opencoti-0.10.5-c7-2609230556001 on 2026-09-23, and re-run against
+// opencoti-0.10.5-c7-2609272353001 (b177) on 2026-09-28 when the pin moved
+// there (one row changed, marked below), as
 //
 //	<artifact> --server <flags> --model /nonexistent.gguf
 //
@@ -36,6 +38,10 @@ func TestRingShapeMatchesWhatTheEngineAccepts(t *testing.T) {
 		{"nor can a plain quantised base", kvCacheTypes{K: "q8_0", V: "q8_0", KSWA: "q4_0", VSWA: "q4_0"}, false},
 		{"ring halves may not be mixed KVarN and plain", kvCacheTypes{K: "kvarn3", V: "kvarn3", KSWA: "q4_0", VSWA: "kvarn3"}, false},
 		{"half a ring is not a ring", kvCacheTypes{K: "kvarn3", V: "kvarn3", KSWA: "q4_0"}, false},
+		// On 2609272353001 (b177) the engine ACCEPTS this one: it promotes the
+		// plain half to the KVarN width and logs a warning (opencoti #507, rule
+		// 3). xollama refuses it anyway, on purpose: the cache served is not
+		// the one the setting names.
 		{"one KVarN half of the base is not enough", kvCacheTypes{K: "kvarn3", V: "f16", KSWA: "q4_0", VSWA: "q4_0"}, false},
 	}
 	for _, tt := range cases {

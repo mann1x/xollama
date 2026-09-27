@@ -1685,6 +1685,62 @@ unpooled members, 0 admission waits.
   engine pool seats for the client (none existed unless xollama pooled or a
   council loaded); a placed native chat feeds no automatic capture.
 
+## Phase 10 — one council across turns, working in parallel (ab-3, 2026-09-27)
+
+ab-3 (harness v2, simple Manic Miner fix, `omni-council-idle`, b145) was the
+first valid council/plain pair: both fixed it, council 1058 s / 33 trips vs
+plain 170 s / 26. Tool mechanics were clean (0 errors). What cost the time:
+
+- **Nothing ran in parallel.** The model launched `-c 16384 -np 1
+  --max-parallel 4`. Workers are charged to the owner's window and were
+  admitted (`base need 0`), but waited for a SLOT: `no slot is available,
+  defer task` until researcher 1 released slot 0 (opencoti #501). The elastic
+  controller never grew live 1→2: it needs 3 s of saturation and 512 MiB free
+  VRAM, which a fitted load rarely has.
+- **The council ran three times.** Twice the synthesizer ended the turn
+  without the change the task needed; the harness (which nudges only when a
+  turn made no tool call and the game still fails) sent "still not working,
+  continue", and each such user message started a new deliberation from
+  scratch: route, plan, researchers, critic.
+- One of two critics did the work; identical reads by two members in one
+  step; a located error (R17) edited only at R21.
+
+The owner's rulings (2026-09-27): one critic by default; parallel members
+really parallel; share a read only with a member that asks for it; the
+synthesizer starts as soon as a critic confirms a located error; a broadcast
+channel between parallel members, to be measured and dropped if it does not
+pay; and **the council behind a council chat stays alive**: the next user
+message is feedback to the same council (HITL), and the planner decides
+whether the work is done, goes on from where it is, or needs the council
+again. A council is a chat model for any task, not a coding agent: the
+request's system and user messages drive it.
+
+**Built (2026-09-27):**
+- 10.1 A slot per parallel member: `-np` = the widest local step, `-c`
+  unchanged, `--kv-unified` forced (`llm/engine_council_slots.go`).
+- 10.2 Default 2 researchers, 1 critic.
+- 10.3 Shared reads (`internal/council/reads.go`).
+- 10.4 `VERDICT: CONFIRMED path:line` from a critic.
+
+- 10.5 The council carried across turns (built 2026-09-27): the planner
+  routes a follow-up `direct` / `continue` / `council`; continue runs the
+  synthesizer on the kept plan and last round; kept per session and in the
+  sealed state (fields 6-8), bound to the conversation it answered.
+
+- 10.6 The broadcast channel (built 2026-09-27, behind `council.broadcast`,
+  default off): a server-answered `council_post` tool (read-only, so it never
+  suspends a turn) for members with a same-role mate; 200 chars, 4 notes per
+  member per turn; unread notes are inserted before each of a mate's model
+  calls; the board (`Progress.Notes`, `Progress.Seen`) is in the sealed
+  state (Progress fields 5-6). Risks named: chatter instead of work (capped),
+  agreeing before starting (the note says never wait), a note that is wrong
+  steering the mate (it is marked "for your information"), and the shared
+  prefix (every member carries the tool so the prefix stays one list).
+  To be A/B'd on and off in ab-4, and dropped if it does not pay.
+
+**Next:** 10.7 ab-4 on eleven2go (v0.34.4-xollama.1 + a dev build): simple, then
+medium and hard, 3 pairs each.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).
@@ -1772,3 +1828,8 @@ unpooled members, 0 admission waits.
   budget, not a level, because a level is a share of `num_predict`, and for a
   member that is its reply cap. Live, `medium` at 131k (32k tokens per
   member) let a researcher loop past 29k tokens. The member default is open.
+- 2026-09-27 — After ab-3: one critic by default; a council gets a slot per
+  parallel member; reads shared only with who asks; a critic's confirmed
+  error goes straight to the synthesizer; a broadcast channel is tried and
+  dropped if it does not pay; the council stays alive across turns and the
+  planner decides done / continue / again (the owner's calls).

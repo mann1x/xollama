@@ -2766,6 +2766,7 @@ func llamaServerConfigForModel(m *Model) llm.LlamaServerConfig {
 
 		// xollama-hook: council -- pool seats for the council's pool tree.
 		CouncilPools: councilPoolSeats(m),
+		CouncilSlots: councilSlots(m),
 	}
 }
 

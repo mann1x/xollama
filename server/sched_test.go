@@ -2376,17 +2376,18 @@ func TestSchedNeedsReloadOnXollamaConfig(t *testing.T) {
 
 	// A council's prompts and roles answer turns and never change how the
 	// model loads, so an edited prompt must not reload. Only what the load
-	// needs counts: a council on PolyKV reserves pool seats for its tree, so
-	// it does differ from a plain load, and a council with PolyKV off does not.
-	// (Two tags over one blob still swap on upstream's ManifestDigest; these
-	// runners share one.)
+	// needs counts: a council starts with a slot per parallel member, and on
+	// PolyKV reserves pool seats for its tree, so it differs from a plain
+	// load with PolyKV off too. (Two tags over one blob still swap on
+	// upstream's ManifestDigest; these runners share one.)
 	yes := true
 	off := &xollama.Config{Version: 4, Council: &xollama.Council{Enabled: &yes, PolyKV: xollama.CouncilPolyKVOff}}
 	councilKV := &xollama.Config{Version: 4, KV: kvA.KV, Council: &xollama.Council{Enabled: &yes, Charter: "x"}}
 
-	t.Run("a council without PolyKV loads like the plain model", func(t *testing.T) {
-		require.False(t, newRunner(nil).needsReload(ctx, newReq(off)))
-		require.False(t, newRunner(off).needsReload(ctx, newReq(nil)))
+	t.Run("a council without PolyKV still needs its slots", func(t *testing.T) {
+		require.True(t, newRunner(nil).needsReload(ctx, newReq(off)))
+		require.True(t, newRunner(off).needsReload(ctx, newReq(nil)))
+		require.False(t, newRunner(off).needsReload(ctx, newReq(off)))
 	})
 
 	t.Run("a council on PolyKV reserves its pool seats", func(t *testing.T) {
