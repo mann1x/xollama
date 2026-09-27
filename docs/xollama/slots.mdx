@@ -20,23 +20,79 @@ split, slots are allocated but parked, and the engine admits another only while
 there is still room and speed for it. Nothing is reserved for a slot nobody is
 using.
 
-It is **on by default** and you do not have to do anything. One conversation can
-use the whole context; several short ones run side by side; a fourth arriving
-when there is no room waits rather than failing.
+It is **on by default** and you do not have to do anything. What you get from
+it depends on how the context is shared, which the next section explains: with
+the defaults, conversations take turns exactly as they do on Ollama; once you
+give the model a larger context, you decide how many conversations share it and
+how much each one gets.
+
+## How the context is shared
+
+**The pool is the model's context × the slots at load.** The context is the
+model's `num_ctx`: the Modelfile's `PARAMETER num_ctx`, `OLLAMA_CONTEXT_LENGTH`,
+or, when neither is set, Ollama's automatic default (256k with 48 GB of VRAM or
+more, 32k with 24 GB, otherwise 4k, never above what the model was trained
+for). Slots at load are `XOLLAMA_PARALLEL`, one unless you set it. So a model
+with no context of its own, on a 24 GB card, loads with a 32k pool.
+
+**A request takes a window out of the pool.** How big depends on whether it
+asks:
+
+- A request that states no window is guaranteed the **whole pool**, the context
+  Ollama would have given it. With the default 32k × 1 pool that means one
+  conversation at a time: a second one waits until the first has finished.
+  This is Ollama's own default behaviour (one request at a time per model),
+  kept on purpose.
+- A request that states a window gets **that window**, and up to the slot
+  ceiling (`XOLLAMA_MAX_PARALLEL`, 4 by default) of those run side by side as
+  long as the pool has room. A window is asked for with `placement.num_ctx` on
+  `/api/chat`, see [the session's window](/xollama/sessions#the-sessions-window);
+  the response's `X-Context-Window` header says what was granted.
+
+**So you size the pool, and the clients divide it.** If your VRAM holds a 256k
+context for a model, give it `num_ctx 262144` and it can serve:
+
+| Windows asked for | Conversations at once |
+|---|---|
+| none (or 256k) | 1 × 256k |
+| 128k each | 2 × 128k |
+| 128k and 64k + 64k | 1 × 128k + 2 × 64k |
+| 64k each | 4 × 64k |
+
+all from the same load, without reloading the model between them. Ollama fixes
+that split at load (`OLLAMA_NUM_PARALLEL` copies of `num_ctx`), so the same
+memory there is either one long conversation or several short ones, never both.
 
 <Note>
-  The total number of cache cells does not change. Ollama sizes the cache as
-  context × parallel, and the engine allocates that same total whether the cells
-  are one shared pool or a fixed split. What changes is whether one conversation
-  may use all of them, or only its own fixed share.
+  The OpenAI (`/v1/chat/completions`, `/v1/completions`) and Anthropic
+  (`/v1/messages`) routes carry no `placement`, so their requests state no
+  window and take the whole pool: they run one after another unless the pool
+  is sized with `XOLLAMA_PARALLEL` (below). Do not change `options.num_ctx` per
+  request to get a window: it sizes the load, so a different value reloads the
+  model.
 </Note>
+
+The other way to run conversations side by side is `XOLLAMA_PARALLEL`: with
+`XOLLAMA_PARALLEL=4` the pool is four contexts, allocated at load, and four
+requests that state no window each get a whole context. That is Ollama's
+`OLLAMA_NUM_PARALLEL=4`, with its memory cost.
+
+<Info>
+  **Planned: a pool that grows on demand.** The pool's memory is allocated at
+  load today, for the whole `num_ctx` × slots. The next engine release is
+  planned to start from one context and grow toward context × ceiling as
+  conversations arrive, giving the memory back when they end, so concurrent
+  requests will not need a larger pool set in advance. This page will say when
+  it ships.
+</Info>
 
 ## What the ceiling costs
 
-Almost nothing, on most models — and that is the point. A shared pool of four
-slots holds the same cells as the single slot it replaced, so raising the
-ceiling from one to four buys you three more concurrent conversations without
-buying more memory.
+Almost nothing, on most models — and that is the point. The ceiling does not
+size the pool: the pool is the context × the slots at load, whatever the
+ceiling. Raising the ceiling from one to four lets four conversations share the
+pool you already paid for, each in the window it asked for, without buying
+more memory.
 
 "Almost" is doing some work in that sentence, and it is worth knowing where.
 
