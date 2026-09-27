@@ -101,6 +101,9 @@ func (p Pin) HasFeature(name string) bool {
 	return slices.Contains(p.Features, name)
 }
 
+// machineKeys are the directives a "#!" line may carry (see ParsePin).
+var machineKeys = []string{"cuda-sass"}
+
 // DefaultPin is the pin compiled into this binary.
 func DefaultPin() (Pin, error) { return ParsePin(pinText) }
 
@@ -109,6 +112,16 @@ func ParsePin(text string) (Pin, error) {
 	var p Pin
 	for n, raw := range strings.Split(text, "\n") {
 		line := raw
+		// "#! <key> <values>" is a machine-readable line inside a comment:
+		// opencoti's own pin parsers skip every '#' line and refuse any bare
+		// directive but repo/rev/tag and asset rows, so facts they add for
+		// us ride there (mail #449). Only keys this parser knows are read;
+		// an unknown one is a comment, so a new key cannot break a build.
+		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), "#!"); ok {
+			if f := strings.Fields(rest); len(f) > 0 && slices.Contains(machineKeys, f[0]) {
+				line = rest
+			}
+		}
 		if i := strings.IndexByte(line, '#'); i >= 0 {
 			line = line[:i]
 		}

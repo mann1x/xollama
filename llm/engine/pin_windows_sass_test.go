@@ -42,6 +42,10 @@ func TestTheCommittedPinServesWindowsCUDA(t *testing.T) {
 	if reason := pinUncoveredIn(p, win, BackendVulkan); reason == "" {
 		t.Error("windows Vulkan is routed to a pin that carries no Vulkan payload")
 	}
+	// The "#! cuda-sass" line is what keeps 8.0/9.0 cards off these bytes.
+	if p.CoversCUDA(8, 0) || !p.CoversCUDA(8, 6) {
+		t.Errorf("the committed pin's cuda-sass is not in force: %v", p.CUDASASS)
+	}
 }
 
 func TestCoversCUDAFollowsSASSCompatibility(t *testing.T) {
@@ -76,6 +80,15 @@ func TestCUDASASSParses(t *testing.T) {
 	}
 	if len(p.CUDASASS) != 2 || p.CUDASASS[0] != 86 || p.CUDASASS[1] != 120 {
 		t.Errorf("CUDASASS = %v", p.CUDASASS)
+	}
+	// opencoti publishes it as a "#!" line (mail #449); an unknown "#!" key
+	// is a comment, and a plain comment never parses as a directive.
+	p, err = ParsePin(base + "#! cuda-sass 86 120\n#! cuda-ptx 90\n# cuda-sass 75\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.CUDASASS) != 2 || p.CUDASASS[0] != 86 {
+		t.Errorf("#! form: CUDASASS = %v", p.CUDASASS)
 	}
 	for _, bad := range []string{"cuda-sass\n", "cuda-sass sm_86\n", "cuda-sass 8\n"} {
 		if _, err := ParsePin(base + bad); err == nil {

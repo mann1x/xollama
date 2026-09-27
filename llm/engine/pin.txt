@@ -35,6 +35,9 @@
 #     channel release | dev    which line this pin follows; required, because a
 #                              pin that forgot to say would read as a release
 #     feature <name>           zero or more; a capability this artifact HAS
+#     cuda-sass <cc>...        at most one line, usually written "#! cuda-sass";
+#                              the SASS targets the CUDA payloads carry, as
+#                              major*10+minor (86 120). Absent: no narrowing.
 #     accel   <arch> <backend>  zero or more; a backend this artifact can
 #                               actually accelerate on that arch. Backend is
 #                               spelled as ml.DeviceID.Library does it: CUDA,
@@ -273,7 +276,10 @@ accel    x86_64  CUDA
 
 # The compute capabilities the CUDA payloads carry SASS for (BUILD_INFO: "sm_86
 # + sm_120f ONLY"): 8.6-8.9 and 12.x. Anything else routes to llama.cpp.
-cuda-sass  86 120
+# Written as a "#!" line, the form opencoti publishes it in from the next
+# snapshot on (mail #449): their own pin parsers skip '#' lines and refuse a
+# bare directive, so this row can be copied verbatim either way.
+#! cuda-sass 86 120
 
 # One APE serves every host; the arch label selects who may package it. There
 # is no win-x86_64-gpu bin on this channel: Windows packages the bare APE and

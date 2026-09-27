@@ -37,6 +37,9 @@ paths:
   major at that minor or later; `deviceUnsupported` in `llm/engine/policy.go`
   refuses an uncovered device by name so it goes to llama.cpp rather than the
   CPU. No row means no narrowing. Guard: `llm/engine/pin_windows_sass_test.go`.
+  It is written `#! cuda-sass 86 120`: opencoti's own pin parsers skip `#`
+  lines and refuse a bare directive, so `ParsePin` reads a `#!` line only for
+  a key in `machineKeys`; any other `#!` key stays a comment.
 - Windows: `Pin.ArchFor` (used by `pinUncoveredIn`) falls back to the bare
   `bin win-x86_64` (+ `dso win-x86_64`) when no `win-x86_64-gpu` bin exists; the
   `-gpu` row wins when both do. `cmake/opencoti-engine.cmake` makes the same
