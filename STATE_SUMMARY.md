@@ -12,7 +12,8 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >   - Negotiating asks got fast 429s.
 > - Their ask 2 is done: a plain `/api/chat` with `placement.pool_id >= 0` now negotiates as `placement.num_ctx` does. The engine's 429 comes through at once, including the "session allocation full" of a full owner, on which their worker grows its owner. `X-Context-Largest-Admissible` is sent only when the engine names one; `Retry-After` is always sent.
 > - Bug found on the way (bug-157): `ErrNeverFits` was never mapped in `Completion` or `Chat`. So the fail-fast of a01f3043 reached clients as "model runner has unexpectedly stopped". It is now a 400 naming the numbers, for requests that do not negotiate.
-> - Their ask 1: omnimerge-v4-mtp:IQ2_M goes to `session.client_pools: 3`. `model-settings.mdx` now says a lead needs 1 seat and a swarm tree 3.
+> - Their ask 1: omnimerge-v4-mtp:IQ2_M went to `session.client_pools: 3`, and the re-test (#433) attached all 3 swarm layers. A lead with a window beside the swarm then exhausted the reservoir (lead 2 + swarm 3 = 5 > 4), so the model is now at 5. `model-settings.mdx` says to count the client pools alive at once: 2 per windowed lead, 3 per swarm tree.
+> - The re-test also passed ask 2: a full owner's 429 arrived in 0.4 s with the engine's reason, and their resize-and-grow path works through `/api/engine`.
 > - Mutants: 5 more, all killed.
 
 > **2026-09-27 — The engine's granted window reaches the client (`X-Context-Window`), and a window a client negotiates is refused fast.**

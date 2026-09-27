@@ -112,6 +112,10 @@ after all back to one — see `.claude/rules/dynamic-slots.md`.
 `engine-introspect` hook) proxies the engine's own management routes — GET,
 POST and DELETE, by name from `engineRoutes`, inference excluded — see
 `.claude/rules/engine-introspect.md`.
+opencoti's granted window (`X-Context-Window`) reaches the client through the
+`llm.ContextWindow` collector (`llm/engine_context_window.go`) and
+`server/context_window.go`; stock llama.cpp stays header-free — see
+`.claude/rules/context-window.md`.
 **Prompting**: `model/renderers/` (per-model `Render`) ↔ `model/parsers/`
 (streaming output), plus `template/`, `thinking/`, `harmony/`.
 **API shims**: `api/types.go`, `openai/openai.go`, `anthropic/anthropic.go`,
