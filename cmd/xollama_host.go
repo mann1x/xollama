@@ -2,7 +2,10 @@ package cmd
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/ollama/ollama/api"
@@ -38,6 +41,7 @@ var resolveHostErr error
 // succeed against another one.
 func resolveServerHost(ctx context.Context) error {
 	resolveHostOnce.Do(func() {
+		defer warnKeyInClear()
 		if envconfig.XollamaOnly("OLLAMA_HOST") != "" {
 			return
 		}
@@ -54,4 +58,26 @@ func resolveServerHost(ctx context.Context) error {
 		}
 	})
 	return resolveHostErr
+}
+
+// warnKeyInClear says so once when this process is about to send its local
+// API key over plain HTTP to another machine: anyone on the path can read it
+// there (docs/xollama/api-key.mdx).
+func warnKeyInClear() {
+	if envconfig.ClientAPIKey() == "" {
+		return
+	}
+	if u := envconfig.ConnectableHost(); keyInClear(u.Scheme, u.Hostname()) {
+		fmt.Fprintf(os.Stderr, "warning: sending the xOllama API key over plain HTTP to %s; anyone on the network path can read it -- connect through TLS (https://)\n", u.Host)
+	}
+}
+
+// keyInClear reports whether a request to scheme://host crosses a network
+// unencrypted.
+func keyInClear(scheme, host string) bool {
+	if !strings.EqualFold(scheme, "http") || strings.EqualFold(host, "localhost") {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip == nil || !ip.IsLoopback()
 }

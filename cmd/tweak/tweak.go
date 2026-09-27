@@ -39,7 +39,7 @@ type Options struct {
 func Command(opts Options) *cobra.Command {
 	tweakCmd := &cobra.Command{
 		Use:   "tweak",
-		Short: "Adjust xollama's own settings on a model",
+		Short: "Adjust xollama's own settings on a model or the server",
 		Long: `Adjust xollama's own settings on a model.
 
 These are the settings the fork adds and upstream ollama has no field for -- the
@@ -55,7 +55,7 @@ sets and which settings need which others.`,
 			return cmd.Help()
 		},
 	}
-	tweakCmd.AddCommand(modelCommand(opts))
+	tweakCmd.AddCommand(modelCommand(opts), serverCommand(opts))
 	return tweakCmd
 }
 

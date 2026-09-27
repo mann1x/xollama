@@ -1972,6 +1972,7 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 		"User-Agent",
 		"Accept",
 		"X-Requested-With",
+		"x-api-key", // xollama-hook: api-key — Anthropic clients send the local key here
 
 		// OpenAI compatibility headers
 		"OpenAI-Beta",
@@ -1995,6 +1996,7 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.Use(
 		cors.New(corsConfig),
 		allowedHostsMiddleware(s.addr),
+		s.apiKeyMiddleware(), // xollama-hook: api-key — see docs/xollama/api-key.mdx
 	)
 
 	// General
@@ -2007,6 +2009,7 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.GET(api.XollamaIdentityPath, XollamaIdentityHandler)
 	// xollama-hook: device-select — see docs/features/device-selection.md
 	r.GET(api.XollamaDevicesPath, XollamaDevicesHandler)
+	r.POST(api.XollamaAPIKeyPath, s.APIKeyHandler) // xollama-hook: api-key
 	r.GET("/api/status", s.StatusHandler)
 	// Codex uses this existing Ollama listener for both native and Ollama
 	// models. The proxy selects the upstream per request.

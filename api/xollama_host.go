@@ -114,6 +114,12 @@ func probeHost(ctx context.Context, base *url.URL) (up, isXollama bool) {
 	}
 	defer resp.Body.Close()
 
+	// A server with a local API key answers 401 to anyone without it, and
+	// says in its challenge that it is this fork. The probe never sends the
+	// key: the candidate may be a stock ollama on the fallback port.
+	if resp.StatusCode == http.StatusUnauthorized && keyedChallenge(resp) {
+		return true, true
+	}
 	if resp.StatusCode == http.StatusOK {
 		var id XollamaIdentity
 		if err := json.NewDecoder(resp.Body).Decode(&id); err == nil && id.Xollama {
@@ -167,4 +173,9 @@ func joinHostPort(host, port string) string {
 		return "[" + host + "]:" + port
 	}
 	return host + ":" + port
+}
+
+// keyedChallenge reports whether a 401 is xollama's local API key challenge.
+func keyedChallenge(resp *http.Response) bool {
+	return strings.Contains(resp.Header.Get("WWW-Authenticate"), `realm="xollama"`)
 }

@@ -62,6 +62,11 @@ const (
 	// and critics, every one for the synthesizer -- and forwards its members'
 	// calls to the client under ids naming the member ("r2:call_x").
 	FeatureCouncilTools = "council_tools_v1"
+	// FeatureAPIKey: the server can require a local API key
+	// (Authorization: Bearer, or x-api-key) on every route; a keyed server
+	// answers 401 with WWW-Authenticate: Bearer realm="xollama" without it,
+	// this route included.
+	FeatureAPIKey = "api_key_v1"
 )
 
 // IsXollama reports whether the server at base is this fork, by the identity

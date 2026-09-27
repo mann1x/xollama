@@ -1,0 +1,158 @@
+---
+title: The local API key
+---
+
+Upstream Ollama accepts an OpenAI-style `api_key` and ignores it: clients have
+to send *something*, so the convention is `api_key="ollama"`, and anyone who
+can reach the port gets every endpoint. xollama can require a real key.
+
+It is a **local** key, for connections *to this server*. It has nothing to do
+with ollama.com: pulling, pushing and cloud models keep their ollama.com
+sign-in, and `OLLAMA_API_KEY` (an ollama.com key where tools use one) is never
+read for it.
+
+<Warning>
+**Over plain HTTP the key travels in clear text.** Anyone who can see the
+traffic between a client and xollama — the same Wi-Fi, a switch, a router on
+the way — can read it and then use your server as you. The key only controls
+*who* may connect; it does not encrypt anything.
+
+If a client connects from another machine, put xollama behind TLS: a reverse
+proxy with a certificate ([below](#tls)), or an SSH tunnel. On a single machine
+(`127.0.0.1`) plain HTTP is fine. The xollama CLI prints a warning whenever it
+is about to send the key over `http://` to another host.
+</Warning>
+
+## Setting the key
+
+On the machine that runs the server:
+
+```shell
+xollama tweak server --api-key=generate   # a 256-bit key, shown once
+xollama tweak server --api-key=set        # read a key of yours from stdin (16+ characters)
+xollama tweak server --api-key=remove     # no key: open again, as upstream
+xollama tweak server --api-key=status
+xollama tweak server                      # ask
+```
+
+The change applies within two seconds, without a restart. The server stores
+only the key's SHA-256, in `~/.ollama/xollama-server.json` (mode 0600) in the
+home of the account the server runs as. `generate` and `set` also save the key
+for *you*, in your own `~/.ollama/xollama-api-key` (mode 0600), which the CLI
+then sends. A key is never taken on the command line, so it stays out of shell
+history.
+
+Only a client on the server's own machine can change the key, never through a
+proxy, and while a key is set only a client that has it. Nobody on the network
+can set a key on an open server and lock you out.
+
+For a container, or anywhere the environment is the configuration, set
+**`XOLLAMA_API_KEY`** in the server's environment instead. It wins over the
+file, and `tweak server` will not change it.
+
+**Lost the key?** Delete `xollama-server.json` from the server account's
+`~/.ollama` (for a packaged Linux service that is
+`/usr/share/ollama/.ollama/`), as that account or root. The server is open
+again within two seconds; generate a new key.
+
+## Sending the key
+
+Every endpoint takes the key in either header:
+
+| Header                          | Used by                                   |
+| ------------------------------- | ----------------------------------------- |
+| `Authorization: Bearer <key>`   | OpenAI clients, curl, the xollama CLI     |
+| `x-api-key: <key>`              | Anthropic clients                         |
+
+Never in the URL: query strings end up in logs and histories, so a key there is
+refused.
+
+```shell
+curl https://xollama.example.lan/api/tags -H "Authorization: Bearer $KEY"
+```
+
+```python
+from openai import OpenAI
+client = OpenAI(base_url="https://xollama.example.lan/v1", api_key=KEY)
+
+from anthropic import Anthropic
+client = Anthropic(base_url="https://xollama.example.lan", api_key=KEY)
+```
+
+The **xollama CLI** sends `XOLLAMA_API_KEY` if it is set, and otherwise the key
+in `~/.ollama/xollama-api-key`. On another machine, set one of the two. The
+**desktop app** sends the key saved for its user. `OLLAMA_API_KEY` is not the
+local key.
+
+Without the key every route answers `401` with
+`WWW-Authenticate: Bearer realm="xollama"`. That includes `/`, `/api/version`
+and `/api/xollama`. The CLI reads that challenge to tell a keyed xollama from a
+stock Ollama, without ever sending the key to find out.
+
+## TLS
+
+The simplest is a reverse proxy on the server's machine, with xollama left on
+`127.0.0.1:22434`. Caddy fetches and renews the certificate itself:
+
+```text
+xollama.example.lan {
+    reverse_proxy 127.0.0.1:22434 {
+        flush_interval -1
+    }
+}
+```
+
+With nginx, turn off buffering so that tokens stream:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name xollama.example.lan;
+    ssl_certificate     /etc/ssl/xollama.crt;
+    ssl_certificate_key /etc/ssl/xollama.key;
+    location / {
+        proxy_pass http://127.0.0.1:22434;
+        proxy_buffering off;
+        proxy_read_timeout 1h;
+    }
+}
+```
+
+Without a certificate, an SSH tunnel does the same for one client:
+`ssh -N -L 22434:127.0.0.1:22434 server`, then connect to
+`http://127.0.0.1:22434`.
+
+## What it guards against
+
+- **Guessing.** `generate` makes a 256-bit key. The comparison runs in constant
+  time on digests. After 10 wrong keys in a minute a peer gets `429` until the
+  minute passes. The peer is the address of the TCP connection: an
+  `X-Forwarded-For` header cannot reset the count. A request with no key does
+  not count.
+- **Leaks from the server.** Only the digest is on disk. The key is removed
+  from the request before any handler runs, so it can never be forwarded (to
+  ollama.com by the cloud passthrough, for example), and `xollama serve`'s
+  settings dump shows `(set)`.
+- **Redirects.** A client holding the key follows a redirect only on the same
+  host and scheme. A server that answers with a redirect to somewhere else does
+  not receive the key a second time there.
+- **The wrong server.** Only the client for the configured server carries the
+  key. A client made for another host (a remote council member, a model on
+  another server) never does, and the host probe never sends it.
+- **Browsers.** DNS rebinding is still refused by the allowed-hosts check. A
+  page cannot read the key: it lives in files and environment variables, not in
+  cookies. CORS allows `x-api-key` for the origins you have allowed with
+  `OLLAMA_ORIGINS`, and no others.
+
+## Limits
+
+- **Behind a reverse proxy, every client is the proxy's address.** Ten wrong
+  keys from anyone then hold everyone for a minute. Clients that use the right
+  key are unaffected unless they share that address with the guesser.
+- **The engine is not keyed.** Each loaded model's `llama-server` listens on a
+  random port on `127.0.0.1` only. That port is out of the network's reach but
+  not out of other local accounts' reach.
+- **Remote council members** (`council.<role>.host`) do not send a key yet. A
+  member on a keyed server answers `401`.
+- `tweak server` changes the key through the server. When the server is not
+  running, edit or delete the key file directly.

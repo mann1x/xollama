@@ -122,6 +122,13 @@ set is `api/xollama_host.go` (`ResolveHost`), run once from `cmd/xollama_host.go
 it tells the fork apart via `/api/xollama` (`api/xollama_identity.go`,
 `server/identity.go`), then the fork's name in `/api/version`, and refuses a
 stock ollama found on the 11434 fallback rather than driving it.
+**Local API key** (`api-key` hook, off unless a key is configured):
+`XOLLAMA_API_KEY` or the key file (`envconfig/xollama_apikey.go`) is checked by
+`apiKeyMiddleware` in `server/xollama_apikey.go`; the loopback-only admin route
+`/api/xollama/api-key` is `server/xollama_apikey_admin.go`; the CLI sends it via
+`api/xollama_apikey_client.go` and sets it with `xollama tweak server --api-key`
+(`cmd/tweak/server.go`); the desktop UI via `app/ui/apikey.go` — see
+`.claude/rules/api-key.md` and `docs/xollama/api-key.mdx`.
 **Discovery** `discover/` · **Transfers** `x/transfer/` · **GGUF** `fs/gguf/`,
 `fs/safetensors/` · **Types** `types/model/`.
 **CLI support packages**: Modelfile parsing in `parser/` (`parser.go`,

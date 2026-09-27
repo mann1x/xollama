@@ -5,6 +5,48 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — A local API key for incoming connections (`xollama tweak server --api-key`).**
+> - Upstream accepts `api_key="ollama"` and ignores it. xollama can now require
+>   a real key on every route, as `Authorization: Bearer` or `x-api-key`
+>   (`401` + `WWW-Authenticate: Bearer realm="xollama"` otherwise). It is a local
+>   key only: registry and cloud keep ollama.com signing, and `OLLAMA_API_KEY` is
+>   never read for it. Set with `xollama tweak server --api-key=generate|set|remove|status`
+>   (the key is never on the command line) or `XOLLAMA_API_KEY` on the server,
+>   which wins. The server stores only the SHA-256 (`~/.ollama/xollama-server.json`,
+>   0600). The client sends `XOLLAMA_API_KEY` or `~/.ollama/xollama-api-key`.
+> - Hardening:
+>   - constant-time digest compare;
+>   - 10 wrong keys per peer per minute → 429, keyed on the TCP peer (not
+>     `X-Forwarded-For`), and a missing key does not count;
+>   - the key is stripped before handlers, so the cloud passthrough cannot
+>     forward it;
+>   - the management route is loopback-only and refuses proxied requests;
+>   - `ClientFromEnvironment` alone carries the key, and never follows a
+>     cross-host redirect with it;
+>   - the host probe never sends it and recognises a keyed xollama by its
+>     challenge;
+>   - the CLI warns before sending it over plain HTTP to another host;
+>   - the server's self-calls use a per-process token;
+>   - the desktop proxy injects the user's key;
+>   - feature `api_key_v1`.
+> - Docs: `docs/xollama/api-key.mdx`, with a Warning that the key is clear text
+>   over HTTP and the connection must be TLS-encapsulated; Caddy, nginx and SSH
+>   tunnel recipes. Registry row `api-key`.
+> - Tests in five files, and 20 compiling mutants, all killed. Live on solidPC
+>   with a throwaway server on :22500 as `ollama`: open → generate → 401 without
+>   the key / 200 with it (Bearer, x-api-key, LAN) → CLI error naming
+>   `XOLLAMA_API_KEY` → plain-HTTP warning → remote and proxied admin 403 →
+>   429 after 10 wrong keys from the LAN while loopback kept 200 → remove →
+>   open. The key never appeared in the server log.
+> - Also today: eleven2go's xollama (0.34.2-xollama.1) is exposed on
+>   `192.168.178.161:22434`. It uses `XOLLAMA_HOST=0.0.0.0:22434` as a user
+>   variable, because that build predates the Expose fix, plus a firewall rule
+>   "xOllama 22434" (Private). The solidPC dev server is on `*:22434`. Both are
+>   reached from pandorum.
+> - Left: remote council members (`council.<role>.host`) send no key yet; the
+>   engine subprocess port is loopback-only and not keyed; mail Cerebriline the
+>   header contract.
+
 > **2026-09-27 — Plain models can host a client's own PolyKV pools (`session.client_pools`).**
 > - Cerebriline asked (mail #411) to drive PolyKV itself on non-council models.
 >   The engine had no seats for that: `--polykv-max-pools` defaults to 0, and

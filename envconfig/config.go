@@ -480,6 +480,8 @@ func AsMap() map[string]EnvVar {
 		"XOLLAMA_DCA_CHUNK_SIZE":      {"XOLLAMA_DCA_CHUNK_SIZE", DCAChunkSize(), "DCA chunk length in tokens (0 = the model's own pretrain window)"},
 		"XOLLAMA_POLYKV_MAX_POOLS":    {"XOLLAMA_POLYKV_MAX_POOLS", PolyKVMaxPools(), "Shared prefix pools a model may hold at once (0 = the model decides)"},
 		"XOLLAMA_POLYKV_CLIENT_POOLS": {"XOLLAMA_POLYKV_CLIENT_POOLS", PolyKVClientPools(), "Pool seats a model keeps for a client's own PolyKV pools (0 = none unless the model says)"},
+		// Masked: serve logs these values, and the key must never reach a log.
+		"XOLLAMA_API_KEY":             {"XOLLAMA_API_KEY", maskedKey(APIKeyEnv()), "Local API key: the server requires it on every endpoint; clients send it (see docs/xollama/api-key.mdx)"},
 		"XOLLAMA_SWA_SEQ_BUDGET":      {"XOLLAMA_SWA_SEQ_BUDGET", SWASeqBudget(), "Size a sliding-window model's short cache for this many sequences (0 = one per sequence)"},
 		"OLLAMA_DEBUG":                {"OLLAMA_DEBUG", LogLevel(), "Show additional debug information (e.g. XOLLAMA_DEBUG=1)"},
 		"OLLAMA_DEBUG_LOG_REQUESTS":   {"OLLAMA_DEBUG_LOG_REQUESTS", DebugLogRequests(), "Log inference request bodies and replay curl commands to a temp directory"},

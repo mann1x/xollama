@@ -183,6 +183,7 @@
               "/xollama/introspection",
               "/xollama/opencoti-tuning",
               "/xollama/default-port",
+              "/xollama/api-key",
               "/xollama/engine-args"
             ]
           }

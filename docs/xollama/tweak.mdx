@@ -338,3 +338,9 @@ The section appears only when the model states something, and lists only what
 it states. Settings are resolved at load time, so a change needs the model
 reloaded before it takes effect. [Seeing what the engine did](/xollama/introspection) shows what
 the running model was actually given.
+
+## The server's own settings
+
+`xollama tweak server` sets what belongs to the server rather than to a model.
+Today that is the [local API key](/xollama/api-key):
+`--api-key=generate|set|remove|status`, or no flag to be asked.
