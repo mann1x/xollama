@@ -115,12 +115,6 @@ func codexAppRegularProfileRoutingModels(configPath string) map[string]struct{} 
 // recorded as older than it, and would be skipped for the life of the session.
 // ext3 and several network filesystems are coarser still, at a full second.
 //
-// xollama measured the same gap independently before this branch existed
-// (start 14:42:19.515114114Z against an mtime of 14:42:19.514497780Z on a file
-// created after it) and carried its own constant for it; that fix was authored
-// here rather than on a branch, which is what R4 of docs/protocols/FORK-SYNC.md
-// forbids, so this one replaced it.
-//
 // Being generous here costs nothing: this check only avoids opening files that
 // are plainly older than the session. Which lines actually count is decided by
 // their own timestamps in codexAppLineIsUserRequest below, which is exact.
