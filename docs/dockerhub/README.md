@@ -185,7 +185,7 @@ working.
 | `OLLAMA_KV_CACHE_TYPE` | `f16` | Cache type for keys and values. |
 | `XOLLAMA_K_CACHE_TYPE` | as above | Keys only. |
 | `XOLLAMA_V_CACHE_TYPE` | as above | Values only. |
-| `XOLLAMA_K_CACHE_TYPE_SWA` / `XOLLAMA_V_CACHE_TYPE_SWA` | unset | A sliding-window model's short-window cache; set both. Needs an engine with a separate ring. |
+| `XOLLAMA_K_CACHE_TYPE_SWA` / `XOLLAMA_V_CACHE_TYPE_SWA` | unset | A sliding-window model's short-window cache (the ring). Set both; needs KVarN on both `K` and `V`. |
 
 **Concurrent requests**
 
@@ -297,6 +297,63 @@ docker run -d --name xollama --gpus all -p 22434:22434 \
   -e OLLAMA_KV_CACHE_TYPE=q8_0 \
   mannixita/xollama:latest
 ```
+
+### KV cache types
+
+Four settings: keys (`XOLLAMA_K_CACHE_TYPE`), values (`XOLLAMA_V_CACHE_TYPE`)
+and, for a sliding-window model such as Gemma-4, the two halves of its
+short-window ring (`XOLLAMA_K_CACHE_TYPE_SWA`, `XOLLAMA_V_CACHE_TYPE_SWA`).
+`OLLAMA_KV_CACHE_TYPE` sets keys and values together.
+
+**Presets** (keys / values):
+
+| Preset | Dense model | Sliding-window model |
+|---|---|---|
+| Quality | `q8_0` / `q8_0` (`f16` / `f16` if memory allows) | `q8_0` / `q8_0` |
+| Balanced | `q8_0` / `q4_0` | `kvarn4` / `kvarn4`, ring `q8_0` / `q8_0` |
+| Max context | `kvarn3` / `kvarn3` or `kvarn2` / `kvarn2` | `kvarn3` / `kvarn3`, ring `q4_0` / `q4_0` |
+
+On a **V100** start with `q8_0` / `q8_0`.
+
+**Values**
+
+| Type | Keys / values | Ring | Flash attention | Notes |
+|---|---|---|---|---|
+| `f16` `f32` `bf16` | yes | yes | not needed | `bf16` on Vulkan only as `bf16` / `bf16` |
+| `q8_0` `q5_1` `q5_0` `q4_1` `q4_0` | yes | yes | needed for values | |
+| `q6_0` | yes | yes | needed for values | some mixed pairs crash on CUDA, see below |
+| `iq4_nl` | yes | yes | needed for values | no GPU kernel as values; CPU only |
+| `kvarn2` `kvarn3` `kvarn4` `kvarn5` `kvarn6` `kvarn8` | yes | yes | forced on | the engine's compressed cache; there is no `kvarn7` |
+
+**Combinations**
+
+- Two plain types may differ (`q8_0` / `q4_0`); two `kvarn` widths may differ
+  (`kvarn4` / `kvarn3`).
+- Do **not** mix a `kvarn` width with a plain type: the engine silently
+  promotes the plain half to the same `kvarn` width.
+- A ring needs `kvarn` on **both** keys and values. Set both ring halves, both
+  `kvarn` or both plain. They may differ from each other (`q8_0` / `q4_0`).
+- Quantised values need flash attention: set `OLLAMA_FLASH_ATTENTION=1`.
+- On CUDA, `q6_0` mixed with another type crashes in `q4_0`/`q6_0`,
+  `q6_0`/`q8_0` and `q6_0`/`q4_1`. Use `q6_0` / `q6_0` or skip `q6_0`.
+- Put `kvarn` and `q6_0` in the `XOLLAMA_*` variables. Keep
+  `OLLAMA_KV_CACHE_TYPE` to `f16`, `q8_0` or `q4_0`: it is the fallback when
+  stock llama.cpp serves a device the engine does not cover.
+
+Example, balanced for a sliding-window model:
+
+```shell
+docker run -d --name xollama --gpus all -p 22434:22434 \
+  -v xollama:/root/.ollama \
+  -e OLLAMA_FLASH_ATTENTION=1 \
+  -e OLLAMA_KV_CACHE_TYPE=q8_0 \
+  -e XOLLAMA_K_CACHE_TYPE=kvarn4 -e XOLLAMA_V_CACHE_TYPE=kvarn4 \
+  -e XOLLAMA_K_CACHE_TYPE_SWA=q8_0 -e XOLLAMA_V_CACHE_TYPE_SWA=q8_0 \
+  mannixita/xollama:dev
+```
+
+All the rules:
+[KV cache types — values and combinations](https://github.com/mann1x/xollama/blob/main/docs/xollama/kv-cache.mdx#values-and-the-combinations-that-work).
 
 The environment sets server-wide defaults. A model can carry its own KV cache
 types, slots, engine and device pin, which win over the environment, set with

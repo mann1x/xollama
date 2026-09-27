@@ -319,13 +319,23 @@ a volume to survive the container. The variable, when set, wins over it.
 | `OLLAMA_KV_CACHE_TYPE` | unset: `f16` | Cache type for keys and values together. |
 | `XOLLAMA_K_CACHE_TYPE` | the type above | Cache type for keys only. |
 | `XOLLAMA_V_CACHE_TYPE` | the type above | Cache type for values only. |
-| `XOLLAMA_K_CACHE_TYPE_SWA` | unset | Keys in a sliding-window model's short-window cache. Set with the next one; needs an engine with a separate ring. |
+| `XOLLAMA_K_CACHE_TYPE_SWA` | unset | Keys in a sliding-window model's short-window cache (the ring). Set with the next one; needs KVarN on both `K` and `V`. |
 | `XOLLAMA_V_CACHE_TYPE_SWA` | unset | Values in the short-window cache. |
 
-A model's own `kv` setting wins over these. Stock `llama.cpp` accepts `f32`,
-`f16`, `bf16`, `q8_0`, `q5_1`, `q5_0`, `q4_1`, `q4_0` and `iq4_nl`; opencoti
-adds its own compressed types. Quantised types need flash attention. See
-[KV cache types](/xollama/kv-cache).
+A model's own `kv` setting wins over these. Quick picks, keys / values:
+
+| Preset | Dense model | Sliding-window model |
+|---|---|---|
+| Quality | `q8_0` / `q8_0` | `q8_0` / `q8_0` |
+| Balanced | `q8_0` / `q4_0` | `kvarn4` / `kvarn4`, ring `q8_0` / `q8_0` |
+| Max context | `kvarn3` / `kvarn3` | `kvarn3` / `kvarn3`, ring `q4_0` / `q4_0` |
+
+Set `OLLAMA_FLASH_ATTENTION=1` with any quantised values. Put `kvarn*` in the
+`XOLLAMA_*` variables and keep `OLLAMA_KV_CACHE_TYPE` to `f16`, `q8_0` or
+`q4_0`. Do not mix a `kvarn` width with a plain type. On a V100 start with
+`q8_0` / `q8_0`. Every accepted value, the mixing and ring rules, and the
+`q6_0` pairs that crash on CUDA are in
+[Values and the combinations that work](/xollama/kv-cache#values-and-the-combinations-that-work).
 
 ### Concurrent requests
 

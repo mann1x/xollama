@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — KV cache values and combinations documented, from opencoti's matrix (#507).**
+> - `docs/xollama/kv-cache.mdx` "Values and the combinations that work": presets (quality / balanced / max context, dense vs sliding-window), every accepted type with its flash-attention and backend limits, the mixing rules (plain+plain and KVarN+KVarN may differ; KVarN+plain is silently promoted, so not offered), the ring rules, and the CUDA `q6_0` mixed-pair crash (opencoti bug-3705, fix not pinned). The stale "ring not in this build" Warning is gone: the pin carries `feature swa-cache-types`.
+> - `docs/xollama/docker.mdx` and the Docker Hub page carry the presets and link the section; the Hub page is published.
+> - Left: `CacheShapeError` does not yet refuse KVarN+plain or the three crashing `q6_0` pairs; opencoti 0431 (a bundled dlopen helper) lands with the next snapshot, after which the image's own helper is redundant but harmless.
+
 > **2026-09-27 — The Docker image could not use any NVIDIA GPU; fixed. A V100 is kept through discovery.**
 > - Chris (V100) got `support for --gpu nvidia was explicitly requested, but it wasn't available`. Reproduced on solidPC's 3090 with `:dev`: the engine (a Cosmopolitan APE) found `ggml-cuda.so` but `dlopen() isn't supported on this platform` -- it builds a libc helper with the system `cc` into `$HOME/.cosmo`, and the image has no compiler. `Dockerfile.xollama` now builds the helper in a gcc stage and ships it in both engine homes; a derived test image loaded qwen3:0.6b 100% on GPU at 195 tok/s. Bare-metal Linux hosts without `cc` are affected too: reported to opencoti.
 > - Docker docs: README `## Docker` (ollama-style one-liners, GPU passthrough), `docs/xollama/docker.mdx` (tags, volumes, every operator env var, slots/KV, NVIDIA toolkit setup), `docs/dockerhub/README.md` for the Hub page; `engines.mdx` coverage corrected for the V100 payload.
