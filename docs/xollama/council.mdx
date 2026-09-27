@@ -9,8 +9,8 @@ several times before it replies:
 1. a **planner** decides whether the message needs the council at all. A
    greeting or a trivial fact it answers directly, in one short call;
 2. otherwise it writes a plan, and **researchers** work on it in parallel;
-3. **critics** review the plan and the findings in parallel, looking for
-   errors, gaps and disagreements;
+3. a **critic** reviews the plan and the findings, looking for errors, gaps
+   and disagreements (more critics run in parallel, when configured);
 4. a **synthesizer** writes the one answer the client receives.
 
 The council runs inside the server. A client asks for the council's model name
@@ -72,7 +72,7 @@ Every setting is optional; `xollama tweak model <name> --council` walks them.
 | Setting | Flag | Default | What it does |
 |---|---|---|---|
 | `council.enabled` | `--council` | off | The switch. |
-| `council.researcher.count`, `council.critic.count` | `--council-researchers`, `--council-critics` | 2, 2 | How many run in parallel. |
+| `council.researcher.count`, `council.critic.count` | `--council-researchers`, `--council-critics` | 2, 1 | How many run in parallel. A second critic pays when it is a different model. |
 | `council.<role>.prompt` | `--council-<role>-prompt` | built in | Replaces one role's instruction. `@file` reads it from a file. |
 | `council.<role>.model` | `--council-<role>-model` | the council's model | Serves one role with another model, a cloud model (`…:cloud`) included. That role then shares no cache with the rest. |
 | `council.<role>.host` | `--council-<role>-host` | this server | Serves one role on another ollama or xollama server, such as `http://gpu2:11434`; needs `model`, named as that server names it. The server must allow the host (below). |
@@ -248,6 +248,18 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
   - **A report that describes a call it did not make** ("I read notes.txt,
     it says…") is dropped: the researcher is told once to make the call, and
     the invented result never reaches the others.
+  - **A read is made once per turn.** When a member calls a read-only tool
+    with the same arguments as a call already answered in this turn, the
+    council answers it from that result and the call never reaches you; two
+    members asking for the same thing in the same step send you one call. Only
+    the member that asked gets the result: nothing is pushed to the others,
+    and its report points at the first read ("returned the same as
+    `r1:call_x`") instead of carrying it twice. A result of a tool that is not
+    read-only clears what was read before it.
+  - **A confirmed error goes straight to the synthesizer.** A critic that has
+    checked where an error is ends its review with
+    `VERDICT: CONFIRMED path:line`. The other critics stop, no further round
+    is asked for, and the synthesizer is told to make that change first.
 
   ```json
   {"model":"my-council","council_chat_state":"<newest state>","tools":[…],

@@ -159,7 +159,9 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	// results leave the conversation for the members that made them.
 	cfg.Tools, members.tools = req.Tools, req.Tools
 	if from.Route != "" {
+		all := conv
 		conv, cfg.Results = councilToolTurn(conv)
+		cfg.Reads = council.SharedReads(cfg.Tools, all[len(conv):])
 		full = conv
 	}
 	compactor := s.councilCompactorFor(ctx, m, req, members, tree, cfg, reserve)

@@ -1027,6 +1027,25 @@ func (cm *councilMembers) place(ctx context.Context, r council.Request, req *api
 	return &llm.Placement{NumCtx: size, NumCtxMin: size}, req.SessionID, none
 }
 
+// councilSlots is the live slots a council's widest parallel step needs on
+// this server: its researchers or its critics, whichever is wider, counting
+// only the members served here (a role with a host runs elsewhere). Zero for
+// a model that is not a council. See llm/engine_council_slots.go.
+func councilSlots(m *Model) int {
+	if m == nil || m.Xollama == nil || !m.Xollama.Council.On() {
+		return 0
+	}
+	cfg := council.FromModel(m.Xollama.Council, 0)
+	width := 0
+	if cfg.Hosts[council.Researcher] == "" {
+		width = cfg.Researchers
+	}
+	if cfg.Hosts[council.Critic] == "" {
+		width = max(width, cfg.Critics)
+	}
+	return width
+}
+
 // councilPoolSeats is the engine pool seats a council's tree needs: the
 // conversation and the synthesizer's layer once, the researchers' and the
 // critics' layers once per round, and the older roots a kept conversation

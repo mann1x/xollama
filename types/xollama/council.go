@@ -14,7 +14,7 @@ import (
 // plans/agentic-council-chat.md.
 //
 // Everything here is optional except the switch. The defaults are the ones
-// the plan measured: 2 researchers, 2 critics, a random seed per member and a
+// the plan measured: 2 researchers, 1 critic, a random seed per member and a
 // ±2 % temperature spread on researchers and critics, one round, deliberation
 // shown as thinking. A model that states only `enabled: true` gets all of it.
 //
@@ -70,7 +70,7 @@ type Council struct {
 // CouncilRole is one role's settings. Unstated fields take the defaults.
 type CouncilRole struct {
 	// Count is how many members of this role run in parallel. Researchers and
-	// critics only; zero means the default, 2.
+	// critics only; zero means the default: 2 researchers, 1 critic.
 	Count int `json:"count,omitempty"`
 
 	// Model serves this role instead of the council's own model. Empty means

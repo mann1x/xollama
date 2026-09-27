@@ -192,8 +192,7 @@ func (cfg Config) folded(r Role, key string, turns []api.Message) map[string]boo
 				n = len(cfg.lookup(c))
 				saved = n - len(droppedLookup)
 			} else {
-				ref := ForwardedID(key, c.ID)
-				s, ok := cfg.Results[ref]
+				s, ref, ok := cfg.result(key, c)
 				if !ok {
 					continue
 				}

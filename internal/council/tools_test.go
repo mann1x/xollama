@@ -2,10 +2,12 @@ package council
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/ollama/ollama/api"
+	"github.com/ollama/ollama/types/xollama"
 )
 
 // toolStub is a stub whose members can call tools: the member named in call
@@ -71,7 +73,10 @@ func callIDs(calls []api.ToolCall) []string {
 // Both researchers read: the turn ends at the research step with both calls in
 // one message, each under its member's id; the results bring it back there.
 func TestParallelMembersToolCallsGoOutTogetherAndComeBack(t *testing.T) {
-	s := &toolStub{stub: stub{route: `{"route":"council"}`}, call: map[string]string{"r1": "read_files", "r2": "read_files"}}
+	s := &toolStub{
+		stub: stub{route: `{"route":"council"}`}, call: map[string]string{"r1": "read_files", "r2": "read_files"},
+		args: map[string]map[string]any{"r1": {"path": "a.go"}, "r2": {"path": "b.go"}},
+	}
 	cfg := toolCfg()
 	res, err := Run(t.Context(), cfg, s, conv, func(Event) {})
 	if err != nil {
@@ -87,7 +92,7 @@ func TestParallelMembersToolCallsGoOutTogetherAndComeBack(t *testing.T) {
 		t.Fatalf("index %d, suspended %v", res.Calls[1].Function.Index, res.Progress.Suspended)
 	}
 
-	s2 := &toolStub{stub: stub{route: `{"route":"council"}`}, call: s.call}
+	s2 := &toolStub{stub: stub{route: `{"route":"council"}`}, call: s.call, args: s.args}
 	cfg.Results = map[string]string{"r1:call_0_0": "R1-DATA", "r2:call_0_0": "R2-DATA"}
 	res2, err := RunFrom(t.Context(), cfg, s2, conv, res.Progress, nil, func(Event) {})
 	if err != nil {
@@ -107,7 +112,7 @@ func TestParallelMembersToolCallsGoOutTogetherAndComeBack(t *testing.T) {
 	}
 	findings := crit.Messages[len(crit.Messages)-2].Content
 	// The reply, not the narration before its call; then what it read.
-	if strings.Contains(findings, "let me look") || !strings.Contains(findings, "researcher says R1-DATA\n\nEvidence (the tools called and what they returned):\n- read_files {} returned:\nR1-DATA") || !strings.Contains(findings, "returned:\nR2-DATA") {
+	if strings.Contains(findings, "let me look") || !strings.Contains(findings, "researcher says R1-DATA\n\nEvidence (the tools called and what they returned):\n- read_files {\"path\":\"a.go\"} returned:\nR1-DATA") || !strings.Contains(findings, "returned:\nR2-DATA") {
 		t.Fatalf("the critics read %q", findings)
 	}
 }
@@ -124,7 +129,7 @@ func TestOnlyTheMemberThatCalledWaits(t *testing.T) {
 	if f := res.Progress.Rounds[0].Findings; f[0] == "" || f[1] != "" {
 		t.Fatalf("findings %q", f)
 	}
-	s2 := &toolStub{stub: stub{route: `{"route":"council"}`}, call: s.call}
+	s2 := &toolStub{stub: stub{route: `{"route":"council"}`}, call: s.call, args: s.args}
 	cfg.Results = map[string]string{"r2:call_0_0": "DATA"}
 	if _, err := RunFrom(t.Context(), cfg, s2, conv, res.Progress, nil, func(Event) {}); err != nil {
 		t.Fatal(err)
@@ -292,7 +297,111 @@ func TestANarratedCallIsNeverAFinding(t *testing.T) {
 	if !strings.Contains(all, "FINDINGS OF RESEARCHER 1:\nresearcher says REAL-DATA") || strings.Contains(all, "FINDINGS OF RESEARCHER 1:\nI called read_files") {
 		t.Fatalf("the synthesizer read: %q", all)
 	}
-	if critics != 2 {
-		t.Fatalf("critics were asked %d times; a critic naming a tool is not nudged", critics)
+	if critics != cfg.Critics {
+		t.Fatalf("critics were asked %d times for %d critics; a critic naming a tool is not nudged", critics, cfg.Critics)
+	}
+}
+
+// The same read by two researchers of one step goes to the client once; the
+// next request answers both from that one result, and the second member's
+// evidence points at the first's instead of carrying the file again. A write
+// in between would clear it (SharedReads).
+func TestARepeatedReadIsMadeOnceAndSharedOnlyWithWhoAsked(t *testing.T) {
+	s := &toolStub{stub: stub{route: `{"route":"council"}`}, call: map[string]string{"r1": "read_files", "r2": "read_files"}}
+	cfg := toolCfg()
+	res, err := Run(t.Context(), cfg, s, conv, func(Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(callIDs(res.Calls), " "); got != "r1:call_0_0=read_files" {
+		t.Fatalf("forwarded %s, want the read once", got)
+	}
+	if len(res.Progress.Suspended) != 2 {
+		t.Fatalf("suspended %v, want both researchers", res.Progress.Suspended)
+	}
+
+	tail := []api.Message{
+		{Role: "assistant", ToolCalls: res.Calls},
+		{Role: "tool", ToolCallID: "r1:call_0_0", Content: "R1-DATA"},
+	}
+	cfg.Results = map[string]string{"r1:call_0_0": "R1-DATA"}
+	cfg.Reads = SharedReads(cfg.Tools, tail)
+	s2 := &toolStub{stub: stub{route: `{"route":"council"}`}, call: s.call}
+	res2, err := RunFrom(t.Context(), cfg, s2, conv, res.Progress, nil, func(Event) {})
+	if err != nil || res2.Answer == "" || len(res2.Calls) != 0 {
+		t.Fatalf("resumed: %v answer %q calls %v", err, res2.Answer, res2.Calls)
+	}
+	var crit Request
+	for _, c := range s2.calls {
+		if c.Role == Critic {
+			crit = c
+		}
+	}
+	findings := crit.Messages[len(crit.Messages)-2].Content
+	if strings.Count(findings, "R1-DATA") != 3 || !strings.Contains(findings, "returned the same as r1:call_0_0.") {
+		// r1's reply and evidence, r2's reply; r2's evidence only points.
+		t.Fatalf("the critic read %q", findings)
+	}
+
+	wrote := append(slices.Clone(tail),
+		api.Message{Role: "assistant", ToolCalls: []api.ToolCall{{ID: "s:call_1", Function: api.ToolCallFunction{Name: "write_file", Arguments: api.NewToolCallFunctionArguments()}}}},
+		api.Message{Role: "tool", ToolCallID: "s:call_1", Content: "ok"},
+	)
+	if got := SharedReads(cfg.Tools, wrote); got != nil {
+		t.Errorf("reads survived a write: %v", got)
+	}
+}
+
+// confirmStub has critic 1 confirm where the error is while critic 2 would
+// ask for another round, and never finish on its own.
+type confirmStub struct{ toolStub }
+
+func (s *confirmStub) StreamTools(ctx context.Context, req Request, onToken func(string)) (Reply, error) {
+	if req.Role == Critic && req.Index == 1 {
+		s.mu.Lock()
+		s.calls = append(s.calls, req)
+		s.mu.Unlock()
+		<-ctx.Done()
+		return Reply{}, ctx.Err()
+	}
+	if req.Role == Critic {
+		s.mu.Lock()
+		s.calls = append(s.calls, req)
+		s.mu.Unlock()
+		return Reply{Content: "Checked it. " + Confirmed + " game.js:119"}, nil
+	}
+	return s.toolStub.StreamTools(ctx, req, onToken)
+}
+
+// A critic that confirms a located error sends the council straight to the
+// synthesizer: the other critic is stopped, no round is added even with room
+// for one, and the synthesizer is told to make that change first.
+func TestAConfirmedErrorGoesStraightToTheSynthesizer(t *testing.T) {
+	s := &confirmStub{toolStub{stub: stub{route: `{"route":"council"}`}}}
+	yes := true
+	cfg := FromModel(&xollama.Council{Enabled: &yes, MaxRounds: 3, Critic: &xollama.CouncilRole{Count: 2}}, 0.7)
+	cfg.Tools = testTools
+	res, err := Run(t.Context(), cfg, s, conv, func(Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Rounds != 1 || s.count(Researcher) != 2 {
+		t.Fatalf("rounds %d researchers %d, want one round", res.Rounds, s.count(Researcher))
+	}
+	var synth Request
+	for _, c := range s.calls {
+		if c.Role == Synthesizer {
+			synth = c
+		}
+	}
+	all := ""
+	for _, m := range synth.Messages {
+		all += m.Content
+	}
+	if !strings.Contains(all, "A critic confirmed the error at game.js:119") || !strings.Contains(all, stoppedCritique) {
+		t.Fatalf("the synthesizer read %q", all[max(0, len(all)-600):])
+	}
+	if place, ok := confirmed("x\n" + Confirmed + ": `a.go:3`\nmore"); !ok || place != "a.go:3" {
+		t.Errorf("confirmed place %q %v", place, ok)
 	}
 }

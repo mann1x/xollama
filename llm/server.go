@@ -106,6 +106,10 @@ type LlamaServerConfig struct {
 	// tree, over and above the automatic prefix pools. Zero for a model that
 	// is not a council, or whose council does not use PolyKV.
 	CouncilPools int
+	// CouncilSlots is the live slots a council's widest parallel step needs
+	// (llm/engine_council_slots.go); -c is not sized by it. Zero for a model
+	// that is not a council.
+	CouncilSlots int
 }
 
 // enginePin returns the engine this model says it needs, or "".

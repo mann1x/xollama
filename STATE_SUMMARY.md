@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — v0.34.4-xollama.1 pre-release published; council Phase 10 started from the ab-3 analysis.**
+> - PR #3 merged (`dd739034`); release run 36345410380 published the pre-release (setup 797 MB, update 14 MB, both binaries, sha256sum, payload-id). Docker image for the tag: run 36346010621 (`:dev`, a pre-release). Promotion waits on the eleven2go install check.
+> - Upstream's `test-llamacpp-update.yaml` guarded to `ollama/ollama` (`docker-release` hook): it fired on the release PR because `LLAMA_CPP_VERSION` moved, and targets runners the fork lacks.
+> - ab-3 finding: the council's members were serialized by the engine (`-np 1`, no slot for the second worker, opencoti #501) and the council restarted on each nudge. Built: a slot per parallel member (`-c` unchanged), one critic by default, shared reads, `VERDICT: CONFIRMED`. Next: the council kept across turns, broadcast, ab-4 on eleven2go. See plans/agentic-council-chat.md Phase 10.
+
 > **2026-09-27 — Engine pin b171 with a CUDA 12 (V100) payload; runtime pins on v0.34.4 (owner: assemble the pre-release and the Docker image).**
 > - `llm/engine/pin.txt`: rev `7b836910` (b171 plus `ggml-cuda-cu12-x86_64.so`, sm_70, driver ≥ 570, opencoti #498).
 >   - It is read from `#! dso-cuda12` / `#! cuda12-sass`.

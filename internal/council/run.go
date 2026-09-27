@@ -4,6 +4,7 @@ import (
 	"context"
 	"maps"
 	"sync"
+	"sync/atomic"
 
 	"golang.org/x/sync/errgroup"
 
@@ -127,6 +128,7 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 		if len(res.Calls) == 0 {
 			return res, false
 		}
+		res.Calls = once(cfg.Tools, res.Calls)
 		for i := range res.Calls {
 			res.Calls[i].Function.Index = i
 		}
@@ -201,7 +203,11 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 		critiques = append([]string(nil), p.Rounds[round].Critiques...)
 		froms = resumes()
 		step = nil
-		g, gctx = errgroup.WithContext(ctx)
+		// The first critic to confirm where the error is stops the others:
+		// the synthesizer starts on it rather than wait for them.
+		cctx, stop := context.WithCancel(ctx)
+		var confirm atomic.Bool
+		g, gctx = errgroup.WithContext(cctx)
 		for i := range cfg.Critics {
 			if critiques[i] != "" {
 				continue
@@ -211,14 +217,32 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 			from := froms[key]
 			g.Go(func() error {
 				out, turns, err := critique(gctx, m, cfg, d, conv, plan, findings, i, round, emit, from)
+				if err != nil && confirm.Load() && ctx.Err() == nil {
+					out, turns, err = stoppedCritique, nil, nil
+				}
 				if err == nil {
 					settle(key, turns, func() { critiques[i], p.Rounds[round].Critiques[i] = out, out })
+					if _, ok := confirmed(out); ok && turns == nil {
+						confirm.Store(true)
+						stop()
+					}
 				}
 				return err
 			})
 		}
-		if err := g.Wait(); err != nil {
+		err := g.Wait()
+		stop()
+		if err != nil {
 			return Result{Route: route, Draws: d}, err
+		}
+		if confirm.Load() {
+			// A critic that was waiting on the client is not asked again.
+			for i := range cfg.Critics {
+				key := MemberKey(Critic, i, round)
+				if _, waiting := p.Suspended[key]; waiting {
+					settle(key, nil, func() { critiques[i], p.Rounds[round].Critiques[i] = stoppedCritique, stoppedCritique })
+				}
+			}
 		}
 		if res, ok := suspended(Result{Route: route, Draws: d}, step...); ok {
 			return res, nil

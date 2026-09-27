@@ -123,15 +123,22 @@ type Config struct {
 	// client's answers to the calls a turn forwarded, by forwarded id.
 	Tools   api.Tools
 	Results map[string]string
+	// Reads indexes the turn's reads so far (SharedReads): a member's read
+	// that repeats one is answered from that result, never forwarded.
+	Reads map[string]string
 	// ResultBudget is the characters of tool results a member carries whole
 	// in its own turns; past it the rest travel by ref. 0 is the default.
 	ResultBudget int
 }
 
-// Built-in defaults: the owner's specification, measured in Phase 0 and 1.
+// Built-in defaults: two researchers, which find more between them than one,
+// and one critic, since a second critic of the same model added nothing in
+// the ab-3 run (owner's ruling 2026-09-27: a second critic pays only when it
+// is a different model).
 const (
-	DefaultWidth  = 2
-	DefaultJitter = 0.02
+	DefaultResearchers = 2
+	DefaultCritics     = 1
+	DefaultJitter      = 0.02
 )
 
 var defaultMaxTokens = map[Role]int{Planner: 512, Researcher: 384, Critic: 256, Synthesizer: 1024}
@@ -140,7 +147,7 @@ var defaultMaxTokens = map[Role]int{Planner: 512, Researcher: 384, Critic: 256, 
 // temperature is the model's own, after request and Modelfile options.
 func FromModel(c *xollama.Council, temperature float64) Config {
 	cfg := Config{
-		Researchers: DefaultWidth, Critics: DefaultWidth,
+		Researchers: DefaultResearchers, Critics: DefaultCritics,
 		Temperature: temperature, Jitter: DefaultJitter,
 		MaxRounds: 1, ShowDeliberation: true,
 		MaxTokens: map[Role]int{}, Prompts: map[Role]string{}, Models: map[Role]string{},

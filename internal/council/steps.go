@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 
@@ -51,6 +52,26 @@ const routeMsg = `ROLE: PLANNER. Is the user's latest message trivial (a greetin
 
 // Revise is the word a critic ends with to send the council another round.
 const Revise = "VERDICT: REVISE"
+
+// Confirmed is what a critic ends with, followed by the place, when it has
+// checked a finding that locates an error: the synthesizer starts on that
+// change at once, the other critics stop, and no further round is asked for
+// (owner's ruling 2026-09-27; in ab-3 a researcher located the error four
+// client trips before the synthesizer edited it).
+const Confirmed = "VERDICT: CONFIRMED"
+
+// confirmed returns the place a critique confirmed, if it did.
+func confirmed(critique string) (string, bool) {
+	i := strings.LastIndex(critique, Confirmed)
+	if i < 0 {
+		return "", false
+	}
+	place, _, _ := strings.Cut(strings.TrimSpace(critique[i+len(Confirmed):]), "\n")
+	return strings.Trim(place, " :`*"), true
+}
+
+// stoppedCritique stands for a critic stopped because another confirmed.
+const stoppedCritique = "(stopped: another critic confirmed where the error is)"
 
 var routeSchema = json.RawMessage(`{"type":"object","properties":{"route":{"type":"string","enum":["direct","council"]}},"required":["route"]}`)
 
@@ -262,6 +283,9 @@ func critique(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Mess
 	if round+1 < max(cfg.MaxRounds, 1) {
 		instr += fmt.Sprintf(" If the findings are not good enough to answer from, end with %q.", Revise)
 	}
+	if len(cfg.Tools) > 0 {
+		instr += fmt.Sprintf(" If a finding names the exact place of an error and you have checked it there, end with %q and the place (path:line), so the change starts at once.", Confirmed)
+	}
 	msgs := append(base(cfg, conv, p), user(joinNumbered("FINDINGS OF RESEARCHER", findings)),
 		user(fmt.Sprintf("ROLE: CRITIC %d. %s", i+1, instr)))
 	dc := d.Critics[round][i]
@@ -273,7 +297,7 @@ func critique(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Mess
 
 // NeedsRevision reports whether another round is wanted and allowed.
 func NeedsRevision(cfg Config, critiques []string, round int) bool {
-	if round+1 >= max(cfg.MaxRounds, 1) {
+	if round+1 >= max(cfg.MaxRounds, 1) || slices.ContainsFunc(critiques, func(c string) bool { _, ok := confirmed(c); return ok }) {
 		return false
 	}
 	for _, c := range critiques {
@@ -282,6 +306,19 @@ func NeedsRevision(cfg Config, critiques []string, round int) bool {
 		}
 	}
 	return false
+}
+
+// confirmedNote puts a confirmed error first in the synthesizer's work.
+func confirmedNote(cfg Config, critiques []string) string {
+	if len(cfg.Tools) == 0 {
+		return ""
+	}
+	for _, c := range critiques {
+		if place, ok := confirmed(c); ok {
+			return fmt.Sprintf(" A critic confirmed the error at %s: make that change with the tools first, check it, and only then write the answer.", place)
+		}
+	}
+	return ""
 }
 
 // Synthesize writes the answer, streamed as content.
@@ -293,7 +330,7 @@ func Synthesize(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Me
 func synthesize(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, p Plan, findings, critiques []string, emit Emit, turns []api.Message) (string, []api.Message, error) {
 	msgs := append(base(cfg, conv, p), user(joinNumbered("FINDINGS OF RESEARCHER", findings)),
 		user(joinNumbered("CRITIQUE", critiques)),
-		user("ROLE: SYNTHESIZER. "+prompt(cfg, Synthesizer)+cfg.toolNote(Synthesizer)))
+		user("ROLE: SYNTHESIZER. "+prompt(cfg, Synthesizer)+cfg.toolNote(Synthesizer)+confirmedNote(cfg, critiques)))
 	if cfg.System != "" {
 		msgs = append(msgs, user(systemIntro+cfg.System))
 	}

@@ -130,15 +130,15 @@ func TestTheCouncilRunsEveryRoleAtItsWidth(t *testing.T) {
 	if got := s.count(Researcher); got != 3 {
 		t.Errorf("researchers = %d, want 3", got)
 	}
-	if got := s.count(Critic); got != DefaultWidth {
-		t.Errorf("critics = %d, want %d", got, DefaultWidth)
+	if got := s.count(Critic); got != DefaultCritics {
+		t.Errorf("critics = %d, want %d", got, DefaultCritics)
 	}
 	if s.count(Synthesizer) != 1 || res.Answer != "synthesizer says" {
 		t.Errorf("answer %q", res.Answer)
 	}
-	// plan + 3 findings + 2 critiques as thinking, the answer as content
-	if thinking != 6 || content != 1 || done != 7 {
-		t.Errorf("thinking %d content %d done %d, want 6, 1 and 7", thinking, content, done)
+	// plan + 3 findings + 1 critique as thinking, the answer as content
+	if thinking != 5 || content != 1 || done != 6 {
+		t.Errorf("thinking %d content %d done %d, want 5, 1 and 6", thinking, content, done)
 	}
 }
 
@@ -149,14 +149,14 @@ func TestResearchersAndCriticsRunInParallel(t *testing.T) {
 		_, err := Run(t.Context(), FromModel(nil, 0.7), s, conv, func(Event) {})
 		done <- err
 	}()
-	for s.live.Load() < DefaultWidth {
+	for s.live.Load() < DefaultResearchers {
 	}
 	close(s.release)
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if s.peak.Load() < DefaultWidth {
-		t.Errorf("peak concurrency %d, want %d", s.peak.Load(), DefaultWidth)
+	if s.peak.Load() < DefaultResearchers {
+		t.Errorf("peak concurrency %d, want %d", s.peak.Load(), DefaultResearchers)
 	}
 }
 
@@ -190,7 +190,7 @@ func TestACriticCanSendTheResearchBackWithinTheBound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Rounds != 3 || s.count(Researcher) != 3*DefaultWidth {
+	if res.Rounds != 3 || s.count(Researcher) != 3*DefaultResearchers {
 		t.Errorf("rounds %d researchers %d", res.Rounds, s.count(Researcher))
 	}
 }
@@ -261,7 +261,7 @@ func TestACanceledTurnReturnsPromptly(t *testing.T) {
 		_, err := Run(ctx, FromModel(nil, 0.7), s, conv, func(Event) {})
 		done <- err
 	}()
-	for s.live.Load() < DefaultWidth {
+	for s.live.Load() < DefaultResearchers {
 	}
 	cancel()
 	if err := <-done; !errors.Is(err, context.Canceled) {
@@ -323,7 +323,9 @@ func TestEachRoleCarriesItsThinkButNeverTheRoute(t *testing.T) {
 func TestAFailedRemoteMemberFallsBackOnlyWhereItIsOneOfSeveral(t *testing.T) {
 	yes := true
 	remote := &xollama.CouncilRole{Model: "qwen3:4b", Host: "http://gpu2:11434"}
-	cfg := FromModel(&xollama.Council{Enabled: &yes, Researcher: remote, Critic: remote}, 0.7)
+	critics := *remote
+	critics.Count = 2
+	cfg := FromModel(&xollama.Council{Enabled: &yes, Researcher: remote, Critic: &critics}, 0.7)
 	s := &stub{route: `{"route":"council"}`, away: true}
 	var text strings.Builder
 	res, err := Run(t.Context(), cfg, s, conv, func(e Event) { text.WriteString(e.Text) })
@@ -464,12 +466,12 @@ func TestATurnResumesFromItsProgress(t *testing.T) {
 	if _, err := RunFrom(context.Background(), cfg, full, conv, Progress{}, func(p Progress) { points = append(points, p) }, func(Event) {}); err != nil {
 		t.Fatal(err)
 	}
-	// route, plan, two researchers, two critics
-	if len(points) != 6 {
-		t.Fatalf("%d checkpoints, want 6: %+v", len(points), points)
+	// route, plan, two researchers, one critic
+	if len(points) != 5 {
+		t.Fatalf("%d checkpoints, want 5: %+v", len(points), points)
 	}
 	last := points[len(points)-1]
-	if last.Route != "council" || last.Plan == nil || len(last.Rounds) != 1 || last.Rounds[0].Critiques[1] == "" || last.Rounds[0].Findings[0] == "" {
+	if last.Route != "council" || last.Plan == nil || len(last.Rounds) != 1 || last.Rounds[0].Critiques[0] == "" || last.Rounds[0].Findings[0] == "" {
 		t.Fatalf("last checkpoint %+v", last)
 	}
 

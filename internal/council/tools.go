@@ -109,10 +109,10 @@ func (cfg Config) transcript(r Role, key string, turns []api.Message) []api.Mess
 				if folded[c.ID] {
 					res = droppedLookup
 				}
-			} else if s, ok := cfg.Results[ForwardedID(key, c.ID)]; ok {
+			} else if s, ref, ok := cfg.result(key, c); ok {
 				res = s
 				if folded[c.ID] {
-					res = indexed(ForwardedID(key, c.ID), s)
+					res = indexed(ref, s)
 				}
 			}
 			out = append(out, api.Message{Role: "tool", Content: res, ToolName: c.Function.Name, ToolCallID: c.ID})
@@ -144,7 +144,7 @@ func (cfg Config) forwarded(r Role, key string, turns []api.Message) []api.ToolC
 	}
 	var out []api.ToolCall
 	for _, c := range turns[len(turns)-1].ToolCalls {
-		if ok, _ := cfg.may(r, c); ok && !local(c) {
+		if ok, _ := cfg.may(r, c); ok && !local(c) && !cfg.cachedRead(c) {
 			c.ID = ForwardedID(key, c.ID)
 			out = append(out, c)
 		}
@@ -238,13 +238,17 @@ func (cfg Config) evidence(r Role, key string, turns []api.Message) string {
 			continue
 		}
 		for _, c := range m.ToolCalls {
-			ref := ForwardedID(key, c.ID)
-			res, ok := cfg.Results[ref]
+			res, ref, ok := cfg.result(key, c)
 			if ok2, _ := cfg.may(r, c); !ok || !ok2 || local(c) {
 				continue
 			}
 			if b.Len() == 0 {
 				b.WriteString("\n\nEvidence (the tools called and what they returned):")
+			}
+			if ref != ForwardedID(key, c.ID) {
+				// A shared read: the other member's evidence carries it.
+				fmt.Fprintf(&b, "\n- %s %s returned the same as %s.", c.Function.Name, c.Function.Arguments.String(), ref)
+				continue
 			}
 			if len(res) > inlineEvidence && cfg.canLookup() {
 				res = indexed(ref, res)
@@ -315,8 +319,9 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 		if len(cfg.forwarded(req.Role, key, turns)) > 0 {
 			return "", turns, nil
 		}
-		// A turn that only read evidence back is answered here, at once.
-		if slices.ContainsFunc(rep.Calls, local) && cfg.canLookup() {
+		// A turn that only read evidence back, or repeated reads the turn has
+		// made, is answered here, at once.
+		if (slices.ContainsFunc(rep.Calls, local) && cfg.canLookup()) || slices.ContainsFunc(rep.Calls, cfg.cachedRead) {
 			if lookups++; lookups > maxLookups {
 				return replyText(turns, ""), nil, nil
 			}

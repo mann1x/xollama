@@ -179,7 +179,8 @@ errgroup runner: route-only decision, researchers and critics in parallel,
 synthesizer) and `server/council.go` (members as in-process chat turns, each
 on its own engine session; on opencoti with PolyKV, `server/council_polykv.go`
 builds the turn's pool tree — the planner attached to the conversation's root
-pool, kept between turns — and `llm/engine_council.go` is its client; a role with
+pool, kept between turns — and `llm/engine_council.go` is its client;
+`llm/engine_council_slots.go` launches a council with a slot per parallel member; a role with
 `council.<role>.host` is sent to that server by `server/council_remote.go`, only
 when `XOLLAMA_COUNCIL_HOSTS` allows it; `server/council_compaction.go` folds the
 conversation before a turn and after its answer, Cerebriline's agentic compaction
@@ -190,6 +191,7 @@ seals the `council_chat_state` resume point a client sends back), reached from o
 with `council_chat_state` (`internal/council/tools.go`: read-only tools for
 researchers and critics, writes by the synthesizer; `internal/council/evidence.go`:
 the server-answered `council_evidence` tool that reads a large result back by ref;
+`internal/council/reads.go`: shared reads, a repeated read-only call answered in place;
 `server/council_tools.go`), and a one-shot
 `xollama run <council> "…"` goes through chat (`cmd/council_run.go`) — see
 `.claude/rules/model-config.md` and `.claude/rules/council.md`.

@@ -252,7 +252,7 @@ func councilFields() []field {
 			name:    "council-critics",
 			path:    "council.critic.count",
 			title:   "Critics — how many review the findings in parallel",
-			help:    fmt.Sprintf("Each reviews the plan and every finding. Unset is 2. At most %d.", xollama.MaxCouncilWidth),
+			help:    fmt.Sprintf("Each reviews the plan and every finding. Unset is 1; a second pays when it is\na different model (council.critic.model). At most %d.", xollama.MaxCouncilWidth),
 			kind:    kindInt,
 			unit:    "critics",
 			quiet:   true,
