@@ -5,6 +5,20 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — Synced to upstream v0.34.4 and the fork's v0.34.4 manifest (branch `sync/upstream-v0.34.4`).**
+> - `c43d0a68` merges the v0.34.4 tag. xollama's hooks (council, engine-session fields, api-key, context-window) are kept, upstream's `thinkingparser` / `ThinkingClose` is adopted, and the structured-outputs double request is dropped as upstream did.
+> - The fork's 22 patches (manifest `3edc2006`, integration `e74b1daa`) are merged at their shas in order, `a9b28ffe`..`7f560400`. The table is in `docs/protocols/CARRIED-PATCHES.md`.
+> - Verified:
+>   - no file differs from the fork's tree beyond xollama's own set;
+>   - `go build`, `go vet` and `go test ./...` pass;
+>   - `check-hooks` passes (26 hooks);
+>   - `check-compat-origin` passes after the README fix below.
+> - `LLAMA_CPP_VERSION` is b11081. Three new upstream tests set `OLLAMA_HOST` and now set `XOLLAMA_HOST` (default-port rule).
+> - Left:
+>   - the fork's combined `llama/compat/README.md` (`3f1fcb62`) reaches no patch branch, so ours is the line-boundary copy until the fork puts it on one;
+>   - two lint findings in fork code (`server/think_budget_resolution_test.go` bodyclose, `server/routes_generate_test.go` trailing blank line) were sent to the fork;
+>   - the Windows runtime pin must be rebuilt (`xollama-runtime.yaml`) and the Linux pin waits for a fork v0.34.4 runtime release, both before a release PR.
+
 > **2026-09-27 — Installer setup pages; XOLLAMA_PARALLEL replaces OLLAMA_NUM_PARALLEL on opencoti; server-wide KV types fall back on stock.**
 > Owner's requests, for moving pandorum (RTX 5080, an `Ollama think-budget` install) to xOllama.
 > - **Installer** (`app/xollama-setup-pages.iss`, included from `app/xollama.iss`, full installer only): the pages are Ollama found (uninstall `/SILENT` after backing up `%LOCALAPPDATA%\Ollama`, or keep it), port (22434 / 11434 greyed out while an Ollama stays / custom), API key (generate / copy / skip) and KV cache (opencoti K and V + legacy type). Silent installs change nothing. Compiled clean with Inno Setup 6.7.1 (CI's version) on pandorum against a stub payload; the real installer comes from the dry-run release build.

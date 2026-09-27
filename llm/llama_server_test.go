@@ -4017,6 +4017,119 @@ func fakeRunningCmd() *exec.Cmd {
 	return cmd
 }
 
+// TestLlamaServerCompletionThinkingFormat checks that a format on a thinking
+// response is one request carrying a grammar: a schema is converted by an
+// empty completion once per schema, "json" needs no conversion, the grammar
+// wraps the format rules behind the closing string, and content and metrics
+// pass through unchanged.
+func TestLlamaServerCompletionThinkingFormat(t *testing.T) {
+	schema := json.RawMessage(`{"type":"object"}`)
+	converted := "root ::= \"{\" space \"}\"\nspace ::= | \" \"\n"
+	sseLines := []string{
+		`data: {"content":"Let me think.</think>","stop":false,"timings":{"cache_n":2,"prompt_n":3,"prompt_ms":10,"predicted_n":3,"predicted_ms":15}}`,
+		`data: {"content":"{}","stop":false,"timings":{"cache_n":2,"prompt_n":3,"prompt_ms":10,"predicted_n":4,"predicted_ms":20}}`,
+		`data: {"content":"","stop":true,"stop_type":"eos","timings":{"cache_n":2,"prompt_n":3,"prompt_ms":10,"predicted_n":4,"predicted_ms":20}}`,
+	}
+
+	var conversions atomic.Int32
+	grammars := make(chan string, 8)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			fmt.Fprint(w, `{"status":"ok"}`)
+			return
+		}
+		var reqBody struct {
+			Prompt         any             `json:"prompt"`
+			NPredict       *int            `json:"n_predict"`
+			JsonSchema     json.RawMessage `json:"json_schema"`
+			Grammar        string          `json:"grammar"`
+			ResponseFields []string        `json:"response_fields"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
+			t.Errorf("invalid request body: %v", err)
+			return
+		}
+		if len(reqBody.ResponseFields) > 0 {
+			conversions.Add(1)
+			if !reflect.DeepEqual(reqBody.Prompt, []any{[]any{}}) || reqBody.NPredict == nil || *reqBody.NPredict != 0 {
+				t.Errorf("conversion request prompt %v n_predict %v, want an empty token prompt and no generation", reqBody.Prompt, reqBody.NPredict)
+			}
+			if !bytes.Equal(reqBody.JsonSchema, schema) || !reflect.DeepEqual(reqBody.ResponseFields, []string{"generation_settings/grammar"}) {
+				t.Errorf("conversion request schema %s fields %v", reqBody.JsonSchema, reqBody.ResponseFields)
+			}
+			json.NewEncoder(w).Encode(map[string]string{"generation_settings/grammar": converted})
+			return
+		}
+		if reqBody.JsonSchema != nil {
+			t.Errorf("completion carried schema %s", reqBody.JsonSchema)
+		}
+		grammars <- reqBody.Grammar
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, line := range sseLines {
+			fmt.Fprintln(w, line)
+			fmt.Fprintln(w)
+		}
+	}))
+	defer srv.Close()
+
+	parts := strings.Split(srv.URL, ":")
+	var portInt int
+	fmt.Sscanf(parts[len(parts)-1], "%d", &portInt)
+
+	runner := &llamaServerRunner{
+		port:    portInt,
+		cmd:     fakeRunningCmd(),
+		sem:     semaphore.NewWeighted(1),
+		options: api.Options{Runner: api.Runner{NumCtx: 2048}},
+	}
+
+	complete := func(format json.RawMessage) string {
+		var responses []CompletionResponse
+		opts := api.DefaultOptions()
+		err := runner.Completion(t.Context(), CompletionRequest{
+			Prompt:        "test prompt",
+			Format:        format,
+			ThinkingClose: []string{"</think>"},
+			Options:       &opts,
+		}, func(cr CompletionResponse) {
+			responses = append(responses, cr)
+		})
+		if err != nil {
+			t.Fatalf("Completion error: %v", err)
+		}
+		var content strings.Builder
+		for _, resp := range responses[:len(responses)-1] {
+			content.WriteString(resp.Content)
+		}
+		if got := content.String(); got != "Let me think.</think>{}" {
+			t.Errorf("streamed content = %q", got)
+		}
+		final := responses[len(responses)-1]
+		if !final.Done || final.DoneReason != DoneReasonStop || final.EvalCount != 4 || final.PromptEvalCount != 5 {
+			t.Errorf("final response = %+v, want done with 4 generated and 5 prompt tokens", final)
+		}
+		return <-grammars
+	}
+
+	for range 2 {
+		grammar := complete(schema)
+		if !strings.HasPrefix(grammar, "root ::= ollama-thinking-0\n") || !strings.Contains(grammar, "ollama-format ::= \"{\" space \"}\"\n") {
+			t.Errorf("grammar does not wrap the converted schema:\n%s", grammar)
+		}
+	}
+	if got := conversions.Load(); got != 1 {
+		t.Errorf("schema converted %d times, want once", got)
+	}
+
+	grammar := complete(json.RawMessage(`"json"`))
+	if !strings.HasPrefix(grammar, "root ::= ollama-thinking-0\n") || !strings.Contains(grammar, "ollama-format   ::= object\n") {
+		t.Errorf("grammar does not wrap the json grammar:\n%s", grammar)
+	}
+	if got := conversions.Load(); got != 1 {
+		t.Errorf("json format converted a schema, %d conversions", got)
+	}
+}
+
 func TestLlamaServerCompletionReasoningBudget(t *testing.T) {
 	tests := []struct {
 		name                 string
@@ -4523,367 +4636,5 @@ func TestAPinOnAModelWithNoDrafterWritesNoSpecType(t *testing.T) {
 	args := appendDraftArgs(nil, draftType, "", api.Options{Runner: api.Runner{DraftNumPredict: 3}})
 	if len(args) != 0 {
 		t.Fatalf("appendDraftArgs = %v, want nothing", args)
-	}
-}
-
-// TestLlamaServerCompletionThinkingFormat checks that a format on a thinking
-// response is one request carrying a grammar: a schema is converted by an
-// empty completion once per schema, "json" needs no conversion, the grammar
-// wraps the format rules behind the closing string, and content and metrics
-// pass through unchanged.
-func TestLlamaServerCompletionThinkingFormat(t *testing.T) {
-	schema := json.RawMessage(`{"type":"object"}`)
-	converted := "root ::= \"{\" space \"}\"\nspace ::= | \" \"\n"
-	sseLines := []string{
-		`data: {"content":"Let me think.</think>","stop":false,"timings":{"cache_n":2,"prompt_n":3,"prompt_ms":10,"predicted_n":3,"predicted_ms":15}}`,
-		`data: {"content":"{}","stop":false,"timings":{"cache_n":2,"prompt_n":3,"prompt_ms":10,"predicted_n":4,"predicted_ms":20}}`,
-		`data: {"content":"","stop":true,"stop_type":"eos","timings":{"cache_n":2,"prompt_n":3,"prompt_ms":10,"predicted_n":4,"predicted_ms":20}}`,
-	}
-
-	var conversions atomic.Int32
-	grammars := make(chan string, 8)
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/health" {
-			fmt.Fprint(w, `{"status":"ok"}`)
-			return
-		}
-		var reqBody struct {
-			Prompt         any             `json:"prompt"`
-			NPredict       *int            `json:"n_predict"`
-			JsonSchema     json.RawMessage `json:"json_schema"`
-			Grammar        string          `json:"grammar"`
-			ResponseFields []string        `json:"response_fields"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil {
-			t.Errorf("invalid request body: %v", err)
-			return
-		}
-		if len(reqBody.ResponseFields) > 0 {
-			conversions.Add(1)
-			if !reflect.DeepEqual(reqBody.Prompt, []any{[]any{}}) || reqBody.NPredict == nil || *reqBody.NPredict != 0 {
-				t.Errorf("conversion request prompt %v n_predict %v, want an empty token prompt and no generation", reqBody.Prompt, reqBody.NPredict)
-			}
-			if !bytes.Equal(reqBody.JsonSchema, schema) || !reflect.DeepEqual(reqBody.ResponseFields, []string{"generation_settings/grammar"}) {
-				t.Errorf("conversion request schema %s fields %v", reqBody.JsonSchema, reqBody.ResponseFields)
-			}
-			json.NewEncoder(w).Encode(map[string]string{"generation_settings/grammar": converted})
-			return
-		}
-		if reqBody.JsonSchema != nil {
-			t.Errorf("completion carried schema %s", reqBody.JsonSchema)
-		}
-		grammars <- reqBody.Grammar
-		w.Header().Set("Content-Type", "text/event-stream")
-		for _, line := range sseLines {
-			fmt.Fprintln(w, line)
-			fmt.Fprintln(w)
-		}
-	}))
-	defer srv.Close()
-
-	parts := strings.Split(srv.URL, ":")
-	var portInt int
-	fmt.Sscanf(parts[len(parts)-1], "%d", &portInt)
-
-	runner := &llamaServerRunner{
-		port:    portInt,
-		cmd:     fakeRunningCmd(),
-		sem:     semaphore.NewWeighted(1),
-		options: api.Options{Runner: api.Runner{NumCtx: 2048}},
-	}
-
-	complete := func(format json.RawMessage) string {
-		var responses []CompletionResponse
-		opts := api.DefaultOptions()
-		err := runner.Completion(t.Context(), CompletionRequest{
-			Prompt:        "test prompt",
-			Format:        format,
-			ThinkingClose: []string{"</think>"},
-			Options:       &opts,
-		}, func(cr CompletionResponse) {
-			responses = append(responses, cr)
-		})
-		if err != nil {
-			t.Fatalf("Completion error: %v", err)
-		}
-		var content strings.Builder
-		for _, resp := range responses[:len(responses)-1] {
-			content.WriteString(resp.Content)
-		}
-		if got := content.String(); got != "Let me think.</think>{}" {
-			t.Errorf("streamed content = %q", got)
-		}
-		final := responses[len(responses)-1]
-		if !final.Done || final.DoneReason != DoneReasonStop || final.EvalCount != 4 || final.PromptEvalCount != 5 {
-			t.Errorf("final response = %+v, want done with 4 generated and 5 prompt tokens", final)
-		}
-		return <-grammars
-	}
-
-	for range 2 {
-		grammar := complete(schema)
-		if !strings.HasPrefix(grammar, "root ::= ollama-thinking-0\n") || !strings.Contains(grammar, "ollama-format ::= \"{\" space \"}\"\n") {
-			t.Errorf("grammar does not wrap the converted schema:\n%s", grammar)
-		}
-	}
-	if got := conversions.Load(); got != 1 {
-		t.Errorf("schema converted %d times, want once", got)
-	}
-
-	grammar := complete(json.RawMessage(`"json"`))
-	if !strings.HasPrefix(grammar, "root ::= ollama-thinking-0\n") || !strings.Contains(grammar, "ollama-format   ::= object\n") {
-		t.Errorf("grammar does not wrap the json grammar:\n%s", grammar)
-	}
-	if got := conversions.Load(); got != 1 {
-		t.Errorf("json format converted a schema, %d conversions", got)
-	}
-}
-
-func TestLlamaServerCompletionReasoningBudget(t *testing.T) {
-	tests := []struct {
-		name                 string
-		req                  CompletionRequest
-		wantBudget           any
-		wantStart            any
-		wantEnd              any
-		wantMessage          any
-		wantScope            any
-		wantResetTag         any
-		wantGenerationPrompt any
-	}{
-		{
-			name: "budget with model-emitted opening tag",
-			req: CompletionRequest{
-				Prompt:           "<bos><|turn>user\nhi<turn|>\n<|turn>model\n",
-				ThinkBudget:      512,
-				ThinkingStartTag: "<|channel>",
-				ThinkingEndTag:   "<channel|>",
-			},
-			wantBudget:  float64(512),
-			wantScope:   "response",
-			wantStart:   "<|channel>",
-			wantEnd:     "<channel|>",
-			wantMessage: "",
-		},
-		{
-			name: "primed thinking block is replayed as the generation prompt",
-			req: CompletionRequest{
-				Prompt:           "<|im_start|>assistant\n<think>\n",
-				ThinkBudget:      512,
-				ThinkingStartTag: "<think>",
-				ThinkingEndTag:   "</think>",
-			},
-			wantBudget:           float64(512),
-			wantScope:            "response",
-			wantStart:            "<think>",
-			wantEnd:              "</think>",
-			wantMessage:          "",
-			wantGenerationPrompt: "<think>\n",
-		},
-		{
-			// gemma4 primes the block with a channel name after a tool
-			// response, so the prompt ends past the opening tag rather than
-			// with it
-			name: "primed block is replayed past the opening tag",
-			req: CompletionRequest{
-				Prompt:           "<|tool_response>12:00<turn|>\n<|channel>thought\n",
-				ThinkBudget:      512,
-				ThinkingStartTag: "<|channel>",
-				ThinkingEndTag:   "<channel|>",
-			},
-			wantBudget:           float64(512),
-			wantScope:            "response",
-			wantStart:            "<|channel>",
-			wantEnd:              "<channel|>",
-			wantMessage:          "",
-			wantGenerationPrompt: "<|channel>thought\n",
-		},
-		{
-			name: "closed thinking block is not replayed",
-			req: CompletionRequest{
-				Prompt:           "<|turn>model\n<|channel>thought\nhm<channel|>done<turn|>\n<|turn>model\n",
-				ThinkBudget:      512,
-				ThinkingStartTag: "<|channel>",
-				ThinkingEndTag:   "<channel|>",
-			},
-			wantBudget:  float64(512),
-			wantScope:   "response",
-			wantStart:   "<|channel>",
-			wantEnd:     "<channel|>",
-			wantMessage: "",
-		},
-		{
-			// an opening tag this far from the end came from message content,
-			// not from the template priming the turn
-			name: "opening tag inside message content is not replayed",
-			req: CompletionRequest{
-				Prompt:           "<|im_start|>user\nwhy does <think> not close in this quoted example I pasted<|im_end|>\n<|im_start|>assistant\n",
-				ThinkBudget:      512,
-				ThinkingStartTag: "<think>",
-				ThinkingEndTag:   "</think>",
-			},
-			wantBudget:  float64(512),
-			wantScope:   "response",
-			wantStart:   "<think>",
-			wantEnd:     "</think>",
-			wantMessage: "",
-		},
-		{
-			name: "wrap-up message is forced ahead of the closing tag",
-			req: CompletionRequest{
-				Prompt:             "<bos><|turn>user\nhi<turn|>\n<|turn>model\n",
-				ThinkBudget:        512,
-				ThinkBudgetMessage: "\n\nTime to answer now.\n",
-				ThinkingStartTag:   "<|channel>",
-				ThinkingEndTag:     "<channel|>",
-			},
-			wantBudget:  float64(512),
-			wantScope:   "response",
-			wantStart:   "<|channel>",
-			wantEnd:     "<channel|>",
-			wantMessage: "\n\nTime to answer now.\n",
-		},
-		{
-			// the budget bounds the whole response, and a tool call forgives
-			// what the thinking before it spent
-			name: "tool call tag rides along as the budget reset",
-			req: CompletionRequest{
-				Prompt:              "<bos><|turn>user\nhi<turn|>\n<|turn>model\n",
-				ThinkBudget:         512,
-				ThinkingStartTag:    "<|channel>",
-				ThinkingEndTag:      "<channel|>",
-				ThinkBudgetResetTag: "<|tool_call>",
-			},
-			wantBudget:   float64(512),
-			wantStart:    "<|channel>",
-			wantEnd:      "<channel|>",
-			wantMessage:  "",
-			wantScope:    "response",
-			wantResetTag: "<|tool_call>",
-		},
-		{
-			name: "no budget",
-			req: CompletionRequest{
-				Prompt:             "test prompt",
-				ThinkBudgetMessage: "ignored without a budget",
-				ThinkingStartTag:   "<think>",
-				ThinkingEndTag:     "</think>",
-			},
-		},
-		{
-			name: "budget without tags is not enforceable",
-			req: CompletionRequest{
-				Prompt:      "test prompt",
-				ThinkBudget: 512,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var completionBody map[string]any
-
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				switch r.URL.Path {
-				case "/health":
-					fmt.Fprint(w, `{"status":"ok"}`)
-				case "/completion":
-					body, err := io.ReadAll(r.Body)
-					if err != nil {
-						t.Errorf("reading completion request body: %v", err)
-						return
-					}
-					if err := json.Unmarshal(body, &completionBody); err != nil {
-						t.Errorf("invalid completion request body %q: %v", body, err)
-						return
-					}
-					w.Header().Set("Content-Type", "text/event-stream")
-					fmt.Fprintln(w, `data: {"content":"","stop":true}`)
-				default:
-					t.Errorf("unexpected path: %s", r.URL.Path)
-				}
-			}))
-			defer srv.Close()
-
-			parts := strings.Split(srv.URL, ":")
-			var portInt int
-			fmt.Sscanf(parts[len(parts)-1], "%d", &portInt)
-
-			runner := &llamaServerRunner{
-				port:    portInt,
-				cmd:     fakeRunningCmd(),
-				sem:     semaphore.NewWeighted(1),
-				options: api.Options{Runner: api.Runner{NumCtx: 2048}},
-			}
-
-			opts := api.DefaultOptions()
-			req := tt.req
-			req.Options = &opts
-			if err := runner.Completion(t.Context(), req, func(CompletionResponse) {}); err != nil {
-				t.Fatalf("Completion error: %v", err)
-			}
-
-			// a nil want means the field must not reach the wire at all
-			checks := []struct {
-				field string
-				want  any
-			}{
-				{"reasoning_budget_tokens", tt.wantBudget},
-				{"reasoning_budget_start_tag", tt.wantStart},
-				{"reasoning_budget_end_tag", tt.wantEnd},
-				// llama-server builds the sequence it forces from
-				// message+end_tag, and only when this field is present, so an
-				// empty message still has to reach the wire
-				{"reasoning_budget_message", tt.wantMessage},
-				{"reasoning_budget_scope", tt.wantScope},
-				{"reasoning_budget_reset_tag", tt.wantResetTag},
-				{"generation_prompt", tt.wantGenerationPrompt},
-			}
-
-			for _, check := range checks {
-				field, want := check.field, check.want
-				got, ok := completionBody[field]
-				if want == nil {
-					if ok {
-						t.Errorf("%s = %v, want it omitted", field, got)
-					}
-					continue
-				}
-				if !ok {
-					t.Errorf("%s missing from llama-server completion request", field)
-					continue
-				}
-				if got != want {
-					t.Errorf("%s = %v, want %v", field, got, want)
-				}
-			}
-		})
-	}
-}
-
-func TestLlamaServerChatMessageCarriesThinking(t *testing.T) {
-	msg, err := llamaServerChatMessage(Message{
-		Role:     "assistant",
-		Content:  "OK",
-		Thinking: "the secret number is 7413",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := msg["reasoning_content"]; got != "the secret number is 7413" {
-		t.Fatalf("reasoning_content = %#v, want the thinking to reach the template", got)
-	}
-	if got := msg["content"]; got != "OK" {
-		t.Fatalf("content = %#v, want the visible reply untouched", got)
-	}
-
-	// A message that never carried thinking must not gain an empty field: a
-	// template that only checks for presence would render a blank think block.
-	plain, err := llamaServerChatMessage(Message{Role: "assistant", Content: "OK"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := plain["reasoning_content"]; ok {
-		t.Fatalf("reasoning_content present on a message with no thinking: %#v", plain)
 	}
 }

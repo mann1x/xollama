@@ -27,6 +27,48 @@ first if a patch looks missing or out of date.
    other row in this file keys on the PR number, and these cannot. They are
    listed apart, below.
 
+**Status as of 2026-09-27: the set moved to upstream v0.34.4.** Manifest
+`3edc2006` (`base: v0.34.4`, `integration.sha e74b1daa`, 22 patches), consumed
+on `sync/upstream-v0.34.4` after `c43d0a68` merged the upstream tag: each patch
+is its own `--no-ff` merge at the manifest's sha, in `patches[]` order. The
+manifest still marks every PR open upstream, so none retires with this sync.
+`LLAMA_CPP_VERSION` moves b10969 → b11081 with it.
+
+| PR | branch | manifest sha | 2026-09-27 merge |
+|---|---|---|---|
+| #17563 | `up-repeat-guard` | `32eb2ce0` | `a9b28ffe` |
+| #17564 | `up-truncated-tool-calls` | `74bbcc0a` | `15ed7732` |
+| #17565 | `up-gemma4-object-close` | `61237007` | `fe75ca5f` |
+| #17566 | `up-think-budget` | `2a097aca` | `58f1d85f` |
+| #17567 | `up-mlx-libdl` | `368fc480` | `7ea8b914` |
+| #17626 | `up-gemma4-stray-channel-name` | `50b75654` | `0d1a3b10` |
+| #17914 | `qwen3coder-tolerate-malformed-tool-calls` | `c12b6e09` | `5bff109f` |
+| #18212 | `up-reasoning-budget-line-boundary` | `e39f20f1` | `89fd3038` |
+| #18281 | `up-native-thinking-replay` | `f044b1a2` | `6be45506` |
+| #18288 | `up-gemma4-stray-closer` | `3d72d73d` | `8e7737f9` |
+| #18289 | `up-jinja-runner-reuse` | `774f9d23` | `b9eb40ea` |
+| #18307 | `gemma4-toolcall-in-thinking` | `467a01ee` | `57e3e384` |
+| #18624 | `qwen35-toolcall-in-thinking` | `025560f7` | `b40ae8db` |
+| fork-only | `up-gemma4-unparsed-tool-call-content` | `abcd137f` | `92dacadf` |
+| fork-only | `up-toolcall-tags` | `da7a2430` | `d331846d` |
+| fork-only | `up-codex-request-count-mtime` | `889979e2` | `d1351fbd` |
+| fork-only | `up-fileutil-root-permission-tests` | `71c080c5` | `a10a490b` |
+| fork-only | `up-gofmt-vision-test-data` | `3e1200aa` | `fb668582` |
+| fork-only | `up-lfm2-think-off-discard` | `15cfe778` | `31ffd015` |
+| fork-only | `up-gemma4-assistant-shape` | `fbac8ef1` | `a71b08c2` |
+| fork-only | `up-gemma4-swallowed-key` | `b6771dc2` | `7cdde61b` |
+| fork-only | `up-response-scope-think-budget` | `15ebdeca` | `7f560400` |
+
+Measured against the fork's tree: every file that differs from `e74b1daa` is
+one xollama already changed at the previous integration (`d57818e3`), and
+`LLAMA_CPP_VERSION`, `llama/server` and `llama/compat` equal the fork's except
+`llama/compat/README.md`. The fork's README (`3f1fcb62`) combines the edits of
+`up-reasoning-budget-line-boundary` and `up-gemma4-assistant-shape` and exists
+only on `think-budget`. No patch sha carries it, so a merge cannot reach it
+without writing it, which `check-compat-origin.sh` refuses. `a71b08c2` keeps
+the line-boundary README, and the fork has been asked to put `3f1fcb62` on a
+patch branch.
+
 **Status as of 2026-09-21: all thirteen are carried, and all thirteen are still
 OPEN against `ollama/ollama`.** The twelve that have a home in `mann1x/ollama`
 are now consumed from its first `PATCHES.json` — `base: v0.34.2`,

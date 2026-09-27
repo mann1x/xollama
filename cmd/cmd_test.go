@@ -48,7 +48,7 @@ func TestRunThinkingNamesReachServer(t *testing.T) {
 				}
 			}))
 			defer server.Close()
-			t.Setenv("OLLAMA_HOST", server.URL)
+			t.Setenv("XOLLAMA_HOST", server.URL)
 			cmd := &cobra.Command{}
 			cmd.SetContext(t.Context())
 			for _, name := range []string{"format", "think", "keepalive"} {
