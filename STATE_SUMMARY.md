@@ -20,6 +20,7 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >   - multislot 590 vs 461 tok/s; 70B overflow 3.69 vs 1.21 tok/s (single run).
 >   - gemma4 tool call and thinking split correct.
 >   - No defect row accuses a dev build, so none is retired.
+> - CI red on PR #2 since the API key commit, fixed: `app/ui/apikey.go` lacked the `windows || darwin` tag its only caller has (lint `unused` on Linux); `TestLiveAppUpdate` now skips when GitHub rate-limits the unauthenticated feed (403) instead of failing. Release dry run `36317134651` passed (plan, windows, linux, publish).
 > - Left: merge PR #2 and the CI pre-release.
 
 > **2026-09-27 — A client's pooled worker is refused fast too; a never-fitting request is a 400, not a "runner stopped".**
