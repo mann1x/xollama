@@ -30,8 +30,11 @@ first if a patch looks missing or out of date.
 **Status as of 2026-09-27: the set moved to upstream v0.34.4.** Manifest
 `3edc2006` (`base: v0.34.4`, `integration.sha e74b1daa`, 22 patches), consumed
 on `sync/upstream-v0.34.4` after `c43d0a68` merged the upstream tag: each patch
-is its own `--no-ff` merge at the manifest's sha, in `patches[]` order. The
-manifest still marks every PR open upstream, so none retires with this sync.
+is its own `--no-ff` merge at the manifest's sha, in `patches[]` order. None retires with
+this sync. `gemma4-toolcall-in-thinking` became `fork-only` in the status-only bump
+`78333d54` (every sha unchanged): upstream closed #18307 on 2026-09-25 and the
+repository owner keeps it closed, so it is carried with no upstream PR, and its
+un-prefixed branch name stays.
 `LLAMA_CPP_VERSION` moves b10969 → b11081 with it.
 
 | PR | branch | manifest sha | 2026-09-27 merge |
@@ -47,7 +50,7 @@ manifest still marks every PR open upstream, so none retires with this sync.
 | #18281 | `up-native-thinking-replay` | `f044b1a2` | `6be45506` |
 | #18288 | `up-gemma4-stray-closer` | `3d72d73d` | `8e7737f9` |
 | #18289 | `up-jinja-runner-reuse` | `774f9d23` | `b9eb40ea` |
-| #18307 | `gemma4-toolcall-in-thinking` | `467a01ee` | `57e3e384` |
+| fork-only (was #18307, closed 2026-09-25) | `gemma4-toolcall-in-thinking` | `467a01ee` | `57e3e384` |
 | #18624 | `qwen35-toolcall-in-thinking` | `025560f7` | `b40ae8db` |
 | fork-only | `up-gemma4-unparsed-tool-call-content` | `abcd137f` | `92dacadf` |
 | fork-only | `up-toolcall-tags` | `da7a2430` | `d331846d` |

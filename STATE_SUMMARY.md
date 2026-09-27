@@ -5,6 +5,15 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — b171 (2609271900001) measured and NOT pinned; gemma4-toolcall-in-thinking is fork-only.**
+> - b171 carries opencoti's fit rework: an automatic margin, lazy vision, and the rolling-KV window inside the fit. It went through phase2-engine-ab.py as `ollama`; results are in `/srv/ml/xollama-phase2/as-ollama/b171-ab`.
+> - Throughput 74.9 tok/s and gemma4 are fine. Two axes regress against b145:
+>   - the 70B q3_K_S first load fails allocating its 5.6 GiB KV buffer, because the fit leaves 256 MiB and does not count it;
+>   - multislot serializes (142 vs 590 tok/s): `kv-reservation: REFUSED … need 32768`.
+> - Sent to opencoti in #491. The pin stays on b145.
+> - A Docker image with CUDA 12 (V100) plus CUDA 13 for a tester: upstream's `cuda_v12` is already in the image. The engine's own v12 payload is still compiling at opencoti; asked for its pin shape in #490.
+> - CARRIED-PATCHES follows manifest bump `78333d54`: `gemma4-toolcall-in-thinking` is fork-only (#18307 was closed upstream and stays closed).
+
 > **2026-09-27 — Synced to upstream v0.34.4 and the fork's v0.34.4 manifest (branch `sync/upstream-v0.34.4`).**
 > - `c43d0a68` merges the v0.34.4 tag. xollama's hooks (council, engine-session fields, api-key, context-window) are kept, upstream's `thinkingparser` / `ThinkingClose` is adopted, and the structured-outputs double request is dropped as upstream did.
 > - The fork's 22 patches (manifest `3edc2006`, integration `e74b1daa`) are merged at their shas in order, `a9b28ffe`..`7f560400`. The table is in `docs/protocols/CARRIED-PATCHES.md`.
