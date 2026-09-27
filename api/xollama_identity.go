@@ -67,6 +67,11 @@ const (
 	// answers 401 with WWW-Authenticate: Bearer realm="xollama" without it,
 	// this route included.
 	FeatureAPIKey = "api_key_v1"
+	// FeatureContextWindow: an admitted chat or generate response carries
+	// the engine's X-Context-Window (absent: no guaranteed window), and a
+	// client stating placement.num_ctx that cannot be booked gets a 429 at
+	// once with X-Context-Largest-Admissible and Retry-After, not a wait.
+	FeatureContextWindow = "context_window_v1"
 )
 
 // IsXollama reports whether the server at base is this fork, by the identity

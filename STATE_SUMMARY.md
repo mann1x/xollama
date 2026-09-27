@@ -5,6 +5,25 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — The engine's granted window reaches the client (`X-Context-Window`), and a window a client negotiates is refused fast.**
+> - Cerebriline asked for this in #418. opencoti sets `X-Context-Window: <granted>` on every admitted response when it books windows; before this, xollama dropped it.
+>   - The header is now on `/api/chat` and `/api/generate`, streamed or not, and on the OpenAI and Anthropic routes.
+>   - A council turn reports its owner's grant.
+>   - No header still means no guaranteed window: stock llama.cpp is unchanged.
+>   - The value reaches the handler through a collector on the request context. A writer wrapper sets it before the first byte, on the handler's goroutine, so nothing races.
+> - A client that states `placement.num_ctx` is negotiating. When the engine cannot book even `num_ctx_min`, the client gets the engine's 429 at once, with `X-Context-Largest-Admissible`, `Retry-After` and the engine's reason, instead of waiting 2 minutes for a 503. Requests that state no window still queue.
+> - Feature `context_window_v1`. Registry row `context-window`. Docs in `docs/xollama/sessions.mdx` ("The session's window").
+> - Tests in `server/context_window_test.go` and `llm/engine_slots_test.go`. 21 compiling mutants, all killed.
+> - Live on solidPC: a throwaway server on :22500, CPU-only, engine b137, tinyllama, run as `ollama`.
+>   - The header appeared on every route.
+>   - Placement 1536/512 was granted 1536; the continuation held 1536.
+>   - Asking 2048/1024 with 512 free gave 429 in 0.0 s, with largest 512 and Retry-After 2.
+>   - 2048/256 was granted 512.
+> - Limits:
+>   - The OpenAI and Anthropic shims do not carry `session_id` or `placement`, so negotiation is `/api/chat` only.
+>   - `options.num_ctx` still reloads the model; `placement.num_ctx` is the way to ask for a window.
+> - API key tests extended with positive twins and edges: every route with the key, the ollama.com-signed request plus `x-api-key`, Bearer precedence, case sensitivity, throttle forgiveness and expiry, key rotation without a restart, `::1`, remote callers refused even with the key, a client with no key, and the desktop proxy (`app/ui/apikey_test.go`, runs on Windows/macOS CI). 7 more mutants killed; 2 equivalent ones noted.
+
 > **2026-09-27 — A local API key for incoming connections (`xollama tweak server --api-key`).**
 > - Upstream accepts `api_key="ollama"` and ignores it. xollama can now require
 >   a real key on every route, as `Authorization: Bearer` or `x-api-key`

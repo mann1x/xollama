@@ -93,6 +93,7 @@ func (s *llamaServerRunner) postWaitingForAdmission(ctx context.Context, endpoin
 		// Everything except an admission refusal on an engine that has an
 		// admission gate is the caller's answer, untouched.
 		if res.StatusCode != http.StatusTooManyRequests || !s.usedOpencoti {
+			reportEngineWindow(ctx, res)
 			return res, nil
 		}
 
@@ -104,6 +105,10 @@ func (s *llamaServerRunner) postWaitingForAdmission(ctx context.Context, endpoin
 		res.Body.Close()
 		if err := neverFits(body); err != nil {
 			return nil, err
+		}
+		// A client negotiating its own window gets the engine's answer now.
+		if Negotiating(ctx) {
+			return nil, refuseWindow(ctx, body, wait)
 		}
 
 		if time.Now().Add(wait).After(deadline) {

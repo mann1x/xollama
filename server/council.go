@@ -60,6 +60,11 @@ func clientPlacement(c *gin.Context, req api.ChatRequest) {
 		return
 	}
 	c.Set(councilPlacementKey, &llm.Placement{PoolID: req.Placement.PoolID, NumCtx: req.Placement.NumCtx, NumCtxMin: req.Placement.NumCtxMin})
+	// A client stating its own window negotiates it: a refusal comes back at
+	// once, with the largest window the engine would admit.
+	if req.Placement.NumCtx > 0 {
+		c.Request = c.Request.WithContext(llm.WithNegotiation(c.Request.Context()))
+	}
 }
 
 // councilServes reports whether this chat turn goes to the council.
@@ -130,6 +135,12 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		members.tree = tree
 		tree.reserve = reserve
 		pressure = tree.begin(ctx)
+		// The turn runs inside the owner's window: report it as the turn's
+		// X-Context-Window. begin read it from the engine on every turn after
+		// the first; on the first, the planner's own admission reports it.
+		if g := tree.ownerGrant(); g > 0 {
+			llm.ReportContextWindow(ctx, g)
+		}
 		// A member's own tool results take at most one and a half times the
 		// window in characters -- about half of it in tokens -- beside the
 		// conversation, its stage and its reply. Measured live on b137 at

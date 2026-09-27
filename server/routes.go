@@ -258,6 +258,7 @@ func signinURL() (string, error) {
 
 func (s *Server) GenerateHandler(c *gin.Context) {
 	checkpointStart := time.Now()
+	exposeContextWindow(c) // xollama-hook: context-window — see docs/xollama/sessions.mdx
 	var req api.GenerateRequest
 	if err := c.ShouldBindJSON(&req); errors.Is(err, io.EOF) {
 		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "missing request body"})
@@ -2786,6 +2787,7 @@ func writeChatResponse(c *gin.Context, req api.ChatRequest, ch chan any) {
 
 func (s *Server) ChatHandler(c *gin.Context) {
 	checkpointStart := time.Now()
+	exposeContextWindow(c) // xollama-hook: context-window — see docs/xollama/sessions.mdx
 
 	var req api.ChatRequest
 	if err := c.ShouldBindJSON(&req); errors.Is(err, io.EOF) {

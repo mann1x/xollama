@@ -92,6 +92,57 @@ none. If you know a series of generate calls belongs together, send
   a field in a request is not the place to overrule that.
 </Warning>
 
+### The session's window
+
+On opencoti with elastic admission (its default under xollama), a session is
+booked a context window of its own, and xollama tells you what you got. Every
+admitted response on `/api/chat` and `/api/generate` carries it, streamed or
+not, and so do the OpenAI (`/v1/chat/completions`, `/v1/completions`) and
+Anthropic (`/v1/messages`) routes:
+
+```text
+X-Context-Window: 16384
+```
+
+The header is the engine's, passed on as it is. A continuation of a live
+`session_id` reports the window the session already holds. **No header means no
+guaranteed window**: stock llama.cpp, an engine without elastic admission, or a
+council turn whose first byte left before its window was booked. A council turn
+reports its owner's window, the one all its members share.
+
+To ask for a window, state it in `placement` (`client_placement_v1`) on
+`/api/chat`. Do not use `options.num_ctx` for this: it sizes the model's
+load, so changing it reloads the model.
+
+```shell
+curl http://localhost:22434/api/chat -d '{
+  "model": "qwen3.6",
+  "session_id": "lead-1",
+  "placement": { "num_ctx": 32768, "num_ctx_min": 8192 },
+  "messages": [{ "role": "user", "content": "…" }]
+}'
+```
+
+The engine grants the whole window, or the largest it can between
+`num_ctx_min` and `num_ctx`, and `X-Context-Window` says which. A window above
+the model's maximum is clamped, never refused. A continuation ignores a new ask
+and keeps the window it holds. To change it, resize it
+(`POST /api/engine?model=<model>&endpoint=sessions/<id>/resize`), or close the
+session (`endpoint=sessions/<id>/close`) or let it expire and ask again.
+
+When not even `num_ctx_min` fits, a client that stated `num_ctx` is not queued.
+It gets the engine's answer at once:
+
+```text
+HTTP/1.1 429 Too Many Requests
+Retry-After: 2
+X-Context-Largest-Admissible: 4096
+{"error":"admission rejected: context allocation exhausted (largest admissible 4096 < num_ctx_min 8192) …"}
+```
+
+Retry with a smaller window, or later. A request that states no window keeps
+ollama's contract, and waits for room.
+
 ## Shared prefix pools
 
 Several conversations usually start the same way: one system prompt, one set of

@@ -448,6 +448,17 @@ func (t *councilTree) dropKept(ctx context.Context) {
 // child can never be released.
 const councilRootChain = 2
 
+// ownerGrant is the window the engine granted the owner, when it is known
+// and the owner holds one: an unowned tree's owner books per request.
+func (t *councilTree) ownerGrant() int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.unowned {
+		return 0
+	}
+	return t.grant
+}
+
 // learnGrant reads the owner's booking from a /kv answer.
 func (t *councilTree) learnGrant(k llm.KVStatus) (llm.KVAllocation, bool) {
 	a, ok := k.Session(t.owner)
