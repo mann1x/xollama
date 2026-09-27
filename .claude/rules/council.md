@@ -221,6 +221,29 @@ paths:
 - **A remote reply is whole only with its `done` line.** A dropped connection
   ends the stream without an error; `remote()` fails it, and the runner treats
   an empty reply from a member elsewhere as a failure too.
+- **A council starts with a slot per parallel member** (`CouncilSlots`, from
+  `councilSlots` in `server/council_polykv.go`; `councilLive` /
+  `councilSlotArgs` in `llm/engine_council_slots.go`, `council` hooks in
+  `llm/llama_server.go` and `llm/engine_estimate.go`). Workers are charged to
+  the owner, so they need no cells, but each needs a slot: with `-np 1` the
+  engine deferred researcher 2 until researcher 1 released slot 0 (ab-3,
+  opencoti #501), and the elastic controller did not grow (3 s saturation +
+  512 MiB free-VRAM guard). `-np` = widest local step, `-c` unchanged (never
+  × the width), `--kv-unified` forced; not on stock, a single-sequence model
+  or `kv.unified: false`. The estimate counts the width as sequences only.
+- **Defaults: 2 researchers, 1 critic** (owner's ruling 2026-09-27: a second
+  critic of the same model added nothing; it pays when it is another model).
+  Server tests state two critics in `councilOn()` to cover indices.
+- **Shared reads** (`internal/council/reads.go`): `SharedReads` indexes the
+  turn's read-only results from the client's tail (key = tool + canonical
+  args → the forwarded id that answered it; a non-read-only result clears
+  it); `cfg.result` answers a member from it in place, `forwarded` skips it,
+  `once` forwards a repeated read of one step once. Never pushed to a member
+  that did not ask (owner's condition). Evidence points at the source ref.
+- **`VERDICT: CONFIRMED path:line`** (`Confirmed`, steps.go): offered to
+  critics on tool turns; the first confirmation cancels the other critics
+  (`stoppedCritique`, their suspensions dropped), overrides `REVISE`, and
+  `confirmedNote` tells the synthesizer to make that change first.
 - **`slots.live`** replaces `OLLAMA_NUM_PARALLEL` only when opencoti serves
   (`server/slots_live.go`, `slots-live` hook). Never set the parallel env for
   a council on opencoti: `-c` is `num_ctx × slots`, and 4 × 131k did not fit.
