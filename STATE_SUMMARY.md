@@ -5,6 +5,14 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — v0.34.2-xollama.2 published as a pre-release (PR #2, merge 69f1a658) and verified on eleven2go.**
+> - Release run 36319352313: plan, windows, linux, publish all green. Six assets; `sha256sum -c` all OK; payload-id `fcdf0b73…`.
+> - eleven2go install (RELEASE.md step 6, scheduled task): `--version` names the tag, PAYLOAD_ID matches, `*:22434`, `/api/xollama` lists 9 features, the tray app names the fork's feed, and ollama on 11434 is untouched.
+> - Devices: the RTX 3090 goes to opencoti (CUDA); the Radeon iGPU (Vulkan) goes to llama.cpp.
+> - Measured: 700 tokens at 123.0 tok/s on the engine from `lib\ollama\engines`. The omni-council-idle tools turn passes (9 rounds, 87 s).
+> - The council models were copied to eleven2go losslessly by recreating them. osync 1.3.1 is lossy against a Windows target: see `/shared/dev/handover/2026-09-27-osync-xollama-copy-issues.md`.
+> - Left: promote to latest (step 8) when the owner says so.
+
 > **2026-09-27 — Engine pin moves to opencoti 2609271108001, the first with a Windows CUDA engine; tested live on eleven2go.**
 > - Pin: HF rev `ed6430b9`, bin `32287454` (one APE for x86_64, aarch64 and Windows), dso `868ed520` (Linux CUDA) and `ee622711` (Windows CUDA DLL), mail #439. It carries the b145 line: council/PolyKV surface plus opencoti's media runtime and STT.
 > - Windows packaging now accepts a dev snapshot's shape (`bin win-x86_64` + `dso win-x86_64`):
