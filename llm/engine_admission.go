@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"time"
 )
@@ -97,8 +99,12 @@ func (s *llamaServerRunner) postWaitingForAdmission(ctx context.Context, endpoin
 		wait := retryAfter(res, time.Now())
 		// The body is not the caller's to see -- this response is being
 		// swallowed -- but it has to be drained so the connection is reusable.
+		body, _ := io.ReadAll(io.LimitReader(res.Body, 64<<10))
 		_, _ = io.Copy(io.Discard, res.Body)
 		res.Body.Close()
+		if err := neverFits(body); err != nil {
+			return nil, err
+		}
 
 		if time.Now().Add(wait).After(deadline) {
 			return nil, errNoAdmission
@@ -115,4 +121,34 @@ func (s *llamaServerRunner) postWaitingForAdmission(ctx context.Context, endpoin
 		case <-timer.C:
 		}
 	}
+}
+
+// sessionFull is the engine's refusal of a request inside a session's window:
+// "session allocation full (worker of 'x': 15229 of 16384 cells free, needs
+// 15398)" or "session allocation full ('x': …)".
+var sessionFull = regexp.MustCompile(`session allocation full \([^)]*?(\d+) of (\d+) cells free, needs (\d+)`)
+
+// ErrNeverFits is a request that needs more cells than its whole window: no
+// wait can seat it.
+var ErrNeverFits = errors.New("the request needs more context than its window holds")
+
+// neverFits reads an admission refusal and reports one that no wait can
+// cure: a request needing more cells than its session's whole window.
+// Measured on b137: such a request was refused 52 times over 2 minutes before
+// errNoAdmission, when the first refusal already said it could never fit.
+// Anything else -- cells held by others, which they give back -- is waited
+// out as before.
+func neverFits(body []byte) error {
+	m := sessionFull.FindSubmatch(body)
+	if m == nil {
+		return nil
+	}
+	// The pattern admits digits only, so these parse; a number too large for
+	// an int reads as 0 and never refuses.
+	total, _ := strconv.Atoi(string(m[2]))
+	need, _ := strconv.Atoi(string(m[3]))
+	if total <= 0 || need <= total {
+		return nil
+	}
+	return fmt.Errorf("%w: it needs %d cells of a %d-cell window; shorten the conversation or raise num_ctx", ErrNeverFits, need, total)
 }

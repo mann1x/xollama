@@ -106,6 +106,9 @@ func (cfg Config) transcript(r Role, key string, turns []api.Message) []api.Mess
 				res = why
 			} else if local(c) {
 				res = cfg.lookup(c)
+				if folded[c.ID] {
+					res = droppedLookup
+				}
 			} else if s, ok := cfg.Results[ForwardedID(key, c.ID)]; ok {
 				res = s
 				if folded[c.ID] {

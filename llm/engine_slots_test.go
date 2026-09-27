@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -483,5 +484,45 @@ func TestTheResidencyTacticIsOpencotiOnly(t *testing.T) {
 	}
 	if got := appendKVResidencyArgs(nil, kvCacheTypes{}, true); len(got) != 0 {
 		t.Errorf("an unstated tactic must add nothing, got %v", got)
+	}
+}
+
+// A refusal that says the request needs more than its whole window is the
+// answer at once: no wait can seat it. One that others' cells explain is
+// still waited out.
+func TestARequestThatCanNeverFitIsNotWaitedOut(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		never      bool
+	}{
+		{"worker over the window", `{"error":{"code":429,"message":"session allocation full (worker of 'tools-1': 15229 of 16384 cells free, needs 16500) — compact the session"}}`, true},
+		{"owner over the window", `{"error":{"message":"session allocation full ('tools-1': 100 of 8192 cells free, needs 9000)"}}`, true},
+		{"held by others", `{"error":{"code":429,"message":"session allocation full (worker of 'tools-1': 11101 of 16384 cells free, needs 11767) — compact the session"}}`, false},
+		{"exhausted", `{"error":{"message":"context allocation exhausted"}}`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var refusals atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if refusals.Add(1) > 1 {
+					w.WriteHeader(http.StatusOK)
+					return
+				}
+				w.Header().Set("Retry-After", "0.01")
+				w.WriteHeader(http.StatusTooManyRequests)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+			runner := &llamaServerRunner{client: newLlamaServerHTTPClient(), usedOpencoti: true}
+			res, err := runner.postWaitingForAdmission(t.Context(), srv.URL, []byte(`{}`))
+			if res != nil {
+				res.Body.Close()
+			}
+			if got := errors.Is(err, ErrNeverFits); got != tc.never {
+				t.Fatalf("never fits = %v (err %v), want %v", got, err, tc.never)
+			}
+			if tc.never && refusals.Load() != 1 {
+				t.Fatalf("asked %d times", refusals.Load())
+			}
+		})
 	}
 }

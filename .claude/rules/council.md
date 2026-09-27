@@ -298,9 +298,12 @@ paths:
   appends to `req.Tools` once, in `councilChat`, so every member and the
   renderer carry the same list. It is answered in `transcript`, never
   forwarded (`local`), and a turn of lookups only loops in-process, bounded by
-  `maxLookups`. A member's own older results fold to refs past `ownBudget`
-  (`folded`; its last turn's stay whole), or a member that read two big files
-  outgrows the owner's window. A researcher whose first reply names a tool but calls none is
+  `maxLookups`. A member's own results fold to refs past `ResultBudget`
+  (window*3/4 chars, set in `councilChat`; `ownBudget` without a tree):
+  older turns first (earlier look-ups dropped), then the last turn's largest
+  (`folded`) -- or a member that read big files outgrows the owner's window.
+  A refusal that needs more cells than its whole window is `llm.ErrNeverFits`
+  at once, not a 2-minute admission wait (`neverFits`). A researcher whose first reply names a tool but calls none is
   nudged once and its narration dropped (`narrated`); critics are not, since
   they name the tools the findings used. A worker's PolyKV layer is everything
   before its own instruction (the last user message), never before its last

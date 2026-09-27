@@ -123,6 +123,9 @@ type Config struct {
 	// client's answers to the calls a turn forwarded, by forwarded id.
 	Tools   api.Tools
 	Results map[string]string
+	// ResultBudget is the characters of tool results a member carries whole
+	// in its own turns; past it the rest travel by ref. 0 is the default.
+	ResultBudget int
 }
 
 // Built-in defaults: the owner's specification, measured in Phase 0 and 1.

@@ -158,32 +158,66 @@ func TestWithEvidence(t *testing.T) {
 	}
 }
 
-// A member that read a long result, then asks for another, carries the first
-// by ref once its own results outgrow ownBudget; the newest stay whole.
-func TestAMemberFoldsItsOwnOldResults(t *testing.T) {
-	turns := []api.Message{
-		{Role: "assistant", ToolCalls: []api.ToolCall{{ID: "call_0_0", Function: api.ToolCallFunction{Name: "read_files"}}}},
-		{Role: "assistant", ToolCalls: []api.ToolCall{{ID: "call_1_0", Function: api.ToolCallFunction{Name: "read_files"}}}},
-		{Role: "assistant", ToolCalls: []api.ToolCall{{ID: "call_2_0", Function: api.ToolCallFunction{Name: "read_files"}}}},
+// A member carries its own results within its budget: its older ones by ref
+// first, then -- only when its last turn alone is too much -- that turn's
+// largest; an earlier look-up is dropped, the one it just made kept.
+func TestAMemberFoldsItsOwnResults(t *testing.T) {
+	read := func(id string) api.Message {
+		return api.Message{Role: "assistant", ToolCalls: []api.ToolCall{{ID: id, Function: api.ToolCallFunction{Name: "read_files"}}}}
 	}
-	long := bigLog()
-	cfg := Config{Tools: WithEvidence(testTools), Results: map[string]string{"r2:call_0_0": long, "r2:call_1_0": "small", "r2:call_2_0": long}}
-	var got []string
-	for _, m := range cfg.transcript(Researcher, "r2", turns) {
-		if m.Role == "tool" {
-			got = append(got, m.Content)
+	look := func(id string, args map[string]any) api.Message {
+		c := evidenceCall(args)
+		c.ID = id
+		return api.Message{Role: "assistant", ToolCalls: []api.ToolCall{c}}
+	}
+	results := func(cfg Config, turns []api.Message) []string {
+		var got []string
+		for _, m := range cfg.transcript(Researcher, "r2", turns) {
+			if m.Role == "tool" {
+				got = append(got, m.Content)
+			}
 		}
+		return got
 	}
-	if len(got) != 3 || !strings.HasPrefix(got[0], "[ref r2:call_0_0: ") || got[1] != "small" || got[2] != long {
-		t.Fatalf("transcript results: %.60q", got)
+	long, medium := bigLog(), strings.Repeat("config line\n", 700)
+	cfg := Config{Tools: WithEvidence(testTools), Results: map[string]string{"r2:call_0_0": long, "r2:call_1_0": "small", "r2:call_2_0": medium}}
+
+	// The old long result folds, and that is enough: the newest stays whole.
+	got := results(cfg, []api.Message{read("call_0_0"), read("call_1_0"), read("call_2_0")})
+	if !strings.HasPrefix(got[0], "[ref r2:call_0_0: ") || got[1] != "small" || got[2] != medium {
+		t.Fatalf("old folded: %.60q", got)
 	}
-	// Within the budget, or without the lookup, nothing is folded.
-	cfg.Results["r2:call_0_0"] = "short"
-	if f := cfg.folded(Researcher, "r2", turns); len(f) != 0 {
+	// Its one turn alone is too much: the largest result of that turn folds.
+	three := []api.Message{{Role: "assistant", ToolCalls: []api.ToolCall{
+		{ID: "call_0_0", Function: api.ToolCallFunction{Name: "read_files"}},
+		{ID: "call_0_1", Function: api.ToolCallFunction{Name: "read_files"}},
+		{ID: "call_0_2", Function: api.ToolCallFunction{Name: "read_files"}},
+	}}}
+	cfg.Results["r2:call_0_1"], cfg.Results["r2:call_0_2"] = "small", medium
+	got = results(cfg, three)
+	if !strings.HasPrefix(got[0], "[ref r2:call_0_0: ") || got[1] != "small" || got[2] != medium {
+		t.Fatalf("newest turn: %.60q", got)
+	}
+	// Within a larger budget nothing folds.
+	cfg.ResultBudget = 64000
+	if f := cfg.folded(Researcher, "r2", three); len(f) != 0 {
 		t.Fatalf("folded within the budget: %v", f)
 	}
-	cfg.Results["r2:call_0_0"], cfg.Tools = long, testTools
-	if f := cfg.folded(Researcher, "r2", turns); len(f) != 0 {
+	cfg.ResultBudget = 0
+	// Paging: the earlier look-ups drop, the one just made stays.
+	cfg.Results = map[string]string{"r1:call_0_0": long}
+	pages := []api.Message{
+		look("call_0_0", map[string]any{"ref": "r1:call_0_0", "lines": "1-200"}),
+		look("call_1_0", map[string]any{"ref": "r1:call_0_0", "lines": "201-400"}),
+		look("call_2_0", map[string]any{"ref": "r1:call_0_0", "lines": "401-600"}),
+	}
+	got = results(cfg, pages)
+	if got[0] != droppedLookup || !strings.HasPrefix(got[2], "Lines 401-600 of 800") {
+		t.Fatalf("paging: %.60q", got)
+	}
+	// Without the lookup nothing folds: there would be no way back.
+	cfg.Tools = testTools
+	if f := cfg.folded(Researcher, "r2", three); len(f) != 0 {
 		t.Fatalf("folded without the lookup: %v", f)
 	}
 }

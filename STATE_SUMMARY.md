@@ -5,6 +5,15 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — A council member's own results fit its window; never-fitting requests fail at once; Expose binds.**
+> - A member's own tool results fold to refs past three quarters of the window
+>   (characters): older turns first, then its last turn's largest, searched
+>   with `council_evidence`. A refusal needing more than the whole window is an
+>   immediate error, not 2 minutes of retries.
+> - The desktop app's Expose set only `OLLAMA_HOST`, which xollama ignores, so
+>   an exposed install stayed on 127.0.0.1 (eleven2go). It now sets
+>   `XOLLAMA_HOST=0.0.0.0:<port>`.
+
 > **2026-09-27 — Council tools: narrated calls stopped; long results travel by ref (`council_evidence`).**
 > - A researcher's first reply that names a tool without calling it is dropped
 >   and asked again once. With the stronger note it never fired: live 10+10,

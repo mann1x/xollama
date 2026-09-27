@@ -3,6 +3,7 @@ package council
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -27,8 +28,8 @@ const (
 	maxFetchChars = 8000
 	// maxLookups bounds the member's turns that call only EvidenceTool.
 	maxLookups = 6
-	// ownBudget bounds the client results a member carries whole in its own
-	// transcript. Measured live on b137 without it: a researcher that read a
+	// ownBudget bounds the tool results a member carries whole in its own
+	// transcript, when the Config names no ResultBudget. Measured live on b137 without it: a researcher that read a
 	// 20 KB log, then an 8 KB file, carried both into its next request,
 	// needed 15,398 cells of a 15,229-cell window and never ran.
 	ownBudget = 12000
@@ -142,11 +143,11 @@ func (cfg Config) canLookup() bool {
 	return ok
 }
 
-// lookupNote tells a member that reads the findings -- not a researcher,
-// whose brief lists none -- how to read a listed
+// lookupNote tells a member -- whose own results may arrive by ref too --
+// how to read a listed
 // result: before judging a claim that rests on it, or editing what it shows.
 func (cfg Config) lookupNote(r Role) string {
-	if !cfg.canLookup() || r == Researcher {
+	if !cfg.canLookup() {
 		return ""
 	}
 	return fmt.Sprintf(" A result too long to carry is listed by its ref with its first lines; call %s with the ref and a line range or pattern to read the exact lines before you judge or change what they say.", EvidenceTool)
@@ -163,34 +164,77 @@ func truncate(s string, n int) string {
 	return s[:n]
 }
 
-// folded is which of a member's own earlier results it carries by ref, not
-// whole: the oldest first, until the rest fit ownBudget. The results of its
-// last turn -- what it has not answered yet -- are always whole. A member
-// reads a folded result back with EvidenceTool, under the same ref.
+// folded is which of a member's own results it carries by ref, not whole,
+// so they fit its budget (resultBudget): its earlier turns first, oldest
+// first -- an earlier look-up is dropped, to be asked again -- and then, if
+// its last turn alone is too much, that turn's largest results, whose preview
+// and ref it searches with EvidenceTool. Measured live on b137: a researcher
+// that read three files in one turn needed 15,264 cells where at most 15,235
+// were ever free, and never ran.
 func (cfg Config) folded(r Role, key string, turns []api.Message) map[string]bool {
-	if !cfg.canLookup() || len(turns) < 2 {
+	if !cfg.canLookup() || len(turns) == 0 {
 		return nil
 	}
+	budget := cfg.resultBudget()
+	type res struct {
+		id   string
+		size int // what folding it saves
+	}
+	var older, last []res
 	size := 0
-	for _, t := range turns {
+	for i, t := range turns {
 		for _, c := range t.ToolCalls {
-			if ok, _ := cfg.may(r, c); ok && !local(c) {
-				size += len(cfg.Results[ForwardedID(key, c.ID)])
+			if ok, _ := cfg.may(r, c); !ok {
+				continue
+			}
+			var n, saved int
+			if local(c) {
+				n = len(cfg.lookup(c))
+				saved = n - len(droppedLookup)
+			} else {
+				ref := ForwardedID(key, c.ID)
+				s, ok := cfg.Results[ref]
+				if !ok {
+					continue
+				}
+				n = len(s)
+				if n > inlineEvidence {
+					saved = n - len(indexed(ref, s))
+				}
+			}
+			size += n
+			if saved <= 0 {
+				continue
+			}
+			switch {
+			case i < len(turns)-1:
+				older = append(older, res{c.ID, saved})
+			case !local(c):
+				// What the member just looked up stays: it asked for it.
+				last = append(last, res{c.ID, saved})
 			}
 		}
 	}
+	slices.SortStableFunc(last, func(a, b res) int { return b.size - a.size })
 	out := map[string]bool{}
-	for _, t := range turns[:len(turns)-1] {
-		for _, c := range t.ToolCalls {
-			res, ok := cfg.Results[ForwardedID(key, c.ID)]
-			if size <= ownBudget {
-				return out
-			}
-			if ok && len(res) > inlineEvidence && !local(c) {
-				out[c.ID] = true
-				size -= len(res) - len(indexed(ForwardedID(key, c.ID), res))
-			}
+	for _, f := range append(older, last...) {
+		if size <= budget {
+			break
 		}
+		out[f.id] = true
+		size -= f.size
 	}
 	return out
+}
+
+// droppedLookup stands in for an earlier look-up a member no longer carries.
+const droppedLookup = "(an earlier look-up, dropped to keep your context small; call " + EvidenceTool + " again for these lines if you need them)"
+
+// resultBudget is the characters of tool results a member carries whole:
+// the Config's, or ownBudget.
+func (cfg Config) resultBudget() int {
+	if cfg.ResultBudget > 0 {
+		return cfg.ResultBudget
+	}
+	return ownBudget
 }

@@ -130,6 +130,10 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		members.tree = tree
 		tree.reserve = reserve
 		pressure = tree.begin(ctx)
+		// A member's own tool results take at most three quarters of the
+		// window in characters -- about a third of it in tokens -- beside the
+		// conversation, its stage and its reply.
+		cfg.ResultBudget = tree.window * 3 / 4
 	}
 	// Compaction (Phase 8, Cerebriline's): the record carried from the last
 	// fold is applied, and the conversation folded again if a trigger fires.

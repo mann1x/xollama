@@ -1670,6 +1670,14 @@ unpooled members, 0 admission waits.
   Open: a member whose newest turn alone fills the window (the last case: three
   files read in one turn), and the admission wait on a request that can never
   fit.
+- **Closed 2026-09-27 (owner's go):** a member's own results fold within
+  `ResultBudget` (three quarters of the window, in characters): older turns
+  first, earlier look-ups dropped, then the last turn's largest results, which
+  the member searches by ref (`TestAMemberFoldsItsOwnResults`, three mutants).
+  An engine refusal that needs more cells than the whole window returns
+  `llm.ErrNeverFits` at once instead of a 2-minute wait
+  (`TestARequestThatCanNeverFitIsNotWaitedOut`). The desktop app's Expose now
+  sets `XOLLAMA_HOST` (it set only `OLLAMA_HOST`, which xollama ignores).
 
 ## Decision log
 
