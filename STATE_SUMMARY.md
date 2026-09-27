@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — Manifest e314b235 consumed: lint fixed, compat README by sha, inputs digest now equals the fork's.**
+> - Merged `up-think-budget`@b463e532 → `9b2b56a6`, the new `up-compat-readme`@ddde8473 → `20ad1fd4` (README conflict taken from its side, as the fork predicted), and the rebuilt `up-response-scope-think-budget`@87d417bf → `4fd3de2c`.
+> - Now: `golangci-lint` 0 issues; digest `3023ebe12b5e` (= the fork's); build, vet and test pass.
+> - Left: check-compat-origin flags the superseded `15ebdeca`, since the fork's rebuild left it on no ref (asked for an archive ref in the reply); the Linux runtime release waits on the owner (fork item 3).
+
 > **2026-09-27 — b171 (2609271900001) measured and NOT pinned; gemma4-toolcall-in-thinking is fork-only.**
 > - b171 carries opencoti's fit rework: an automatic margin, lazy vision, and the rolling-KV window inside the fit. It went through phase2-engine-ab.py as `ollama`; results are in `/srv/ml/xollama-phase2/as-ollama/b171-ab`.
 > - Throughput 74.9 tok/s and gemma4 are fine. Two axes regress against b145:

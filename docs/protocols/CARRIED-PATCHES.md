@@ -62,15 +62,29 @@ un-prefixed branch name stays.
 | fork-only | `up-gemma4-swallowed-key` | `b6771dc2` | `7cdde61b` |
 | fork-only | `up-response-scope-think-budget` | `15ebdeca` | `7f560400` |
 
+
+Manifest `e314b235` (integration `a47daff5`, same base and llama.cpp) answered
+#488: the two lint fixes rode on `up-think-budget`, the combined README arrived
+on the new stacked `up-compat-readme`, and `up-response-scope-think-budget` was
+rebuilt on top. Merged the same way:
+
+| branch | manifest sha | 2026-09-27 merge |
+|---|---|---|
+| `up-think-budget` | `b463e532` | `9b2b56a6` |
+| `up-compat-readme` | `ddde8473` | `20ad1fd4` |
+| `up-response-scope-think-budget` | `87d417bf` | `4fd3de2c` |
+
+With these, `llama/compat/README.md` is the fork's `3f1fcb62` and the inputs
+digest is `3023ebe12b5e`, equal to the fork's.
+
 Measured against the fork's tree: every file that differs from `e74b1daa` is
 one xollama already changed at the previous integration (`d57818e3`), and
 `LLAMA_CPP_VERSION`, `llama/server` and `llama/compat` equal the fork's except
 `llama/compat/README.md`. The fork's README (`3f1fcb62`) combines the edits of
 `up-reasoning-budget-line-boundary` and `up-gemma4-assistant-shape` and exists
 only on `think-budget`. No patch sha carries it, so a merge cannot reach it
-without writing it, which `check-compat-origin.sh` refuses. `a71b08c2` keeps
-the line-boundary README, and the fork has been asked to put `3f1fcb62` on a
-patch branch.
+without writing it, which `check-compat-origin.sh` refuses. `a71b08c2` kept
+the line-boundary README until `up-compat-readme` carried it (below).
 
 **Status as of 2026-09-21: all thirteen are carried, and all thirteen are still
 OPEN against `ollama/ollama`.** The twelve that have a home in `mann1x/ollama`
