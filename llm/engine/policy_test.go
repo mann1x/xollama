@@ -105,8 +105,9 @@ func TestSupportsDeviceHonoursTheCUDAComputeFloor(t *testing.T) {
 // whole reason this floor exists is that the alternative failure is silent, so
 // a reason that does not say which device and which capability is no better.
 func TestDeviceUnsupportedNamesTheCapability(t *testing.T) {
-	why := deviceUnsupported(Platform{OS: "linux", Arch: "amd64"}, Device{BackendCUDA, 7, 0})
-	for _, want := range []string{"7.0", "7.5"} {
+	// Pascal: below the CUDA 13 floor, and not in the CUDA 12 payload's SASS.
+	why := deviceUnsupported(Platform{OS: "linux", Arch: "amd64"}, Device{BackendCUDA, 6, 1})
+	for _, want := range []string{"6.1", "7.5"} {
 		if !contains(why, want) {
 			t.Errorf("reason %q does not mention %q", why, want)
 		}

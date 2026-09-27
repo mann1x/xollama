@@ -24,7 +24,8 @@ func TestResolve(t *testing.T) {
 
 		// linux/amd64 + CUDA is a tested row, so this reaches llama.cpp only
 		// because the capability floor is consulted as well as the backend.
-		{"a volta card falls back on a tested backend", linux, []Device{{BackendCUDA, 7, 0}}, "", KindLlamaCpp},
+		{"a pascal card falls back on a tested backend", linux, []Device{{BackendCUDA, 6, 1}}, "", KindLlamaCpp},
+		{"a volta card runs the pin's CUDA 12 payload", linux, []Device{{BackendCUDA, 7, 0}}, "", KindOpencoti},
 		{"a mixed old/new CUDA load falls back", linux, []Device{ada(), {BackendCUDA, 6, 1}}, "", KindLlamaCpp},
 
 		{"llamacpp is honoured", linux, []Device{ada()}, "llamacpp", KindLlamaCpp},

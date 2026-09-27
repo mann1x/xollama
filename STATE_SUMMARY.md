@@ -32,6 +32,7 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >   - the fork's combined `llama/compat/README.md` (`3f1fcb62`) reaches no patch branch, so ours is the line-boundary copy until the fork puts it on one;
 >   - two lint findings in fork code (`server/think_budget_resolution_test.go` bodyclose, `server/routes_generate_test.go` trailing blank line) were sent to the fork;
 >   - the Windows runtime pin must be rebuilt (`xollama-runtime.yaml`) and the Linux pin waits for a fork v0.34.4 runtime release, both before a release PR.
+
 > **2026-09-27 — Documented how the context pool is shared; the default stays num_ctx × 1.**
 > - Owner's decision: the pool stays `num_ctx × XOLLAMA_PARALLEL` (32k × 1 by default on a 24 GB card). A request that states no window gets the whole pool, so by default requests take turns, as on Ollama.
 > - A request that asks for a window (`placement.num_ctx`) gets that window, and up to `XOLLAMA_MAX_PARALLEL` of them share the pool: a 256k pool serves 1 × 256k, 2 × 128k or 4 × 64k from one load.

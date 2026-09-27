@@ -54,6 +54,21 @@ func DefaultDirs(libOllamaPath, home string) []string {
 	return dirs
 }
 
+// CUDA12Dirs lists where the engine copy that side-loads the CUDA 12 payload
+// is looked for: a cuda_v12 subdirectory of each engine directory. The engine
+// loads the ggml-cuda library beside its own executable, so the two payloads
+// need two directories, each with the engine in it.
+func CUDA12Dirs(libOllamaPath, home string) []string {
+	var dirs []string
+	if home != "" {
+		dirs = append(dirs, filepath.Join(home, ".ollama", "engines", "cuda_v12"))
+	}
+	if libOllamaPath != "" {
+		dirs = append(dirs, filepath.Join(libOllamaPath, "engines", "cuda_v12"))
+	}
+	return dirs
+}
+
 // Find returns the artifact to run.
 //
 // explicit is the value of XOLLAMA_ENGINE_PATH: when set it is used as given
@@ -326,7 +341,21 @@ func Launch(stockExe string, params []string, devices []Device, libOllamaPath st
 	}
 
 	home, _ := os.UserHomeDir()
-	artifact, err := Find(envconfig.Var(EnvPath), DefaultDirs(libOllamaPath, home))
+	dirs := DefaultDirs(libOllamaPath, home)
+	// A card only the CUDA 12 payload serves runs the engine copy staged
+	// beside that payload. An explicit XOLLAMA_ENGINE_PATH is the operator's
+	// choice and is used as given.
+	if pin, err := loadPin(); err == nil {
+		cuda12, why := cudaPayload(pin, devices)
+		if why != "" {
+			slog.Info("falling back to stock llama-server", "reason", why)
+			return stockExe, params, false
+		}
+		if cuda12 {
+			dirs = CUDA12Dirs(libOllamaPath, home)
+		}
+	}
+	artifact, err := Find(envconfig.Var(EnvPath), dirs)
 	if err != nil {
 		slog.Info("falling back to stock llama-server", "reason", decision.Reason, "error", err)
 		return stockExe, params, false
