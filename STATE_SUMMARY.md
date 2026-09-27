@@ -7,6 +7,7 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
 > **2026-09-27 — The Docker image could not use any NVIDIA GPU; fixed. A V100 is kept through discovery.**
 > - Chris (V100) got `support for --gpu nvidia was explicitly requested, but it wasn't available`. Reproduced on solidPC's 3090 with `:dev`: the engine (a Cosmopolitan APE) found `ggml-cuda.so` but `dlopen() isn't supported on this platform` -- it builds a libc helper with the system `cc` into `$HOME/.cosmo`, and the image has no compiler. `Dockerfile.xollama` now builds the helper in a gcc stage and ships it in both engine homes; a derived test image loaded qwen3:0.6b 100% on GPU at 195 tok/s. Bare-metal Linux hosts without `cc` are affected too: reported to opencoti.
+> - Docker docs: README `## Docker` (ollama-style one-liners, GPU passthrough), `docs/xollama/docker.mdx` (tags, volumes, every operator env var, slots/KV, NVIDIA toolkit setup), `docs/dockerhub/README.md` for the Hub page; `engines.mdx` coverage corrected for the V100 payload.
 > - Discovery listed CUDA devices through the main (CUDA 13) engine only, so a V100 on a 570 driver would have been dropped; it now also asks the `engines/cuda_v12` engine and keeps the longer list (`discover/opencoti_cuda12.go`).
 
 > **2026-09-27 — v0.34.4-xollama.1 pre-release published; council Phase 10 started from the ab-3 analysis.**
