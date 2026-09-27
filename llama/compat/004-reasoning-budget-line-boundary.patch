@@ -1,8 +1,8 @@
 diff --git a/common/arg.cpp b/common/arg.cpp
-index 79405b59e..b7df6dd13 100644
+index c4c4e143c..22109f075 100644
 --- a/common/arg.cpp
 +++ b/common/arg.cpp
-@@ -3733,6 +3733,20 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
+@@ -3711,6 +3711,20 @@ common_params_context common_params_parser_init(common_params & params, llama_ex
              params.sampling.reasoning_budget_tokens = value;
          }
      ).set_examples({LLAMA_EXAMPLE_SERVER, LLAMA_EXAMPLE_COMPLETION, LLAMA_EXAMPLE_CLI}).set_env("LLAMA_ARG_THINK_BUDGET"));
@@ -24,7 +24,7 @@ index 79405b59e..b7df6dd13 100644
          {"--reasoning-budget-message"}, "MESSAGE",
          "message injected before the end-of-thinking tag when reasoning budget is exhausted (default: none)",
 diff --git a/common/common.h b/common/common.h
-index 4e9448bb1..4538dc045 100644
+index 63d0badd0..feecee71f 100644
 --- a/common/common.h
 +++ b/common/common.h
 @@ -291,6 +291,8 @@ struct common_params_sampling {
@@ -37,10 +37,10 @@ index 4e9448bb1..4538dc045 100644
  
      bool backend_sampling = false;
 diff --git a/common/reasoning-budget.cpp b/common/reasoning-budget.cpp
-index 4884299f3..ba6d4e732 100644
+index 4884299f3..34d7931d2 100644
 --- a/common/reasoning-budget.cpp
 +++ b/common/reasoning-budget.cpp
-@@ -52,12 +52,20 @@ struct token_matcher {
+@@ -52,21 +52,51 @@ struct token_matcher {
  struct common_reasoning_budget_ctx {
      const llama_vocab * vocab;
  
@@ -61,7 +61,10 @@ index 4884299f3..ba6d4e732 100644
  
      common_reasoning_budget_state state;
  
-@@ -67,6 +75,27 @@ struct common_reasoning_budget_ctx {
+     // for forcing
+     size_t force_pos;         // next position in forced_tokens to force
++    size_t forced_end_pos;    // where the end sequence starts within forced_tokens
+ 
      int32_t end_match;        // index into end_matcher.seqs of the sequence that transitioned to DONE, -1 if none
  };
  
@@ -89,7 +92,7 @@ index 4884299f3..ba6d4e732 100644
  static const char * common_reasoning_budget_name(const struct llama_sampler * /*smpl*/) {
      return "reasoning-budget";
  }
-@@ -74,6 +103,16 @@ static const char * common_reasoning_budget_name(const struct llama_sampler * /*
+@@ -74,6 +104,16 @@ static const char * common_reasoning_budget_name(const struct llama_sampler * /*
  static void common_reasoning_budget_accept(struct llama_sampler * smpl, llama_token token) {
      auto * ctx = (common_reasoning_budget_ctx *) smpl->ctx;
  
@@ -106,7 +109,7 @@ index 4884299f3..ba6d4e732 100644
      switch (ctx->state) {
          case REASONING_BUDGET_IDLE:
          {
-@@ -92,6 +131,7 @@ static void common_reasoning_budget_accept(struct llama_sampler * smpl, llama_to
+@@ -92,6 +132,7 @@ static void common_reasoning_budget_accept(struct llama_sampler * smpl, llama_to
          }
          case REASONING_BUDGET_COUNTING:
          case REASONING_BUDGET_WAITING_UTF8:
@@ -114,7 +117,7 @@ index 4884299f3..ba6d4e732 100644
          {
              const int32_t match = ctx->end_matcher.advance(token);
              if (match >= 0) {
-@@ -101,32 +141,58 @@ static void common_reasoning_budget_accept(struct llama_sampler * smpl, llama_to
+@@ -101,32 +142,58 @@ static void common_reasoning_budget_accept(struct llama_sampler * smpl, llama_to
                  break;
              }
  
@@ -194,7 +197,7 @@ index 4884299f3..ba6d4e732 100644
                  }
              }
              break;
-@@ -148,10 +214,13 @@ static void common_reasoning_budget_accept(struct llama_sampler * smpl, llama_to
+@@ -148,15 +215,29 @@ static void common_reasoning_budget_accept(struct llama_sampler * smpl, llama_to
              // per response, and each should get a fresh budget window.
              if (ctx->start_matcher.advance(token) >= 0) {
                  ctx->state = REASONING_BUDGET_COUNTING;
@@ -210,7 +213,55 @@ index 4884299f3..ba6d4e732 100644
  
                  if (ctx->remaining <= 0) {
                      ctx->state = REASONING_BUDGET_FORCING;
-@@ -189,16 +258,21 @@ static void common_reasoning_budget_reset(struct llama_sampler * smpl) {
+-                    ctx->force_pos = 0;
+-                    COM_TRC("%s", "budget=0, forcing immediately\n");
++                    // The message goes out once per response, not once per
++                    // reopened block. A model told to wrap up that opens another
++                    // block instead gets that block closed again, and with the
++                    // message in front of the end sequence it gets the same
++                    // sentence back every time -- which is a loop, and it reads
++                    // as one: measured through a coding agent on a 13,750-token
++                    // budget, the model reopened after every forced close and
++                    // the turn ended at its output cap carrying the identical
++                    // 240-character message thirty-two times in a row with
++                    // nothing between the copies. The block still closes; it
++                    // closes quietly.
++                    ctx->force_pos = ctx->forced_end_pos;
++                    COM_TRC("%s", "budget=0, forcing the end sequence alone\n");
+                 }
+             }
+             break;
+@@ -166,6 +247,29 @@ static void common_reasoning_budget_accept(struct llama_sampler * smpl, llama_to
+ static void common_reasoning_budget_apply(struct llama_sampler * smpl, llama_token_data_array * cur_p) {
+     auto * ctx = (common_reasoning_budget_ctx *) smpl->ctx;
+ 
++    // A response whose allowance is gone does not get to open another block.
++    //
++    // Closing the reopened block is not enough on its own. The model reopens
++    // because it wants to keep thinking, so it reopens again the moment it is
++    // closed, and the pair spends the rest of the output cap on nothing:
++    // measured through a coding agent, thirty-two forced closes in one turn and
++    // no answer. Barring the sequence that opens a block leaves the model the
++    // choice it would have had after a natural close -- write the answer, or
++    // call something -- which is what a spent budget is asking of it. A reset
++    // sequence forgives the spend and lifts this with it.
++    if (ctx->state == REASONING_BUDGET_DONE
++            && ctx->scope == REASONING_BUDGET_SCOPE_RESPONSE
++            && ctx->budget - ctx->spent <= 0) {
++        for (const auto & seq : ctx->start_matcher.seqs) {
++            for (size_t i = 0; i < cur_p->size; i++) {
++                if (cur_p->data[i].id == seq[0]) {
++                    cur_p->data[i].logit = -INFINITY;
++                }
++            }
++        }
++        return;
++    }
++
+     if (ctx->state != REASONING_BUDGET_FORCING) {
+         // passthrough — don't modify logits
+         return;
+@@ -189,16 +293,21 @@ static void common_reasoning_budget_reset(struct llama_sampler * smpl) {
      auto * ctx = (common_reasoning_budget_ctx *) smpl->ctx;
      ctx->state = REASONING_BUDGET_IDLE;
      ctx->remaining = ctx->budget;
@@ -234,9 +285,34 @@ index 4884299f3..ba6d4e732 100644
  
  static struct llama_sampler * common_reasoning_budget_clone(const struct llama_sampler * smpl);
  
-@@ -231,12 +305,16 @@ static struct llama_sampler * common_reasoning_budget_clone(const struct llama_s
+@@ -230,13 +339,41 @@ static struct llama_sampler * common_reasoning_budget_clone(const struct llama_s
+     );
  }
  
++// Where the end sequence starts inside the forced sequence, or 0 if it does
++// not end with one.
++//
++// The forced sequence is built by the caller as message + end tag, and once per
++// response that whole thing is what a spent budget writes. A block reopened
++// after that is closed from here instead, so it closes without saying the same
++// sentence again. The longest end sequence that is a suffix wins; a forced
++// sequence ending in none of them has no such point and is forced whole, which
++// is what it did before this existed.
++static size_t common_reasoning_budget_end_offset(
++        const llama_tokens & forced_tokens, const std::vector<llama_tokens> & end_seqs) {
++    size_t offset = forced_tokens.size();
++    for (const auto & seq : end_seqs) {
++        if (seq.empty() || seq.size() > forced_tokens.size()) {
++            continue;
++        }
++        const size_t start = forced_tokens.size() - seq.size();
++        if (std::equal(seq.begin(), seq.end(), forced_tokens.begin() + start) && start < offset) {
++            offset = start;
++        }
++    }
++    return offset == forced_tokens.size() ? 0 : offset;
++}
++
  static struct llama_sampler * common_reasoning_budget_init_state(
 -        const struct llama_vocab        * vocab,
 -        const std::vector<llama_tokens> & start_seqs,
@@ -254,7 +330,7 @@ index 4884299f3..ba6d4e732 100644
      // promote COUNTING with budget <= 0 to FORCING
      if (initial_state == REASONING_BUDGET_COUNTING && budget <= 0) {
          initial_state = REASONING_BUDGET_FORCING;
-@@ -245,12 +323,18 @@ static struct llama_sampler * common_reasoning_budget_init_state(
+@@ -245,14 +382,21 @@ static struct llama_sampler * common_reasoning_budget_init_state(
      return llama_sampler_init(
          /* .iface = */ &common_reasoning_budget_i,
          /* .ctx   = */ new common_reasoning_budget_ctx {
@@ -273,8 +349,11 @@ index 4884299f3..ba6d4e732 100644
 +            /* .scope         = */ scope,
              /* .state         = */ initial_state,
              /* .force_pos     = */ 0,
++            /* .forced_end_pos = */ common_reasoning_budget_end_offset(forced_tokens, end_seqs),
              /* .end_match     = */ -1,
-@@ -264,8 +348,25 @@ struct llama_sampler * common_reasoning_budget_init(
+         }
+     );
+@@ -264,8 +408,25 @@ struct llama_sampler * common_reasoning_budget_init(
          const std::vector<llama_tokens> & end_seqs,
          const llama_tokens              & forced_tokens,
          int32_t                           budget,
@@ -302,7 +381,7 @@ index 4884299f3..ba6d4e732 100644
  }
  
  common_reasoning_budget_state common_reasoning_budget_get_state(const struct llama_sampler * smpl) {
-@@ -295,9 +396,12 @@ bool common_reasoning_budget_force(struct llama_sampler * smpl) {
+@@ -295,9 +456,12 @@ bool common_reasoning_budget_force(struct llama_sampler * smpl) {
  
      auto * ctx = (common_reasoning_budget_ctx *) smpl->ctx;
  
@@ -464,7 +543,7 @@ index 06dea1e1c..0cbb005b3 100644
          for (const auto & token : prefill_tokens) {
              llama_sampler_accept(rbudget, token);
 diff --git a/tests/test-reasoning-budget.cpp b/tests/test-reasoning-budget.cpp
-index 3bcc77e17..39f91d474 100644
+index 3bcc77e17..d42957f73 100644
 --- a/tests/test-reasoning-budget.cpp
 +++ b/tests/test-reasoning-budget.cpp
 @@ -11,6 +11,7 @@
@@ -475,7 +554,7 @@ index 3bcc77e17..39f91d474 100644
  #include <string>
  #include <vector>
  
-@@ -333,6 +334,291 @@ static void test_reasoning_budget_end_match() {
+@@ -333,6 +334,367 @@ static void test_reasoning_budget_end_match() {
      fprintf(stderr, "  Test 'matched end sequence' passed\n");
  }
  
@@ -485,6 +564,82 @@ index 3bcc77e17..39f91d474 100644
 +// Measured live: six consecutive blocks against an 8,000-token budget ate a
 +// 32,000-token output cap, each one closing naturally just short of its window,
 +// so the budget message never fired and the turn produced no answer.
++// A spent response says its wrap-up message once, and is then barred from
++// reopening a block at all. Both halves are needed: closing a reopened block
++// without the second half just means the model reopens again.
++static void test_reasoning_budget_spent_response_stays_quiet() {
++    const std::vector<llama_token> start  = {100};
++    const std::vector<llama_token> end    = {101};
++    const std::vector<llama_token> forced = {102, 101}; // message, then the end tag
++
++    auto * sampler = common_reasoning_budget_init(
++        nullptr, {start}, {end}, forced, 2, REASONING_BUDGET_IDLE,
++        REASONING_BUDGET_SCOPE_RESPONSE);
++
++    llama_sampler_accept(sampler, 100); // open
++    llama_sampler_accept(sampler, 50);
++    llama_sampler_accept(sampler, 51);  // allowance gone -> FORCING
++    GGML_ASSERT(get_forced_token(sampler, 105) == 102 && "the message goes out the first time");
++    llama_sampler_accept(sampler, 102);
++    GGML_ASSERT(get_forced_token(sampler, 105) == 101);
++    llama_sampler_accept(sampler, 101); // forced sequence complete -> DONE
++
++    // The model opens another block. It is closed, and closed without repeating
++    // a word of the message: the end tag alone.
++    llama_sampler_accept(sampler, 100);
++    GGML_ASSERT(common_reasoning_budget_get_state(sampler) == REASONING_BUDGET_FORCING);
++    GGML_ASSERT(get_forced_token(sampler, 105) == 101
++                && "a reopened block must be closed without saying the message again");
++
++    llama_sampler_free(sampler);
++    fprintf(stderr, "  Test 'spent response scope closes quietly' passed\n");
++}
++
++// And the other half: it should not be able to reopen at all.
++static void test_reasoning_budget_spent_response_bars_reopening() {
++    const std::vector<llama_token> start  = {100};
++    const std::vector<llama_token> end    = {101};
++    const std::vector<llama_token> forced = {102, 101};
++    const std::vector<llama_token> tool   = {105};
++
++    auto * sampler = common_reasoning_budget_init(
++        nullptr, {start}, {end}, forced, 2, REASONING_BUDGET_IDLE,
++        REASONING_BUDGET_SCOPE_RESPONSE, {tool});
++
++    llama_sampler_accept(sampler, 100);
++    llama_sampler_accept(sampler, 50);
++    llama_sampler_accept(sampler, 51);  // allowance gone
++    llama_sampler_accept(sampler, 102);
++    llama_sampler_accept(sampler, 101); // forced close -> DONE
++
++    {
++        std::vector<llama_token_data> cur;
++        for (llama_token id = 0; id <= 105; id++) {
++            cur.emplace_back(llama_token_data{id, 1.0f, 0.0f});
++        }
++        llama_token_data_array cur_p = { cur.data(), cur.size(), -1, false };
++        llama_sampler_apply(sampler, &cur_p);
++        GGML_ASSERT(!std::isfinite(cur[100].logit) && "the start sequence must be barred");
++        GGML_ASSERT(std::isfinite(cur[50].logit) && "everything else must still be reachable");
++    }
++
++    // A tool call says the model got somewhere, which forgives the spend -- and
++    // with the allowance back, thinking is allowed again.
++    llama_sampler_accept(sampler, 105);
++    {
++        std::vector<llama_token_data> cur;
++        for (llama_token id = 0; id <= 105; id++) {
++            cur.emplace_back(llama_token_data{id, 1.0f, 0.0f});
++        }
++        llama_token_data_array cur_p = { cur.data(), cur.size(), -1, false };
++        llama_sampler_apply(sampler, &cur_p);
++        GGML_ASSERT(std::isfinite(cur[100].logit) && "a forgiven spend must let a block open again");
++    }
++
++    llama_sampler_free(sampler);
++    fprintf(stderr, "  Test 'spent response scope bars reopening' passed\n");
++}
++
 +static void test_reasoning_budget_response_scope() {
 +    const std::vector<llama_token> start  = {100};
 +    const std::vector<llama_token> end    = {101};
@@ -767,11 +922,13 @@ index 3bcc77e17..39f91d474 100644
  // UTF-8 boundary detection unit test
  // Tests common_utf8_is_complete() from reasoning-budget.h
  static void test_utf8_boundary_detection() {
-@@ -494,12 +780,18 @@ int main(void) {
+@@ -494,12 +856,20 @@ int main(void) {
      test_reasoning_budget_clone_mid_forcing();
      test_reasoning_budget_force_manual();
      test_reasoning_budget_end_match();
 +    test_reasoning_budget_line_boundary();
++    test_reasoning_budget_spent_response_stays_quiet();
++    test_reasoning_budget_spent_response_bars_reopening();
 +    test_reasoning_budget_response_scope();
  
 -    printf("OK (12 tests passed)\n");
@@ -788,10 +945,10 @@ index 3bcc77e17..39f91d474 100644
      return 0;
  }
 diff --git a/tools/server/server-schema.cpp b/tools/server/server-schema.cpp
-index 64b925129..e7c6f3bb8 100644
+index 27ecafb7a..ae294a3ed 100644
 --- a/tools/server/server-schema.cpp
 +++ b/tools/server/server-schema.cpp
-@@ -412,6 +412,31 @@ std::vector<std::unique_ptr<field>> make_llama_cmpl_schema(const common_params &
+@@ -416,6 +416,31 @@ std::vector<std::unique_ptr<field>> make_llama_cmpl_schema(const common_params &
              }
          }));
  
