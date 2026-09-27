@@ -15,7 +15,12 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >   - qwen3:8b ran on the engine on CUDA0 at 123.7 tok/s.
 >   - omnimerge-v4 MTP IQ2_M at 128k made a correct tool call, at 60.7 tok/s with a 131072 window.
 >   - `XOLLAMA_ENGINE=llamacpp` stays on stock llama-server on the GPU (109.5 tok/s, no header).
-> - Left: the Linux A/B on solidPC (`phase2-engine-ab.py`, after Cerebriline's GPU slot, #438/#441), then merge PR #2 and the CI pre-release.
+> - Linux A/B on solidPC (`phase2-engine-ab.py` as ollama) against b111:
+>   - compat 8/8; llama3 75.4 vs 75.6 tok/s.
+>   - multislot 590 vs 461 tok/s; 70B overflow 3.69 vs 1.21 tok/s (single run).
+>   - gemma4 tool call and thinking split correct.
+>   - No defect row accuses a dev build, so none is retired.
+> - Left: merge PR #2 and the CI pre-release.
 
 > **2026-09-27 — A client's pooled worker is refused fast too; a never-fitting request is a 400, not a "runner stopped".**
 > - Cerebriline's first live run of both paths (mail #430) worked on dev 58cd5bf1, b137, omnimerge-v4-mtp:IQ2_M:

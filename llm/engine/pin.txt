@@ -144,7 +144,15 @@ channel  dev
 #     XOLLAMA_ENGINE=llamacpp  stock lib\ollama\llama-server.exe on the GPU,
 #                         109.5 tok/s, no window header: the engine's
 #                         ggml-cuda.dll in engines\ is not picked up by it
-#   Linux (solidPC, phase2-engine-ab.py as ollama): PENDING.
+#   Linux (solidPC RTX 3090, phase2-engine-ab.py as ollama, dso beside the
+#   artifact, /srv/ml/xollama-phase2/as-ollama/b145-ab) against b111:
+#     compat      8/8 load on both
+#     throughput  llama3 75.4 vs 75.6 tok/s gen, 3836 vs 3875 tok/s prompt
+#     multislot   qwen2.5:1.5b x4, 590 vs 461 tok/s aggregate
+#     gemma4      tool call and thinking split correct on both
+#     overflow    llama3.1 70B q3_K_S, 76% in VRAM, 3.69 vs 1.21 tok/s gen
+#                 (one run; b111's three spread 1.21-2.97)
+#   No row in llm/engine_defects.go accuses a dev build, so none is retired.
 #
 # ---------------------------------------------------------------------------
 # HISTORY. The snapshots this replaces.
