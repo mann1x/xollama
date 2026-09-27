@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -102,6 +103,24 @@ func TestACouncilStateSkipsWhatItDoesNotKnow(t *testing.T) {
 	old := protowire.AppendVarint(protowire.AppendTag(nil, 1, protowire.VarintType), 7)
 	if _, err := unmarshalCouncilState(old); err == nil {
 		t.Error("an unknown version opened")
+	}
+}
+
+// The notes board (10.6) travels in the state, so a resumed turn neither
+// delivers a note twice nor loses one a mate has not read yet.
+func TestTheNotesBoardTravelsInTheState(t *testing.T) {
+	s := testState()
+	s.progress.Notes = []council.Note{{ID: "n1", From: "researcher 1", Text: "I take the parser"}, {ID: "n2", From: "researcher 2", Text: "tests pass"}}
+	s.progress.Seen = map[string]int{"research/0/1": 2, "research/0/0": 0}
+	got, err := unmarshalCouncilState(s.marshal())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.progress.Notes, s.progress.Notes) {
+		t.Errorf("notes = %+v, want %+v", got.progress.Notes, s.progress.Notes)
+	}
+	if !reflect.DeepEqual(got.progress.Seen, s.progress.Seen) {
+		t.Errorf("seen = %+v, want %+v", got.progress.Seen, s.progress.Seen)
 	}
 }
 

@@ -100,7 +100,12 @@ type Config struct {
 	Seed             *int64
 	MaxRounds        int
 	ShowDeliberation bool
-	MaxTokens        map[Role]int
+	// Broadcast offers council_post to members working side by side
+	// (broadcast.go).
+	Broadcast bool
+	// board is the turn's notes, shared by the members of RunFrom.
+	board     *board
+	MaxTokens map[Role]int
 	// Prompts replace a role's built-in instruction; Models serve a role on
 	// another model.
 	Prompts map[Role]string
@@ -176,6 +181,7 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 	if c.ShowDeliberation != nil {
 		cfg.ShowDeliberation = *c.ShowDeliberation
 	}
+	cfg.Broadcast = c.Broadcast != nil && *c.Broadcast
 	for _, r := range []Role{Planner, Researcher, Critic, Synthesizer} {
 		role := c.Role(string(r))
 		if role == nil {

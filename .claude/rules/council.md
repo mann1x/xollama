@@ -347,3 +347,11 @@ paths:
   `OLLAMA_DEBUG=1` and the `council member` lines. Live A/Bs compare against
   the same model as a plain chat (no state, `think: false`). Find the dev
   server by its port.
+- **Broadcast (10.6, `council.broadcast`, off by default)** is
+  `internal/council/broadcast.go`: `council_post` is added to every member's
+  tools by `WithBroadcast` (one list, one shared prefix), answered in
+  `transcript` (`local`), offered only by `canPost` (a same-role mate exists).
+  `unread` inserts the mates' notes before each model call in `callTools`;
+  the board persists through `Progress.Notes`/`Seen` (state Progress fields
+  5-6). Keep the caps (`maxNoteChars`, `maxNotes`) and the "do not wait"
+  wording: the named risk is members chatting instead of working.

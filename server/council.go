@@ -109,6 +109,9 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	// Tools (9.5): the members carry the client's and the council's own
 	// evidence lookup, one list for all, so the shared prefix holds it once.
 	req.Tools = council.WithEvidence(req.Tools)
+	if cfg.Broadcast {
+		req.Tools = council.WithBroadcast(req.Tools) // 10.6, behind council.broadcast
+	}
 
 	conv, system := councilConversation(m, req.Messages)
 	cfg.System = system

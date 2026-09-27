@@ -21,6 +21,10 @@ type Progress struct {
 	Plan      *Plan
 	Rounds    []RoundProgress
 	Suspended map[string][]api.Message
+	// Notes is the turn's broadcast board and Seen how far each member has
+	// read it (broadcast.go).
+	Notes []Note
+	Seen  map[string]int
 }
 
 // RoundProgress is one round's research and review.
@@ -30,7 +34,10 @@ type RoundProgress struct {
 }
 
 func (p Progress) clone() Progress {
-	out := Progress{Route: p.Route}
+	out := Progress{Route: p.Route, Notes: append([]Note(nil), p.Notes...)}
+	if len(p.Seen) > 0 {
+		out.Seen = maps.Clone(p.Seen)
+	}
 	if p.Plan != nil {
 		pl := Plan{Plan: p.Plan.Plan, Briefs: append([]string(nil), p.Plan.Briefs...)}
 		out.Plan = &pl
@@ -85,6 +92,15 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 		if checkpoint != nil {
 			checkpoint(p.clone())
 		}
+	}
+	if cfg.Broadcast {
+		// Kept in the progress without a checkpoint of its own: the next
+		// member that settles carries it.
+		cfg.board = newBoard(p, func(notes []Note, seen map[string]int) {
+			mu.Lock()
+			p.Notes, p.Seen = notes, seen
+			mu.Unlock()
+		})
 	}
 	// settle records one member's outcome: its reply, or its turns while it
 	// waits on the client.

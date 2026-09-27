@@ -19,6 +19,7 @@ func TestTheCouncilFlagWalksTheCouncil(t *testing.T) {
 		"",              // seed: random
 		"2",             // max rounds
 		"off",           // show deliberation
+		"on",            // broadcast
 		"",              // polykv
 		"32768", "8192", // window, floor
 		"0.8",   // compact at
@@ -33,7 +34,8 @@ func TestTheCouncilFlagWalksTheCouncil(t *testing.T) {
 	k := cfg.Council
 	if !k.On() || k.Researcher.Count != 3 || k.Critic != nil || k.MaxRounds != 2 ||
 		k.TemperatureJitter == nil || *k.TemperatureJitter != 0 || k.Seed != nil ||
-		k.ShowDeliberation == nil || *k.ShowDeliberation || k.Context.Window != 32768 ||
+		k.ShowDeliberation == nil || *k.ShowDeliberation || k.Broadcast == nil || !*k.Broadcast ||
+		k.Context.Window != 32768 ||
 		k.Context.Floor != 8192 || k.Context.CompactAt != 0.8 || k.Context.IdleCompactAt != 0.7 ||
 		k.Context.Compaction != xollama.CouncilCompactionBasic || k.Context.Review != nil ||
 		k.Context.Retrospective == nil || *k.Context.Retrospective {

@@ -1727,8 +1727,18 @@ request's system and user messages drive it.
   synthesizer on the kept plan and last round; kept per session and in the
   sealed state (fields 6-8), bound to the conversation it answered.
 
-**Next:** 10.6 the broadcast channel, behind a switch, A/B'd;
-10.7 ab-4 on eleven2go (v0.34.4-xollama.1 + a dev build): simple, then
+- 10.6 The broadcast channel (built 2026-09-27, behind `council.broadcast`,
+  default off): a server-answered `council_post` tool (read-only, so it never
+  suspends a turn) for members with a same-role mate; 200 chars, 4 notes per
+  member per turn; unread notes are inserted before each of a mate's model
+  calls; the board (`Progress.Notes`, `Progress.Seen`) is in the sealed
+  state (Progress fields 5-6). Risks named: chatter instead of work (capped),
+  agreeing before starting (the note says never wait), a note that is wrong
+  steering the mate (it is marked "for your information"), and the shared
+  prefix (every member carries the tool so the prefix stays one list).
+  To be A/B'd on and off in ab-4, and dropped if it does not pay.
+
+**Next:** 10.7 ab-4 on eleven2go (v0.34.4-xollama.1 + a dev build): simple, then
 medium and hard, 3 pairs each.
 
 ## Decision log

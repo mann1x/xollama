@@ -58,6 +58,13 @@ type Council struct {
 	// answer unchanged.
 	ShowDeliberation *bool `json:"show_deliberation,omitempty"`
 
+	// Broadcast gives the members that work side by side (two or more
+	// researchers, or critics) a channel to their mates: terse, rare notes
+	// on what works and who takes which part, delivered before each of a
+	// mate's model calls and never waited on. Off by default; under
+	// evaluation (plans/agentic-council-chat.md 10.6).
+	Broadcast *bool `json:"broadcast,omitempty"`
+
 	// PolyKV is whether the members share the conversation's KV through
 	// opencoti's pools: "auto" (the default: on when the engine advertises
 	// it), "on" (refuse to serve without it) or "off".
@@ -257,7 +264,7 @@ func (c *Council) IsZero() bool {
 	return c.Enabled == nil && c.Charter == "" &&
 		c.Planner.isZero() && c.Researcher.isZero() && c.Critic.isZero() && c.Synthesizer.isZero() &&
 		c.TemperatureJitter == nil && c.Seed == nil && c.MaxRounds == 0 &&
-		c.ShowDeliberation == nil && c.PolyKV == "" && c.Context.isZero()
+		c.ShowDeliberation == nil && c.Broadcast == nil && c.PolyKV == "" && c.Context.isZero()
 }
 
 func (r *CouncilRole) isZero() bool { return r == nil || *r == (CouncilRole{}) }
@@ -364,6 +371,7 @@ func (c *Council) Clone() *Council {
 	out := *c
 	out.Enabled = clonePtr(c.Enabled)
 	out.ShowDeliberation = clonePtr(c.ShowDeliberation)
+	out.Broadcast = clonePtr(c.Broadcast)
 	out.TemperatureJitter = clonePtr(c.TemperatureJitter)
 	out.Seed = clonePtr(c.Seed)
 	out.Planner = clonePtr(c.Planner)

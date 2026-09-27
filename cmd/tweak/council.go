@@ -228,7 +228,7 @@ func councilFields() []field {
 				"variable for this -- a council is a property of the model.",
 			kind:  kindTri,
 			head:  true,
-			group: []string{"council", "council-researchers", "council-critics", "council-jitter", "council-seed", "council-max-rounds", "council-show-deliberation", "council-polykv", "council-window", "council-floor", "council-compact-at", "council-idle-compact-at", "council-compaction", "council-compaction-review", "council-compaction-retrospective"},
+			group: []string{"council", "council-researchers", "council-critics", "council-jitter", "council-seed", "council-max-rounds", "council-show-deliberation", "council-broadcast", "council-polykv", "council-window", "council-floor", "council-compact-at", "council-idle-compact-at", "council-compaction", "council-compaction-review", "council-compaction-retrospective"},
 			get: func(c *xollama.Config) string {
 				return councilGet(c, func(k *xollama.Council) string { return tri(k.Enabled) })
 			},
@@ -331,6 +331,23 @@ func councilFields() []field {
 				return councilGet(c, func(k *xollama.Council) string { return tri(k.ShowDeliberation) })
 			},
 			set: func(c *xollama.Config, v string) error { return setTri(v, &council(c).ShowDeliberation) },
+		},
+		{
+			name:  "council-broadcast",
+			path:  "council.broadcast",
+			title: "Broadcast — members side by side leave each other notes",
+			help: "Members that work beside a mate of the same role (two researchers, two\n" +
+				"critics) get a council_post tool: a terse note of at most 200 characters,\n" +
+				"4 per member a turn, delivered to the mates before their next step. It is\n" +
+				"for splitting work and reporting what worked, never for waiting on a reply.\n" +
+				"Unset is off.",
+			kind:    kindTri,
+			quiet:   true,
+			blocked: councilOff,
+			get: func(c *xollama.Config) string {
+				return councilGet(c, func(k *xollama.Council) string { return tri(k.Broadcast) })
+			},
+			set: func(c *xollama.Config, v string) error { return setTri(v, &council(c).Broadcast) },
 		},
 		{
 			name:  "council-polykv",

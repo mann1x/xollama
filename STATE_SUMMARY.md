@@ -5,9 +5,13 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — Council 10.6: a broadcast channel between parallel members, off by default.**
+> - `council.broadcast` (tweak `council-broadcast`): members with a same-role mate get a server-answered `council_post` tool, 200 chars and 4 notes per member per turn, delivered before the mate's next model call and never waited on; the board travels in the sealed state. Tests: `TestANoteReachesTheMateBesideIt` (40/40 under race), `TestTheNotesBoardTravelsInTheState`.
+> - Left: A/B it on and off in ab-4 (10.7) on eleven2go; drop it if it costs more turns than it saves.
+
 > **2026-09-27 — Council 10.5: one council across turns; v0.34.4-xollama.2 cut (not promoted).**
 > - A follow-up message is feedback to the same council: the planner routes `direct` (done/trivial), `continue` (the synthesizer carries on from the kept plan, findings and critiques) or `council` (fresh). Kept per session in memory and in `council_chat_state` fields 6-8, bound to the conversation it answered. ab-3's nudges restarted the whole council twice; they now continue it.
-> - Release PR #4 `release: v0.34.4-xollama.2` (the Docker GPU fix, V100 discovery, council 10.1-10.4, Docker docs). Owner: not promoted.
+> - Release PR #4 `release: v0.34.4-xollama.2` (the Docker GPU fix, V100 discovery, council 10.1-10.6, Docker and KV docs). Owner: not promoted.
 
 > **2026-09-27 — KV cache values and combinations documented, from opencoti's matrix (#507).**
 > - `docs/xollama/kv-cache.mdx` "Values and the combinations that work": presets (quality / balanced / max context, dense vs sliding-window), every accepted type with its flash-attention and backend limits, the mixing rules (plain+plain and KVarN+KVarN may differ; KVarN+plain is silently promoted, so not offered), the ring rules, and the CUDA `q6_0` mixed-pair crash (opencoti bug-3705, fix not pinned). The stale "ring not in this build" Warning is gone: the pin carries `feature swa-cache-types`.

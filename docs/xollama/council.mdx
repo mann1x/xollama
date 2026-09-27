@@ -83,6 +83,7 @@ Every setting is optional; `xollama tweak model <name> --council` walks them.
 | `council.seed` | `--council-seed` | random | A fixed seed makes a council reproducible; every member's seed is derived from it. |
 | `council.max_rounds` | `--council-max-rounds` | 1 | Lets the critics send the research back, up to 4 rounds in all. |
 | `council.show_deliberation` | `--council-show-deliberation` | on | Off sends the answer alone. |
+| `council.broadcast` | `--council-broadcast` | off | Members working beside a mate of the same role can leave each other short notes (below). Under evaluation. |
 | `council.polykv` | `--council-polykv` | `auto` | Shares the conversation's cache between members on opencoti (below). `on` refuses to serve without it, `off` never uses it. |
 | `council.context.window`, `.floor`, `.compact_at` | `--council-window`, `--council-floor`, `--council-compact-at` | the model's context, all or nothing, 0.85 | The conversation's window on opencoti, the least it accepts, and the context pressure at which a turn compacts. |
 | `council.context.idle_compact_at` | `--council-idle-compact-at` | 0.75 | The pressure at which the council compacts while it waits for your next message, so that message starts sooner. Not above `compact_at`. |
@@ -291,6 +292,24 @@ or rewound history, or another conversation, starts a fresh council. It is
 held in the server's memory for the session (`session_id`) and also travels in
 `council_chat_state`, so a client that sends the state back keeps it across a
 server restart.
+
+## Notes between members working side by side
+
+With `council.broadcast` on, a member that works beside a mate of the same
+role (two researchers, two critics) gets a `council_post` tool. A note says
+what works, what it found, or which part it takes, so the other can pick up
+the rest. It is kept short by construction:
+
+- at most 200 characters, and 4 notes per member in a turn;
+- delivered to the mates before their next model call, as one message headed
+  "for your information; do not reply, do not wait";
+- never waited on: posting returns at once, and no member blocks on a reply;
+- answered in the server, never sent to your client; a member with no mate of
+  its role cannot post.
+
+The board travels in `council_chat_state`, so a resumed turn neither repeats a
+note nor loses one. It is off by default while it is measured; if it costs
+more turns than it saves, it will be removed.
 
 ## On opencoti: members share the conversation
 

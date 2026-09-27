@@ -405,3 +405,84 @@ func TestAConfirmedErrorGoesStraightToTheSynthesizer(t *testing.T) {
 		t.Errorf("confirmed place %q %v", place, ok)
 	}
 }
+
+// postStub has researcher 1 post a note and answer, researcher 2 read a
+// file first, and the critic try to post with no mate beside it.
+type postStub struct{ toolStub }
+
+func (s *postStub) StreamTools(ctx context.Context, req Request, onToken func(string)) (Reply, error) {
+	s.mu.Lock()
+	s.calls = append(s.calls, req)
+	s.mu.Unlock()
+	last := req.Messages[len(req.Messages)-1]
+	posted := last.Role == "tool" && strings.HasPrefix(last.Content, "Posted.")
+	key := MemberKey(req.Role, req.Index, req.Round)
+	args := api.NewToolCallFunctionArguments()
+	switch {
+	case key == "r1" && !posted:
+		args.Set("note", "The   brace at line 119 is the error; removing it fixes the parse (read_files).")
+		return Reply{Calls: []api.ToolCall{{Function: api.ToolCallFunction{Name: PostTool, Arguments: args}}}}, nil
+	case key == "r2" && !slices.ContainsFunc(req.Messages, func(m api.Message) bool { return m.Role == "tool" }):
+		return Reply{Calls: []api.ToolCall{{Function: api.ToolCallFunction{Name: "read_files", Arguments: args}}}}, nil
+	case req.Role == Critic && last.Role != "tool":
+		args.Set("note", "hello")
+		return Reply{Calls: []api.ToolCall{{Function: api.ToolCallFunction{Name: PostTool, Arguments: args}}}}, nil
+	}
+	return Reply{Content: string(req.Role) + " done"}, nil
+}
+
+// The broadcast channel (10.6): a researcher's note reaches its mate before
+// the mate's next model call, once, in the mate's own turns; it never waits,
+// survives a resume in the progress, and a member with no mate is refused.
+func TestANoteReachesTheMateBesideIt(t *testing.T) {
+	s := &postStub{}
+	s.route = `{"route":"council"}`
+	cfg := toolCfg()
+	cfg.Broadcast = true
+	cfg.Tools = WithBroadcast(cfg.Tools)
+	res, err := Run(t.Context(), cfg, s, conv, func(Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// r2's read is its first or, when the note came first, its second turn.
+	if len(res.Calls) != 1 || !strings.HasPrefix(res.Calls[0].ID, "r2:call_") || res.Calls[0].Function.Name != "read_files" {
+		t.Fatalf("forwarded %v; a post never leaves the council", callIDs(res.Calls))
+	}
+	if len(res.Progress.Notes) != 1 || res.Progress.Notes[0].From != "r1" || strings.Contains(res.Progress.Notes[0].Text, "  ") {
+		t.Fatalf("board %+v", res.Progress.Notes)
+	}
+
+	cfg.Results = map[string]string{res.Calls[0].ID: "FILE"}
+	s2 := &postStub{}
+	s2.route = s.route
+	if _, err := RunFrom(t.Context(), cfg, s2, conv, res.Progress, nil, func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	// The two researchers run side by side, so r2 reads the note on its first
+	// call or on its resumed one; either way its last request holds it once,
+	// in its own turns, and nobody else ever reads it.
+	var lastR2 Request
+	for _, c := range append(slices.Clone(s.calls), s2.calls...) {
+		key := MemberKey(c.Role, c.Index, c.Round)
+		if key == "r2" {
+			lastR2 = c
+		}
+		for _, m := range c.Messages {
+			if strings.HasPrefix(m.Content, "NOTES FROM") && key != "r2" {
+				t.Errorf("%s read its mate's notes %q", key, m.Content)
+			}
+			if c.Role == Critic && m.Role == "tool" && !strings.HasPrefix(m.Content, "Refused: no council member works beside you") {
+				t.Errorf("the lone critic's post was answered %q", m.Content)
+			}
+		}
+	}
+	n := 0
+	for _, m := range lastR2.Messages {
+		if strings.HasPrefix(m.Content, "NOTES FROM") && strings.Contains(m.Content, "- r1: The brace at line 119") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("r2's last request holds the note %d times, want once", n)
+	}
+}
