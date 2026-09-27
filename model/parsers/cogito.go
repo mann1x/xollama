@@ -47,6 +47,13 @@ func (p *CogitoParser) HasThinkingSupport() bool {
 	return true
 }
 
+func (p *CogitoParser) ThinkingClose() []string {
+	if p.state == CogitoCollectingThinking {
+		return []string{cogitoThinkingCloseTag}
+	}
+	return nil
+}
+
 // ThinkingTags reports the delimiters of this parser's thinking block so a
 // thinking-token budget can force the block closed.
 func (p *CogitoParser) ThinkingTags() (string, string) {

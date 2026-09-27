@@ -571,10 +571,9 @@ func TestThinking_UnmarshalJSON(t *testing.T) {
 			expectedThinking: &ThinkValue{Value: "max"},
 		},
 		{
-			name:             "invalid_string",
-			input:            `{ "think": "invalid" }`,
-			expectedThinking: nil,
-			expectedError:    true,
+			name:             "unknown_string",
+			input:            `{ "think": "future-level" }`,
+			expectedThinking: &ThinkValue{Value: "future-level"},
 		},
 		{
 			name:             "budget",
@@ -1009,6 +1008,40 @@ func TestToolPropertiesMap_NestedProperties(t *testing.T) {
 	})
 }
 
+func TestValidateLegacyThinking(t *testing.T) {
+	for _, tt := range []struct {
+		input string
+		valid bool
+	}{
+		{`null`, true},
+		{`true`, true},
+		{`false`, true},
+		{`"low"`, true},
+		{`"medium"`, true},
+		{`"high"`, true},
+		{`"max"`, true},
+		{`"xhigh"`, true}, // another name for "max"
+		{`"minimal"`, true},
+		{`"future"`, false},
+		{`""`, false},
+		{`"HIGH"`, false},
+		{`" high "`, false},
+	} {
+		t.Run(tt.input, func(t *testing.T) {
+			var think *ThinkValue
+			if err := json.Unmarshal([]byte(tt.input), &think); err != nil {
+				t.Fatal(err)
+			}
+			if !think.IsValid() {
+				t.Fatal("legacy validation must not restrict transport types")
+			}
+			if err := ValidateLegacyThinking(think); (err == nil) != tt.valid {
+				t.Fatalf("ValidateLegacyThinking(%s) = %v, want valid=%v", tt.input, err, tt.valid)
+			}
+		})
+	}
+}
+
 func TestThinkValueBudgetTokens(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -1037,13 +1070,52 @@ func TestThinkValueBudgetTokens(t *testing.T) {
 	}
 }
 
+func TestThinkValueTransportTypes(t *testing.T) {
+	for _, tt := range []struct {
+		input   string
+		want    any
+		invalid bool
+	}{
+		{`null`, nil, false},
+		{`true`, true, false},
+		{`false`, false, false},
+		{`"xhigh"`, "xhigh", false},
+		{`"minimal"`, "minimal", false},
+		{`""`, "", false},
+		{`75`, 75, false},
+		{`0`, nil, true},
+		{`-1`, nil, true},
+		{`0.75`, nil, true},
+		{`[]`, nil, true},
+		{`{}`, nil, true},
+		{`tru`, nil, true},
+	} {
+		t.Run(tt.input, func(t *testing.T) {
+			var think ThinkValue
+			err := json.Unmarshal([]byte(tt.input), &think)
+			if (err != nil) != tt.invalid {
+				t.Fatalf("error = %v, invalid = %v", err, tt.invalid)
+			}
+			if err != nil {
+				return
+			}
+			if think.Value != tt.want {
+				t.Fatalf("got %#v, want %#v", think.Value, tt.want)
+			}
+			if think.IsString() && !think.Bool() {
+				t.Fatal("named effort must express intent to think")
+			}
+		})
+	}
+}
+
 func TestThinkValueIsValid(t *testing.T) {
-	valid := []*ThinkValue{nil, {Value: nil}, {Value: true}, {Value: false}, {Value: "max"}, {Value: "low"}, {Value: "minimal"}, {Value: 1}}
+	valid := []*ThinkValue{nil, {Value: nil}, {Value: true}, {Value: false}, {Value: "max"}, {Value: "low"}, {Value: "minimal"}, {Value: "future"}, {Value: 1}}
 	for _, think := range valid {
 		assert.True(t, think.IsValid(), "expected %v to be valid", think)
 	}
 
-	invalid := []*ThinkValue{{Value: "invalid"}, {Value: 0}, {Value: -1}, {Value: 1.5}}
+	invalid := []*ThinkValue{{Value: 0}, {Value: -1}, {Value: 1.5}}
 	for _, think := range invalid {
 		assert.False(t, think.IsValid(), "expected %v to be invalid", think)
 	}
@@ -1096,8 +1168,12 @@ func TestThinkBudgetOption(t *testing.T) {
 	assert.Nil(t, DefaultOptions().ThinkBudget)
 	assert.Equal(t, 0, DefaultOptions().ThinkBudget.BudgetTokens(32768))
 
+	// A level the budget table has no share for is a model-defined level: it
+	// decodes, and carries no budget.
 	opts := DefaultOptions()
-	assert.Error(t, opts.FromMap(map[string]any{"think_budget": "enormous"}))
+	require.NoError(t, opts.FromMap(map[string]any{"think_budget": "enormous"}))
+	assert.Equal(t, 0, opts.ThinkBudget.BudgetTokens(32768))
+	assert.Error(t, opts.FromMap(map[string]any{"think_budget": 0}))
 }
 
 func TestThinkBudgetMessageOption(t *testing.T) {
@@ -1160,51 +1236,6 @@ func TestThinkValueLevel(t *testing.T) {
 	}
 }
 
-func TestThinkLevelAliases(t *testing.T) {
-	// "xhigh" is what the AI SDK calls the top of its effort scale, which is
-	// the position "max" holds here. A client built on that vocabulary sends
-	// it verbatim, so it has to resolve to the same budget, the same reported
-	// level, and the same validity as the name it aliases.
-	alias := &ThinkValue{Value: "xhigh"}
-	canonical := &ThinkValue{Value: "max"}
-
-	assert.True(t, alias.IsValid(), "an alias is a valid level")
-	assert.True(t, IsThinkLevel("xhigh"))
-	assert.Equal(t, canonical.BudgetTokens(32768), alias.BudgetTokens(32768))
-	assert.Equal(t, canonical.Level(), alias.Level())
-	assert.Equal(t, "xhigh", alias.String(), "the requested spelling is preserved")
-
-	// The canonical set is what a caller is told about; the alias does not
-	// appear twice in the scale or in an error message.
-	assert.NotContains(t, ThinkLevels(), "xhigh")
-	assert.False(t, IsThinkLevel("xlow"), "only the aliases we define resolve")
-}
-
-func TestThinkLevelsAreIndependentOfBudgets(t *testing.T) {
-	// A level a model understands does not have to carry a budget. Tying the
-	// two together would reject any level that exists only to be handed to the
-	// model.
-	for _, level := range thinkLevels {
-		think := &ThinkValue{Value: level}
-		assert.True(t, think.IsValid(), level)
-		assert.True(t, think.Bool(), level)
-		assert.Equal(t, level, think.String(), level)
-	}
-
-	for level := range thinkBudgetFraction {
-		assert.Contains(t, thinkLevels, level, "budget fraction for an unknown level")
-	}
-
-	thinkLevels = append(thinkLevels, "exhaustive")
-	t.Cleanup(func() { thinkLevels = thinkLevels[:len(thinkLevels)-1] })
-
-	budgetless := &ThinkValue{Value: "exhaustive"}
-	assert.True(t, budgetless.IsValid())
-	assert.True(t, budgetless.Bool())
-	assert.Equal(t, "exhaustive", budgetless.Level(), "the level still reaches the model")
-	assert.Equal(t, 0, budgetless.BudgetTokens(32768), "and simply carries no budget")
-}
-
 func TestThinkBudgetWindow(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -1251,4 +1282,24 @@ func TestThinkLevelSharesTheResponseNotTheContext(t *testing.T) {
 	if want := numPredict / 4; budget != want {
 		t.Errorf("budget = %d, want %d (a quarter of the response)", budget, want)
 	}
+}
+
+func TestThinkLevelAliases(t *testing.T) {
+	// "xhigh" is what the AI SDK calls the top of its effort scale, which is
+	// the position "max" holds here. A client built on that vocabulary sends
+	// it verbatim, so it has to resolve to the same budget, the same reported
+	// level, and the same validity as the name it aliases.
+	alias := &ThinkValue{Value: "xhigh"}
+	canonical := &ThinkValue{Value: "max"}
+
+	assert.True(t, alias.IsValid(), "an alias is a valid level")
+	assert.True(t, IsThinkLevel("xhigh"))
+	assert.Equal(t, canonical.BudgetTokens(32768), alias.BudgetTokens(32768))
+	assert.Equal(t, canonical.Level(), alias.Level())
+	assert.Equal(t, "xhigh", alias.String(), "the requested spelling is preserved")
+
+	// The canonical set is what a caller is told about; the alias does not
+	// appear twice in the scale or in an error message.
+	assert.NotContains(t, ThinkLevels(), "xhigh")
+	assert.False(t, IsThinkLevel("xlow"), "only the aliases we define resolve")
 }

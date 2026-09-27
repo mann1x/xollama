@@ -34,8 +34,8 @@ func TestCommittedPinParses(t *testing.T) {
 	seen := map[string]bool{}
 	bins := 0
 	for _, a := range p.Assets {
-		if a.Kind != "bin" && a.Kind != "dso" {
-			t.Errorf("%s: kind = %q, want bin or dso", a.Arch, a.Kind)
+		if a.Kind != "bin" && a.Kind != "dso" && a.Kind != kindCUDA12DSO {
+			t.Errorf("%s: kind = %q, want bin, dso or %s", a.Arch, a.Kind, kindCUDA12DSO)
 		}
 		if a.Kind == "bin" {
 			bins++

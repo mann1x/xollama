@@ -52,7 +52,13 @@ type Pin struct {
 	// pin does not narrow them, and the engine's minCUDACompute floor alone
 	// applies. See CoversCUDA.
 	CUDASASS []int
-	Assets   []Asset
+	// CUDA12SASS is the same list for the legacy CUDA 12 payload
+	// (`#! dso-cuda12`, `#! cuda12-sass`): the older cards the CUDA 13 payload
+	// has no code for (Volta 7.0 on the dev snapshots). One process loads one
+	// payload, so it is staged beside a second copy of the engine in
+	// engines/cuda_v12 and chosen per load (CUDA12Dirs, Launch).
+	CUDA12SASS []int
+	Assets     []Asset
 }
 
 // Accel is one (arch, backend) pair the pinned artifact accelerates.
@@ -96,13 +102,42 @@ func (p Pin) CoversCUDA(major, minor int) bool {
 	return false
 }
 
+// CoversCUDA12 reports whether the pin's CUDA 12 payload carries code for a
+// device of this compute capability, with CoversCUDA's matching rule. Unlike
+// CoversCUDA, a pin that states no cuda12-sass covers nothing: the CUDA 12
+// payload is optional and only ever serves what it names.
+func (p Pin) CoversCUDA12(major, minor int) bool {
+	if _, ok := p.CUDA12DSO("x86_64"); !ok {
+		return false
+	}
+	for _, cc := range p.CUDA12SASS {
+		if major == cc/10 && minor >= cc%10 {
+			return true
+		}
+	}
+	return false
+}
+
+// CUDA12DSO returns the CUDA 12 payload for an arch label, if the pin has one.
+func (p Pin) CUDA12DSO(arch string) (Asset, bool) {
+	for _, a := range p.Assets {
+		if a.Kind == kindCUDA12DSO && a.Arch == arch {
+			return a, true
+		}
+	}
+	return Asset{}, false
+}
+
+// kindCUDA12DSO is the asset kind of a `#! dso-cuda12` row.
+const kindCUDA12DSO = "dso-cuda12"
+
 // HasFeature reports whether the pinned artifact declares a capability.
 func (p Pin) HasFeature(name string) bool {
 	return slices.Contains(p.Features, name)
 }
 
 // machineKeys are the directives a "#!" line may carry (see ParsePin).
-var machineKeys = []string{"cuda-sass"}
+var machineKeys = []string{"cuda-sass", "cuda12-sass", kindCUDA12DSO}
 
 // DefaultPin is the pin compiled into this binary.
 func DefaultPin() (Pin, error) { return ParsePin(pinText) }
@@ -155,18 +190,22 @@ func ParsePin(text string) (Pin, error) {
 				return Pin{}, fmt.Errorf("pin.txt:%d: accel backend %q is not one of %v", n+1, fields[2], knownBackends)
 			}
 			p.Accels = append(p.Accels, Accel{Arch: fields[1], Backend: b})
-		case "cuda-sass":
+		case "cuda-sass", "cuda12-sass":
 			if len(fields) < 2 {
-				return Pin{}, fmt.Errorf("pin.txt:%d: cuda-sass needs at least one compute capability", n+1)
+				return Pin{}, fmt.Errorf("pin.txt:%d: %s needs at least one compute capability", n+1, fields[0])
 			}
 			for _, f := range fields[1:] {
 				cc, err := strconv.Atoi(f)
 				if err != nil || cc < 10 {
-					return Pin{}, fmt.Errorf("pin.txt:%d: cuda-sass %q is not a compute capability written as major*10+minor (86, 120)", n+1, f)
+					return Pin{}, fmt.Errorf("pin.txt:%d: %s %q is not a compute capability written as major*10+minor (86, 120)", n+1, fields[0], f)
 				}
-				p.CUDASASS = append(p.CUDASASS, cc)
+				if fields[0] == "cuda12-sass" {
+					p.CUDA12SASS = append(p.CUDA12SASS, cc)
+				} else {
+					p.CUDASASS = append(p.CUDASASS, cc)
+				}
 			}
-		case "bin", "dso":
+		case "bin", "dso", kindCUDA12DSO:
 			if len(fields) != 4 {
 				return Pin{}, fmt.Errorf("pin.txt:%d: asset row needs <kind> <arch> <path> <sha256>, got %d fields", n+1, len(fields))
 			}

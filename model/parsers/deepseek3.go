@@ -46,6 +46,13 @@ func (p *DeepSeek3Parser) HasThinkingSupport() bool {
 	return p.hasThinkingSupport
 }
 
+func (p *DeepSeek3Parser) ThinkingClose() []string {
+	if p.state == DeepSeekCollectingThinking {
+		return []string{deepseekThinkingCloseTag}
+	}
+	return nil
+}
+
 // ThinkingTags reports the delimiters of this parser's thinking block so a
 // thinking-token budget can force the block closed.
 func (p *DeepSeek3Parser) ThinkingTags() (string, string) {

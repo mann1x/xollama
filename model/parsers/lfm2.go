@@ -56,6 +56,13 @@ func (p *LFM2Parser) HasThinkingSupport() bool {
 	return p.hasThinkingSupport
 }
 
+func (p *LFM2Parser) ThinkingClose() []string {
+	if p.state == LFM2LookingForThinking || p.state == LFM2CollectingThinking {
+		return []string{lfm2ThinkingCloseTag}
+	}
+	return nil
+}
+
 // ThinkingTags reports the delimiters of this parser's thinking block so a
 // thinking-token budget can force the block closed.
 func (p *LFM2Parser) ThinkingTags() (string, string) {

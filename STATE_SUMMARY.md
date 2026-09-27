@@ -5,6 +5,44 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — Engine pin b171 with a CUDA 12 (V100) payload; runtime pins on v0.34.4 (owner: assemble the pre-release and the Docker image).**
+> - `llm/engine/pin.txt`: rev `7b836910` (b171 plus `ggml-cuda-cu12-x86_64.so`, sm_70, driver ≥ 570, opencoti #498).
+>   - It is read from `#! dso-cuda12` / `#! cuda12-sass`.
+>   - `cudaPayload` sends a 7.0 card to `engines/cuda_v12`, where `docker-assemble.sh` stages the payload beside a copy of the engine; a load spanning both payloads goes to llama.cpp.
+>   - Guard: `llm/engine/pin_cuda12_test.go`.
+>   - Pinned on the owner's say-so despite the b171 gate: its 70B first-load failure is bug-3702, which b145 also has; the fix is in opencoti's next build.
+> - Linux runtime pin: `v0.34.4-thinkbudget` (tgz `9769cb4b`, inputs `17ab8578` = ours) with upstream v0.34.4's GPU tarballs.
+> - Windows runtime pin: `runtime-windows-amd64-b11081-3023ebe12b5e` (zip `2b5fbffa`, run 36342602471).
+> - Docs: device-selection, docker-release, and the engine-pin rule.
+
+> **2026-09-27 — Manifest e314b235 consumed: lint fixed, compat README by sha, inputs digest now equals the fork's.**
+> - Merged `up-think-budget`@b463e532 → `9b2b56a6`, the new `up-compat-readme`@ddde8473 → `20ad1fd4` (README conflict taken from its side, as the fork predicted), and the rebuilt `up-response-scope-think-budget`@87d417bf → `4fd3de2c`.
+> - Now: `golangci-lint` 0 issues; digest `3023ebe12b5e` (= the fork's); build, vet and test pass.
+> - Left: check-compat-origin flags the superseded `15ebdeca`, since the fork's rebuild left it on no ref (asked for an archive ref in the reply); the Linux runtime release waits on the owner (fork item 3).
+
+> **2026-09-27 — b171 (2609271900001) measured and NOT pinned; gemma4-toolcall-in-thinking is fork-only.**
+> - b171 carries opencoti's fit rework: an automatic margin, lazy vision, and the rolling-KV window inside the fit. It went through phase2-engine-ab.py as `ollama`; results are in `/srv/ml/xollama-phase2/as-ollama/b171-ab`.
+> - Throughput 74.9 tok/s and gemma4 are fine. Two axes regress against b145:
+>   - the 70B q3_K_S first load fails allocating its 5.6 GiB KV buffer, because the fit leaves 256 MiB and does not count it;
+>   - multislot serializes (142 vs 590 tok/s): `kv-reservation: REFUSED … need 32768`.
+> - Sent to opencoti in #491. The pin stays on b145.
+> - A Docker image with CUDA 12 (V100) plus CUDA 13 for a tester: upstream's `cuda_v12` is already in the image. The engine's own v12 payload is still compiling at opencoti; asked for its pin shape in #490.
+> - CARRIED-PATCHES follows manifest bump `78333d54`: `gemma4-toolcall-in-thinking` is fork-only (#18307 was closed upstream and stays closed).
+
+> **2026-09-27 — Synced to upstream v0.34.4 and the fork's v0.34.4 manifest (branch `sync/upstream-v0.34.4`).**
+> - `c43d0a68` merges the v0.34.4 tag. xollama's hooks (council, engine-session fields, api-key, context-window) are kept, upstream's `thinkingparser` / `ThinkingClose` is adopted, and the structured-outputs double request is dropped as upstream did.
+> - The fork's 22 patches (manifest `3edc2006`, integration `e74b1daa`) are merged at their shas in order, `a9b28ffe`..`7f560400`. The table is in `docs/protocols/CARRIED-PATCHES.md`.
+> - Verified:
+>   - no file differs from the fork's tree beyond xollama's own set;
+>   - `go build`, `go vet` and `go test ./...` pass;
+>   - `check-hooks` passes (26 hooks);
+>   - `check-compat-origin` passes after the README fix below.
+> - `LLAMA_CPP_VERSION` is b11081. Three new upstream tests set `OLLAMA_HOST` and now set `XOLLAMA_HOST` (default-port rule).
+> - Left:
+>   - the fork's combined `llama/compat/README.md` (`3f1fcb62`) reaches no patch branch, so ours is the line-boundary copy until the fork puts it on one;
+>   - two lint findings in fork code (`server/think_budget_resolution_test.go` bodyclose, `server/routes_generate_test.go` trailing blank line) were sent to the fork;
+>   - the Windows runtime pin must be rebuilt (`xollama-runtime.yaml`) and the Linux pin waits for a fork v0.34.4 runtime release, both before a release PR.
+
 > **2026-09-27 — Documented how the context pool is shared; the default stays num_ctx × 1.**
 > - Owner's decision: the pool stays `num_ctx × XOLLAMA_PARALLEL` (32k × 1 by default on a 24 GB card). A request that states no window gets the whole pool, so by default requests take turns, as on Ollama.
 > - A request that asks for a window (`placement.num_ctx`) gets that window, and up to `XOLLAMA_MAX_PARALLEL` of them share the pool: a 256k pool serves 1 × 256k, 2 × 128k or 4 × 64k from one load.

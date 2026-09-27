@@ -35,6 +35,13 @@ func (p *Olmo3ThinkParser) HasThinkingSupport() bool {
 	return true
 }
 
+func (p *Olmo3ThinkParser) ThinkingClose() []string {
+	if p.state == olmo3CollectingThink {
+		return []string{olmo3ThinkCloseTag}
+	}
+	return nil
+}
+
 // ThinkingTags reports the delimiters of this parser's thinking block so a
 // thinking-token budget can force the block closed.
 func (p *Olmo3ThinkParser) ThinkingTags() (string, string) {

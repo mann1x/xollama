@@ -28,12 +28,12 @@
 # invalidate itself.
 
 repo      mann1x/ollama
-tag       v0.34.2-2-thinkbudget
+tag       v0.34.4-thinkbudget
 asset     ollama-linux-amd64-runtime.tgz
-sha256    33ac42c1107c68604ed9c2e2c991e9a7cdfd00b33c2a4f2c2ce758273df36447
-inputs    eff6800e1f27383e5f9b880f109fb0e70aad0108f8a52716201d9f77c1fc54c6
-built     d6e24119a31245ac3a212342c49258db2aeea838
+sha256    9769cb4b01f559a701734cfb32ea029286f3deb114b10ceb16b0386af6386f7c
+inputs    17ab857846eb812a2025356bc06c44bfab3465acc34b9f188897ccc0b2f49290
+built     449049ae44ba22281a7dfaafcb8cfb24d3431be3
 
-upstream  v0.34.2
-gpu       ollama-linux-amd64.tar.zst      e155b83589986d2c581fdbf1381ea3ebdb16549883679cd5a0627f7cdc05b12b
-gpu       ollama-linux-amd64-mlx.tar.zst  aafb2f2d54dd0fca06d7503cff7a9c81bca561b1b7838fb45132d046ce6fe741
+upstream  v0.34.4
+gpu       ollama-linux-amd64.tar.zst      c238986e61d40c0cc5f4a9b9e40b9eea104350b77efa34741fc134e105cb9533
+gpu       ollama-linux-amd64-mlx.tar.zst  cb900b2a3e9a7fda11e086346a5b66864e7c537f915f65fdb78f252d19325eb6

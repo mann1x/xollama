@@ -3,6 +3,7 @@ package parsers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"regexp"
 	"strings"
@@ -42,6 +43,7 @@ type Gemma4Parser struct {
 	callIndex             int
 	hasThinkingSupport    bool
 	thinkingEnabled       bool // true when both model supports and user requested thinking
+	contentPrefill        bool // true when the prompt continues assistant content
 	needsChannelNameStrip bool // true when we just entered thinking and need to strip "thought\n"
 	// True immediately after a thinking block closed. A block closed by the
 	// reasoning-budget sampler is closed between the model's <|channel> token
@@ -56,6 +58,13 @@ func (p *Gemma4Parser) HasToolSupport() bool {
 
 func (p *Gemma4Parser) HasThinkingSupport() bool {
 	return p.hasThinkingSupport
+}
+
+func (p *Gemma4Parser) ThinkingClose() []string {
+	if p.thinkingEnabled && !p.contentPrefill {
+		return []string{gemma4ThinkingCloseTag}
+	}
+	return nil
 }
 
 // ThinkingTags reports the delimiters of this parser's thinking block so a
@@ -106,7 +115,7 @@ func (p *Gemma4Parser) Init(tools []api.Tool, lastMessage *api.Message, thinkVal
 	p.tools = tools
 	p.callIndex = 0
 
-	prefill := lastMessage != nil && lastMessage.Role == "assistant"
+	p.contentPrefill = lastMessage != nil && lastMessage.Role == "assistant" && lastMessage.Content != ""
 
 	p.thinkingEnabled = p.HasThinkingSupport() && (thinkValue != nil && thinkValue.Bool())
 
@@ -121,7 +130,7 @@ func (p *Gemma4Parser) Init(tools []api.Tool, lastMessage *api.Message, thinkVal
 		return tools
 	}
 
-	if prefill && lastMessage.Content != "" {
+	if p.contentPrefill {
 		p.state = Gemma4CollectingContent
 		return tools
 	}
@@ -568,12 +577,60 @@ func parseGemma4ToolCall(content string, tools []api.Tool) (api.ToolCall, error)
 		args = repairedArgs
 	}
 
+	// Checked after any repair, because a repair can close a string exactly
+	// where the swallowed name ends.
+	if key, ok := gemma4SwallowedKey(args.ToMap()); ok {
+		return api.ToolCall{}, fmt.Errorf("gemma4 tool call %s: a string argument ends in \",%s:\" and the call has no %q -- the next argument's name was written inside the value; rejected, not repaired", toolName, key, key)
+	}
+
 	return api.ToolCall{
 		Function: api.ToolCallFunction{
 			Name:      toolName,
 			Arguments: args,
 		},
 	}, nil
+}
+
+// gemma4SwallowedKeyRe matches a value whose last characters are an argument
+// name and its colon, glued to a comma: the model wrote the next argument's
+// name inside the string and closed the string after it. Gemma writes ",key:"
+// with no space; prose writes ", then:", so a space after the comma does not
+// match.
+var gemma4SwallowedKeyRe = regexp.MustCompile(`,([A-Za-z_][A-Za-z0-9_]*):$`)
+
+// gemma4SwallowedKey reports a string value, in this object or any object
+// nested in it, that ends in ",<name>:" where <name> is not a key of the same
+// object. The value the model meant for <name> was never generated, so there
+// is nothing to repair: writing the call would put the name into a file and
+// leave the argument out. The same rule as opencoti's engine-side check
+// (bug-3541, gemma4-argument-bleed), so the call is judged the same whichever
+// parser reads it.
+func gemma4SwallowedKey(obj map[string]any) (string, bool) {
+	for _, value := range obj {
+		switch v := value.(type) {
+		case string:
+			m := gemma4SwallowedKeyRe.FindStringSubmatch(strings.TrimRightFunc(v, unicode.IsSpace))
+			if m == nil {
+				continue
+			}
+			if _, present := obj[m[1]]; !present {
+				return m[1], true
+			}
+		case map[string]any:
+			if key, ok := gemma4SwallowedKey(v); ok {
+				return key, true
+			}
+		case []any:
+			for _, item := range v {
+				if nested, isObj := item.(map[string]any); isObj {
+					if key, ok := gemma4SwallowedKey(nested); ok {
+						return key, true
+					}
+				}
+			}
+		}
+	}
+	return "", false
 }
 
 // gemma4ArgsToJSON converts Gemma 4's custom argument format to valid JSON.

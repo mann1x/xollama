@@ -143,6 +143,13 @@ func deviceUnsupported(p Platform, d Device) string {
 	if reason := pinUncovered(p, d.Backend); reason != "" {
 		return reason
 	}
+	// A card only the pin's CUDA 12 payload has code for (Volta on the dev
+	// snapshots) is served from that payload; Launch picks its directory.
+	if d.Backend == BackendCUDA && d.ComputeMajor > 0 {
+		if pin, err := loadPin(); err == nil && needsCUDA12(pin, d) {
+			return ""
+		}
+	}
 	// Unknown capability (0) is treated as unsupported rather than assumed
 	// modern. Routing wrongly to llama.cpp costs the engine's features and
 	// says so in the log; routing wrongly to opencoti costs a silent drop to
@@ -162,6 +169,39 @@ func deviceUnsupported(p Platform, d Device) string {
 		}
 	}
 	return ""
+}
+
+// coveredByCUDA13 reports whether the main CUDA payload serves this device.
+func coveredByCUDA13(pin Pin, d Device) bool {
+	return d.compute() >= minCUDACompute && pin.CoversCUDA(d.ComputeMajor, d.ComputeMinor)
+}
+
+// needsCUDA12 reports whether this device is served only by the pin's CUDA 12
+// payload: the main payload has no code for it and the CUDA 12 one does.
+func needsCUDA12(pin Pin, d Device) bool {
+	return d.Backend == BackendCUDA && d.ComputeMajor > 0 &&
+		!coveredByCUDA13(pin, d) && pin.CoversCUDA12(d.ComputeMajor, d.ComputeMinor)
+}
+
+// cudaPayload decides which CUDA payload one load runs on. One engine process
+// loads one payload (opencoti #494), so a load whose GPUs need both cannot be
+// served by either, and the reason says so.
+func cudaPayload(pin Pin, devices []Device) (cuda12 bool, reason string) {
+	var old, current bool
+	for _, d := range devices {
+		if d.Backend != BackendCUDA {
+			continue
+		}
+		if needsCUDA12(pin, d) {
+			old = true
+		} else {
+			current = true
+		}
+	}
+	if old && current {
+		return false, "this load spans GPUs that need the CUDA 12 and the CUDA 13 payload, and one engine process loads only one"
+	}
+	return old, ""
 }
 
 // sassList renders cuda-sass values as capabilities: 86 120 -> "8.6+, 12.0+".
