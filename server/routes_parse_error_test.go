@@ -17,13 +17,12 @@ import (
 // A tool call whose JSON is cut off mid-value, which the qwen3-vl parser
 // rejects on the chunk that carries it.
 //
-// Upstream probes this with a qwen3.5 call that closes <parameter> with
-// </function>. That call no longer fails here: this fork repairs a dropped
-// closing tag rather than failing the request (PR #17914), and its qwen3-coder
-// parser hands an unparseable block back as content instead of erroring at all.
-// The subject of these tests is what routes.go does when a parser errors
-// mid-stream, not which inputs a parser rejects, so they use a parser that
-// still has that error to raise.
+// These tests used a qwen3.5 call that closes <parameter> with </function>.
+// qwen3.5 hands its tool calls to the qwen3-coder parser, which now returns a
+// block it cannot parse as content instead of failing the request, so that
+// input no longer raises an error at all. The subject here is what routes.go
+// does when a parser errors mid-stream, not which inputs a parser rejects, so
+// the tests use a parser that still has that error to raise.
 const malformedToolCall = "<think>\nthinking\n</think>\n\n<tool_call>\n{\"name\": \"write_file\", \"arguments\": {\"path\": }\n</tool_call>"
 
 func TestChatParseErrorMidStreamDoesNotWedge(t *testing.T) {

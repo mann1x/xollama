@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/ollama/ollama/api"
+	"github.com/ollama/ollama/types/model"
 )
 
 type mockRenderer struct{}
@@ -18,6 +19,7 @@ func (m *mockRenderer) LeadingBOS() string {
 }
 
 func TestRegisterCustomRenderer(t *testing.T) {
+	t.Cleanup(func() { delete(registry.renderers, "custom-renderer") })
 	// Register a custom renderer
 	Register("custom-renderer", func() Renderer {
 		return &mockRenderer{}
@@ -90,6 +92,7 @@ func TestLeadingBOSForRenderer(t *testing.T) {
 }
 
 func TestOverrideBuiltInRenderer(t *testing.T) {
+	t.Cleanup(func() { delete(registry.renderers, "qwen3-coder") })
 	// Override the built-in renderer
 	Register("qwen3-coder", func() Renderer {
 		return &mockRenderer{}
@@ -111,6 +114,8 @@ func TestUnknownRendererReturnsError(t *testing.T) {
 		t.Error("expected error for unknown renderer")
 	}
 }
+
+func (m *mockRenderer) Thinking() *model.Thinking { return nil }
 
 // TestThinkingPromptPrefill pins whether each thinking renderer primes the
 // thinking block by ending the prompt with the opening tag. A thinking-token

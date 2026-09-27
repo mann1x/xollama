@@ -28,11 +28,21 @@ paths:
 - **`slots.live`** (`types/xollama/config.go`, `xollama tweak model`
   `slots-live`) is the count a load starts with: `liveSlots` in
   `server/slots_live.go` (`slots-live` hook, one line in `load()` after the
-  ollama#4165 cap) replaces `OLLAMA_NUM_PARALLEL` with it only for a
-  completion model `llm.WouldUseOpencoti` says opencoti will serve. Stock
-  llama.cpp reserves a KV copy per slot at launch, so there the operator's
-  count stands. `slots.live` above `slots.max` is refused by `Validate`.
+  ollama#4165 cap). For a completion model `llm.WouldUseOpencoti` says
+  opencoti will serve it is `slots.live`, else `XOLLAMA_PARALLEL`, else one:
+  **`OLLAMA_NUM_PARALLEL` is never read on opencoti** (owner's rule
+  2026-09-27 — a stock ollama beside xollama shares it). Stock llama.cpp
+  reserves a KV copy per slot at launch, so there the operator's
+  `OLLAMA_NUM_PARALLEL` stands. `slots.live` above `slots.max` is refused by `Validate`.
   Guard: `server/slots_live_test.go`; Registry row `slots-live`.
+- **The pool is `-c = num_ctx × live`, never × the ceiling** (owner's ruling
+  2026-09-27). A request with no window is guaranteed the whole pool, so by
+  default requests take turns, as on Ollama. Concurrency comes from clients
+  booking windows (`placement.num_ctx`) out of a pool the operator sized, or
+  from `XOLLAMA_PARALLEL`. opencoti commits the pool at load (b171: `-c 131072`
+  cost 4x the KV of `-c 32768`); grow-on-demand is opencoti c9 stage 8. Do not
+  widen `-c` or inject a per-request `num_ctx` before that ships. Prose:
+  `docs/xollama/slots.mdx` "How the context is shared".
 - **A prediction is not the launch.** `servedSequences` in `startLlamaServer`
   (`llm/llama_server.go`) drops back to one and relaunches when stock served
   after all: the artifact was missing, or the opt-in fallback retried. Fewer

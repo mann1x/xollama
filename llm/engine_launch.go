@@ -58,18 +58,37 @@ var stockCacheTypes = []string{
 // resolved from OLLAMA_KV_CACHE_TYPE, so an unmodified server keeps behaving
 // exactly as it did.
 func resolveKVCacheTypes(cfg LlamaServerConfig, base string) kvCacheTypes {
-	out := kvCacheTypes{K: base, V: base}
+	return resolveKVCacheTypesOn(cfg, base, false)
+}
 
-	if v := strings.ToLower(strings.TrimSpace(envconfig.KCacheType())); v != "" {
+// resolveKVCacheTypesOn is resolveKVCacheTypes for a load stock llama.cpp
+// serves after all when stock is true. The XOLLAMA_* variables are a
+// server-wide choice made for opencoti, so there a type stock does not accept
+// is dropped and that half keeps base -- OLLAMA_KV_CACHE_TYPE, or its
+// XOLLAMA_KV_CACHE_TYPE spelling, the legacy fallback -- rather than failing
+// every load that lands on stock. A model's own kv settings are a decision
+// about that model and are still refused there.
+func resolveKVCacheTypesOn(cfg LlamaServerConfig, base string, stock bool) kvCacheTypes {
+	out := kvCacheTypes{K: base, V: base}
+	env := func(v string) string {
+		v = strings.ToLower(strings.TrimSpace(v))
+		if stock && !isStockCacheType(v) {
+			return ""
+		}
+		return v
+	}
+
+	if v := env(envconfig.KCacheType()); v != "" {
 		out.K = v
 	}
-	if v := strings.ToLower(strings.TrimSpace(envconfig.VCacheType())); v != "" {
+	if v := env(envconfig.VCacheType()); v != "" {
 		out.V = v
 	}
-	if v := strings.ToLower(strings.TrimSpace(envconfig.KCacheTypeSWA())); v != "" {
+	// Stock llama.cpp has no ring at all, whatever the type.
+	if v := strings.ToLower(strings.TrimSpace(envconfig.KCacheTypeSWA())); v != "" && !stock {
 		out.KSWA = v
 	}
-	if v := strings.ToLower(strings.TrimSpace(envconfig.VCacheTypeSWA())); v != "" {
+	if v := strings.ToLower(strings.TrimSpace(envconfig.VCacheTypeSWA())); v != "" && !stock {
 		out.VSWA = v
 	}
 

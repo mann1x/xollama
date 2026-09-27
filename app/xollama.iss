@@ -170,7 +170,13 @@ Name: "{userprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFile
 Type: files; Name: "{%LOCALAPPDATA}\xOllama\updates"
 
 [Run]
+#ifdef CORE
 Filename: "{cmd}"; Parameters: "/C set PATH={app};%PATH% & ""{app}\{#MyAppExeName}"""; Flags: postinstall nowait runhidden
+#else
+; AppRunParams (xollama-setup-pages.iss) also hands the first launch the
+; XOLLAMA_HOST the port page wrote, which this process's environment predates.
+Filename: "{cmd}"; Parameters: "{code:AppRunParams}"; Flags: postinstall nowait runhidden
+#endif
 
 [UninstallRun]
 ; Filename: "{cmd}"; Parameters: "/C ""taskkill /im ''{#MyAppExeName}'' /f /t"; Flags: runhidden
@@ -237,6 +243,16 @@ Root: HKCU; Subkey: "Software\Classes\xollama\shell\open\command"; ValueType: st
 Root: HKCU; Subkey: "Software\Classes\ollama"; ValueType: string; ValueName: ""; ValueData: "URL:xOllama Protocol"; Check: OllamaSchemeUnclaimed; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\ollama"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""; Check: OllamaSchemeUnclaimed; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\ollama\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Check: OllamaSchemeUnclaimed; Flags: uninsdeletekey
+
+#ifndef CORE
+; The port and KV cache pages' choices (xollama-setup-pages.iss). Only a variable this
+; install creates is removed on uninstall; one the user already had is
+; rewritten from code and outlives xOllama.
+Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "XOLLAMA_HOST"; ValueData: "{code:HostValue}"; Check: HostIsNew; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "XOLLAMA_K_CACHE_TYPE"; ValueData: "{code:KVValue|K}"; Check: KVIsNew('K'); Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "XOLLAMA_V_CACHE_TYPE"; ValueData: "{code:KVValue|V}"; Check: KVIsNew('V'); Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "XOLLAMA_KV_CACHE_TYPE"; ValueData: "{code:KVValue|L}"; Check: KVIsNew('L'); Flags: uninsdeletevalue
+#endif
 
 [Code]
 
@@ -465,3 +481,7 @@ begin
       Exec('taskkill.exe', '/f /t /im "{#LlamaServerExeName}"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     end;
 end;
+
+#ifndef CORE
+#include "xollama-setup-pages.iss"
+#endif

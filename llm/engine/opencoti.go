@@ -54,6 +54,21 @@ func DefaultDirs(libOllamaPath, home string) []string {
 	return dirs
 }
 
+// CUDA12Dirs lists where the engine copy that side-loads the CUDA 12 payload
+// is looked for: a cuda_v12 subdirectory of each engine directory. The engine
+// loads the ggml-cuda library beside its own executable, so the two payloads
+// need two directories, each with the engine in it.
+func CUDA12Dirs(libOllamaPath, home string) []string {
+	var dirs []string
+	if home != "" {
+		dirs = append(dirs, filepath.Join(home, ".ollama", "engines", "cuda_v12"))
+	}
+	if libOllamaPath != "" {
+		dirs = append(dirs, filepath.Join(libOllamaPath, "engines", "cuda_v12"))
+	}
+	return dirs
+}
+
 // Find returns the artifact to run.
 //
 // explicit is the value of XOLLAMA_ENGINE_PATH: when set it is used as given
@@ -178,10 +193,30 @@ func isArtifact(name string, mode fs.FileMode) bool {
 // and its absence silently understates memTotal -- the same class of bug as
 // the stale-buffer one memoryParsingWriter exists to prevent.
 //
-// The ~500 lines per request are the engine's logging design, not something
-// this adapter can tune around: no threshold prints the boot allocation
-// without also enabling per-token logging. Raised with the opencoti session.
+// The ~500 lines per request are the engine's logging design at threshold 5.
+// opencoti answered it with --log-memory-plan (their patch 0302, requested by
+// this integration on 2026-09-18): the allocation-summary lines print whatever
+// the threshold, and nothing else changes. So an engine whose pin declares the
+// log-memory-plan feature runs at ollama's own threshold, 4, plus that flag --
+// measured on 2026-09-27 against 2609271108001: every non-zero buffer line,
+// "using device ... MiB free" and "offloaded N/M layers" still print, and a
+// request logs 32 lines instead of ~3,600. Without the feature it stays at 5.
 const logVerbosity = "5"
+
+// quietLogVerbosity is ollama's own threshold, used with --log-memory-plan.
+const quietLogVerbosity = "4"
+
+// featureLogMemoryPlan names --log-memory-plan in pin.txt.
+const featureLogMemoryPlan = "log-memory-plan"
+
+// logArgs is the logging argv for the pinned engine: ollama's threshold plus
+// --log-memory-plan when the pin declares it, else threshold 5.
+func logArgs() []string {
+	if pin, err := loadPin(); err == nil && pin.HasFeature(featureLogMemoryPlan) {
+		return []string{"--log-verbosity", quietLogVerbosity, "--log-memory-plan"}
+	}
+	return []string{"--log-verbosity", logVerbosity}
+}
 
 func Command(artifact string, params []string, devices []Device, goos string) (string, []string) {
 	args := make([]string, 0, len(params)+5)
@@ -191,7 +226,7 @@ func Command(artifact string, params []string, devices []Device, goos string) (s
 	// last occurrence of a flag, and ollama passes --log-verbosity 4 of its
 	// own; prepending ours left it inert and the scheduler planning against
 	// the buffer-size lines that level 4 filters out.
-	args = append(args, "--log-verbosity", logVerbosity)
+	args = append(args, logArgs()...)
 	if gpu := gpuFlag(devices); gpu != "" {
 		args = append(args, "--gpu", gpu)
 	}
@@ -306,7 +341,21 @@ func Launch(stockExe string, params []string, devices []Device, libOllamaPath st
 	}
 
 	home, _ := os.UserHomeDir()
-	artifact, err := Find(envconfig.Var(EnvPath), DefaultDirs(libOllamaPath, home))
+	dirs := DefaultDirs(libOllamaPath, home)
+	// A card only the CUDA 12 payload serves runs the engine copy staged
+	// beside that payload. An explicit XOLLAMA_ENGINE_PATH is the operator's
+	// choice and is used as given.
+	if pin, err := loadPin(); err == nil {
+		cuda12, why := cudaPayload(pin, devices)
+		if why != "" {
+			slog.Info("falling back to stock llama-server", "reason", why)
+			return stockExe, params, false
+		}
+		if cuda12 {
+			dirs = CUDA12Dirs(libOllamaPath, home)
+		}
+	}
+	artifact, err := Find(envconfig.Var(EnvPath), dirs)
 	if err != nil {
 		slog.Info("falling back to stock llama-server", "reason", decision.Reason, "error", err)
 		return stockExe, params, false

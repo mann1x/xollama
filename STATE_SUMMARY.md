@@ -5,6 +5,80 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — Engine pin b171 with a CUDA 12 (V100) payload; runtime pins on v0.34.4 (owner: assemble the pre-release and the Docker image).**
+> - `llm/engine/pin.txt`: rev `7b836910` (b171 plus `ggml-cuda-cu12-x86_64.so`, sm_70, driver ≥ 570, opencoti #498).
+>   - It is read from `#! dso-cuda12` / `#! cuda12-sass`.
+>   - `cudaPayload` sends a 7.0 card to `engines/cuda_v12`, where `docker-assemble.sh` stages the payload beside a copy of the engine; a load spanning both payloads goes to llama.cpp.
+>   - Guard: `llm/engine/pin_cuda12_test.go`.
+>   - Pinned on the owner's say-so despite the b171 gate: its 70B first-load failure is bug-3702, which b145 also has; the fix is in opencoti's next build.
+> - Linux runtime pin: `v0.34.4-thinkbudget` (tgz `9769cb4b`, inputs `17ab8578` = ours) with upstream v0.34.4's GPU tarballs.
+> - Windows runtime pin: `runtime-windows-amd64-b11081-3023ebe12b5e` (zip `2b5fbffa`, run 36342602471).
+> - Docs: device-selection, docker-release, and the engine-pin rule.
+
+> **2026-09-27 — Manifest e314b235 consumed: lint fixed, compat README by sha, inputs digest now equals the fork's.**
+> - Merged `up-think-budget`@b463e532 → `9b2b56a6`, the new `up-compat-readme`@ddde8473 → `20ad1fd4` (README conflict taken from its side, as the fork predicted), and the rebuilt `up-response-scope-think-budget`@87d417bf → `4fd3de2c`.
+> - Now: `golangci-lint` 0 issues; digest `3023ebe12b5e` (= the fork's); build, vet and test pass.
+> - Left: check-compat-origin flags the superseded `15ebdeca`, since the fork's rebuild left it on no ref (asked for an archive ref in the reply); the Linux runtime release waits on the owner (fork item 3).
+
+> **2026-09-27 — b171 (2609271900001) measured and NOT pinned; gemma4-toolcall-in-thinking is fork-only.**
+> - b171 carries opencoti's fit rework: an automatic margin, lazy vision, and the rolling-KV window inside the fit. It went through phase2-engine-ab.py as `ollama`; results are in `/srv/ml/xollama-phase2/as-ollama/b171-ab`.
+> - Throughput 74.9 tok/s and gemma4 are fine. Two axes regress against b145:
+>   - the 70B q3_K_S first load fails allocating its 5.6 GiB KV buffer, because the fit leaves 256 MiB and does not count it;
+>   - multislot serializes (142 vs 590 tok/s): `kv-reservation: REFUSED … need 32768`.
+> - Sent to opencoti in #491. The pin stays on b145.
+> - A Docker image with CUDA 12 (V100) plus CUDA 13 for a tester: upstream's `cuda_v12` is already in the image. The engine's own v12 payload is still compiling at opencoti; asked for its pin shape in #490.
+> - CARRIED-PATCHES follows manifest bump `78333d54`: `gemma4-toolcall-in-thinking` is fork-only (#18307 was closed upstream and stays closed).
+
+> **2026-09-27 — Synced to upstream v0.34.4 and the fork's v0.34.4 manifest (branch `sync/upstream-v0.34.4`).**
+> - `c43d0a68` merges the v0.34.4 tag. xollama's hooks (council, engine-session fields, api-key, context-window) are kept, upstream's `thinkingparser` / `ThinkingClose` is adopted, and the structured-outputs double request is dropped as upstream did.
+> - The fork's 22 patches (manifest `3edc2006`, integration `e74b1daa`) are merged at their shas in order, `a9b28ffe`..`7f560400`. The table is in `docs/protocols/CARRIED-PATCHES.md`.
+> - Verified:
+>   - no file differs from the fork's tree beyond xollama's own set;
+>   - `go build`, `go vet` and `go test ./...` pass;
+>   - `check-hooks` passes (26 hooks);
+>   - `check-compat-origin` passes after the README fix below.
+> - `LLAMA_CPP_VERSION` is b11081. Three new upstream tests set `OLLAMA_HOST` and now set `XOLLAMA_HOST` (default-port rule).
+> - Left:
+>   - the fork's combined `llama/compat/README.md` (`3f1fcb62`) reaches no patch branch, so ours is the line-boundary copy until the fork puts it on one;
+>   - two lint findings in fork code (`server/think_budget_resolution_test.go` bodyclose, `server/routes_generate_test.go` trailing blank line) were sent to the fork;
+>   - the Windows runtime pin must be rebuilt (`xollama-runtime.yaml`) and the Linux pin waits for a fork v0.34.4 runtime release, both before a release PR.
+
+> **2026-09-27 — Documented how the context pool is shared; the default stays num_ctx × 1.**
+> - Owner's decision: the pool stays `num_ctx × XOLLAMA_PARALLEL` (32k × 1 by default on a 24 GB card). A request that states no window gets the whole pool, so by default requests take turns, as on Ollama.
+> - A request that asks for a window (`placement.num_ctx`) gets that window, and up to `XOLLAMA_MAX_PARALLEL` of them share the pool: a 256k pool serves 1 × 256k, 2 × 128k or 4 × 64k from one load.
+> - Measured on b171: `-c 131072` allocates the whole pool at load (qwen2.5:1.5b KV 896 → 3584 MiB). opencoti's grow-on-demand pool is planned for c9, stage 8 (mail #497). A prototype that sized the pool for the ceiling was discarded.
+> - `docs/xollama/slots.mdx` gains "How the context is shared", and its claim that several conversations run side by side by default is corrected. `docs/xollama/sessions.mdx` links to it.
+
+> **2026-09-27 — Promoted releases are announced on Discord.**
+> - New `.github/workflows/discord-announce.yaml`, copied from mann1x/osync's "Announce on Discord" step.
+> - It runs on `release: released`, so on the RELEASE.md step-8 promotion and never for a pre-release. It posts the notes as an embed via the `TECH_CORNER_DISCOWH` secret, which the repo already has. `workflow_dispatch -f tag=` re-announces a tag.
+> - Validated with actionlint and a local payload dry run on the v0.34.2-xollama.1 notes. Nothing was posted.
+> - It takes effect once it reaches `main` with the next release PR.
+
+> **2026-09-27 — Installer setup pages; XOLLAMA_PARALLEL replaces OLLAMA_NUM_PARALLEL on opencoti; server-wide KV types fall back on stock.**
+> Owner's requests, for moving pandorum (RTX 5080, an `Ollama think-budget` install) to xOllama.
+> - **Installer** (`app/xollama-setup-pages.iss`, included from `app/xollama.iss`, full installer only): the pages are Ollama found (uninstall `/SILENT` after backing up `%LOCALAPPDATA%\Ollama`, or keep it), port (22434 / 11434 greyed out while an Ollama stays / custom), API key (generate / copy / skip) and KV cache (opencoti K and V + legacy type). Silent installs change nothing. Compiled clean with Inno Setup 6.7.1 (CI's version) on pandorum against a stub payload; the real installer comes from the dry-run release build.
+> - **`XOLLAMA_PARALLEL`**: on opencoti `liveSlots` takes `slots.live`, else `XOLLAMA_PARALLEL`, else 1, and never reads `OLLAMA_NUM_PARALLEL` (shared with any stock ollama). Stock llama.cpp keeps `OLLAMA_NUM_PARALLEL`. `XOLLAMA_MAX_PARALLEL` unchanged. Guards: `TestXollamaParallelReplacesNumParallelOnOpencoti`, the updated `TestLiveSlotsBindOnlyOnOpencoti` and `TestTheSingleSequenceRuleBindsOnlyStockLlamaCpp`; a mutant restoring the old count fails both slot tests.
+> - **KV fallback**: a server-wide `XOLLAMA_K/V_CACHE_TYPE` stock llama.cpp cannot parse no longer fails a load stock serves. `resolveKVCacheTypesOn(..., stock)` keeps the legacy type (`XOLLAMA_KV_CACHE_TYPE` / `OLLAMA_KV_CACHE_TYPE`), and `startLlamaServer` relaunches with `stockKV`. A model's own `kv` is still refused. Guard `TestServerWideOpencotiTypesFallBackOnStock` (mutant killed).
+> - pandorum backup before any change: `J:\xollama-migration-backup\20260927` (Ollama app data, `~\.ollama`, machine `OLLAMA_*`, uninstall key).
+> - Left: the dry-run installer for the owner to test on pandorum; b160 still unpublished on HF (asked opencoti, #475); the Gemma-4 swallowed-key parser check must come from the fork (#476).
+
+> **2026-09-27 — The opencoti engine logs at ollama's level with --log-memory-plan, not at 5.**
+> - xollama forced `--log-verbosity 5` so the memory scrapers would see the buffer-size lines. opencoti shipped `--log-memory-plan` for exactly this (0302, requested 2026-09-18), but xollama never adopted it.
+> - Now `logArgs` in `llm/engine/opencoti.go` passes `--log-verbosity 4 --log-memory-plan` when the pin declares `feature log-memory-plan` (the committed pin does), and keeps 5 otherwise.
+> - Measured on 2609271108001:
+>   - solidPC llama3 8B: every non-zero buffer line, "MiB free" and "offloaded N/M layers" still print; ~3,630 → 32 log lines per request; speed unchanged (~81 tok/s).
+>   - eleven2go, Windows build: the same flags, no memory-parsing warning, identical reported VRAM; qwen3:8b 4,265 / 123.0 tok/s, the same as at 5.
+> - Also measured: xollama vs ollama on eleven2go. Dense models are within 1% between xollama's defaults and an ollama-like setup (`xollama tweak --slots=off --kv-unified=off`); the gap to ollama is the engine (qwen3:8b −15% prefill, −4% gen). qwen3.6:35b-a3b loses ~18% gen under the defaults (elastic recurrent state on the CPU is the lead); a 7-model re-run is in progress, and opencoti gets the full report.
+
+> **2026-09-27 — v0.34.2-xollama.2 published as a pre-release (PR #2, merge 69f1a658) and verified on eleven2go.**
+> - Release run 36319352313: plan, windows, linux, publish all green. Six assets; `sha256sum -c` all OK; payload-id `fcdf0b73…`.
+> - eleven2go install (RELEASE.md step 6, scheduled task): `--version` names the tag, PAYLOAD_ID matches, `*:22434`, `/api/xollama` lists 9 features, the tray app names the fork's feed, and ollama on 11434 is untouched.
+> - Devices: the RTX 3090 goes to opencoti (CUDA); the Radeon iGPU (Vulkan) goes to llama.cpp.
+> - Measured: 700 tokens at 123.0 tok/s on the engine from `lib\ollama\engines`. The omni-council-idle tools turn passes (9 rounds, 87 s).
+> - The council models were copied to eleven2go losslessly by recreating them. osync 1.3.1 is lossy against a Windows target: see `/shared/dev/handover/2026-09-27-osync-xollama-copy-issues.md`.
+> - Left: promote to latest (step 8) when the owner says so.
+
 > **2026-09-27 — Engine pin moves to opencoti 2609271108001, the first with a Windows CUDA engine; tested live on eleven2go.**
 > - Pin: HF rev `ed6430b9`, bin `32287454` (one APE for x86_64, aarch64 and Windows), dso `868ed520` (Linux CUDA) and `ee622711` (Windows CUDA DLL), mail #439. It carries the b145 line: council/PolyKV surface plus opencoti's media runtime and STT.
 > - Windows packaging now accepts a dev snapshot's shape (`bin win-x86_64` + `dso win-x86_64`):

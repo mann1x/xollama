@@ -543,35 +543,45 @@ func ToModel(r api.ShowResponse, m string) Model {
 	}
 }
 
-// thinkFromReasoningEffort converts an OpenAI reasoning effort to the equivalent
-// Ollama think value. An empty effort leaves thinking at the model's default.
-//
-// OpenAI's scale extends past the top of Ollama's ("xhigh" above "high") and
-// clients built on it add tiers of their own ("ultra"). Clamp those to the
-// nearest Ollama tier rather than rejecting the request, since the alternative
-// is a 400 for an effort the client considers perfectly valid.
-//
-// "minimal" is not clamped, because it is a level of ours: it resolves to a
-// sixteenth of the response rather than to "low"'s eighth. Every other level is
-// checked against the set the API knows rather than a list written out here, so
-// a level cannot be accepted by one entry point and rejected by another.
-func thinkFromReasoningEffort(effort string) (*api.ThinkValue, error) {
+// ThinkingFromReasoningEffort preserves model-defined names when metadata is present.
+// Boolean-only models retain the OpenAI on/off controls; models without metadata
+// retain the legacy effort aliases.
+func ThinkingFromReasoningEffort(effort string, thinking ...*model.Thinking) (*api.ThinkValue, error) {
 	switch effort {
 	case "":
 		return nil, nil
 	case "none":
 		return &api.ThinkValue{Value: false}, nil
+	}
+	requestedEffort := effort
+	// "minimal" is not clamped, because it is a level of ours: it resolves to a
+	// sixteenth of the response rather than to "low"'s eighth.
+	switch effort {
 	case "xhigh", "ultra":
-		return &api.ThinkValue{Value: "max"}, nil
+		effort = "max"
 	}
-	if api.IsThinkLevel(effort) {
-		return &api.ThinkValue{Value: effort}, nil
+	think := &api.ThinkValue{Value: effort}
+	err := api.ValidateLegacyThinking(think)
+	if len(thinking) > 0 && thinking[0].Valid() {
+		if err == nil && thinking[0].Supports(true) {
+			for _, value := range thinking[0].Values {
+				if _, named := value.(string); named {
+					return &api.ThinkValue{Value: requestedEffort}, nil
+				}
+			}
+			return &api.ThinkValue{Value: true}, nil
+		}
+		return &api.ThinkValue{Value: requestedEffort}, nil
 	}
-	return nil, fmt.Errorf("invalid reasoning value: %q (must be %q, \"xhigh\", \"ultra\", or \"none\")", effort, api.ThinkLevels())
+	if err != nil {
+		return nil, fmt.Errorf("invalid reasoning value: %q (must be \"minimal\", \"low\", \"medium\", \"high\", \"xhigh\", \"ultra\", \"max\", or \"none\")", requestedEffort)
+	}
+	return think, nil
 }
 
-// FromChatRequest converts a ChatCompletionRequest to api.ChatRequest
-func FromChatRequest(r ChatCompletionRequest) (*api.ChatRequest, error) {
+// FromChatRequest converts a ChatCompletionRequest to api.ChatRequest.
+// An optional thinking descriptor preserves model-defined effort names for rendering.
+func FromChatRequest(r ChatCompletionRequest, thinking ...*model.Thinking) (*api.ChatRequest, error) {
 	var messages []api.Message
 	for _, msg := range r.Messages {
 		toolName := ""
@@ -727,7 +737,7 @@ func FromChatRequest(r ChatCompletionRequest) (*api.ChatRequest, error) {
 		effort = *r.ReasoningEffort
 	}
 
-	think, err := thinkFromReasoningEffort(effort)
+	think, err := ThinkingFromReasoningEffort(effort, thinking...)
 	if err != nil {
 		return nil, err
 	}

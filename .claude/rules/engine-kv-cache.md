@@ -14,6 +14,11 @@ paths:
   `XOLLAMA_K_CACHE_TYPE` / `XOLLAMA_V_CACHE_TYPE` (and the `_SWA` pair), then
   upstream's server-wide `OLLAMA_KV_CACHE_TYPE`, then unset. Upstream's setting
   stays the default everything else overrides — never move it.
+- `resolveKVCacheTypesOn` with `stock` true is the same for a load stock
+  llama.cpp serves after all: a server-wide `XOLLAMA_*` type stock rejects is
+  dropped (the ring always), so that half keeps the legacy base
+  (`OLLAMA_KV_CACHE_TYPE` / `XOLLAMA_KV_CACHE_TYPE`) — `startLlamaServer`
+  relaunches with `stockKV`. A model's own kv setting is still refused.
 - `stockCacheTypes` is what stock llama.cpp's own parser accepts. Anything
   outside it — opencoti's `kvarn2`..`kvarn6`/`kvarn8` (**no `kvarn7`**: structural,
   per `llama_kvarn_valid_bits()`), the frozen `turbo*` / `*_tcq` tiers, `q6_0` — is
@@ -46,5 +51,4 @@ paths:
   the `feature swa-cache-types` row in `llm/engine/pin.txt`.
 - The report against opencoti's `docs/llamafile-flags.md` is **closed**
   (2026-09-20); do not re-file it — see `docs/features/opencoti-config-gaps.md`.
-- Prose for users lives in `docs/xollama/kv-cache.mdx`; measurements in
-  `docs/evaluations/phase2-engine-ab.md`.
+- Prose: `docs/xollama/kv-cache.mdx`; numbers: `docs/evaluations/phase2-engine-ab.md`.

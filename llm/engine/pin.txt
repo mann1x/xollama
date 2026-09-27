@@ -66,6 +66,12 @@
 #                       iSWA cache and the separate ring type is refused up
 #                       front. See llm/engine/capability.go.
 #
+#     log-memory-plan   --log-memory-plan (patch 0302): the buffer-size lines
+#                       the memory scrapers read print at any verbosity, so the
+#                       engine runs at threshold 4 instead of 5 (~3,600 log
+#                       lines per request down to ~32). See logArgs in
+#                       llm/engine/opencoti.go.
+#
 #   Why acceleration is declared too. The tested matrix in policy.go is a claim
 #   about the ENGINE; a pin is a claim about the BYTES, and they are not the
 #   same fact. A release bin embeds its GPU payloads and self-extracts, so it
@@ -93,8 +99,8 @@
 # ---------------------------------------------------------------------------
 
 repo     ManniX-ITA/opencoti-llamafile-dev
-rev      ed6430b9f950196abf031fb06d59538a11dcfe91
-tag      opencoti-0.10.5-c7-2609271108001
+rev      7b836910ac880e898aa08bd43665d1f6a3b7d31c
+tag      opencoti-0.10.5-c7-2609271900001
 channel  dev
 
 # THIS BRANCH PINS A DEVELOPMENT SNAPSHOT. It is not a release and must not be
@@ -115,50 +121,48 @@ channel  dev
 # commit one second later that moves the repo's own pointer. Both hold the same
 # bytes; naming the snapshot is what the two pins before this one did.
 #
-# WHY THIS BUILD. 2609271108001 (b145 line; opencoti dev 93b156a3, chain
-# head 0417-media-stt, mail #439) is the build the council work and the
-# X-Context-Window negotiation were developed against (b137 carried the same
-# PolyKV surface), plus opencoti's media runtime and speech-to-text. It passed
-# opencoti's M4 STT gate: LLM output byte-identical with no media flag, and
-# 512/512 identical during a transcription.
+# WHY THIS BUILD. 2609271900001 (b171; opencoti dev 7d5d274b4d, chain head
+# 0426-fit-plan, mails #489 and #498) is the owner's pick for the
+# v0.34.4-xollama.1 pre-release: opencoti's fit rework (automatic margin, lazy
+# vision, the rolling-KV window planned inside the fit, cheapest MoE layers
+# spilled first) and, in the same snapshot at rev 7b836910, a CUDA 12 payload
+# for Volta.
 #
-# WHAT IT ADDS. The first dev snapshot with a WINDOWS engine: the bare APE
-# serves Windows too (bin win-x86_64), with its CUDA payload as
-# ggml-cuda-win-x86_64.dll (dso win-x86_64). Pin.ArchFor packages that shape
-# when no win-x86_64-gpu bin exists, staged as <name>.exe with ggml-cuda.dll
-# beside it in lib/ollama/engines (cmake/opencoti-engine.cmake).
+# WHAT IT ADDS. The CUDA 12 payload (ggml-cuda-cu12-x86_64.so, CUDA 12.8,
+# SASS sm_70 only, driver >= 570) on "#! dso-cuda12" / "#! cuda12-sass" lines,
+# which opencoti's own parsers read as comments. One engine process loads one
+# payload, so it is staged as ggml-cuda.so beside a second copy of the engine
+# in lib/ollama/engines/cuda_v12 (scripts/docker-assemble.sh) and chosen per
+# load: a 7.0 card runs there, 8.6-8.9 and 12.x run the CUDA 13 payload, a load
+# spanning both goes to llama.cpp (cudaPayload in llm/engine/policy.go).
 #
-# WHAT IT COSTS. The CUDA payloads carry SASS for sm_86 and sm_120f ONLY, both
-# the Linux .so and the Windows .dll. So CUDA is 8.6-8.9 and 12.x; Turing 7.5,
-# A100/A30 8.0, Hopper 9.0 and datacenter Blackwell 10.x would run on the CPU
-# here. cuda-sass below narrows routing to what the bytes carry (CoversCUDA),
-# and those devices go to llama.cpp. Still no Vulkan (Linux or Windows) and no
-# aarch64 CUDA.
+# WHAT IT COSTS. The CUDA 13 payloads still carry SASS for sm_86 and sm_120f
+# only, so Turing 7.5, A100/A30 8.0, Hopper 9.0 and datacenter Blackwell 10.x
+# go to llama.cpp. The CUDA 12 payload has only build gates (sm_70 x 402
+# kernel images, glibc floor 2.27): nobody has run it on a V100 yet.
 #
-# MEASURED against THESE bytes on 2026-09-27.
-#   Windows (eleven2go, RTX 3090 8.6, xollama cross-built from this tree and
-#   installed over the manual install; engine staged by cmake/opencoti-fetch.cmake
-#   -DARCH=win-x86_64 into lib\ollama\engines):
-#     qwen3:8b            opencoti engine on CUDA0 (every layer and the KV),
-#                         123.7 tok/s gen, 660 tok/s prompt, X-Context-Window 32768
-#     omnimerge-v4 MTP    27B IQ2_M at 128k: load + tool call 23.6 s, get_weather
-#                         {city: Rome} with thinking split, 60.7 tok/s gen,
-#                         248 tok/s prompt, X-Context-Window 131072
-#     XOLLAMA_ENGINE=llamacpp  stock lib\ollama\llama-server.exe on the GPU,
-#                         109.5 tok/s, no window header: the engine's
-#                         ggml-cuda.dll in engines\ is not picked up by it
-#   Linux (solidPC RTX 3090, phase2-engine-ab.py as ollama, dso beside the
-#   artifact, /srv/ml/xollama-phase2/as-ollama/b145-ab) against b111:
-#     compat      8/8 load on both
-#     throughput  llama3 75.4 vs 75.6 tok/s gen, 3836 vs 3875 tok/s prompt
-#     multislot   qwen2.5:1.5b x4, 590 vs 461 tok/s aggregate
-#     gemma4      tool call and thinking split correct on both
-#     overflow    llama3.1 70B q3_K_S, 76% in VRAM, 3.69 vs 1.21 tok/s gen
-#                 (one run; b111's three spread 1.21-2.97)
+# MEASURED against THESE bytes on 2026-09-27 (phase2-engine-ab.py as ollama on
+# solidPC, /srv/ml/xollama-phase2/as-ollama/b171-ab), against b145:
+#   throughput  llama3 74.9 tok/s gen, 3881 tok/s prompt (b145 75.4 / 3836)
+#   gemma4      tool call and thinking split correct
+#   compat      7/8: llama3.1 70B q3_K_S fails its FIRST load allocating a
+#               5.6 GiB KV buffer. Not new: b145 has the same sizer bug
+#               (bug-3702, the KV window budget read from the CPU layer's
+#               device); the fix is in opencoti's next dev build. xollama's
+#               reduced-context retry then loads it (3.05 tok/s, 60% in VRAM).
+#   multislot   142 tok/s: the default launch is now num_ctx x 1 with requests
+#               taking turns, by the owner's ruling (docs/xollama/slots.mdx),
+#               not an engine regression (b145 had four fixed 32k slots).
 #   No row in llm/engine_defects.go accuses a dev build, so none is retired.
 #
 # ---------------------------------------------------------------------------
 # HISTORY. The snapshots this replaces.
+#
+# 2609271108001 (b145, rev ed6430b9, bin 32287454, dso 868ed520, dll ee622711)
+# was the first dev snapshot with a Windows engine and the build the council and
+# X-Context-Window work was developed against; it passed the Linux A/B against
+# b111 and the eleven2go Windows check (compat 8/8, llama3 75.4 tok/s, multislot
+# 590 tok/s with four fixed 32k slots, 70B overflow 3.69 tok/s).
 #
 # 2609252051001 (b111, rev 1d0f1dcd, bin a66e9e27, dso f32ebf54) carried the
 # PolyKV surface the council chat is built on: kv_pressure_v1, kv_resize_v1,
@@ -267,6 +271,13 @@ channel  dev
 # group size", which is a runtime fact and not an argv one.
 feature  swa-cache-types
 
+# --log-memory-plan (opencoti 0302, requested by this integration 2026-09-18):
+# the allocation-summary lines print at any --log-verbosity, so the engine runs
+# at ollama's own threshold 4 instead of 5. Checked on these bytes: --server
+# --help lists it, and every non-zero buffer line, "using device ... MiB free"
+# and "offloaded N/M layers" print at 4 with it (llm/engine/opencoti.go).
+feature  log-memory-plan
+
 # CUDA on Linux x86_64 and Windows x86_64, from the dso rows (pin.go derives
 # accel from them; opencoti's dev publisher states no accel rows, #242). The
 # host binary is a bare cosmocc APE with no GPU payload of its own: Vulkan
@@ -280,13 +291,15 @@ accel    x86_64  CUDA
 # snapshot on (mail #449): their own pin parsers skip '#' lines and refuse a
 # bare directive, so this row can be copied verbatim either way.
 #! cuda-sass 86 120
+#! dso-cuda12 x86_64 builds/opencoti-0.10.5-c7-2609271900001/ggml-cuda-cu12-x86_64.so 6666afc2a99f7febdfc661bd3dbb01c3589d14d12285320651818487075aade6
+#! cuda12-sass 70
 
 # One APE serves every host; the arch label selects who may package it. There
 # is no win-x86_64-gpu bin on this channel: Windows packages the bare APE and
 # its dso (Pin.ArchFor).
-bin  x86_64      builds/opencoti-0.10.5-c7-2609271108001/opencoti-0.10.5-c7-2609271108001  322874541d887bd56f51196885f7ec406be3dc78de013f159e65bb8a9250ea0d
-bin  aarch64     builds/opencoti-0.10.5-c7-2609271108001/opencoti-0.10.5-c7-2609271108001  322874541d887bd56f51196885f7ec406be3dc78de013f159e65bb8a9250ea0d
-bin  win-x86_64  builds/opencoti-0.10.5-c7-2609271108001/opencoti-0.10.5-c7-2609271108001  322874541d887bd56f51196885f7ec406be3dc78de013f159e65bb8a9250ea0d
+bin  x86_64      builds/opencoti-0.10.5-c7-2609271900001/opencoti-0.10.5-c7-2609271900001  30df5425a067cc66cdbb525157fbc8fc6aa75fae8cbf32bf26a19b18d7397412
+bin  aarch64     builds/opencoti-0.10.5-c7-2609271900001/opencoti-0.10.5-c7-2609271900001  30df5425a067cc66cdbb525157fbc8fc6aa75fae8cbf32bf26a19b18d7397412
+bin  win-x86_64  builds/opencoti-0.10.5-c7-2609271900001/opencoti-0.10.5-c7-2609271900001  30df5425a067cc66cdbb525157fbc8fc6aa75fae8cbf32bf26a19b18d7397412
 
-dso  x86_64      builds/opencoti-0.10.5-c7-2609271108001/ggml-cuda.so               868ed52025f841942e988588f53a5479e77f802e7204b27e8e7e2b60883db9cb
-dso  win-x86_64  builds/opencoti-0.10.5-c7-2609271108001/ggml-cuda-win-x86_64.dll   ee62271194bafba4cf9e513684582ef4940925455aa4dd40fa14524941058b35
+dso  x86_64      builds/opencoti-0.10.5-c7-2609271900001/ggml-cuda.so               a27685f2a3c45445dbf4399975eb458fbefcd3f71cbe05ed66de2cc9c30055c7
+dso  win-x86_64  builds/opencoti-0.10.5-c7-2609271900001/ggml-cuda-win-x86_64.dll   f34f1ee326f7fbb0c795d27b5e15f2cc531d0094185351027a23dfaaf736038e

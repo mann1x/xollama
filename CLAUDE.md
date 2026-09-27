@@ -2,7 +2,7 @@
 
 @.wolf/OPENWOLF.md
 
-Soft fork of ollama. `main` = upstream release v0.34.2 + fork changes, carrying the
+Soft fork of ollama. `main` = upstream release v0.34.4 + fork changes, carrying the
 full upstream history so every `git merge upstream/main` has a real merge-base.
 Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING.md
 
@@ -48,7 +48,9 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   and moved in the same PR that changes `LLAMA_CPP_VERSION`, `llama/server` or
   `llama/compat`; the Go binaries build with the newest patch release on the
   `go` line of `go.mod`, never `GOTOOLCHAIN: auto`; promote after the eleven2go
-  install check. Never push a `v*` tag, never copy exes onto a host as an "update".
+  install check — promotion (the `released` event, never a pre-release) posts
+  the notes to Discord via `.github/workflows/discord-announce.yaml`.
+  Never push a `v*` tag, never copy exes onto a host as an "update".
 - `docs/features/engine-opencoti-llamafile.md` · `docs/features/rebrand.md` ·
   `docs/features/store-ownership.md` · `docs/features/windows-installer.md` ·
   `docs/features/model-config.md` · `docs/features/modelfile-roundtrip.md` ·
@@ -117,9 +119,10 @@ opencoti's granted window (`X-Context-Window`) reaches the client through the
 `server/context_window.go`; stock llama.cpp stays header-free — see
 `.claude/rules/context-window.md`.
 **Prompting**: `model/renderers/` (per-model `Render`) ↔ `model/parsers/`
-(streaming output), plus `template/`, `thinking/`, `harmony/`.
+(streaming output), plus `template/`, `thinking/`, `harmony/`; a model's named
+thinking efforts are `types/model/thinking.go`.
 **API shims**: `api/types.go`, `openai/openai.go`, `anthropic/anthropic.go`,
-`middleware/`. **Config**: `envconfig/config.go` holds every `OLLAMA_*` var;
+`middleware/` (`middleware/thinking.go` maps OpenAI/Anthropic efforts). **Config**: `envconfig/config.go` holds every `OLLAMA_*` var;
 the listen address is `envconfig.DefaultPort` (22434), read from `XOLLAMA_HOST`
 only — see `.claude/rules/default-port.md`. Where the CLI *connects* with no host
 set is `api/xollama_host.go` (`ResolveHost`), run once from `cmd/xollama_host.go`;
@@ -212,7 +215,9 @@ hooked from `app/updater/updater.go` / `app/updater/updater_windows.go`;
 `app/updater/fork_payload_windows.go` picks the small `xOllamaUpdate.exe`
 (no `lib\ollama`) over the full `xOllamaSetup.exe` when the installed
 `lib\ollama\PAYLOAD_ID` matches the release's `payload-id.txt` (`payloadId` in
-`scripts/build_windows.ps1`). The installer is `app/xollama.iss`; it always
+`scripts/build_windows.ps1`). The installer is `app/xollama.iss` (setup pages
+for Ollama-found, port, API key and KV cache in `app/xollama-setup-pages.iss`,
+full installer only); it always
 registers `xollama://` and registers `ollama://` only when nobody already owns
 it (`OllamaSchemeUnclaimed`). macOS declares both schemes and
 `app/cmd/app/app_darwin.m` handles both, because ollama.com picks the sign-in
@@ -222,7 +227,8 @@ redirect scheme; `app/cmd/app/app.go` accepts either — see
 on `ubuntu-latest` from pinned artifacts — nothing native is compiled:
 `scripts/docker-assemble.sh` stages the fork's CPU runtime and upstream's GPU
 tarballs (`llama/runtime-pin-linux.txt`, sha256 + a README-excluded inputs
-digest), the engine (`llm/engine/pin.txt`) and a Go-only `xollama`, and
+digest), the engine (`llm/engine/pin.txt`, plus a second copy beside its CUDA 12
+payload in `lib/ollama/engines/cuda_v12`) and a Go-only `xollama`, and
 `Dockerfile.xollama` sets `XOLLAMA_HOST=0.0.0.0:22434` (upstream's `Dockerfile`
 now sets it too and `EXPOSE 22434`, `docker-release` hook, but the published
 image still comes from `Dockerfile.xollama`). Publishes to Docker Hub and GHCR,
@@ -237,7 +243,8 @@ the `release` job's `needs`.
 Pinned natives: `LLAMA_CPP_VERSION`, `MLX_VERSION`, `MLX_C_VERSION`,
 orchestrated by `CMakeLists.txt` / `CMakePresets.json`; the opencoti engine
 artifact is pinned by `llm/engine/pin.txt` (`repo`, `rev` commit sha, `tag`,
-`channel`, `feature`, `accel`, `cuda-sass`, plus `bin` / `dso` asset rows), read by both
+`channel`, `feature`, `accel`, `cuda-sass`, `cuda12-sass`, plus `bin` / `dso` /
+`dso-cuda12` asset rows), read by both
 `llm/engine/pin.go` and `cmake/opencoti-fetch.cmake`. Moving that pin retires
 only the rows in `llm/engine_defects.go` the new bytes are *measured* to fix —
 a changelog is not a measurement; the measurement is `scripts/phase2-engine-ab.py`,

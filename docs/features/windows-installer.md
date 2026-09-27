@@ -203,6 +203,45 @@ hand, and an install with executables but no engine is worse than no install. It
 also must never appear in `[InstallDelete]`'s sweep of `{app}\lib\ollama`,
 which is why that entry is `#ifndef CORE`.
 
+## The setup pages
+
+An interactive install walks four pages, all in `app/xollama-setup-pages.iss`
+(included from `xollama.iss`, full installer only). A silent install -- the
+updater's path -- shows none of them and changes nothing they would.
+
+1. **Ollama found.** Any Add/Remove Programs entry named `Ollama` or
+   `Ollama <something>` (stock, or a fork such as `Ollama think-budget`), in
+   HKCU or either HKLM view, or a bare `Programs\Ollama\ollama.exe`.
+   - *Uninstall first* runs its uninstaller `/SILENT`. The silent mode matters:
+     upstream's interactive dialog ticks "Remove models" by default, silent mode
+     never deletes them. `%LOCALAPPDATA%\Ollama` (its app database and chats) is
+     first copied to `~\.ollama\ollama-app-backup-<timestamp>`, which neither
+     uninstaller removes. Inno uninstallers relaunch from `%TEMP%` and return at
+     once, so the page waits (up to 3 min) for `unins000.exe` to disappear, then
+     detects again.
+   - *Keep it* runs xOllama beside it.
+2. **Port.** 22434 (default), 11434, or custom. 11434 is greyed out, labelled
+   "in use by Ollama", while an Ollama stays installed; it comes back if the
+   page before removed it. Writes `XOLLAMA_HOST` to `HKCU\Environment` only for
+   a port other than the default, keeping a scheme or host the user already
+   had; a variable the install created is removed on uninstall, one the user
+   had is not.
+3. **API key.** Optional; empty skips (or keeps an existing key). *Generate*
+   draws 256 bits from `BCryptGenRandom` in the server's own `xok_` +
+   base64url format; *Copy* goes through `clip.exe` from a temp file, so the key
+   never meets a command line. Writes `~\.ollama\xollama-server.json` (the
+   SHA-256, as `envconfig.ServerKeyFileContent`) and this user's
+   `~\.ollama\xollama-api-key`.
+4. **KV cache.** `XOLLAMA_K_CACHE_TYPE` and `XOLLAMA_V_CACHE_TYPE` for opencoti
+   (plain types and `kvarn2`–`kvarn8`, turbo tiers left out as frozen; a KVarN
+   half needs a KVarN other half), and `XOLLAMA_KV_CACHE_TYPE` (`f16`, `q8_0`,
+   `q4_0`), the legacy type stock llama.cpp falls back to -- read only by
+   xOllama, so a stock Ollama beside it keeps `OLLAMA_KV_CACHE_TYPE`. Each list
+   starts on "leave as is".
+
+The first launch comes from the installer, whose environment predates what it
+just wrote, so `AppRunParams` hands the new values to that launch explicitly.
+
 ## Things the installer must not claim
 
 Two entries in this script were quietly taking something a stock ollama install

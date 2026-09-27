@@ -110,6 +110,30 @@ cmake -DPIN_FILE="$repo/llm/engine/pin.txt" -DARCH=x86_64 \
     -DDEST_DIR="$lib" -DCACHE_DIR="$assets/opencoti" \
     -P "$repo/cmake/opencoti-fetch.cmake"
 
+# 3b. the CUDA 12 payload ("#! dso-cuda12", for the cards the CUDA 13 payload
+#     has no code for). The engine loads the ggml-cuda library beside its own
+#     executable and one process loads one payload, so it goes in
+#     engines/cuda_v12 beside a copy of the engine; the server picks that
+#     directory per load (llm/engine CUDA12Dirs / cudaPayload).
+epin="$repo/llm/engine/pin.txt"
+c12=$(awk '$1=="#!" && $2=="dso-cuda12" && $3=="x86_64" {print $4, $5}' "$epin")
+if [ -n "$c12" ]; then
+    read -r c12path c12sum <<<"$c12"
+    erepo=$(awk '$1=="repo" {print $2}' "$epin")
+    erev=$(awk '$1=="rev" {print $2}' "$epin")
+    engine=$(find "$lib" -maxdepth 1 -type f -name 'opencoti-*' -perm -u+x | head -1)
+    [ -n "$engine" ] || fail "no opencoti engine staged in $lib to pair the CUDA 12 payload with"
+    mkdir -p "$assets/opencoti" "$lib/engines/cuda_v12"
+    c12file="$assets/opencoti/$(basename "$c12path")"
+    if ! echo "$c12sum  $c12file" | sha256sum -c --status 2>/dev/null; then
+        curl -fsSL --retry 3 -o "$c12file" "https://huggingface.co/$erepo/resolve/$erev/$c12path"
+    fi
+    echo "$c12sum  $c12file" | sha256sum -c --quiet || fail "CUDA 12 payload does not match the pin"
+    cp -p "$engine" "$lib/engines/cuda_v12/"
+    cp "$c12file" "$lib/engines/cuda_v12/ggml-cuda.so"
+    echo "CUDA 12 payload $c12sum staged in engines/cuda_v12"
+fi
+
 # 4. the Go binary, inside AlmaLinux 8 (glibc 2.28) as the release builds it,
 #    and its license bundle.
 if [ -z "${SKIP_GO:-}" ]; then
@@ -149,5 +173,6 @@ EOF
     echo "runtime $rrepo $rtag $rsum"
     awk '$1=="gpu" {print "gpu     ollama/ollama '"$upstream"' " $2 " " $3}' "$pin"
     awk '$1=="tag" || $1=="rev" {print "engine  " $1 " " $2}' "$repo/llm/engine/pin.txt"
+    awk '$1=="#!" && $2=="dso-cuda12" {print "engine  cuda12 " $5}' "$repo/llm/engine/pin.txt"
 } | tee "$lib/PAYLOAD"
 du -sh "$lib"/* | sort -h | tail -12
