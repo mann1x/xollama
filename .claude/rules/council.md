@@ -299,7 +299,7 @@ paths:
   renderer carry the same list. It is answered in `transcript`, never
   forwarded (`local`), and a turn of lookups only loops in-process, bounded by
   `maxLookups`. A member's own results fold to refs past `ResultBudget`
-  (window*3/4 chars, set in `councilChat`; `ownBudget` without a tree):
+  (window*3/2 chars, set in `councilChat`; `ownBudget` without a tree):
   older turns first (earlier look-ups dropped), then the last turn's largest
   (`folded`) -- or a member that read big files outgrows the owner's window.
   A refusal that needs more cells than its whole window is `llm.ErrNeverFits`

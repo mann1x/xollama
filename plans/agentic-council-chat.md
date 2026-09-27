@@ -1671,7 +1671,9 @@ unpooled members, 0 admission waits.
   files read in one turn), and the admission wait on a request that can never
   fit.
 - **Closed 2026-09-27 (owner's go):** a member's own results fold within
-  `ResultBudget` (three quarters of the window, in characters): older turns
+  `ResultBudget` (one and a half times the window, in characters; three
+  quarters folded a synthesizer's own 16 KB file at 16k, which it then paged
+  50 lines at a time): older turns
   first, earlier look-ups dropped, then the last turn's largest results, which
   the member searches by ref (`TestAMemberFoldsItsOwnResults`, three mutants).
   An engine refusal that needs more cells than the whole window returns

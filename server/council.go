@@ -130,10 +130,12 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		members.tree = tree
 		tree.reserve = reserve
 		pressure = tree.begin(ctx)
-		// A member's own tool results take at most three quarters of the
-		// window in characters -- about a third of it in tokens -- beside the
-		// conversation, its stage and its reply.
-		cfg.ResultBudget = tree.window * 3 / 4
+		// A member's own tool results take at most one and a half times the
+		// window in characters -- about half of it in tokens -- beside the
+		// conversation, its stage and its reply. Measured live on b137 at
+		// three quarters: a synthesizer's own 16 KB file folded at 16k, and it
+		// paged the file it had to edit 50 lines at a time.
+		cfg.ResultBudget = tree.window * 3 / 2
 	}
 	// Compaction (Phase 8, Cerebriline's): the record carried from the last
 	// fold is applied, and the conversation folded again if a trigger fires.
