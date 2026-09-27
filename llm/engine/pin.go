@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -46,7 +47,12 @@ type Pin struct {
 	// routing handing a GPU load to an engine that would quietly serve it on
 	// the CPU.
 	Accels []Accel
-	Assets []Asset
+	// CUDASASS lists the compute capabilities the CUDA payload carries SASS
+	// for, as major*10+minor, from the cuda-sass directive. Empty means the
+	// pin does not narrow them, and the engine's minCUDACompute floor alone
+	// applies. See CoversCUDA.
+	CUDASASS []int
+	Assets   []Asset
 }
 
 // Accel is one (arch, backend) pair the pinned artifact accelerates.
@@ -68,6 +74,26 @@ func (p Pin) Accelerates(arch string, b Backend) bool {
 		return true
 	}
 	return slices.Contains(p.Accels, Accel{Arch: arch, Backend: b})
+}
+
+// CoversCUDA reports whether the pinned CUDA payload carries code for a device
+// of this compute capability. SASS for major.minor runs on the same major at
+// that minor or later, and on nothing else: sm_86 serves 8.6-8.9, sm_120f
+// serves 12.x, and neither serves 8.0 or 9.0. A pin without cuda-sass does not
+// narrow anything.
+//
+// The failure this prevents is silent: a device the DSO has no code for makes
+// the engine run the load on the CPU, which reads as slowness, not as an error.
+func (p Pin) CoversCUDA(major, minor int) bool {
+	if len(p.CUDASASS) == 0 {
+		return true
+	}
+	for _, cc := range p.CUDASASS {
+		if major == cc/10 && minor >= cc%10 {
+			return true
+		}
+	}
+	return false
 }
 
 // HasFeature reports whether the pinned artifact declares a capability.
@@ -116,6 +142,17 @@ func ParsePin(text string) (Pin, error) {
 				return Pin{}, fmt.Errorf("pin.txt:%d: accel backend %q is not one of %v", n+1, fields[2], knownBackends)
 			}
 			p.Accels = append(p.Accels, Accel{Arch: fields[1], Backend: b})
+		case "cuda-sass":
+			if len(fields) < 2 {
+				return Pin{}, fmt.Errorf("pin.txt:%d: cuda-sass needs at least one compute capability", n+1)
+			}
+			for _, f := range fields[1:] {
+				cc, err := strconv.Atoi(f)
+				if err != nil || cc < 10 {
+					return Pin{}, fmt.Errorf("pin.txt:%d: cuda-sass %q is not a compute capability written as major*10+minor (86, 120)", n+1, f)
+				}
+				p.CUDASASS = append(p.CUDASASS, cc)
+			}
 		case "bin", "dso":
 			if len(fields) != 4 {
 				return Pin{}, fmt.Errorf("pin.txt:%d: asset row needs <kind> <arch> <path> <sha256>, got %d fields", n+1, len(fields))
@@ -181,7 +218,7 @@ func (p *Pin) deriveAccelsFromDSOs() {
 		arch, backend := splitDSOLabel(a.Arch)
 		// A payload for a platform this pin ships no engine for accelerates
 		// nothing here. Skipping rather than erroring keeps a cross-platform
-		// snapshot usable: today's pin carries a win-x86_64 CUDA dso and no
+		// snapshot usable: a pin may carry a win-x86_64 CUDA dso and no
 		// win-x86_64 bin row, which is a Windows build's business, not ours.
 		if _, ok := p.Asset(arch); !ok {
 			continue
@@ -264,4 +301,26 @@ func PackageArch(goos, goarch string) (string, error) {
 		return "win-x86_64-gpu", nil
 	}
 	return "", fmt.Errorf("no opencoti-llamafile artifact is packaged for %s/%s", goos, goarch)
+}
+
+// ArchFor is the arch label this pin packages for a build host: PackageArch,
+// except that Windows falls back to the bare win-x86_64 bin when the pin
+// carries no -gpu one. A dev snapshot publishes Windows that way -- the bare
+// APE plus its CUDA payload as a win-x86_64 dso row -- and the dso is what
+// deriveAccelsFromDSOs turns into Windows acceleration. The -gpu row still
+// wins whenever both are present. cmake/opencoti-engine.cmake and the release
+// workflow make the same choice.
+func (p Pin) ArchFor(goos, goarch string) (string, error) {
+	arch, err := PackageArch(goos, goarch)
+	if err != nil {
+		return "", err
+	}
+	if arch == "win-x86_64-gpu" {
+		if _, ok := p.Asset(arch); !ok {
+			if _, ok := p.Asset("win-x86_64"); ok {
+				return "win-x86_64", nil
+			}
+		}
+	}
+	return arch, nil
 }

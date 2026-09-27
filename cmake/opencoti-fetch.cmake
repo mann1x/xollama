@@ -75,6 +75,10 @@ foreach(_line IN LISTS _lines)
         # Declared engine capabilities. Only the Go side gates on these; they
         # are read here so that adding one cannot fail the build, and so the
         # two parsers stay able to read the same file. See llm/engine/pin.go.
+    elseif(_key STREQUAL "cuda-sass" AND _n GREATER 1)
+        # The compute capabilities the CUDA payload has code for. Routing-time
+        # fact, gated in Go (Pin.CoversCUDA); read here only so it cannot fail
+        # the build.
     elseif(_key STREQUAL "accel" AND _n EQUAL 3)
         # Declared accelerator coverage. Routing-time fact, gated in Go; read
         # here only so an accel row cannot fail the build.
@@ -123,6 +127,13 @@ if(_asset_path STREQUAL "")
 endif()
 
 get_filename_component(_name "${_asset_path}" NAME)
+# A dev snapshot's Windows bin is the bare APE, published with no extension.
+# Windows runs an APE only under an .exe name, and llm/engine/opencoti.go
+# (isArtifact) cannot find an extensionless file there: Windows has no exec
+# bit. A release -gpu bin already ends in .exe and is left alone.
+if(ARCH MATCHES "^win-" AND NOT _name MATCHES "\\.[A-Za-z]+$")
+    string(APPEND _name ".exe")
+endif()
 
 function(_opencoti_verify path expected result)
     file(SHA256 "${path}" _got)

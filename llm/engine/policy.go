@@ -12,6 +12,7 @@ package engine
 import (
 	"fmt"
 	"runtime"
+	"strings"
 )
 
 // Kind identifies an inference engine.
@@ -154,7 +155,22 @@ func deviceUnsupported(p Platform, d Device) string {
 			"opencoti-llamafile carries no CUDA code below compute %d.%d and this device is %d.%d",
 			minCUDACompute/10, minCUDACompute%10, d.ComputeMajor, d.ComputeMinor)
 	}
+	if d.Backend == BackendCUDA {
+		if pin, err := loadPin(); err == nil && !pin.CoversCUDA(d.ComputeMajor, d.ComputeMinor) {
+			return fmt.Sprintf("the pinned engine %s carries CUDA code for compute %s only and this device is %d.%d",
+				pin.Tag, sassList(pin.CUDASASS), d.ComputeMajor, d.ComputeMinor)
+		}
+	}
 	return ""
+}
+
+// sassList renders cuda-sass values as capabilities: 86 120 -> "8.6+, 12.0+".
+func sassList(ccs []int) string {
+	parts := make([]string, len(ccs))
+	for i, cc := range ccs {
+		parts[i] = fmt.Sprintf("%d.%d+", cc/10, cc%10)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // pinUncovered returns the reason the PINNED artifact cannot serve this
@@ -178,7 +194,7 @@ func pinUncovered(p Platform, b Backend) string {
 }
 
 func pinUncoveredIn(pin Pin, p Platform, b Backend) string {
-	arch, err := PackageArch(p.OS, p.Arch)
+	arch, err := pin.ArchFor(p.OS, p.Arch)
 	if err != nil {
 		return fmt.Sprintf("no opencoti-llamafile artifact is packaged for %s/%s", p.OS, p.Arch)
 	}

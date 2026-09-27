@@ -5,6 +5,18 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — Engine pin moves to opencoti 2609271108001, the first with a Windows CUDA engine; tested live on eleven2go.**
+> - Pin: HF rev `ed6430b9`, bin `32287454` (one APE for x86_64, aarch64 and Windows), dso `868ed520` (Linux CUDA) and `ee622711` (Windows CUDA DLL), mail #439. It carries the b145 line: council/PolyKV surface plus opencoti's media runtime and STT.
+> - Windows packaging now accepts a dev snapshot's shape (`bin win-x86_64` + `dso win-x86_64`):
+>   - `Pin.ArchFor` falls back to it when no `win-x86_64-gpu` bin exists; `cmake/opencoti-engine.cmake` and `xollama-release.yaml` make the same choice.
+>   - The engine is staged as `<name>.exe` with `ggml-cuda.dll` in `lib\ollama\engines`, not beside `llama-server.exe`: ggml's loader falls back to `ggml-cuda.dll` in the exe's directory.
+> - New pin directive `cuda-sass 86 120`: the payloads carry SASS for sm_86 and sm_120f only, so `Pin.CoversCUDA` routes 7.5/8.0/9.0/10.x to llama.cpp, naming why, instead of letting them run on the CPU.
+> - Measured on eleven2go (RTX 3090), with a cross-built xollama installed over the manual install:
+>   - qwen3:8b ran on the engine on CUDA0 at 123.7 tok/s.
+>   - omnimerge-v4 MTP IQ2_M at 128k made a correct tool call, at 60.7 tok/s with a 131072 window.
+>   - `XOLLAMA_ENGINE=llamacpp` stays on stock llama-server on the GPU (109.5 tok/s, no header).
+> - Left: the Linux A/B on solidPC (`phase2-engine-ab.py`, after Cerebriline's GPU slot, #438/#441), then merge PR #2 and the CI pre-release.
+
 > **2026-09-27 — A client's pooled worker is refused fast too; a never-fitting request is a 400, not a "runner stopped".**
 > - Cerebriline's first live run of both paths (mail #430) worked on dev 58cd5bf1, b137, omnimerge-v4-mtp:IQ2_M:
 >   - The lead pooled (n_pool_shared 941–960) with `X-Context-Window: 31827`.

@@ -90,8 +90,8 @@
 # ---------------------------------------------------------------------------
 
 repo     ManniX-ITA/opencoti-llamafile-dev
-rev      1d0f1dcd99ee5bece9f6adcf7e8e8492788d89ae
-tag      opencoti-0.10.5-c7-2609252051001
+rev      ed6430b9f950196abf031fb06d59538a11dcfe91
+tag      opencoti-0.10.5-c7-2609271108001
 channel  dev
 
 # THIS BRANCH PINS A DEVELOPMENT SNAPSHOT. It is not a release and must not be
@@ -100,7 +100,7 @@ channel  dev
 #
 # The tag is a DEV BUILD ID, not a claim about which cut these bytes are. A dev
 # build carries the PREVIOUS release tag in its version string, so this one
-# reads c7 while its patch chain runs to 0397 -- far past the c7 chain end at
+# reads c7 while its patch chain runs to 0417 -- far past the c7 chain end at
 # 0244, and past 0288. That is exactly why capability is declared below rather
 # than read out of the tag: inferring it would refuse the flags this snapshot
 # was pinned to test.
@@ -112,44 +112,50 @@ channel  dev
 # commit one second later that moves the repo's own pointer. Both hold the same
 # bytes; naming the snapshot is what the two pins before this one did.
 #
-# WHY THIS BUILD. 2609252051001 (b111; opencoti dev 587e5210, chain head 0397)
-# carries the PolyKV surface the council chat is built on
-# (plans/agentic-council-chat.md): kv_pressure_v1 (global pressure on /kv and
-# in every admission 429), kv_resize_v1 (resize a booking between requests),
-# kv_resize_deferred_v1 (0396, a resize queued until the owner is idle),
-# 0395 cell-ring-release and 0397 swa-window-residency (bug-3650, our mail
-# #305). b65 had none of the three flags.
+# WHY THIS BUILD. 2609271108001 (b145 line; opencoti dev 93b156a3, chain
+# head 0417-media-stt, mail #439) is the build the council work and the
+# X-Context-Window negotiation were developed against (b137 carried the same
+# PolyKV surface), plus opencoti's media runtime and speech-to-text. It passed
+# opencoti's M4 STT gate: LLM output byte-identical with no media flag, and
+# 512/512 identical during a transcription.
 #
-# WHAT IT COSTS. The Linux x86_64 VULKAN payload is GONE: BUILD_INFO lists
-# "NOT in this build: Windows x86_64 CUDA; Linux aarch64 CUDA; Linux x86_64
-# Vulkan; Windows x86_64 Vulkan". So the x86_64-vulkan dso and accel rows are
-# retired, and a Vulkan load routes to llama.cpp (pinUncovered) rather than
-# being served on the CPU. That undoes what b65 was pinned for -- the Renoir
-# iGPU sidecar -- until a snapshot carries ggml-vulkan-x86_64.so again.
+# WHAT IT ADDS. The first dev snapshot with a WINDOWS engine: the bare APE
+# serves Windows too (bin win-x86_64), with its CUDA payload as
+# ggml-cuda-win-x86_64.dll (dso win-x86_64). Pin.ArchFor packages that shape
+# when no win-x86_64-gpu bin exists, staged as <name>.exe with ggml-cuda.dll
+# beside it in lib/ollama/engines (cmake/opencoti-engine.cmake).
 #
-# MEASURED against THESE bytes on 2026-09-26, as ollama, pinned side by side
-# with b65 (/srv/ml/xollama-phase2/as-ollama/{b111-ab,b65-ab,regress}):
-#   compat      8/8 load on both
-#   throughput  llama3 75.6 vs 75.9 tok/s gen, 3875 vs 3949 tok/s prompt
-#   gemma4      tool call and thinking split correct on both
-#   multislot   qwen2.5:1.5b x4, three runs each, interleaved:
-#               b111 461 / 506 / 485, b65 618 / 595 / 262 tok/s aggregate
-#   overflow    llama3.1 70B q3_K_S, 76% in VRAM, three runs each:
-#               b111 1.21 / 2.17 / 2.97, b65 3.99 / 3.18 / 2.77 tok/s gen
-# The medians are lower on b111 (multislot ~18 %, overflow ~30 %) with
-# overlapping spreads; reported to opencoti with these numbers. Not a
-# correctness change: the parallel-correctness probe
-# (plans/council-eval/probe/parallel_correctness.py) found omnimerge v4 IQ2_M
-# 12/12 correct and identical serial vs concurrent on these bytes.
+# WHAT IT COSTS. The CUDA payloads carry SASS for sm_86 and sm_120f ONLY, both
+# the Linux .so and the Windows .dll. So CUDA is 8.6-8.9 and 12.x; Turing 7.5,
+# A100/A30 8.0, Hopper 9.0 and datacenter Blackwell 10.x would run on the CPU
+# here. cuda-sass below narrows routing to what the bytes carry (CoversCUDA),
+# and those devices go to llama.cpp. Still no Vulkan (Linux or Windows) and no
+# aarch64 CUDA.
 #
-# PROBED the argv surface against THESE bytes: every verdict is unchanged
-# from b29 and b65 -- kvarn2/3/4/5/6/8 and q6_0 ACCEPTED, kvarn7 REFUSED, the
-# swa ring ACCEPTED on a kvarn3 base and refused on f16 or half-stated naming
-# its own rule, --sparse-attn ACCEPTED, --banana REFUSED. The binary
-# self-reports `llamafile v0.10.5 (opencoti-0.10.5-c7) build 2609252051001`.
+# MEASURED against THESE bytes on 2026-09-27.
+#   Windows (eleven2go, RTX 3090 8.6, xollama cross-built from this tree and
+#   installed over the manual install; engine staged by cmake/opencoti-fetch.cmake
+#   -DARCH=win-x86_64 into lib\ollama\engines):
+#     qwen3:8b            opencoti engine on CUDA0 (every layer and the KV),
+#                         123.7 tok/s gen, 660 tok/s prompt, X-Context-Window 32768
+#     omnimerge-v4 MTP    27B IQ2_M at 128k: load + tool call 23.6 s, get_weather
+#                         {city: Rome} with thinking split, 60.7 tok/s gen,
+#                         248 tok/s prompt, X-Context-Window 131072
+#     XOLLAMA_ENGINE=llamacpp  stock lib\ollama\llama-server.exe on the GPU,
+#                         109.5 tok/s, no window header: the engine's
+#                         ggml-cuda.dll in engines\ is not picked up by it
+#   Linux (solidPC, phase2-engine-ab.py as ollama): PENDING.
 #
 # ---------------------------------------------------------------------------
 # HISTORY. The snapshots this replaces.
+#
+# 2609252051001 (b111, rev 1d0f1dcd, bin a66e9e27, dso f32ebf54) carried the
+# PolyKV surface the council chat is built on: kv_pressure_v1, kv_resize_v1,
+# kv_resize_deferred_v1 (0396), 0395 cell-ring-release and 0397
+# swa-window-residency. It dropped b65's Linux Vulkan payload. Measured on
+# 2026-09-26 against b65: compat 8/8, llama3 75.6 vs 75.9 tok/s, multislot and
+# overflow medians ~18 % and ~30 % lower with overlapping spreads (reported to
+# opencoti); argv verdicts unchanged from b29/b65.
 #
 # 2609242056001 (b65, rev 7b3b0fe0, bin 6296bbc4, dso 241bd382 + vulkan
 # 5a85ce93) was pinned for one reason: the first dev snapshot with a Linux
@@ -250,22 +256,23 @@ channel  dev
 # group size", which is a runtime fact and not an argv one.
 feature  swa-cache-types
 
-# Linux x86_64 CUDA only. The host binary is a bare cosmocc APE: unlike a
-# release bin it embeds no GPU payload and accelerates only what its dso rows
-# provide. Vulkan (Linux and Windows), aarch64 sbsa CUDA and Windows CUDA are
-# absent from these bytes, so those route to llama.cpp instead of being served
-# on the CPU without saying so.
-#
-# pin.go DERIVES coverage from the dso rows -- `dso x86_64` is CUDA,
-# `dso <arch>-vulkan` is Vulkan -- which is what opencoti's dev publisher
-# assumes (#242); the published pin states no accel rows. The row below is a
-# restatement, validated against the dso rows, never instead of them.
+# CUDA on Linux x86_64 and Windows x86_64, from the dso rows (pin.go derives
+# accel from them; opencoti's dev publisher states no accel rows, #242). The
+# host binary is a bare cosmocc APE with no GPU payload of its own: Vulkan
+# (Linux and Windows) and aarch64 sbsa CUDA are absent from these bytes, so
+# those route to llama.cpp instead of being served on the CPU without saying so.
 accel    x86_64  CUDA
 
-# One APE serves every host; the arch label selects who may package it.
-# win-x86_64-gpu is deliberately absent: there is no Windows GPU artifact on
-# this channel, so a Windows package cannot be built from this branch, loudly.
-bin  x86_64   builds/opencoti-0.10.5-c7-2609252051001/opencoti-0.10.5-c7-2609252051001  a66e9e271e4b0da3ca5678e8d5e4561b3350f006e4b3904cb3f17838590a0498
-bin  aarch64  builds/opencoti-0.10.5-c7-2609252051001/opencoti-0.10.5-c7-2609252051001  a66e9e271e4b0da3ca5678e8d5e4561b3350f006e4b3904cb3f17838590a0498
+# The compute capabilities the CUDA payloads carry SASS for (BUILD_INFO: "sm_86
+# + sm_120f ONLY"): 8.6-8.9 and 12.x. Anything else routes to llama.cpp.
+cuda-sass  86 120
 
-dso  x86_64  builds/opencoti-0.10.5-c7-2609252051001/ggml-cuda.so  f32ebf54c4c727611852ab8ba03e659408e95fde5d6bed5eee718cd7fe5c0b8a
+# One APE serves every host; the arch label selects who may package it. There
+# is no win-x86_64-gpu bin on this channel: Windows packages the bare APE and
+# its dso (Pin.ArchFor).
+bin  x86_64      builds/opencoti-0.10.5-c7-2609271108001/opencoti-0.10.5-c7-2609271108001  322874541d887bd56f51196885f7ec406be3dc78de013f159e65bb8a9250ea0d
+bin  aarch64     builds/opencoti-0.10.5-c7-2609271108001/opencoti-0.10.5-c7-2609271108001  322874541d887bd56f51196885f7ec406be3dc78de013f159e65bb8a9250ea0d
+bin  win-x86_64  builds/opencoti-0.10.5-c7-2609271108001/opencoti-0.10.5-c7-2609271108001  322874541d887bd56f51196885f7ec406be3dc78de013f159e65bb8a9250ea0d
+
+dso  x86_64      builds/opencoti-0.10.5-c7-2609271108001/ggml-cuda.so               868ed52025f841942e988588f53a5479e77f802e7204b27e8e7e2b60883db9cb
+dso  win-x86_64  builds/opencoti-0.10.5-c7-2609271108001/ggml-cuda-win-x86_64.dll   ee62271194bafba4cf9e513684582ef4940925455aa4dd40fa14524941058b35

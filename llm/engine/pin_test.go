@@ -72,7 +72,7 @@ func TestEveryTestedPlatformIsServedOrRefused(t *testing.T) {
 	}
 	for _, s := range tested {
 		goarch := map[string]string{"amd64": "amd64", "arm64": "arm64"}[s.Arch]
-		arch, err := PackageArch(s.OS, goarch)
+		arch, err := p.ArchFor(s.OS, goarch)
 		if err != nil {
 			t.Errorf("%s/%s is in the tested matrix but PackageArch says: %v", s.OS, s.Arch, err)
 			continue

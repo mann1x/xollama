@@ -129,8 +129,15 @@ Routing is the tested matrix intersected with what the pinned artifact actually
 ships — see `pinUncovered`. A dev snapshot is a bare APE that accelerates only
 what its `dso` rows provide, so Vulkan reached opencoti for the first time with
 snapshot `2609242056001`, the first to publish `ggml-vulkan-x86_64.so`.
-The current pin, `2609252051001` (b111), carries CUDA only, so Vulkan loads
-route to llama.cpp again until a snapshot publishes the Vulkan payload.
+The current pin, `2609271108001`, carries CUDA only (Linux x86_64 and, for the
+first time, Windows x86_64), so Vulkan loads route to llama.cpp until a snapshot
+publishes the Vulkan payload.
+
+A pin can also narrow CUDA by silicon. `cuda-sass 86 120` says the payloads
+carry SASS for sm_86 and sm_120f only, so `Pin.CoversCUDA` admits 8.6–8.9 and
+12.x and routes 7.5, 8.0, 9.0 and 10.x to llama.cpp, naming why. Without it,
+those cards would load on opencoti and run on the CPU. A pin with no
+`cuda-sass` row keeps the engine's 7.5 floor alone.
 
 Coverage is **derived from the `dso` rows themselves**: a bare `x86_64` label is
 CUDA, and `<arch>-vulkan` names Vulkan for that arch. Explicit `accel` rows are

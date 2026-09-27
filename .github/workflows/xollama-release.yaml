@@ -65,6 +65,7 @@ jobs:
       tag: ${{ steps.plan.outputs.tag }}
       upstream: ${{ steps.plan.outputs.upstream }}
       engine: ${{ steps.plan.outputs.engine }}
+      enginearch: ${{ steps.plan.outputs.enginearch }}
       runtime_tag: ${{ steps.plan.outputs.runtime_tag }}
       runtime_asset: ${{ steps.plan.outputs.runtime_asset }}
       runtime_sha256: ${{ steps.plan.outputs.runtime_sha256 }}
@@ -187,8 +188,13 @@ jobs:
           out gotoolchain "$toolchain"; out gomod "$gomod"
           echo "Go: $toolchain (go.mod: go $gomod)"
 
-          if git show "$sha:llm/engine/pin.txt" | grep -Eq '^[[:space:]]*bin[[:space:]]+win-x86_64-gpu[[:space:]]'; then
-            out engine yes; echo "opencoti: the pin carries a Windows artifact"
+          # The -gpu bin when the pin has one; else a dev snapshot's bare APE,
+          # whose CUDA payload is a win-x86_64 dso row (Pin.ArchFor).
+          pin=$(git show "$sha:llm/engine/pin.txt")
+          if grep -Eq '^[[:space:]]*bin[[:space:]]+win-x86_64-gpu[[:space:]]' <<< "$pin"; then
+            out engine yes; out enginearch win-x86_64-gpu; echo "opencoti: the pin carries a Windows artifact (win-x86_64-gpu)"
+          elif grep -Eq '^[[:space:]]*bin[[:space:]]+win-x86_64[[:space:]]' <<< "$pin"; then
+            out engine yes; out enginearch win-x86_64; echo "opencoti: the pin carries a Windows artifact (win-x86_64, dso-side GPU payload)"
           else
             out engine no; echo "opencoti: no Windows row at this pin; the installer carries llama.cpp only"
           fi
@@ -214,6 +220,7 @@ jobs:
       VERSION: ${{ needs.plan.outputs.version }}
       UPSTREAM: ${{ needs.plan.outputs.upstream }}
       ENGINE: ${{ needs.plan.outputs.engine }}
+      ENGINE_ARCH: ${{ needs.plan.outputs.enginearch }}
       RUNTIME_TAG: ${{ needs.plan.outputs.runtime_tag }}
       RUNTIME_ASSET: ${{ needs.plan.outputs.runtime_asset }}
       RUNTIME_SHA256: ${{ needs.plan.outputs.runtime_sha256 }}
@@ -267,12 +274,15 @@ jobs:
           }
           Remove-Item -Force $zip
 
+      # Into lib/ollama/engines, not beside llama-server.exe: ggml's loader
+      # falls back to ggml-cuda.dll in the exe's directory, and a dev pin's
+      # engine dso has exactly that name (cmake/opencoti-engine.cmake).
       - name: stage the opencoti engine
         if: env.ENGINE == 'yes'
         working-directory: repo
         run: |
-          cmake -DPIN_FILE=llm/engine/pin.txt -DARCH=win-x86_64-gpu \
-            -DDEST_DIR=dist/windows-amd64/lib/ollama -P cmake/opencoti-fetch.cmake
+          cmake -DPIN_FILE=llm/engine/pin.txt -DARCH=$ENGINE_ARCH \
+            -DDEST_DIR=dist/windows-amd64/lib/ollama/engines -P cmake/opencoti-fetch.cmake
 
       - name: payload
         working-directory: repo

@@ -32,6 +32,16 @@ paths:
   `pin.Accelerates`, so an uncovered accelerator goes to llama.cpp instead of
   being served silently on the CPU. Backend spellings must be in `knownBackends`
   (`llm/engine/policy.go`); a typo is a parse error.
+- `cuda-sass <cc>...` (major*10+minor, e.g. `86 120`) lists the compute
+  capabilities the CUDA payload carries SASS for. `Pin.CoversCUDA` matches same
+  major at that minor or later; `deviceUnsupported` in `llm/engine/policy.go`
+  refuses an uncovered device by name so it goes to llama.cpp rather than the
+  CPU. No row means no narrowing. Guard: `llm/engine/pin_windows_sass_test.go`.
+- Windows: `Pin.ArchFor` (used by `pinUncoveredIn`) falls back to the bare
+  `bin win-x86_64` (+ `dso win-x86_64`) when no `win-x86_64-gpu` bin exists; the
+  `-gpu` row wins when both do. `cmake/opencoti-engine.cmake` makes the same
+  choice, stages an extensionless APE as `<name>.exe`, and puts it in
+  `lib/ollama/engines` so stock `llama-server.exe` never loads its `ggml-cuda.dll`.
 - A tested platform does **not** have to have an artifact — a dev pin ships a
   subset. It must be served by the pin or refused for a stated reason, which is
   what `TestEveryTestedPlatformIsServedOrRefused` in `llm/engine/pin_test.go`
@@ -55,8 +65,8 @@ paths:
   `llm/engine/policy_test.go` routes against an all-payload pin so what it
   measures is the compute floor, not the payloads the shipped pin happens to carry.
 - Moving to a new artifact is one commit: `repo`, `rev`, `tag`, `channel`, every
-  `sha256`, the `feature` and `accel` rows corrected to what the new bytes carry,
-  and any `llm/engine_defects.go` row those bytes retire (see
+  `sha256`, the `feature`, `accel` and `cuda-sass` rows corrected to what the new
+  bytes carry, and any `llm/engine_defects.go` row those bytes retire (see
   `.claude/rules/engine-defects.md`). A re-published cut keeps the tag and the
   file names and changes every `sha256`.
 - Background and the channel table: `docs/features/engine-opencoti-llamafile.md`.

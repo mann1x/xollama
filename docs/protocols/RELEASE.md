@@ -101,7 +101,7 @@ changes when one of these three pins moves.
 |---|---|---|
 | `llama-server.exe` + CPU `ggml-*.dll` | `llama/runtime-pin.txt`: a `runtime-windows-amd64-<llama>-<digest>` release built once by `xollama-runtime.yaml` (MSYS2 clang64, `llama/server` preset `cpu_windows`) | the asset's sha256, and the pin's `inputs` digest must equal the release commit's digest of `LLAMA_CPP_VERSION`, `llama/server` and `llama/compat`. When the runtime was built, the compat patches had to be present in the fetched source (`WAITING_BOUNDARY`, `REASONING_BUDGET_SCOPE_RESPONSE`, `forced_end_pos`) |
 | `cuda_v13\`, `vulkan\` | upstream's `ollama-windows-amd64.zip` from ollama/ollama release `v<upstream>` | upstream's `LLAMA_CPP_VERSION` at that tag must equal ours, or the run fails |
-| opencoti-llamafile | `llm/engine/pin.txt` through `cmake/opencoti-fetch.cmake`, SHA-256 enforced | added only when the pin has a `bin win-x86_64-gpu` row |
+| opencoti-llamafile | `llm/engine/pin.txt` through `cmake/opencoti-fetch.cmake`, SHA-256 enforced | added only when the pin has a Windows `bin` row: `win-x86_64-gpu` when present, else a dev snapshot's bare `win-x86_64` APE with its `dso win-x86_64` CUDA DLL (`Pin.ArchFor`), staged in `lib\ollama\engines` as `<name>.exe` + `ggml-cuda.dll`, apart from `llama-server.exe` |
 
 The Go binaries (`xollama.exe`, the tray app, `xollama-linux-amd64`) are
 compiled, and they get one pinned toolchain too. `plan` reads the `go` line of

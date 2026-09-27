@@ -92,6 +92,16 @@ endif()
 # llm/engine/opencoti.go finds it by the artifact prefix, not an exact name.
 file(STRINGS "${XOLLAMA_ENGINE_PIN}" _pin_lines REGEX "^[ \t]*bin[ \t]+${_engine_arch}[ \t]")
 list(LENGTH _pin_lines _pin_matches)
+# A dev snapshot publishes Windows as the bare APE (bin win-x86_64) with its
+# CUDA payload as a dso row, and no -gpu bin. Take that when it is all there
+# is; Pin.ArchFor in llm/engine/pin.go makes the same choice for routing.
+if(_pin_matches EQUAL 0 AND _engine_arch STREQUAL "win-x86_64-gpu" AND NOT XOLLAMA_OPENCOTI_ENGINE_ARCH)
+    file(STRINGS "${XOLLAMA_ENGINE_PIN}" _pin_lines REGEX "^[ \t]*bin[ \t]+win-x86_64[ \t]")
+    list(LENGTH _pin_lines _pin_matches)
+    if(_pin_matches GREATER 0)
+        set(_engine_arch "win-x86_64")
+    endif()
+endif()
 if(_pin_matches EQUAL 0)
     # Not an error either: a snapshot states what it carries, and one without
     # this platform's row simply has no engine for it -- llm/engine/policy.go
@@ -111,8 +121,23 @@ list(GET _pin_lines 0 _pin_row)
 separate_arguments(_pin_fields UNIX_COMMAND "${_pin_row}")
 list(GET _pin_fields 2 _engine_rel)
 get_filename_component(_engine_name "${_engine_rel}" NAME)
+# Windows runs an APE only under an .exe name, and has no exec bit for
+# llm/engine/opencoti.go (isArtifact) to find an extensionless one by.
+# cmake/opencoti-fetch.cmake stages it under the same name.
+if(_engine_arch MATCHES "^win-" AND NOT _engine_name MATCHES "\\.[A-Za-z]+$")
+    string(APPEND _engine_name ".exe")
+endif()
 
-set(_engine_dest "${OLLAMA_PAYLOAD_INSTALL_PREFIX}/${OLLAMA_LIB_DIR}/${_engine_name}")
+# Windows stages into lib/ollama/engines, which llm/engine/opencoti.go
+# (DefaultDirs) searches before lib/ollama. llama-server.exe lives in
+# lib/ollama, and ggml's loader falls back to ggml-cuda.dll in its own
+# directory: an engine dso staged there would be loaded by the stock runtime.
+# Linux has no such clash (the stock backend is libggml-cuda.so).
+set(_engine_dir "${OLLAMA_PAYLOAD_INSTALL_PREFIX}/${OLLAMA_LIB_DIR}")
+if(_engine_arch MATCHES "^win-")
+    string(APPEND _engine_dir "/engines")
+endif()
+set(_engine_dest "${_engine_dir}/${_engine_name}")
 
 # Fetching at build time rather than configure time keeps `cmake -B build .`
 # fast and makes the artifact a real build dependency: change the pin, and the
@@ -122,7 +147,7 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND}
         "-DPIN_FILE=${XOLLAMA_ENGINE_PIN}"
         "-DARCH=${_engine_arch}"
-        "-DDEST_DIR=${OLLAMA_PAYLOAD_INSTALL_PREFIX}/${OLLAMA_LIB_DIR}"
+        "-DDEST_DIR=${_engine_dir}"
         "-DLOCAL_FILE=${XOLLAMA_OPENCOTI_ENGINE_FILE}"
         "-DCACHE_DIR=${XOLLAMA_OPENCOTI_ENGINE_CACHE}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/opencoti-fetch.cmake"
