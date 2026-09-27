@@ -2140,6 +2140,9 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 		if refused := (*WindowRefusedError)(nil); errors.As(err, &refused) { // xollama-hook: context-window
 			return api.StatusError{StatusCode: http.StatusTooManyRequests, ErrorMessage: refused.Message}
 		}
+		if errors.Is(err, ErrNeverFits) { // xollama-hook: context-window
+			return api.StatusError{StatusCode: http.StatusBadRequest, ErrorMessage: err.Error()}
+		}
 		slog.Error("llama-server completion error", "error", err)
 		if msg := s.lastErrMsg(); msg != "" {
 			return fmt.Errorf("model runner has unexpectedly stopped, this may be due to resource limitations or an internal error, check xollama server logs for details: %s", msg)
@@ -2471,6 +2474,9 @@ func (s *llamaServerRunner) Chat(ctx context.Context, req ChatRequest, fn func(C
 		}
 		if refused := (*WindowRefusedError)(nil); errors.As(err, &refused) { // xollama-hook: context-window
 			return api.StatusError{StatusCode: http.StatusTooManyRequests, ErrorMessage: refused.Message}
+		}
+		if errors.Is(err, ErrNeverFits) { // xollama-hook: context-window
+			return api.StatusError{StatusCode: http.StatusBadRequest, ErrorMessage: err.Error()}
 		}
 		slog.Error("llama-server chat error", "error", err)
 		if msg := s.lastErrMsg(); msg != "" {

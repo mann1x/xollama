@@ -663,3 +663,45 @@ func TestTheRefusalMessageIsTheEnginesReason(t *testing.T) {
 		}
 	}
 }
+
+// A pooled worker whose owner's window is full gets the engine's refusal at
+// once when negotiating -- even one that can never fit, which its client
+// answers by growing the owner. Not negotiating (a council member), the
+// never-fitting request is a 400 naming the numbers, not a runner crash.
+func TestASessionFullRefusal(t *testing.T) {
+	body := `{"error":{"code":429,"message":"session allocation full (worker of 'o': 100 of 4096 cells free, needs 5000)","type":"rate_limit_error"}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			fmt.Fprint(w, `{"status":"ok"}`)
+			return
+		}
+		w.Header().Set("Retry-After", "1")
+		w.WriteHeader(http.StatusTooManyRequests)
+		fmt.Fprint(w, body)
+	}))
+	defer srv.Close()
+	parts := strings.Split(srv.URL, ":")
+	var port int
+	fmt.Sscanf(parts[len(parts)-1], "%d", &port)
+	runner := &llamaServerRunner{port: port, cmd: fakeRunningCmd(), sem: semaphore.NewWeighted(1), options: api.Options{Runner: api.Runner{NumCtx: 2048}}, usedOpencoti: true}
+	opts := api.DefaultOptions()
+
+	ctx, w := WithContextWindow(t.Context())
+	err := runner.Chat(WithNegotiation(ctx), ChatRequest{Messages: []api.Message{{Role: "user", Content: "hi"}}, Options: &opts}, func(ChatResponse) {})
+	var se api.StatusError
+	if !errors.As(err, &se) || se.StatusCode != http.StatusTooManyRequests || !strings.Contains(se.ErrorMessage, "session allocation full") {
+		t.Fatalf("negotiating: err = %#v, want the engine's 429 and reason", err)
+	}
+	if largest, retry, ok := w.Refusal(); !ok || largest != 0 || retry != time.Second {
+		t.Fatalf("refusal = %d %v %v", largest, retry, ok)
+	}
+
+	for name, err := range map[string]error{
+		"chat":       runner.Chat(t.Context(), ChatRequest{Messages: []api.Message{{Role: "user", Content: "hi"}}, Options: &opts}, func(ChatResponse) {}),
+		"completion": runner.Completion(t.Context(), CompletionRequest{Prompt: "hi", Options: &opts}, func(CompletionResponse) {}),
+	} {
+		if !errors.As(err, &se) || se.StatusCode != http.StatusBadRequest || !strings.Contains(se.ErrorMessage, "needs 5000 cells of a 4096-cell window") {
+			t.Errorf("%s not negotiating: err = %#v, want a 400 naming the numbers", name, err)
+		}
+	}
+}

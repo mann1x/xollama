@@ -39,7 +39,9 @@ func (w *windowWriter) apply() {
 		w.ResponseWriter.Header().Set(llm.ContextWindowHeader, strconv.Itoa(n))
 	}
 	if largest, retry, refused := w.window.Refusal(); refused {
-		w.ResponseWriter.Header().Set(llm.LargestAdmissibleHeader, strconv.Itoa(largest))
+		if largest > 0 {
+			w.ResponseWriter.Header().Set(llm.LargestAdmissibleHeader, strconv.Itoa(largest))
+		}
 		w.ResponseWriter.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retry.Seconds()))))
 	}
 }

@@ -5,6 +5,16 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-27 — A client's pooled worker is refused fast too; a never-fitting request is a 400, not a "runner stopped".**
+> - Cerebriline's first live run of both paths (mail #430) worked on dev 58cd5bf1, b137, omnimerge-v4-mtp:IQ2_M:
+>   - The lead pooled (n_pool_shared 941–960) with `X-Context-Window: 31827`.
+>   - The swarm owner got 98304, and its workers pooled.
+>   - Negotiating asks got fast 429s.
+> - Their ask 2 is done: a plain `/api/chat` with `placement.pool_id >= 0` now negotiates as `placement.num_ctx` does. The engine's 429 comes through at once, including the "session allocation full" of a full owner, on which their worker grows its owner. `X-Context-Largest-Admissible` is sent only when the engine names one; `Retry-After` is always sent.
+> - Bug found on the way (bug-157): `ErrNeverFits` was never mapped in `Completion` or `Chat`. So the fail-fast of a01f3043 reached clients as "model runner has unexpectedly stopped". It is now a 400 naming the numbers, for requests that do not negotiate.
+> - Their ask 1: omnimerge-v4-mtp:IQ2_M goes to `session.client_pools: 3`. `model-settings.mdx` now says a lead needs 1 seat and a swarm tree 3.
+> - Mutants: 5 more, all killed.
+
 > **2026-09-27 — The engine's granted window reaches the client (`X-Context-Window`), and a window a client negotiates is refused fast.**
 > - Cerebriline asked for this in #418. opencoti sets `X-Context-Window: <granted>` on every admitted response when it books windows; before this, xollama dropped it.
 >   - The header is now on `/api/chat` and `/api/generate`, streamed or not, and on the OpenAI and Anthropic routes.

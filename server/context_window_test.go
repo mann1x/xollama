@@ -181,11 +181,18 @@ func TestANegotiatingClientGetsTheLargestAdmissible(t *testing.T) {
 			t.Fatalf("%s: body %s", name, w.Body)
 		}
 	}
-	for name, p := range map[string]*api.Placement{"no placement": nil, "pool only": {PoolID: new(int)}} {
+	neg := -1
+	for name, p := range map[string]*api.Placement{"no placement": nil, "negative pool": {PoolID: &neg}, "min only": {NumCtxMin: 1024}} {
 		w := createRequest(t, s.ChatHandler, api.ChatRequest{Model: "neg", Messages: msgs, Placement: p})
 		if w.Code != http.StatusOK || w.Header().Get(llm.LargestAdmissibleHeader) != "" {
 			t.Fatalf("%s: status %d headers %v", name, w.Code, w.Header())
 		}
+	}
+	// A turn attached to a pool of the client's own drives the engine itself:
+	// pool 0 is a real pool.
+	w := createRequest(t, s.ChatHandler, api.ChatRequest{Model: "neg", Messages: msgs, SessionID: "s2", Placement: &api.Placement{PoolID: new(int)}})
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("pool 0: status %d, want the refusal passed through", w.Code)
 	}
 }
 
@@ -202,5 +209,20 @@ func TestRetryAfterIsRoundedUpAndNeverZero(t *testing.T) {
 		if got := rec.Header().Get("Retry-After"); got != want {
 			t.Errorf("wait %v: Retry-After %q, want %q", wait, got, want)
 		}
+	}
+}
+
+// A refusal that names no largest window -- "session allocation full" inside
+// an owner's window -- carries Retry-After, and no X-Context-Largest-Admissible
+// claiming 0.
+func TestARefusalWithoutALargestWindowSaysNone(t *testing.T) {
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+	exposeContextWindow(c)
+	llm.ReportWindowRefusal(c.Request.Context(), 0, 2*time.Second)
+	c.Writer.WriteString("x")
+	if _, ok := rec.Header()[llm.LargestAdmissibleHeader]; ok || rec.Header().Get("Retry-After") != "2" {
+		t.Fatalf("headers %v", rec.Header())
 	}
 }

@@ -60,9 +60,11 @@ func clientPlacement(c *gin.Context, req api.ChatRequest) {
 		return
 	}
 	c.Set(councilPlacementKey, &llm.Placement{PoolID: req.Placement.PoolID, NumCtx: req.Placement.NumCtx, NumCtxMin: req.Placement.NumCtxMin})
-	// A client stating its own window negotiates it: a refusal comes back at
-	// once, with the largest window the engine would admit.
-	if req.Placement.NumCtx > 0 {
+	// A client stating its own window, or attaching to a pool of its own,
+	// is driving the engine itself: a refusal comes back at once -- with the
+	// largest window the engine would admit when it says -- for the client to
+	// act on (ask smaller, grow its owner), never queued.
+	if req.Placement.NumCtx > 0 || (req.Placement.PoolID != nil && *req.Placement.PoolID >= 0) {
 		c.Request = c.Request.WithContext(llm.WithNegotiation(c.Request.Context()))
 	}
 }

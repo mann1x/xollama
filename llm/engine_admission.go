@@ -103,12 +103,14 @@ func (s *llamaServerRunner) postWaitingForAdmission(ctx context.Context, endpoin
 		body, _ := io.ReadAll(io.LimitReader(res.Body, 64<<10))
 		_, _ = io.Copy(io.Discard, res.Body)
 		res.Body.Close()
-		if err := neverFits(body); err != nil {
-			return nil, err
-		}
-		// A client negotiating its own window gets the engine's answer now.
+		// A client negotiating its own window, or driving its own pool tree,
+		// gets the engine's answer now -- a request that can never fit
+		// included: that client can grow its owner.
 		if Negotiating(ctx) {
 			return nil, refuseWindow(ctx, body, wait)
+		}
+		if err := neverFits(body); err != nil {
+			return nil, err
 		}
 
 		if time.Now().Add(wait).After(deadline) {

@@ -131,7 +131,9 @@ and keeps the window it holds. To change it, resize it
 session (`endpoint=sessions/<id>/close`) or let it expire and ask again.
 
 When not even `num_ctx_min` fits, a client that stated `num_ctx` is not queued.
-It gets the engine's answer at once:
+The same goes for a turn attached to a pool of the client's own
+(`placement.pool_id`), such as a worker of its own pool tree. Both are the client
+driving the engine, so it gets the engine's answer at once:
 
 ```text
 HTTP/1.1 429 Too Many Requests
@@ -140,8 +142,12 @@ X-Context-Largest-Admissible: 4096
 {"error":"admission rejected: context allocation exhausted (largest admissible 4096 < num_ctx_min 8192) …"}
 ```
 
-Retry with a smaller window, or later. A request that states no window keeps
-ollama's contract, and waits for room.
+Retry with a smaller window, or later. A worker refused because its owner's
+window is full ("session allocation full …", no
+`X-Context-Largest-Admissible`) is the client's cue to grow or move its owner.
+A request that states neither keeps ollama's contract, and waits for room. If
+such a request could never fit its window, it gets a `400` naming the numbers
+instead of waiting.
 
 ## Shared prefix pools
 
