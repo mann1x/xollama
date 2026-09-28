@@ -5,6 +5,14 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — Engine pin moved to b208 for v0.34.4-xollama.3 (owner's ruling).**
+> - opencoti `2609281805001` (b208, rev `f8fc1116`, mail #540): the V100 fixes (KVarN collapse 0447, the engine picking the CUDA 12 payload below cc 7.5), the #530 scatter assert (0448), the drafter-KV fixes (0449/0450) and the wider TinyBLAS GEMM (0451).
+> - Measured on these bytes (`as-ollama/b208-ab`), against b177: compat 8/8; llama3 76.8 tok/s (75.5); multislot 144 (142); gemma4 identical.
+>   - Overflow read 3.32 against b177's 3.85. Paired, alternating reruns read b177 at 3.28 and 3.34, b208 at 3.36 and 3.29: noise.
+>   - Two-turn `/api/chat` held on two models, with 0 REFUSED. The argv probe (`probe208.sh`) matches b177 on every row. All four shas were checked on HF at the rev.
+> - No defect row is retired. Docs name b208.
+> - Next: release PR `release: v0.34.4-xollama.3`, a pre-release (not promoted).
+
 > **2026-09-28 — council 11.16: the builder gets its own model.**
 > - `council.builder` (`model`, `host`, `think`, `max_tokens`; no `prompt`, no `count`); unstated, it runs on the planner's, as before.
 > - For the owner's cloud tests: the builder on `glm-5.3-turbo:cloud` while the critic, researcher or planner moves there, one at a time.
@@ -940,17 +948,15 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
 ## Where we are
 
-`v0.34.2-xollama.1` is the latest release. The Agentic Council Chat has
-closed Phases 0–7, tested live on the b128 dev build, the cloud and
-eleven2go: PolyKV sizing, pressure and idle compaction with the conversation
-held once, `num_ctx 0`, `slots.live`, and roles on cloud models and other
-servers. The engine pin stays on b111 until a build with `pool_unowned_v1` is
-published and measured.
+`v0.34.4-xollama.2` is the latest pre-release; `v0.34.4-xollama.3` (engine
+b208) is being cut. The Agentic Council Chat is in Phase 11 (agentic tool
+turns, measured on the manic benchmark on eleven2go). The engine pin is b208
+(`2609281805001`), measured 2026-09-28.
 
 ## What exists today
 
-- Soft fork of ollama v0.34.2 with full upstream history. The engine seam is
-  opencoti-llamafile, pinned to b65 in `llm/engine/pin.txt`.
+- Soft fork of ollama v0.34.4 with full upstream history. The engine seam is
+  opencoti-llamafile, pinned to b208 in `llm/engine/pin.txt`.
 - Release protocol and hosted CI: `docs/protocols/RELEASE.md` and
   `.github/workflows/xollama-release.yaml`. The Windows CPU runtime is pinned
   in `llama/runtime-pin.txt`, and delta updates are keyed on `payload-id.txt`.
@@ -961,7 +967,7 @@ published and measured.
 
 ## In flight / waiting on others
 
-- **opencoti:** the pin is on b111. The paired re-run (#336) did not
+- **opencoti:** the pin is on b208 (2026-09-28). Older, from b111: the paired re-run (#336) did not
   reproduce the overflow deficit, and multislot is at most −7.6 % median,
   inside the spread; no bisect, agreed with opencoti (#339). Also waiting
   on: an HF dev publish

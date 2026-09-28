@@ -241,7 +241,7 @@ needs only the NVIDIA Windows driver.
 3 is missing.
 
 Which engine serves a load depends on the card. With the currently pinned
-engine (opencoti build `2609272353001`):
+engine (opencoti build `2609281805001`):
 
 | The load's GPUs | Served by |
 |---|---|

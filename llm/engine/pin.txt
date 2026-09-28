@@ -99,8 +99,8 @@
 # ---------------------------------------------------------------------------
 
 repo     ManniX-ITA/opencoti-llamafile-dev
-rev      7fc93cc8665cdd100c74a32e29c1b1abc108bd05
-tag      opencoti-0.10.5-c7-2609272353001
+rev      f8fc1116122957c2cb42ef7aa813f5a0593412e4
+tag      opencoti-0.10.5-c7-2609281805001
 channel  dev
 
 # THIS BRANCH PINS A DEVELOPMENT SNAPSHOT. It is not a release and must not be
@@ -121,16 +121,22 @@ channel  dev
 # commit one second later that moves the repo's own pointer. Both hold the same
 # bytes; naming the snapshot is what the two pins before this one did.
 #
-# WHY THIS BUILD. 2609272353001 (b177; opencoti dev 6c524e54b1, chain head
-# 0433-fit-growth-free, mails #513 and #515) is the owner's pick for the
-# v0.34.4-xollama.2 pre-release. Over b171 it carries 0428 (the KV window
-# budget read from the right device, bug-3702), 0429 (tensor-core TinyBLAS),
-# 0430 (NDEBUG), 0431 (cosmo's dlopen helper bundled for hosts without cc),
-# 0432 (q6_0 mixed KV pairs served instead of aborting) and 0433 (the MTP
-# later-reserve measured as it runs, and no RS held for slots that are not
-# live). One uncaptured change, OPENCOTI_GRAPH_SPLIT, is default off.
+# WHY THIS BUILD. 2609281805001 (b208; opencoti dev e26d855af5, source
+# a2949a2603, chain head 0451, mail #540) is the owner's pick for the
+# v0.34.4-xollama.3 pre-release: it fixes most of what the V100 tester hit.
+# Over b177 it carries 0434-0447 (the fit and alloc-under-cap work of #517,
+# the CUDA 12 payload picked by the engine itself below cc 7.5 (0437), the
+# /slots and /kv JSON no longer rebuilt per token (0438), prefill and decode
+# at llama.cpp parity (0439-0444), the V100 KVarN collapse fixed (0447)),
+# 0448 (the #530 scatter assert, bug-3723), 0449/0450 (a quantized drafter KV
+# at f16 speed, inheriting the target's plain type) and 0451 (a wider
+# tensor-core TinyBLAS GEMM, bug-3726: V100 prefill +25 %, 3090 F16 +38 %).
 #
-# WHAT IT ADDS, unchanged from b171: the CUDA 12 payload
+# The rev is the commit that carries the CUDA 12 payload (f8fc1116), one after
+# the "dev snapshot" commit (267a896d) that its BUILD_INFO names: it holds the
+# snapshot's files and the cu12 DSO, as 7fc93cc8 did for b177.
+#
+# WHAT IT ADDS, unchanged from b177: the CUDA 12 payload
 # (ggml-cuda-cu12-x86_64.so, CUDA 12.8, SASS sm_70 only, driver >= 570) on
 # "#! dso-cuda12" / "#! cuda12-sass" lines, staged beside a second engine copy
 # in lib/ollama/engines/cuda_v12 and chosen per load (cudaPayload in
@@ -141,16 +147,25 @@ channel  dev
 # go to llama.cpp.
 #
 # MEASURED against THESE bytes on 2026-09-28 (phase2-engine-ab.py as ollama on
-# solidPC, /srv/ml/xollama-phase2/as-ollama/b177-ab), against b171:
-#   compat      8/8 (b171 7/8: the 70B q3_K_S now loads on its first try)
-#   throughput  llama3 75.5 tok/s gen, 3963 tok/s prompt (b171 74.9 / 3890)
-#   multislot   142.0 tok/s (b171 142.3)
-#   gemma4      tool call and thinking split correct, identical to b171
-#   overflow    70B q3_K_S 3.85 tok/s gen at 57% in VRAM (b171 3.05 at 60%)
+# solidPC, /srv/ml/xollama-phase2/as-ollama/b208-ab), against b177:
+#   compat      8/8 (b177 8/8)
+#   throughput  llama3 76.8 tok/s gen, 3932 tok/s prompt (b177 75.5 / 3963)
+#   multislot   144.2 tok/s (b177 142.0); the queued REFUSED lines of the
+#               -np 1 launch are b177's too (12 there)
+#   gemma4      tool call and thinking split correct, identical to b177
+#   overflow    70B q3_K_S 3.32 tok/s at 58.5% in VRAM; b177's 3.85 did not
+#               reproduce today -- paired reruns, alternating, read b177 3.28
+#               and 3.34 against b208 3.36 and 3.29 (b208-ov/)
+#   /api/chat   two-turn conversation held on qwen2.5:1.5b and gemma4:e4b,
+#               zero REFUSED (b208-ab/logs/chat2.log)
 #   No row in llm/engine_defects.go accuses a dev build, so none is retired.
 #
 # ---------------------------------------------------------------------------
 # HISTORY. The snapshots this replaces.
+#
+# 2609272353001 (b177, rev 7fc93cc8, bin 0f090f8c, dso 7e59d358, dll 03f3e796,
+# cu12 4bbae8a8) was the v0.34.4-xollama.2 pin; its A/B against b171: compat
+# 8/8, llama3 75.5 tok/s, multislot 142 tok/s, overflow 3.85 tok/s.
 #
 # 2609271900001 (b171, rev 7b836910, bin 30df5425, dso a27685f2, dll f34f1ee3,
 # cu12 6666afc2) brought the fit plan (0426) and the CUDA 12 payload; its A/B
@@ -234,6 +249,9 @@ channel  dev
 # 2609242056001 does not, so that row is retired above rather than carried
 # forward against bytes that do not contain it.)
 
+# RE-PROBED against b208 (2609281805001) on 2026-09-28
+# (/srv/ml/xollama-phase2/probe208.sh): identical to b177 on every row below.
+#
 # RE-PROBED against b177 (2609272353001) on 2026-09-28: f16 q8_0 q4_0 q6_0
 # iq4_nl kvarn2/3/4/5/6/8 ACCEPTED, kvarn1/kvarn7 REFUSED; the ring ACCEPTED on
 # a KVarN base (q4_0/q4_0, kvarn4/kvarn4, q8_0/q4_0) and REFUSED on an f16 or
@@ -298,15 +316,15 @@ accel    x86_64  CUDA
 # snapshot on (mail #449): their own pin parsers skip '#' lines and refuse a
 # bare directive, so this row can be copied verbatim either way.
 #! cuda-sass 86 120
-#! dso-cuda12 x86_64 builds/opencoti-0.10.5-c7-2609272353001/ggml-cuda-cu12-x86_64.so 4bbae8a8b369412e5650131aa32ca4391f7a99f40d0c10fe21892dbc5baabfe3
+#! dso-cuda12 x86_64 builds/opencoti-0.10.5-c7-2609281805001/ggml-cuda-cu12-x86_64.so 911ea8e7c60f7a146cb8dd8ef0d68f134999ad524a2c0a042b445d04ff17fac2
 #! cuda12-sass 70
 
 # One APE serves every host; the arch label selects who may package it. There
 # is no win-x86_64-gpu bin on this channel: Windows packages the bare APE and
 # its dso (Pin.ArchFor).
-bin  x86_64      builds/opencoti-0.10.5-c7-2609272353001/opencoti-0.10.5-c7-2609272353001  0f090f8c3158f555a2db9eeaf3df6fc995a7feaba73b884994dbbde96c9c4f94
-bin  aarch64     builds/opencoti-0.10.5-c7-2609272353001/opencoti-0.10.5-c7-2609272353001  0f090f8c3158f555a2db9eeaf3df6fc995a7feaba73b884994dbbde96c9c4f94
-bin  win-x86_64  builds/opencoti-0.10.5-c7-2609272353001/opencoti-0.10.5-c7-2609272353001  0f090f8c3158f555a2db9eeaf3df6fc995a7feaba73b884994dbbde96c9c4f94
+bin  x86_64      builds/opencoti-0.10.5-c7-2609281805001/opencoti-0.10.5-c7-2609281805001  dc22b3798deb231df1d81eeb63468208f272586864a7a9acd7605ef1c4bd46bc
+bin  aarch64     builds/opencoti-0.10.5-c7-2609281805001/opencoti-0.10.5-c7-2609281805001  dc22b3798deb231df1d81eeb63468208f272586864a7a9acd7605ef1c4bd46bc
+bin  win-x86_64  builds/opencoti-0.10.5-c7-2609281805001/opencoti-0.10.5-c7-2609281805001  dc22b3798deb231df1d81eeb63468208f272586864a7a9acd7605ef1c4bd46bc
 
-dso  x86_64      builds/opencoti-0.10.5-c7-2609272353001/ggml-cuda.so               7e59d35899fb40876e5d2ad59dbebac3e08f5913692fb54db431308a837b521f
-dso  win-x86_64  builds/opencoti-0.10.5-c7-2609272353001/ggml-cuda-win-x86_64.dll   03f3e796c9d89b809bd204b3aee5bccb6bb8e18d4c437dfca942669ecd39d575
+dso  x86_64      builds/opencoti-0.10.5-c7-2609281805001/ggml-cuda.so               d01c62fa07323b34b4e07128310dae9188733c813452f974313cf6e5d9b7c742
+dso  win-x86_64  builds/opencoti-0.10.5-c7-2609281805001/ggml-cuda-win-x86_64.dll   5839c2d351b20a835e04b99dbcc970ab68a39072c2e83d7b676fe89c94d207c3
