@@ -761,15 +761,21 @@ func (t *councilTree) promoteRoot(ctx context.Context) {
 	slog.Debug("council: conversation root kept for the owner", "session", t.owner, "pool", p.ID, "len", p.Len)
 }
 
-// closeWorker ends a worker's session. The guide's rule: every session a
-// council opens is closed when its member is done.
-func (t *councilTree) closeWorker(id string) {
+// leaveWorker takes a worker off its layer. Its session stays open: the
+// member comes back on it, and an open session prefix-matches its own
+// continuation and rebases onto its pool when one is sent again (opencoti
+// #526; cell membership, not the pool, holds its cells).
+func (t *councilTree) leaveWorker(id string) {
 	t.mu.Lock()
+	defer t.mu.Unlock()
 	if l, ok := t.workers[id]; ok {
 		l.users--
 		delete(t.workers, id)
 	}
-	t.mu.Unlock()
+}
+
+// closeSession ends a worker's session, once its client has left.
+func (t *councilTree) closeSession(id string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := t.kv.CloseSession(ctx, id); err != nil {

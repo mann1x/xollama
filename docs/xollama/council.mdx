@@ -397,7 +397,10 @@ what was added. On a hybrid model, whose every
 cached sequence also holds a recurrent state, each stage's shared part is freed
 as soon as its members are done, so a turn fits in the few state slots the
 engine keeps. When the turn ends, the members' shared
-parts are freed and their sessions are closed. The conversation keeps its
+parts are freed, but their sessions stay open: the council lives as long as
+the conversation, and each member picks up from its own cache on the next
+trip or turn, instead of reading everything again. They close when your client
+leaves mid-turn, or at the engine's idle timeout. The conversation keeps its
 window, and its cache, for the next turn. On a hybrid model the conversation
 is cached afresh each turn, since a kept one would hold a state slot.
 

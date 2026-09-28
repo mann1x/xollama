@@ -127,8 +127,16 @@ paths:
   it books the window on the conversation's session. P1 (the conversation),
   P2r (+ plan), P2f (+ findings) and P3s (+ critiques) are each built once,
   forked from the longest prefix already built, and pinned to the owner.
-  Workers attach with `pool_id` and no window, and are closed when done. Pools
-  are released newest first, and the owner is never closed.
+  Workers attach with `pool_id` and no window. A council is a living thing
+  until its client leaves (the owner's ruling, 2026-09-28): `leaveWorker`
+  only takes a worker off its layer, and its session stays open across calls,
+  trips and turns, so the engine resumes it from its own cache (opencoti #526;
+  closed after every call, a resumed synthesizer re-prefilled ~18k of 21k
+  tokens, ab-4). `closeSessions` closes the turn's member sessions only when
+  the request context ended, i.e. the client left. Pools are released newest
+  first, and the owner is never closed. Guards:
+  `TestAResumedMemberReattachesToItsStage`,
+  `TestAClientThatLeavesClosesItsCouncilsSessions`.
 - A layer is the rendered prompt up to `councilSentinel`, and must be a byte
   prefix of the member's own rendered prompt, or the member has no layer. On
   an owned tree it then runs on the owner's session inside its window

@@ -66,8 +66,11 @@ and `kv_status_v1`, `CouncilPools > 0`, affinity on) a turn builds one tree:
   forked from the longest prefix already built, pinned to the owner. A layer is the rendered prompt cut at `councilSentinel` and
   must be a byte prefix of the member's own prompt, or the member runs
   unpooled;
-- workers attach with `pool_id` and no window, and are closed when done; the
-  pools are released newest first; the owner is never closed;
+- workers attach with `pool_id` and no window. Their sessions stay open for
+  the council's life, across calls, trips and turns, and resume from their own
+  cache (opencoti #526). They are closed only when the client leaves mid-turn
+  (`closeSessions`). The pools are released newest first; the owner is never
+  closed;
 - on a recurrent-state engine (`/kv` has an `rs` block) each pool costs a
   state cell, so a finished stage's layer (no worker, no child, not P1) is
   released before the next is built, and the next forks P1; otherwise the

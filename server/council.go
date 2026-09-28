@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -251,6 +252,9 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		})
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
+				if c.Request.Context().Err() != nil {
+					members.closeSessions() // the client left
+				}
 				return
 			}
 			select {
@@ -495,6 +499,31 @@ type councilMembers struct {
 	m      api.Metrics
 	cached int // prompt tokens served from cache or a pool, over all members
 	last   int // the HTTP status of the last member error
+	// sessions are the worker sessions this turn's members ran on.
+	sessions map[string]bool
+}
+
+func (cm *councilMembers) opened(id string) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	if cm.sessions == nil {
+		cm.sessions = map[string]bool{}
+	}
+	cm.sessions[id] = true
+}
+
+// closeSessions ends the member sessions of a turn whose client left: the
+// council lives until then.
+func (cm *councilMembers) closeSessions() {
+	if cm.tree == nil {
+		return
+	}
+	cm.mu.Lock()
+	ids := slices.Sorted(maps.Keys(cm.sessions))
+	cm.mu.Unlock()
+	for _, id := range ids {
+		cm.tree.closeSession(id)
+	}
 }
 
 func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken func(string)) (string, error) {
@@ -582,8 +611,15 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 	if placement != nil {
 		gc.Set(councilPlacementKey, placement)
 	}
+	// A council is a living thing until its client leaves (the owner's ruling
+	// 2026-09-28): a member's session stays open across its calls, trips and
+	// turns, and the engine resumes it from its own cache (opencoti #526;
+	// closed after every call, a resumed synthesizer re-prefilled ~18k of 21k
+	// tokens on every step, ab-4). Only a client that leaves closes them
+	// (closeSessions).
 	if worker != "" {
-		defer cm.tree.closeWorker(worker)
+		cm.opened(worker)
+		defer cm.tree.leaveWorker(worker)
 	}
 	go func() {
 		cm.s.ChatHandler(gc)

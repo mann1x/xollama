@@ -240,6 +240,22 @@ func TestAResumedMemberReattachesToItsStage(t *testing.T) {
 	for _, c := range chunks {
 		calls = append(calls, c.Message.ToolCalls...)
 	}
+	// A researcher keeps its session, and its cache, across the client's trip
+	// and after it has answered: the council lives until its client leaves
+	// (opencoti #526; the owner's ruling 2026-09-28).
+	researchers := func() (n int) {
+		kv.mu.Lock()
+		defer kv.mu.Unlock()
+		for _, id := range kv.closed {
+			if strings.Contains(id, "~researcher-") {
+				n++
+			}
+		}
+		return n
+	}
+	if n := researchers(); n != 0 {
+		t.Errorf("%d suspended researcher sessions closed, want none", n)
+	}
 	state := chunks[len(chunks)-1].CouncilChatState
 	req.CouncilChatState = &state
 	req.Messages = append(slices.Clone(req.Messages), api.Message{Role: "assistant", ToolCalls: calls},
@@ -247,6 +263,9 @@ func TestAResumedMemberReattachesToItsStage(t *testing.T) {
 		api.Message{Role: "tool", ToolCallID: calls[1].ID, Content: "R2-RESULT"})
 	if _, content := joined(toolChat(t, s, req)); !strings.HasPrefix(content, "The sky is blue") {
 		t.Fatalf("answer %q", content)
+	}
+	if n := researchers(); n != 0 {
+		t.Errorf("%d researcher sessions closed after they answered, want none", n)
 	}
 	kv.mu.Lock()
 	defer kv.mu.Unlock()

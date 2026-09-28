@@ -214,10 +214,10 @@ func TestACouncilOnPolyKVBuildsItsTreeOnce(t *testing.T) {
 		}
 	}
 
-	// Every worker session closed, the owner kept; the pools released
-	// newest first.
-	if len(kv.closed) != 5 || slices.Contains(kv.closed, owner) {
-		t.Errorf("closed %v: want the 5 workers, never the owner", kv.closed)
+	// No session closed: the council lives until its client leaves, and its
+	// members resume from their own caches. The pools released newest first.
+	if len(kv.closed) != 0 {
+		t.Errorf("closed %v: want none, the owner %q included", kv.closed, owner)
 	}
 	if !slices.Equal(kv.released, []int{3, 2, 1, 0}) {
 		t.Errorf("released %v, want [3 2 1 0]", kv.released)
@@ -1031,4 +1031,18 @@ func TestAnUnownedRootIsNeverKept(t *testing.T) {
 			t.Error("the unowned root was kept for the next turn")
 		}
 	})
+}
+
+// A client that leaves takes its council with it: every member session its
+// turn ran on is closed, the owner's never.
+func TestAClientThatLeavesClosesItsCouncilsSessions(t *testing.T) {
+	kv := &fakeKV{}
+	cm := &councilMembers{session: "conv-left", tree: &councilTree{kv: kv, owner: "conv-left"}}
+	for _, id := range []string{"conv-left~researcher-2", "conv-left~researcher-1", "conv-left~synthesizer", "conv-left~researcher-1"} {
+		cm.opened(id)
+	}
+	cm.closeSessions()
+	if want := []string{"conv-left~researcher-1", "conv-left~researcher-2", "conv-left~synthesizer"}; !slices.Equal(kv.closed, want) {
+		t.Errorf("closed %v, want %v", kv.closed, want)
+	}
 }

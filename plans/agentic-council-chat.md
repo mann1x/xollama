@@ -1781,7 +1781,17 @@ re-read what it acts on or try something different. The note works for any
 tool. Guard: `TestARepeatedCallWithTheSameResultIsPointedOut` (checked by
 removal).
 
-### 11.3 A resumed member keeps its cache (open; opencoti #525)
+### 11.3 A resumed member keeps its cache (built 2026-09-28)
+opencoti #526 traced it in code: an open session prefix-matches its own
+continuation and rebases onto its pool when one is sent again. The owner's
+ruling: the council is a living thing until its client leaves. Member
+sessions are no longer closed after a call. They live across calls, trips and
+turns, and `closeSessions` closes them only when the request context ends,
+i.e. the client left. Guards: `TestAResumedMemberReattachesToItsStage`,
+`TestAClientThatLeavesClosesItsCouncilsSessions`. The live check is ab-5's
+next run (measure the prefill of a resumed synthesizer step).
+
+Original note:
 The plan is to keep a suspended member's worker session, and its layer, alive
 across the client's tool round trip, and resume on the same session. This waits
 on opencoti's answer: does a resume without placement reuse the session's own
