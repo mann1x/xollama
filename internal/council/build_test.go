@@ -88,3 +88,44 @@ func TestABuilderThatSaysNothingShapesNothing(t *testing.T) {
 		t.Error("an empty build is offered as a target")
 	}
 }
+
+// The builder runs on its own model and host when the council states them,
+// and on the planner's otherwise; a think setting of its own stands, and
+// without one it reasons as the planner does.
+func TestTheBuilderRunsOnItsOwnModel(t *testing.T) {
+	yes := true
+	for _, tt := range []struct {
+		name                   string
+		c                      *xollama.Council
+		model, host, wantThink string
+	}{
+		{"unstated", &xollama.Council{Enabled: &yes, Planner: &xollama.CouncilRole{Model: "p", Host: "http://gpu2:11434", Think: "low"}}, "p", "http://gpu2:11434", "low"},
+		{"its own", &xollama.Council{
+			Enabled: &yes, Planner: &xollama.CouncilRole{Model: "p", Host: "http://gpu2:11434", Think: "low"},
+			Builder: &xollama.CouncilRole{Model: "glm-5.3-turbo:cloud", Think: "high"},
+		}, "glm-5.3-turbo:cloud", "", "high"},
+		{"its own model, the planner's think", &xollama.Council{
+			Enabled: &yes, Planner: &xollama.CouncilRole{Think: "low"}, Builder: &xollama.CouncilRole{Model: "glm"},
+		}, "glm", "", "low"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := FromModel(tt.c, 0.7)
+			s := &stub{build: codingBuild}
+			if _, err := MakeBuild(t.Context(), s, cfg, Draws{}, conv, func(Event) {}); err != nil {
+				t.Fatal(err)
+			}
+			var got *Request
+			for i := range s.calls {
+				if s.calls[i].Role == Builder {
+					got = &s.calls[i]
+				}
+			}
+			if got == nil {
+				t.Fatal("no builder ran")
+			}
+			if got.Model != tt.model || got.Host != tt.host || got.Think != tt.wantThink {
+				t.Errorf("builder on %q at %q, think %q; want %q at %q, think %q", got.Model, got.Host, got.Think, tt.model, tt.host, tt.wantThink)
+			}
+		})
+	}
+}

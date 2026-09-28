@@ -5,6 +5,10 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — council 11.16: the builder gets its own model.**
+> - `council.builder` (`model`, `host`, `think`, `max_tokens`; no `prompt`, no `count`); unstated, it runs on the planner's, as before.
+> - For the owner's cloud tests: the builder on `glm-5.3-turbo:cloud` while the critic, researcher or planner moves there, one at a time.
+
 > **2026-09-28 — council 11.15: loop guards from Cerebriline, the front's handoff, no idle researchers.**
 > - The consultants' #3–#6, as the owner took them (#2 waits for the flow-modes follow-up):
 >   - a no-op change is refused in place;

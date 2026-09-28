@@ -26,6 +26,7 @@ func councilRole(c *xollama.Config, name string) *xollama.CouncilRole {
 	slot := map[string]**xollama.CouncilRole{
 		xollama.RolePlanner: &k.Planner, xollama.RoleResearcher: &k.Researcher,
 		xollama.RoleCritic: &k.Critic, xollama.RoleSynthesizer: &k.Synthesizer,
+		xollama.RoleBuilder: &k.Builder,
 	}[name]
 	if *slot == nil {
 		*slot = &xollama.CouncilRole{}
@@ -531,6 +532,13 @@ func councilFields() []field {
 		{xollama.RoleSynthesizer, "writing the answer"},
 	} {
 		core = append(core, roleFields(r.name, r.what)...)
+	}
+	// The builder's prompt is the runtime's JSON contract, so it has every
+	// row but that one.
+	for _, f := range roleFields(xollama.RoleBuilder, "shaping the council for its work") {
+		if f.path != "council.builder.prompt" {
+			core = append(core, f)
+		}
 	}
 	return core
 }

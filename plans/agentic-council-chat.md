@@ -2209,6 +2209,21 @@ Guards: `TestANoOpChangeIsRefusedInPlace`,
 `TestAFrontThatInvestigatesIsForwardedWithItsAttempts`, each checked by
 removal. The test driver now accumulates results as `councilToolTurn` does.
 
+### 11.16 The builder on its own model (built 2026-09-28)
+
+The owner's cloud plan runs the builder on `glm-5.3-turbo:cloud` while one
+other role at a time moves there. The builder ran on the planner's model and
+host (`build.go`), so the setting did not exist.
+
+- `council.builder` (`types/xollama/council.go`): `model`, `host`, `think`,
+  `max_tokens`. No `count` (there is one) and no `prompt`: the builder's reply
+  is JSON the runtime parses, so its prompt is a contract, not a persona.
+- `builderOn` (`internal/council/build.go`): the builder's own model/host,
+  else the planner's; its own think, else the planner's. Unstated, nothing
+  changes. `tweak` gains the `--council-builder-*` rows but `prompt`.
+- Tests: `TestTheBuilderRunsOnItsOwnModel` (mutation-checked: pointing it back
+  at the planner fails "its own"), validation, clone, prune and lookup cases.
+
 ### 11.11 Checks that stop moving change the approach (built 2026-09-28)
 The fifth simple run (b336b144) returned the same "missing ) after argument
 list" from every check for 60 trips. The plain arm fixed the task in 27 trips:

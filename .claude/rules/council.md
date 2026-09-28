@@ -501,7 +501,10 @@ paths:
   `builderConversation` only (system + the user's unheaded messages: no
   answers, member work or tool results — it anchored on them twice). It runs
   on its own session `~builder` with `ownWindow`, never on the owner, whose
-  cache a different prefix would evict. It runs before the first plan of a
+  cache a different prefix would evict. Its model/host/think come from
+  `builderOn`: `council.builder` (no `prompt` — the JSON contract is the
+  runtime's — and no `count`), else the planner's
+  (`TestTheBuilderRunsOnItsOwnModel`). It runs before the first plan of a
   council route with no kept build, and on `RouteRebuild`. `apply` appends its
   instructions to `prompt(cfg, r)` ("For this work: ..."), sets think only for
   roles the user left unset (levels map to 1024/2048/4096), and sets `MaxTests`

@@ -39,6 +39,11 @@ type Council struct {
 	Critic      *CouncilRole `json:"critic,omitempty"`
 	Synthesizer *CouncilRole `json:"synthesizer,omitempty"`
 
+	// Builder is the member that shapes the council for its work, once per
+	// new kind of work. There is one; unstated, it runs on the planner's
+	// model and host, as it did before it had a setting.
+	Builder *CouncilRole `json:"builder,omitempty"`
+
 	// TemperatureJitter is the relative spread drawn around the model's
 	// temperature for each researcher and critic: 0.02 draws from
 	// [T·0.98, T·1.02]. Nil is the default 0.02; a stated 0 means no spread,
@@ -180,6 +185,7 @@ const (
 	RoleResearcher  = "researcher"
 	RoleCritic      = "critic"
 	RoleSynthesizer = "synthesizer"
+	RoleBuilder     = "builder"
 )
 
 // PolyKV settings a council may state.
@@ -259,6 +265,8 @@ func (c *Council) Role(name string) *CouncilRole {
 		return c.Critic
 	case RoleSynthesizer:
 		return c.Synthesizer
+	case RoleBuilder:
+		return c.Builder
 	}
 	return nil
 }
@@ -272,7 +280,7 @@ func (c *Council) IsZero() bool {
 		return true
 	}
 	return c.Enabled == nil && c.Charter == "" &&
-		c.Planner.isZero() && c.Researcher.isZero() && c.Critic.isZero() && c.Synthesizer.isZero() &&
+		c.Planner.isZero() && c.Researcher.isZero() && c.Critic.isZero() && c.Synthesizer.isZero() && c.Builder.isZero() &&
 		c.TemperatureJitter == nil && c.Seed == nil && c.MaxRounds == 0 &&
 		c.ShowDeliberation == nil && c.Broadcast == nil && c.PolyKV == "" && c.Context.isZero() && c.CloudParallel == 0
 }
@@ -300,15 +308,20 @@ func (c *Council) validate(engine string) error {
 	for _, r := range []struct {
 		name string
 		role *CouncilRole
-	}{{RolePlanner, c.Planner}, {RoleResearcher, c.Researcher}, {RoleCritic, c.Critic}, {RoleSynthesizer, c.Synthesizer}} {
+	}{{RolePlanner, c.Planner}, {RoleResearcher, c.Researcher}, {RoleCritic, c.Critic}, {RoleSynthesizer, c.Synthesizer}, {RoleBuilder, c.Builder}} {
 		if r.role == nil {
 			continue
 		}
 		if r.role.Count < 0 || r.role.MaxTokens < 0 {
 			return fmt.Errorf("xollama config: council.%s: count and max_tokens must not be negative", r.name)
 		}
-		if r.role.Count > 0 && (r.name == RolePlanner || r.name == RoleSynthesizer) {
+		if r.role.Count > 0 && (r.name == RolePlanner || r.name == RoleSynthesizer || r.name == RoleBuilder) {
 			return fmt.Errorf("xollama config: council.%s.count: there is one %s; count applies to researchers and critics", r.name, r.name)
+		}
+		if r.name == RoleBuilder && r.role.Prompt != "" {
+			// The builder's reply is JSON the runtime reads; its prompt is the
+			// runtime's contract, not a persona to replace.
+			return fmt.Errorf("xollama config: council.builder.prompt: the builder's prompt is built in; state the charter or a role's prompt instead")
 		}
 		if r.role.Host != "" {
 			u, err := url.Parse(r.role.Host)
@@ -391,6 +404,7 @@ func (c *Council) Clone() *Council {
 	out.Researcher = clonePtr(c.Researcher)
 	out.Critic = clonePtr(c.Critic)
 	out.Synthesizer = clonePtr(c.Synthesizer)
+	out.Builder = clonePtr(c.Builder)
 	out.Context = clonePtr(c.Context)
 	if out.Context != nil {
 		out.Context.Review = clonePtr(c.Context.Review)
@@ -417,6 +431,9 @@ func (c *Council) Prune() *Council {
 	}
 	if c.Synthesizer.isZero() {
 		c.Synthesizer = nil
+	}
+	if c.Builder.isZero() {
+		c.Builder = nil
 	}
 	if c.Context.isZero() {
 		c.Context = nil

@@ -23,11 +23,26 @@ import (
 	"strings"
 
 	"github.com/ollama/ollama/api"
+	"github.com/ollama/ollama/types/xollama"
 )
 
-// Builder is the role that shapes a council for its work. It runs where the
-// planner does.
-const Builder Role = "builder"
+// Builder is the role that shapes a council for its work. It runs on its own
+// model and host when the council states them (council.builder), and where
+// the planner does otherwise.
+const Builder Role = xollama.RoleBuilder
+
+// builderOn is the builder's model, host and think setting: its own, each
+// falling back to the planner's.
+func builderOn(cfg Config) (model, host, think string) {
+	model, host, think = cfg.Models[Builder], cfg.Hosts[Builder], cfg.Think[Builder]
+	if model == "" && host == "" {
+		model, host = cfg.Models[Planner], cfg.Hosts[Planner]
+	}
+	if think == "" {
+		think = cfg.Think[Planner]
+	}
+	return model, host, think
+}
 
 // Build is what the builder decided for the council's current work.
 type Build struct {
@@ -136,10 +151,11 @@ func (cfg Config) architecture() string {
 // MakeBuild runs the builder over the conversation. A reply that is not the
 // JSON asked for is an empty build: the council runs as configured.
 func MakeBuild(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, emit Emit) (*Build, error) {
+	model, host, think := builderOn(cfg)
 	out, err := call(ctx, m, cfg, emit, Request{
-		Role: Builder, Model: cfg.Models[Planner], Host: cfg.Hosts[Planner],
+		Role: Builder, Model: model, Host: host,
 		Messages: append(builderConversation(conv), user(sourcesNote+"\n\n"+fmt.Sprintf(builderPrompt, cfg.architecture()))),
-		Seed:     d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Builder), Think: cfg.Think[Planner],
+		Seed:     d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Builder), Think: think,
 		Format: buildSchema,
 	}, Thinking)
 	if err != nil {

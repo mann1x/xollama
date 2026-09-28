@@ -102,6 +102,9 @@ func TestValidateCouncil(t *testing.T) {
 		{"settings with the switch off", `{"council":{"enabled":false,"max_rounds":2}}`, "need council.enabled"},
 		{"a count on the planner", `{"council":{"enabled":true,"planner":{"count":2}}}`, "there is one planner"},
 		{"a count on the synthesizer", `{"council":{"enabled":true,"synthesizer":{"count":2}}}`, "there is one synthesizer"},
+		{"a count on the builder", `{"council":{"enabled":true,"builder":{"count":2}}}`, "there is one builder"},
+		{"a prompt on the builder", `{"council":{"enabled":true,"builder":{"prompt":"be nice"}}}`, "council.builder.prompt"},
+		{"a builder host without a model", `{"council":{"enabled":true,"builder":{"host":"http://gpu2:11434"}}}`, "council.builder.host needs council.builder.model"},
 		{"too wide", `{"council":{"enabled":true,"researcher":{"count":9}}}`, "above 8"},
 		{"a negative count", `{"council":{"enabled":true,"critic":{"count":-1}}}`, "must not be negative"},
 		{"a negative max_tokens", `{"council":{"enabled":true,"critic":{"max_tokens":-1}}}`, "must not be negative"},
@@ -172,7 +175,8 @@ func TestACouncilIsUnreadableToTheBuildBeforeIt(t *testing.T) {
 
 func TestRoleLooksUpByName(t *testing.T) {
 	c := &Council{Researcher: &CouncilRole{Count: 3}}
-	if c.Role(RoleResearcher).Count != 3 || c.Role(RoleCritic) != nil || c.Role("judge") != nil {
+	c.Builder = &CouncilRole{Model: "glm"}
+	if c.Role(RoleResearcher).Count != 3 || c.Role(RoleBuilder).Model != "glm" || c.Role(RoleCritic) != nil || c.Role("judge") != nil {
 		t.Fatal("Role did not return the named role")
 	}
 	var nilc *Council
@@ -185,21 +189,21 @@ func TestCloneSharesNothing(t *testing.T) {
 	j, s := 0.02, int64(1)
 	a := &Council{
 		Enabled: on(), Researcher: &CouncilRole{Count: 2}, TemperatureJitter: &j, Seed: &s,
-		Context: &CouncilContext{Window: 1024},
+		Context: &CouncilContext{Window: 1024}, Builder: &CouncilRole{Model: "glm"},
 	}
 	b := a.Clone()
-	*b.Enabled, b.Researcher.Count, *b.TemperatureJitter, *b.Seed, b.Context.Window = false, 5, 0.1, 9, 2048
-	if !*a.Enabled || a.Researcher.Count != 2 || *a.TemperatureJitter != 0.02 || *a.Seed != 1 || a.Context.Window != 1024 {
+	*b.Enabled, b.Researcher.Count, *b.TemperatureJitter, *b.Seed, b.Context.Window, b.Builder.Model = false, 5, 0.1, 9, 2048, "x"
+	if !*a.Enabled || a.Researcher.Count != 2 || *a.TemperatureJitter != 0.02 || *a.Seed != 1 || a.Context.Window != 1024 || a.Builder.Model != "glm" {
 		t.Fatalf("a change to the clone reached the original: %+v", a)
 	}
 }
 
 func TestPruneDropsWhatStatesNothing(t *testing.T) {
-	c := (&Council{Enabled: on(), Planner: &CouncilRole{}, Context: &CouncilContext{}}).Prune()
-	if c == nil || c.Planner != nil || c.Context != nil {
+	c := (&Council{Enabled: on(), Planner: &CouncilRole{}, Builder: &CouncilRole{}, Context: &CouncilContext{}}).Prune()
+	if c == nil || c.Planner != nil || c.Builder != nil || c.Context != nil {
 		t.Fatalf("Prune kept empty parts: %+v", c)
 	}
-	if (&Council{Researcher: &CouncilRole{}}).Prune() != nil {
+	if (&Council{Researcher: &CouncilRole{}}).Prune() != nil || (&Council{Builder: &CouncilRole{}}).Prune() != nil {
 		t.Fatal("a council stating nothing should prune to nil")
 	}
 }

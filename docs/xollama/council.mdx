@@ -92,7 +92,10 @@ Every setting is optional; `xollama tweak model <name> --council` walks them.
 | `council.context.compaction` | `--council-compaction` | `agentic` | How the older turns are folded: `agentic` has the model write it (below), `basic` keeps your requests and the answers that fit, with no model call. |
 | `council.context.review`, `.retrospective` | `--council-compaction-review`, `--council-compaction-retrospective` | on, on | Two critics and a synthesizer check the model's summary; a retrospective carries its reasoning forward. Off makes compaction cheaper. |
 
-`<role>` is `planner`, `researcher`, `critic` or `synthesizer`. The planner's
+`<role>` is `planner`, `researcher`, `critic` or `synthesizer`, and `builder`
+for everything but `prompt` and `count` (the builder's reply is JSON the council
+reads, so its prompt is built in). An unstated builder runs on the planner's
+model and host, and thinks as the planner does. The planner's
 `think` also covers a direct answer; its routing decision never reasons. The defaults
 are the ones measured while the feature was built; the prompts, in particular,
 are tuned to the planner's routing decision, so change them one at a time.
@@ -289,7 +292,8 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
 
 A council is configured before anyone knows what it will be asked, so its own
 instructions are general. The first time a request goes to the council, a
-**builder** runs where the planner does. It reads your system prompt, your
+**builder** runs, where the planner does unless `council.builder` names its
+own model or host. It reads your system prompt, your
 requests so far and the tools your client offers, and judges what kind of work
 this is. Then it writes, for each role, an instruction that fits the work, and
 chooses how much each role thinks and how many check cycles the work deserves

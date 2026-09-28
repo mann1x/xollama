@@ -223,7 +223,7 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 		cfg.ShowDeliberation = *c.ShowDeliberation
 	}
 	cfg.Broadcast = c.Broadcast != nil && *c.Broadcast
-	for _, r := range []Role{Planner, Researcher, Critic, Synthesizer} {
+	for _, r := range []Role{Planner, Researcher, Critic, Synthesizer, Builder} {
 		role := c.Role(string(r))
 		if role == nil {
 			continue
