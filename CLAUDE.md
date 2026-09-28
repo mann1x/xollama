@@ -222,8 +222,12 @@ in `server/identity.go`) feeds the `tweak` device menu (`cmd/tweak/devices.go`)
 with the server's view. Where opencoti serves a backend, discovery takes the
 engine's own device list (`discover/opencoti.go`, `llm/engine/enumerate.go`;
 CUDA is also asked of the CUDA 12 engine, `discover/opencoti_cuda12.go`),
-and refreshes free memory from it before a load (`discover/refresh_opencoti.go`) —
-see `docs/features/device-selection.md`.
+and refreshes free memory from it before a load (`discover/refresh_opencoti.go`).
+A model whose own `kv.k` / `kv.v` only opencoti runs (`llm.NeedsOpencoti`,
+`llm/engine_placement.go`) is placed only on the GPUs opencoti serves:
+`opencotiPlacement` in `server/placement_opencoti.go` (`opencoti-placement`
+hook in `server/sched.go`) — see `docs/features/device-selection.md` and
+`.claude/rules/engine-kv-cache.md`.
 **Desktop UI**: `app/ui/app/src/routes/` (React 19 + TanStack Router + Vite),
 sibling to the `app` workspace (`vite.config.ts`, `vitest.config.ts`). A council
 model gets a badge and a Deliberation toggle (`hooks/useCouncil.ts`,

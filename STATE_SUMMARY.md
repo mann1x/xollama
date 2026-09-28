@@ -5,6 +5,20 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — Medium council on 837a1fce + b208 (eleven2go 3090): unfixed.**
+> - 57 trips, 4,137 s. Every one of the 10 checks returned the same `SyntaxError: Unexpected token '{'`, which carries no line number.
+>   - The fault is in `dDec`, which no member ever read, the same miss as simple run 7.
+>   - The members edited template literals, braces elsewhere and `sX`, and 5 edits missed their text.
+>   - The run ended with 4 trips of narrated intent and no tool call (3 nudges), which the harness scored as DONE.
+> - For reference, d17af426 on b203 fixed medium in 19 trips / 778 s.
+> - Usage (prompt share / output share):
+>   - synthesizer 44 % / 31 %;
+>   - researcher 36 % / 45 %;
+>   - critic 10 % / 13 %;
+>   - front 9 % / 7 %;
+>   - planner 1.3 % / 3.5 %.
+> - Totals: 5.39 M prompt tokens (2.5 M cached), 145 k output.
+
 > **2026-09-28 — A model only opencoti can serve stays on opencoti's GPUs.**
 > - eleven2go has an RX 9070 XT (Vulkan) beside its RTX 3090. The medium council model (kvarn3, 384k) fits no single GPU, and upstream's placement picked the Vulkan backend by free memory. The launch refused it: kvarn3 needs opencoti.
 > - `opencotiPlacement` (registry row `opencoti-placement`) now keeps such a model on the GPU groups opencoti serves; nothing changes for other models or with `XOLLAMA_ENGINE=llamacpp`.
