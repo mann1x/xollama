@@ -393,6 +393,14 @@ paths:
   Guards: `TestTheSynthesizerTakesTheRequestFirst`,
   `TestTheSynthesizerRebuildsTheCouncilForNewWork`, `TestOnlyTheFrontRoutes`,
   `TestAToolTurnGoesThroughTheSynthesizerFirst` (checked by removal).
+- **Preemption (11.4, the owner's ruling: test results and verdicts only)**:
+  a `council_post` with `kind` confirmed/refuted (`Note.Kind`, state Note
+  field 4) calls `board.preemptLocked`, which cancels each same-role mate's
+  call registered by `streamPreemptible` (`board.listen`). The mate keeps its
+  partial text as an assistant turn and reads the verdict through `unread`,
+  at most `maxPreempts` (2) times. No engine can inject tokens into a running
+  generation, so this is the approximation. Guard:
+  `TestAVerdictInterruptsTheMateGenerating` (checked by removal).
 - **A repeated call (11.2)**: `transcript` appends `repeatedCall` to a result
   that repeats, word for word, an earlier identical call's result in the same
   member's turns. Keep it generic: it serves any tool.

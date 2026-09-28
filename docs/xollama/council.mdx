@@ -373,6 +373,14 @@ the rest. It is kept short by construction:
 - answered in the server, never sent to your client; a member with no mate of
   its role cannot post.
 
+A note can also carry a **verdict**, a result the member checked: `confirmed`
+(it works) or `refuted` (it does not). A model cannot be handed text in the
+middle of a generation, so a verdict interrupts instead. The mates generating
+at that moment are stopped, what they had written is kept as their turn, and
+they read the verdict before going on, instead of pursuing something already
+settled. A member is interrupted at most twice a turn. Only verdicts
+interrupt; an ordinary note waits for the mate's next call.
+
 The board travels in `council_chat_state`, so a resumed turn neither repeats a
 note nor loses one. It is off by default while it is measured; if it costs
 more turns than it saves, it will be removed.

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/types/xollama"
@@ -671,6 +672,91 @@ func TestTheReportAfterTheVerdictIsHeldBack(t *testing.T) {
 		emit(Event{Kind: Content, Done: true})
 		if got.String() != tc.want {
 			t.Errorf("%q: got %q, want %q", tc.tokens, got.String(), tc.want)
+		}
+	}
+}
+
+// preemptStub's r1 writes a little and then waits for its context; r2 posts
+// a note of kind, once r1 is generating, then answers.
+type preemptStub struct {
+	toolStub
+	kind      string
+	started   chan struct{}
+	r1Calls   atomic.Int32
+	cancelled atomic.Int32
+}
+
+func (s *preemptStub) StreamTools(ctx context.Context, req Request, onToken func(string)) (Reply, error) {
+	key := MemberKey(req.Role, req.Index, req.Round)
+	switch key {
+	case "r1":
+		s.mu.Lock()
+		s.calls = append(s.calls, req)
+		s.mu.Unlock()
+		if s.r1Calls.Add(1) == 1 {
+			onToken("I suspect the parser")
+			close(s.started)
+			select {
+			case <-ctx.Done():
+				s.cancelled.Add(1)
+				return Reply{}, ctx.Err()
+			case <-time.After(300 * time.Millisecond):
+				out := "r1 finished on its own"
+				onToken(out)
+				return Reply{Content: out}, nil
+			}
+		}
+		onToken("r1 goes on")
+		return Reply{Content: "r1 goes on"}, nil
+	case "r2":
+		s.mu.Lock()
+		s.calls = append(s.calls, req)
+		s.mu.Unlock()
+		for _, m := range req.Messages {
+			if m.Role == "tool" {
+				return Reply{Content: "r2 done"}, nil
+			}
+		}
+		<-s.started
+		args := api.NewToolCallFunctionArguments()
+		args.Set("note", "The fix at line 119 passes the test.")
+		args.Set("kind", s.kind)
+		return Reply{Content: "posting", Calls: []api.ToolCall{{Function: api.ToolCallFunction{Name: PostTool, Arguments: args}}}}, nil
+	}
+	return s.toolStub.StreamTools(ctx, req, onToken)
+}
+
+// A mate's checked verdict interrupts a researcher mid-generation: what it
+// wrote stays as its turn, it reads the verdict, and it goes on. A plain note
+// interrupts nobody.
+func TestAVerdictInterruptsTheMateGenerating(t *testing.T) {
+	for kind, interrupts := range map[string]bool{NoteConfirmed: true, "note": false} {
+		s := &preemptStub{kind: kind, started: make(chan struct{})}
+		s.route = `{"route":"council"}`
+		cfg := toolCfg()
+		cfg.Broadcast = true
+		cfg.Tools = WithBroadcast(cfg.Tools)
+		if _, err := Run(t.Context(), cfg, s, conv, func(Event) {}); err != nil {
+			t.Fatal(err)
+		}
+		if got := s.cancelled.Load() == 1; got != interrupts {
+			t.Fatalf("%s: interrupted %v, want %v", kind, got, interrupts)
+		}
+		if !interrupts {
+			continue
+		}
+		var last Request
+		for _, c := range s.calls {
+			if MemberKey(c.Role, c.Index, c.Round) == "r1" {
+				last = c
+			}
+		}
+		all := ""
+		for _, m := range last.Messages {
+			all += m.Role + ": " + m.Content + "\n"
+		}
+		if s.r1Calls.Load() != 2 || !strings.Contains(all, "assistant: I suspect the parser") || !strings.Contains(all, "- r2 (CONFIRMED, checked): The fix at line 119 passes the test.") {
+			t.Errorf("r1's resumed request:\n%s", all)
 		}
 	}
 }

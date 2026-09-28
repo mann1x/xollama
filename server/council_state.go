@@ -33,7 +33,7 @@ package server
 //	Build     1 target(string) 2 instruction(RoleText, repeated) 3 think(RoleN, repeated)
 //	          4 max_tests(varint)
 //	RoleText  1 role(string) 2 text(string)       RoleN  1 role(string) 2 n(varint)
-//	Note      1 id(string) 2 from(string) 3 text(string)
+//	Note      1 id(string) 2 from(string) 3 text(string) 4 kind(string)
 //	Seen      1 key(string) 2 n(varint)
 //	Member    1 key(string) 2 turns(bytes: the member's []api.Message as JSON)
 //	Plan      1 plan(string) 2 briefs(string, repeated)
@@ -161,6 +161,9 @@ func marshalProgress(p council.Progress) []byte {
 		nb = appendString(nb, 1, n.ID)
 		nb = appendString(nb, 2, n.From)
 		nb = appendString(nb, 3, n.Text)
+		if n.Kind != "" {
+			nb = appendString(nb, 4, n.Kind)
+		}
 		b = appendBytes(b, 5, nb)
 	}
 	for _, k := range slices.Sorted(maps.Keys(p.Seen)) {
@@ -443,6 +446,8 @@ func unmarshalProgress(b []byte) (council.Progress, error) {
 						n.From = string(v)
 					case 3:
 						n.Text = string(v)
+					case 4:
+						n.Kind = string(v)
 					}
 				}
 				return nil

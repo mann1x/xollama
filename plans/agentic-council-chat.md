@@ -1846,7 +1846,12 @@ replaces the route decision and the direct answer there. It answers on the
 conversation's session, or calls `council_forward` (the builder first when
 there is no build) or `council_rebuild` (it is told the new setup, then
 forwards). Turns without tools keep the planner's route decision, with
-`rebuild`. Open: preemption (11.4) and 11.3, then the live A/B.
+`rebuild`. Preemption (11.4) is built too. A verdict note (`kind`
+confirmed/refuted) cancels the mates' calls in flight; they keep their partial
+text, read the verdict and go on, at most twice
+(`TestAVerdictInterruptsTheMateGenerating`). The pipeline has no member
+generating while the synthesizer checks, so test results reach the next cycle
+through 11.4's loop. Open: 11.3, then the live A/B.
 
 The earlier draft, where these differ:
 - A council starts with only the synthesizer. The first request it forwards to

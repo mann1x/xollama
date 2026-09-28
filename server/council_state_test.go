@@ -110,7 +110,7 @@ func TestACouncilStateSkipsWhatItDoesNotKnow(t *testing.T) {
 // delivers a note twice nor loses one a mate has not read yet.
 func TestTheNotesBoardTravelsInTheState(t *testing.T) {
 	s := testState()
-	s.progress.Notes = []council.Note{{ID: "n1", From: "researcher 1", Text: "I take the parser"}, {ID: "n2", From: "researcher 2", Text: "tests pass"}}
+	s.progress.Notes = []council.Note{{ID: "n1", From: "researcher 1", Text: "I take the parser"}, {ID: "n2", From: "researcher 2", Text: "tests pass", Kind: council.NoteConfirmed}}
 	s.progress.Seen = map[string]int{"research/0/1": 2, "research/0/0": 0}
 	got, err := unmarshalCouncilState(s.marshal())
 	if err != nil {

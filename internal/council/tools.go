@@ -318,7 +318,7 @@ const narratedNudge = "You wrote about calling tools without calling them, so th
 func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns []api.Message, onToken func(string)) (string, []api.Message, error) {
 	key := MemberKey(req.Role, req.Index, req.Round)
 	own := req.Messages
-	refusals, lookups := 0, 0
+	refusals, lookups, preempts := 0, 0, 0
 	nudged := false
 	for {
 		if n := cfg.unread(req.Role, key); n != nil {
@@ -327,7 +327,17 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 			turns = append(slices.Clone(turns), *n)
 		}
 		req.Messages = append(clone(own), cfg.transcript(req.Role, key, turns)...)
-		rep, err := tm.StreamTools(ctx, req, onToken)
+		rep, partial, preempted, err := cfg.streamPreemptible(ctx, tm, req, key, onToken)
+		if preempted && preempts < maxPreempts {
+			// A mate's verdict interrupted it: what it had written stays as
+			// its turn, and the note is read before it goes on.
+			preempts++
+			if strings.TrimSpace(partial) != "" {
+				turns = append(slices.Clone(turns), api.Message{Role: "assistant", Content: partial})
+			}
+			onToken("\n\n(interrupted: a mate's checked result)\n\n")
+			continue
+		}
 		if err != nil && fallsBack(ctx, req) {
 			// As in call: one of several researchers or critics elsewhere is
 			// answered by the council's own model.
@@ -373,4 +383,28 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 			return replyText(turns, ""), nil, nil
 		}
 	}
+}
+
+// streamPreemptible makes one model call that a mate's verdict may interrupt
+// (broadcast.go). It returns the reply, or -- interrupted -- what the member
+// had written so far.
+func (cfg Config) streamPreemptible(ctx context.Context, tm ToolModel, req Request, key string, onToken func(string)) (Reply, string, bool, error) {
+	if !cfg.canPost(req.Role) {
+		rep, err := tm.StreamTools(ctx, req, onToken)
+		return rep, "", false, err
+	}
+	cctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := cfg.board.listen(key, cancel)
+	var partial strings.Builder
+	rep, err := tm.StreamTools(cctx, req, func(s string) {
+		partial.WriteString(s)
+		onToken(s)
+	})
+	stop()
+	if err != nil && ctx.Err() == nil && cfg.board.wasPreempted(key) {
+		return Reply{}, partial.String(), true, nil
+	}
+	cfg.board.wasPreempted(key) // a verdict that came as it finished changes nothing
+	return rep, "", false, err
 }
