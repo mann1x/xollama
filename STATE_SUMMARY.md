@@ -5,6 +5,16 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — b203 holds on eleven2go; the council missed simple on it.**
+> - opencoti #530 rerun: b203 host (2609281335001) with the b201 Win DLL, the `head` relief removed (`auto` residency, POSITION_WINDOW on), 4 live slots, unified KV.
+>   - The simple council ran 60 trips in 2028 s, 5 cycles, with no assert; log sent (#538).
+>   - eleven2go now runs b203 through `XOLLAMA_ENGINE_PATH`. Revert: clear it, and set `XOLLAMA_ENGINE_ARGS=--kv-residency-mode head`. The pin is unchanged.
+> - The council did not fix simple on d17af426: the same "missing )" for all 13 checks.
+>   - The planner moved off template literals to "unbalanced parentheses or brackets", but only ever counted `()`/`[]`, as the error names. `dDec`, which holds the stray `}`, was never edited.
+>   - This is one run against run 6's fix (34924cbe), with the engine and the prompt both changed and sampling varying, so it needs repeats before it says anything.
+> - Usage: the synthesizer took 66 % of the prompt (59 calls, 2.6M tokens), the researchers 22 %, the critic 10 %, the planner 0.7 %.
+> - opencoti #535: #528's 20 % loss was a bug (quantized drafter KV read in the wrong basis). It is fixed in b206, where an inheriting q8_0 drafter costs nothing; the pin is the owner's call.
+
 > **2026-09-28 — council 11.14 measured: medium 778 s (was 1101 s); first real per-role usage.**
 > - Medium on d17af426 (eleven2go): council **fixed**, 19 trips, 778 s (was 27 trips, 1101 s; plain: 11, 91 s). One batch of edits fixed the stray brace and every missing function at once.
 > - Per-role usage (`council_usage_v1`, tokens), as prompt share / output share:
