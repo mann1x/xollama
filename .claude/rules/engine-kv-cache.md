@@ -2,8 +2,11 @@
 paths:
   - llm/engine_launch.go
   - llm/engine_ring_shape_test.go
+  - llm/engine_placement.go
   - llm/engine/capability.go
   - llm/llama_server.go
+  - server/placement_opencoti.go
+  - server/placement_opencoti_test.go
   - docs/xollama/kv-cache.mdx
 ---
 
@@ -19,6 +22,15 @@ paths:
   dropped (the ring always), so that half keeps the legacy base
   (`OLLAMA_KV_CACHE_TYPE` / `XOLLAMA_KV_CACHE_TYPE`) — `startLlamaServer`
   relaunches with `stockKV`. A model's own kv setting is still refused.
+- **Placement follows the same line** (`opencoti-placement` hook). A model whose
+  own `kv.k` / `kv.v` only opencoti runs (`llm.NeedsOpencoti`,
+  `llm/engine_placement.go`) is placed only on the GPU groups opencoti serves:
+  `opencotiPlacement` in `server/placement_opencoti.go` filters the list
+  `server/sched.go` hands to `selectLlamaServerPlacement`. A server-wide
+  `XOLLAMA_K_CACHE_TYPE` does not count. No such setting, no opencoti group, or
+  `XOLLAMA_ENGINE=llamacpp`: the list is unchanged. Guard:
+  `TestAModelOnlyOpencotiServesIsPlacedWhereOpencotiRuns`; prose in
+  `docs/features/device-selection.md`.
 - `stockCacheTypes` is what stock llama.cpp's own parser accepts. Anything
   outside it — opencoti's `kvarn2`..`kvarn6`/`kvarn8` (**no `kvarn7`**: structural,
   per `llama_kvarn_valid_bits()`), the frozen `turbo*` / `*_tcq` tiers, `q6_0` — is

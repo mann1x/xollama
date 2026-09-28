@@ -5,6 +5,16 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — A model only opencoti can serve stays on opencoti's GPUs.**
+> - eleven2go has an RX 9070 XT (Vulkan) beside its RTX 3090. The medium council model (kvarn3, 384k) fits no single GPU, and upstream's placement picked the Vulkan backend by free memory. The launch refused it: kvarn3 needs opencoti.
+> - `opencotiPlacement` (registry row `opencoti-placement`) now keeps such a model on the GPU groups opencoti serves; nothing changes for other models or with `XOLLAMA_ENGINE=llamacpp`.
+> - Workaround for the current run: `omni-council-kv3-384k` pinned to `--device-backend=cuda`.
+> - Also measured on eleven2go (2k prompt, 512 gen), xOllama on the 3090:
+>   - omnimerge-v4 IQ2_M: 48 tok/s gen, 1,150 prefill;
+>   - qwen3.6 35b-a3b: 189 / 3,040;
+>   - v9-agentic: 124 / 4,600.
+> - On the 9070 XT, xOllama (Vulkan) matches stock Ollama within noise. b208 has no Windows Vulkan payload, so there is no rolling-KV on AMD yet.
+
 > **2026-09-28 — xOllama's own icon, and an installer that stops only xOllama.**
 > - The icons are the llama with a red X painted on its chest, from `scripts/xollama-icon.py`; the owner picked red over violet (preview artifact).
 > - The installer and uninstaller no longer run `taskkill /im llama-server.exe`, which stopped a stock Ollama's runners and missed the opencoti engine.

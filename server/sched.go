@@ -581,7 +581,7 @@ func (s *Scheduler) load(req *LlmRequest, systemInfo ml.SystemInfo, gpus []ml.De
 
 			predictedCtx := effectiveLlamaServerContext(req.opts.NumCtx, f, numParallel, req.contextUnlocked(f, gpus))
 			predicted := llm.PredictServerVRAM(req.model.ModelPath, f, predictedCtx) + slotCeilingVRAM(req, f, gpus, numParallel)
-			loadGpus, launchOpts = selectLlamaServerPlacement(systemInfo, gpus, predicted, req.opts)
+			loadGpus, launchOpts = selectLlamaServerPlacement(systemInfo, opencotiPlacement(llamaServerConfigForModel(req.model), gpus), predicted, req.opts) // xollama-hook: opencoti-placement
 			availableForBatch, _, _ := availableMemoryForPlacement(systemInfo, loadGpus, launchOpts)
 			flashAttention := llm.LlamaServerFlashAttention(llamaServerConfigForModel(req.model), loadGpus)
 			req.applyAutomaticGenerationBatch(completion, predictedCtx, predicted, availableForBatch, flashAttention, loadGpus)

@@ -174,3 +174,15 @@ still honoured and only ever add to it. That matters because the published pin
 for `2609242056001` states no `accel` rows at all — it lists its payload set in
 a header comment — and keying on those rows alone would have made the pin
 accelerate nothing while the engine sat there holding a working Vulkan payload.
+
+## A model only opencoti can serve
+
+A model that states a KV cache type stock llama.cpp does not know (`kv.k` /
+`kv.v`, such as `kvarn3`) is placed only on the GPUs opencoti serves. Without
+this, a host with GPUs of two kinds -- an RTX 3090 served by opencoti and an
+RX 9070 XT that, on a pin without a Windows Vulkan payload, only llama.cpp
+serves -- could place it on the card with more free memory, and the launch then
+refused it ("this KV cache configuration needs the opencoti engine"). A
+server-wide `XOLLAMA_K_CACHE_TYPE` does not count: on llama.cpp it falls back
+to the legacy type. `server/placement_opencoti.go`, registry row
+`opencoti-placement`.
