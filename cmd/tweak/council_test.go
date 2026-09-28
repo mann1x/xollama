@@ -18,6 +18,7 @@ func TestTheCouncilFlagWalksTheCouncil(t *testing.T) {
 		"0",             // jitter: no spread, which is a stated answer
 		"",              // seed: random
 		"2",             // max rounds
+		"5",             // cloud members at once
 		"off",           // show deliberation
 		"on",            // broadcast
 		"",              // polykv
@@ -32,7 +33,7 @@ func TestTheCouncilFlagWalksTheCouncil(t *testing.T) {
 		t.Fatalf("%v\n%s", err, out)
 	}
 	k := cfg.Council
-	if !k.On() || k.Researcher.Count != 3 || k.Critic != nil || k.MaxRounds != 2 ||
+	if !k.On() || k.Researcher.Count != 3 || k.Critic != nil || k.MaxRounds != 2 || k.CloudParallel != 5 ||
 		k.TemperatureJitter == nil || *k.TemperatureJitter != 0 || k.Seed != nil ||
 		k.ShowDeliberation == nil || *k.ShowDeliberation || k.Broadcast == nil || !*k.Broadcast ||
 		k.Context.Window != 32768 ||

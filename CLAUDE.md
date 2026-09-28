@@ -184,7 +184,9 @@ shapes each role's instructions, think budget and check cycles for the work) and
 on its own engine session; on opencoti with PolyKV, `server/council_polykv.go`
 builds the turn's pool tree — the planner attached to the conversation's root
 pool, kept between turns — and `llm/engine_council.go` is its client;
-`llm/engine_council_slots.go` launches a council with a slot per parallel member
+`llm/engine_council_slots.go` launches a council with the engine's parallel ceiling live
+(never below its local width; cloud members are counted apart, `council.cloud_parallel`,
+`server/council_cloud.go`)
 (its `--kv-unified` is never repeated by `appendSlotArgs` in `llm/engine_launch.go`); a role with
 `council.<role>.host` is sent to that server by `server/council_remote.go`, only
 when `XOLLAMA_COUNCIL_HOSTS` allows it; `server/council_compaction.go` folds the

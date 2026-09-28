@@ -72,6 +72,12 @@ type Council struct {
 
 	// Context sizes the council's engine session and says when to compact.
 	Context *CouncilContext `json:"context,omitempty"`
+
+	// CloudParallel is how many members on a cloud model run at once. They
+	// take no engine slot here, so they are counted apart from the local
+	// members, which follow the engine's own parallel slots. Zero is the
+	// default, DefaultCouncilCloudParallel.
+	CloudParallel int `json:"cloud_parallel,omitempty"`
 }
 
 // CouncilRole is one role's settings. Unstated fields take the defaults.
@@ -230,6 +236,10 @@ func ValidCouncilPolyKV() []string { return slices.Clone(validCouncilPolyKV) }
 const (
 	MaxCouncilWidth  = 8
 	MaxCouncilRounds = 4
+	// DefaultCouncilCloudParallel is how many cloud members run at once
+	// when council.cloud_parallel is unset; MaxCouncilCloudParallel bounds it.
+	DefaultCouncilCloudParallel = 3
+	MaxCouncilCloudParallel     = 16
 	// MaxCouncilJitter keeps the spread a spread: past half the temperature
 	// the members are no longer the same model at slightly different heat.
 	MaxCouncilJitter = 0.5
@@ -264,7 +274,7 @@ func (c *Council) IsZero() bool {
 	return c.Enabled == nil && c.Charter == "" &&
 		c.Planner.isZero() && c.Researcher.isZero() && c.Critic.isZero() && c.Synthesizer.isZero() &&
 		c.TemperatureJitter == nil && c.Seed == nil && c.MaxRounds == 0 &&
-		c.ShowDeliberation == nil && c.Broadcast == nil && c.PolyKV == "" && c.Context.isZero()
+		c.ShowDeliberation == nil && c.Broadcast == nil && c.PolyKV == "" && c.Context.isZero() && c.CloudParallel == 0
 }
 
 func (r *CouncilRole) isZero() bool { return r == nil || *r == (CouncilRole{}) }
@@ -323,6 +333,9 @@ func (c *Council) validate(engine string) error {
 	}
 	if c.Seed != nil && *c.Seed < 0 {
 		return fmt.Errorf("xollama config: council.seed %d must not be negative", *c.Seed)
+	}
+	if c.CloudParallel < 0 || c.CloudParallel > MaxCouncilCloudParallel {
+		return fmt.Errorf("xollama config: council.cloud_parallel %d must be in [0, %d]", c.CloudParallel, MaxCouncilCloudParallel)
 	}
 	if c.MaxRounds < 0 || c.MaxRounds > MaxCouncilRounds {
 		return fmt.Errorf("xollama config: council.max_rounds %d must be in [0, %d]", c.MaxRounds, MaxCouncilRounds)

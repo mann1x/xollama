@@ -123,6 +123,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		s:       s,
 		base:    req,
 		session: sessionIDForRequest(req.SessionID, m, conv, nil),
+		cloud:   councilCloud.slots(req.Model, councilCloudParallel(m)),
 	}
 
 	// PolyKV: the members share the conversation's KV through a pool tree
@@ -505,6 +506,9 @@ type councilMembers struct {
 	last   int // the HTTP status of the last member error
 	// sessions are the worker sessions this turn's members ran on.
 	sessions map[string]bool
+	// cloud counts the members on a cloud model running at once
+	// (council_cloud.go); nil counts nothing.
+	cloud chan struct{}
 }
 
 func (cm *councilMembers) opened(id string) {
@@ -594,6 +598,11 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 		out, err := cm.remote(ctx, r, req, onToken)
 		return out, nil, err
 	}
+	release, err := cm.takeCloud(ctx, req.Model)
+	if err != nil {
+		return "", nil, err
+	}
+	defer release()
 	req.Tools = cm.tools
 	placement, worker, done := cm.place(ctx, r, &req)
 	defer done()

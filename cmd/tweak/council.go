@@ -228,7 +228,7 @@ func councilFields() []field {
 				"variable for this -- a council is a property of the model.",
 			kind:  kindTri,
 			head:  true,
-			group: []string{"council", "council-researchers", "council-critics", "council-jitter", "council-seed", "council-max-rounds", "council-show-deliberation", "council-broadcast", "council-polykv", "council-window", "council-floor", "council-compact-at", "council-idle-compact-at", "council-compaction", "council-compaction-review", "council-compaction-retrospective"},
+			group: []string{"council", "council-researchers", "council-critics", "council-jitter", "council-seed", "council-max-rounds", "council-cloud-parallel", "council-show-deliberation", "council-broadcast", "council-polykv", "council-window", "council-floor", "council-compact-at", "council-idle-compact-at", "council-compaction", "council-compaction-review", "council-compaction-retrospective"},
 			get: func(c *xollama.Config) string {
 				return councilGet(c, func(k *xollama.Council) string { return tri(k.Enabled) })
 			},
@@ -316,6 +316,20 @@ func councilFields() []field {
 				return councilGet(c, func(k *xollama.Council) string { return showInt(k.MaxRounds) })
 			},
 			set: func(c *xollama.Config, v string) error { return setInt(v, &council(c).MaxRounds) },
+		},
+		{
+			name:    "council-cloud-parallel",
+			path:    "council.cloud_parallel",
+			title:   "Cloud members at once",
+			help:    fmt.Sprintf("How many members on a cloud model run at the same time. They use no engine\nslot here; the local members follow the engine's parallel slots. %d (unset) by\ndefault, at most %d.", xollama.DefaultCouncilCloudParallel, xollama.MaxCouncilCloudParallel),
+			kind:    kindInt,
+			unit:    "members",
+			quiet:   true,
+			blocked: councilOff,
+			get: func(c *xollama.Config) string {
+				return councilGet(c, func(k *xollama.Council) string { return showInt(k.CloudParallel) })
+			},
+			set: func(c *xollama.Config, v string) error { return setInt(v, &council(c).CloudParallel) },
 		},
 		{
 			name:  "council-show-deliberation",

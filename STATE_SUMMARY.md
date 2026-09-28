@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — council 11.8: all the engine's parallel slots; cloud members counted apart.**
+> - The council ran with 2 live slots of eleven2go's 4, because xollama sized them to its widest step. It now starts with the engine's parallel ceiling (4 by default, `slots.max`), with its local width as the floor.
+> - Members on a cloud model take no engine slot: they run `council.cloud_parallel` at a time (default 3, `--council-cloud-parallel`), one count per council model.
+> - Next: 11.9, the critics reviewing the synthesizer's checks asynchronously (owner's design: queued, each finished review returned as it lands).
+
 > **2026-09-28 — council 11.7: every message names its writer; earlier turns attributed.**
 > - eleven2go simple rerun on b96e3c96: unfixed, 667 s / 24 trips. The engine asserted in cycle 3 (opencoti #530: position-window scatter, two sequences prefilling, kv-unified, `auto` residency). Cycle 2 had edited the right line and found both missing functions. The bounds held (front 3 steps, synthesizer 6 per cycle).
 > - The owner's points: the history should show the member; wrong claims must not stay in view; council messages must name their role and the user's stay plain; no anchoring. Built: `council.History` (calls split per member and headed, working notes dropped, repeats pointed at), source headers on every council message plus `sourcesNote`, and the front's report cut to its calls and results.

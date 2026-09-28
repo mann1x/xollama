@@ -16,10 +16,14 @@ paths:
   - server/council_continue_test.go
   - server/council_tools.go
   - server/council_tools_test.go
+  - server/council_cloud.go
+  - server/council_cloud_test.go
   - api/xollama_tools.go
   - api/xollama_tools_test.go
   - llm/engine_council.go
   - llm/engine_council_test.go
+  - llm/engine_council_slots.go
+  - llm/engine_council_slots_test.go
   - llm/engine_window.go
   - llm/engine_window_test.go
   - cmd/council_run.go
@@ -238,9 +242,20 @@ paths:
   the owner, so they need no cells, but each needs a slot: with `-np 1` the
   engine deferred researcher 2 until researcher 1 released slot 0 (ab-3,
   opencoti #501), and the elastic controller did not grow (3 s saturation +
-  512 MiB free-VRAM guard). `-np` = widest local step, `-c` unchanged (never
-  × the width), `--kv-unified` forced; not on stock, a single-sequence model
-  or `kv.unified: false`. The estimate counts the width as sequences only.
+  512 MiB free-VRAM guard). `-np` = the engine's parallel ceiling
+  (`resolveSlotPlan(...).Max`: slots.max, `XOLLAMA_MAX_PARALLEL` or 4), never
+  below the council's local width (owner's ruling 2026-09-28: a council
+  follows the engine's parallel slots). `-c` is unchanged (never × the width),
+  and `--kv-unified` is forced. None of this applies on stock, to a
+  single-sequence model, or with `kv.unified: false`. The estimate counts the
+  live slots as sequences only.
+  `councilSlots` is the floor and counts local members only: max(researchers,
+  critics + 1 for the synthesizer beside the critics' reviews), at least 1. A
+  role with a host, or on a cloud model, takes no slot here.
+- **Cloud members are counted apart** (`server/council_cloud.go`):
+  `council.cloud_parallel` (default 3, at most 16) at a time, one count per
+  council model shared by every turn (`councilCloud`). `takeCloud` in `stream`
+  runs after the host branch; a remote host is not counted.
 - **Defaults: 2 researchers, 1 critic** (owner's ruling 2026-09-27: a second
   critic of the same model added nothing; it pays when it is another model).
   Server tests state two critics in `councilOn()` to cover indices.

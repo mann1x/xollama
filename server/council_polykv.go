@@ -1033,21 +1033,27 @@ func (cm *councilMembers) place(ctx context.Context, r council.Request, req *api
 	return &llm.Placement{NumCtx: size, NumCtxMin: size}, req.SessionID, none
 }
 
-// councilSlots is the live slots a council's widest parallel step needs on
-// this server: its researchers or its critics, whichever is wider, counting
-// only the members served here (a role with a host runs elsewhere). Zero for
-// a model that is not a council. See llm/engine_council_slots.go.
+// councilSlots is the least live slots a council needs on this engine: its
+// widest local step -- the researchers, or the synthesizer beside the critics
+// reviewing its checks -- counting only the members served by this engine. A
+// role with a host runs elsewhere and a role on a cloud model takes no slot
+// here (council_cloud.go counts those). At least one for a council, zero for a
+// model that is not one. The launch raises it to the engine's parallel
+// ceiling; see llm/engine_council_slots.go.
 func councilSlots(m *Model) int {
 	if m == nil || m.Xollama == nil || !m.Xollama.Council.On() {
 		return 0
 	}
 	cfg := council.FromModel(m.Xollama.Council, 0)
-	width := 0
-	if cfg.Hosts[council.Researcher] == "" {
-		width = cfg.Researchers
+	local := func(r council.Role) bool {
+		return cfg.Hosts[r] == "" && (cfg.Models[r] == "" || !councilModelIsCloud(cfg.Models[r]))
 	}
-	if cfg.Hosts[council.Critic] == "" {
-		width = max(width, cfg.Critics)
+	width := 1
+	if local(council.Researcher) {
+		width = max(width, cfg.Researchers)
+	}
+	if local(council.Critic) {
+		width = max(width, cfg.Critics+1)
 	}
 	return width
 }

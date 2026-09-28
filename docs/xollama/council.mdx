@@ -83,6 +83,7 @@ Every setting is optional; `xollama tweak model <name> --council` walks them.
 | `council.temperature_jitter` | `--council-jitter` | 0.02 | Researchers and critics each draw a temperature within ±2 % of the model's, so parallel members do not say the same thing. |
 | `council.seed` | `--council-seed` | random | A fixed seed makes a council reproducible; every member's seed is derived from it. |
 | `council.max_rounds` | `--council-max-rounds` | 1 | Lets the critics send the research back, up to 4 rounds in all. |
+| `council.cloud_parallel` | `--council-cloud-parallel` | 3 | How many members on a cloud model run at once, up to 16. They use no engine slot here. |
 | `council.show_deliberation` | `--council-show-deliberation` | on | Off sends the answer alone. |
 | `council.broadcast` | `--council-broadcast` | off | Members working beside a mate of the same role can leave each other short notes (below). Under evaluation. |
 | `council.polykv` | `--council-polykv` | `auto` | Shares the conversation's cache between members on opencoti (below). `on` refuses to serve without it, `off` never uses it. |
@@ -535,8 +536,12 @@ the council falls back to a plainer one, and at worst to `basic`.
 - A turn is several calls to the model, so it takes longer than a plain one:
   about a minute for a 27B model on one GPU, against a second or two for a
   greeting answered directly.
-- Parallel members need parallel slots. On opencoti they run at once, including
-  on the architectures upstream limits to one sequence; on stock `llama.cpp`
-  those take turns (see [Concurrent requests](/xollama/slots)).
+- Parallel members need parallel slots. On opencoti a council starts with every
+  slot the engine allows live: its parallel ceiling (4 by default, or
+  `slots.max`), and never fewer than its widest step. The members run at once,
+  including on the architectures upstream limits to one sequence; on stock
+  `llama.cpp` those take turns (see [Concurrent requests](/xollama/slots)).
+  Members on a cloud model take no slot here and are counted apart:
+  `council.cloud_parallel` at a time.
 - A model written with a council needs an xollama that reads config schema v4.
   An older one refuses the model instead of serving it without its council.

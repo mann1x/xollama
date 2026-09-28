@@ -1974,6 +1974,25 @@ test, which now refuses the front's conclusion. Each was checked by removal.
 Relief for #530 on eleven2go: `XOLLAMA_ENGINE_ARGS=--kv-residency-mode head`,
 an operator setting on the test host, until opencoti's fix.
 
+### 11.8 A council follows the engine's parallel slots; cloud members apart (built 2026-09-28)
+The owner, on hearing the council ran with 2 live slots of the engine's 4:
+"the council should follow the parallel or max parallel slots, which are 4
+default with opencoti engine; the cloud models should not count the same
+slots; default 3 slots in parallel, configurable in the council setup".
+- `councilLive` now starts a council with the engine's parallel ceiling live
+  (`slots.max`, `XOLLAMA_MAX_PARALLEL` or 4). Its local width is the floor,
+  not the count: max(researchers, critics + 1, since the critics' reviews run
+  beside the synthesizer, 11.9), at least 1.
+- A role on a cloud model or another host takes no engine slot, so it is left
+  out of the width. Cloud members run `council.cloud_parallel` at a time
+  (default 3, at most 16; `xollama tweak model --council-cloud-parallel`),
+  one count per council model (`server/council_cloud.go`).
+
+Guards: `TestACouncilStartsWithTheEnginesParallelSlots`,
+`TestACouncilsWidthCountsOnlyLocalMembers`,
+`TestCloudMembersRunCloudParallelAtATime` and
+`TestOnlyCloudMembersTakeACloudSlot`. Each was checked by removal.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).
