@@ -2115,6 +2115,38 @@ it wrote them. Now:
 Guard: `TestARenumberedListUpdatesTheTasksItNames` (the run's shape), checked
 by removal of each of the three.
 
+### 11.13 What each role spends (built 2026-09-28)
+The owner's aim: find the role worth a bigger or a cloud model. That is
+"best" meaning both helpful and cheap: a role that spends little and helps a
+small synthesizer much is the one to upgrade first.
+
+That needs each role's cost, so every council turn now reports it
+(`council_usage_v1`). The done chunk carries one entry per role (and per
+model and host): calls, prompt tokens sent (with the cached part), tokens
+written, and engine and wall durations. The manic harness records it per
+trip and sums it per role in the run's summary.
+
+First reading, from the eleven2go debug log (characters, 032db6c2):
+
+| role | medium: calls, prompt share, output share | hard (so far) |
+|---|---|---|
+| researcher | 30, 45 %, 39 % | 29, 32 %, 24 % |
+| synthesizer | 30, 43 %, 28 % | 29, 45 %, 40 % |
+| critic | 7, 7 %, 11 % | 12, 14 %, 11 % |
+| planner | 3, 2 %, 12 % | 5, 4 %, 11 % |
+| front, builder, reviewer | 8, 3 %, 10 % | 8, 4 %, 13 % |
+
+The prompts are about 68× the output. On a cloud model the cost is the
+prompts sent again on every call; locally PolyKV serves most of them from
+the cache.
+
+Guards: `TestACouncilTurnReportsWhatEachRoleSpent` and
+`TestAUsageBookCountsTheCachedPromptAsSent`, each checked by removal.
+
+Helpfulness is the other half. Measuring it takes swapping one role at a time
+to a bigger model on the same tasks (a role-upgrade matrix), which is
+proposed, not run.
+
 ### 11.11 Checks that stop moving change the approach (built 2026-09-28)
 The fifth simple run (b336b144) returned the same "missing ) after argument
 list" from every check for 60 trips. The plain arm fixed the task in 27 trips:

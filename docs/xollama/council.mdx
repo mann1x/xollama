@@ -169,6 +169,20 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
   it yourself) and `council_tags_v1` (the tag above). Gate on these names, not
   on the version: a development build reports `0.0.0`. A name never changes
   meaning; a changed contract gets a new name.
+- **What each role spent** (`council_usage_v1`). The done chunk of a council
+  turn carries `council_usage`, one entry per role, and per model and host
+  when a role runs elsewhere. Each entry gives the calls, the prompt tokens
+  sent (`prompt_tokens`, including the part served from the cache,
+  `cached_tokens`), the tokens written (`eval_tokens`), and the engine's and
+  the wall durations in nanoseconds. A background reviewer's work arrives on
+  the next done chunk after it finished. A cloud model bills the whole
+  `prompt_tokens` on every call, so this is what tells you which role is
+  worth a bigger or a cloud model:
+
+  ```json
+  "council_usage":[{"role":"synthesizer","calls":3,"prompt_tokens":41200,
+    "cached_tokens":38900,"eval_tokens":610,"wall":48100000000}]
+  ```
 - **Driving PolyKV yourself** (`client_placement_v1`). A client that builds
   its own pools through `/api/engine` names one with `placement` on
   `/api/chat`: `{"pool_id": 0, "num_ctx": 16384, "num_ctx_min": 8192}`. On a

@@ -27,6 +27,9 @@ type reviewDesk struct {
 	cancel  context.CancelFunc
 	timer   *time.Timer
 	critics int
+	// members are the desk's background members, whose usage the next
+	// turn of the conversation reports.
+	members *councilMembers
 }
 
 type deskRegistry struct {
@@ -57,7 +60,7 @@ func (r *deskRegistry) get(session string, cfg council.Config, members *councilM
 		// pool; a reviewer states one sized to its request.
 		bg.reviewWindow = members.tree.window
 	}
-	d := &reviewDesk{desk: council.NewDesk(ctx, bg, cfg, cfg.Critics), cancel: cancel, critics: cfg.Critics}
+	d := &reviewDesk{desk: council.NewDesk(ctx, bg, cfg, cfg.Critics), cancel: cancel, critics: cfg.Critics, members: bg}
 	d.timer = time.AfterFunc(reviewIdle, func() { r.close(session) })
 	r.m[session] = d
 	return d.desk

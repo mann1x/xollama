@@ -609,6 +609,9 @@ type ChatResponse struct {
 	// xollama-hook: council — see plans/agentic-council-chat.md
 	Council *CouncilTag `json:"council,omitempty"`
 
+	// xollama-hook: council — see plans/agentic-council-chat.md
+	CouncilUsage []CouncilUsage `json:"council_usage,omitempty"`
+
 	DebugInfo *DebugInfo `json:"_debug_info,omitempty"`
 
 	// Logprobs contains log probability information for the generated tokens,

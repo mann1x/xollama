@@ -39,6 +39,9 @@ const (
 	// FeatureCouncilCompaction: a council compacts its own conversation, so
 	// a client sends the history as the user sees it and does not compact it.
 	FeatureCouncilCompaction = "council_compaction_v1"
+	// FeatureCouncilUsage: a council turn's done chunk carries
+	// ChatResponse.CouncilUsage, what each role spent.
+	FeatureCouncilUsage = "council_usage_v1"
 	// FeatureCouncilTags: every thinking chunk of a council turn carries
 	// ChatResponse.Council, naming the one member it holds. Content chunks,
 	// the answer, carry none.

@@ -5,6 +5,14 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — council: medium fixed, 12× slower than plain; usage per role reported.**
+> - Medium on 032db6c2 (eleven2go): council **fixed**, 27 trips, 1101 s. Plain **fixed**, 11 trips, 91 s. It read the file once, fixed seven faults in four edits and checked once; the council paid a whole check cycle per fault.
+> - The consultants council has been asked for optimizations (brief: `/srv/ml/xollama-phase2/consult-council/BRIEF.md`).
+> - Built: `council_usage_v1`. Each council done chunk reports what each role spent (calls, prompt sent and cached, written, durations), and the manic harness records it per trip and per role (plan 11.13).
+>   - First reading, medium: the researchers take 45 % of the prompt and the synthesizer 43 %; the critic 7 % and the planner 2 %.
+>   - Prompts are about 68× the output.
+> - Hard is running (council, then plain).
+
 > **2026-09-28 — council: simple fixed for the first time; task ids keep the list's numbering.**
 > - Sixth simple run (34924cbe, eleven2go, `head` relief): **fixed**, 40 trips, 1401 s (plain: 27 trips).
 >   - Cycles 1–2 chased template literals (seven harmless edits) against the same check output.

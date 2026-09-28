@@ -300,6 +300,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 			Message: api.Message{Role: "assistant"}, Done: true, DoneReason: "stop",
 		}
 		final.Metrics = members.metrics(time.Since(start))
+		final.CouncilUsage = append(members.usage.take(), councilDesks.usage(members.session)...)
 		final.CouncilChatState = state(carry)
 		select {
 		case ch <- final:
@@ -512,7 +513,9 @@ type councilMembers struct {
 	mu     sync.Mutex
 	m      api.Metrics
 	cached int // prompt tokens served from cache or a pool, over all members
-	last   int // the HTTP status of the last member error
+	// usage is what each role spent (council_usage.go).
+	usage usageBook
+	last  int // the HTTP status of the last member error
 	// sessions are the worker sessions this turn's members ran on.
 	sessions map[string]bool
 	// cloud counts the members on a cloud model running at once
@@ -559,6 +562,7 @@ func (cm *councilMembers) StreamTools(ctx context.Context, r council.Request, on
 
 func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken func(string)) (string, []api.ToolCall, error) {
 	cm.calls.Add(1)
+	began := time.Now()
 	stream, off := true, api.ThinkValue{Value: false}
 	opts := maps.Clone(cm.base.Options)
 	if opts == nil {
@@ -683,11 +687,14 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 		}
 		calls = append(calls, line.Message.ToolCalls...)
 		if line.Done {
+			cached := 0
+			if line.PromptEvalCachedCount != nil {
+				cached = *line.PromptEvalCachedCount
+			}
+			cm.usage.add(r, line.Metrics, cached, time.Since(began))
 			cm.mu.Lock()
 			cm.m.PromptEvalCount += line.PromptEvalCount
-			if line.PromptEvalCachedCount != nil {
-				cm.cached += *line.PromptEvalCachedCount
-			}
+			cm.cached += cached
 			cm.m.PromptEvalDuration += line.PromptEvalDuration
 			cm.m.EvalCount += line.EvalCount
 			cm.m.EvalDuration += line.EvalDuration

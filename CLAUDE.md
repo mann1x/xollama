@@ -196,7 +196,8 @@ conversation before a turn and after its answer, Cerebriline's agentic compactio
 ported, prompts in `server/council_compaction_prompts.go`; `server/council_state.go`
 seals the `council_chat_state` resume point a client sends back; `server/council_continue.go`
 keeps a turn's deliberation so the next message can `continue` the same council,
-`internal/council/continue.go`), reached from one
+`internal/council/continue.go`; `server/council_usage.go` adds up what each role
+spent, reported on the done chunk as `ChatResponse.CouncilUsage`, `council_usage_v1`), reached from one
 `councilServes` line in
 `ChatHandler` (`council` hook); a `format` bypasses it, and tools reach it only
 with `council_chat_state` (`internal/council/tools.go`: read-only tools for

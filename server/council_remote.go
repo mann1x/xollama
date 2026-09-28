@@ -37,6 +37,7 @@ func (cm *councilMembers) remote(ctx context.Context, r council.Request, req api
 	slog.Info("council: member on another server", "role", r.Role, "index", r.Index, "host", u.Host, "model", req.Model, "think", think)
 	var out strings.Builder
 	done := false
+	began := time.Now()
 	err = api.NewClient(u, http.DefaultClient).Chat(ctx, &req, func(resp api.ChatResponse) error {
 		if t := resp.Message.Content; t != "" {
 			out.WriteString(t)
@@ -44,6 +45,7 @@ func (cm *councilMembers) remote(ctx context.Context, r council.Request, req api
 		}
 		if resp.Done {
 			done = true
+			cm.usage.add(r, resp.Metrics, 0, time.Since(began))
 			cm.mu.Lock()
 			cm.m.PromptEvalCount += resp.PromptEvalCount
 			cm.m.PromptEvalDuration += resp.PromptEvalDuration

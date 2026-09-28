@@ -456,6 +456,15 @@ paths:
   - Reviews are shown at delivery through `cfg.show`, as `Reviewer` thinking
     (set in `callFrom` when the deliberation is shown); `memberName` numbers
     reviewers.
+- **Usage per role (`council_usage_v1`, `server/council_usage.go`)**: every
+  member call's done metrics go into `councilMembers.usage` (`usageBook`,
+  keyed by role, model and host), both locally and through `remote`. The turn's
+  done chunk carries `ChatResponse.CouncilUsage` (`council` hook in
+  `api/types.go`), plus the desk's reviewers (`councilDesks.usage`, drained).
+  `prompt_tokens` = `prompt_eval_count` + cached: what was sent, and what a
+  cloud model bills. The manic harness records it per trip and per role.
+  Guards: `TestACouncilTurnReportsWhatEachRoleSpent`,
+  `TestAUsageBookCountsTheCachedPromptAsSent`.
 - **The task list (11.10, `internal/council/tasks.go`)**: the planner's plan
   JSON carries `"tasks"`; `mergeTasks` enforces the rules (no deletion, an
   outcome to close, a real researcher to assign, refuted stays refuted, new

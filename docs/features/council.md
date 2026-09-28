@@ -162,6 +162,8 @@ council turn 3,139 → 525 tokens, peak KV cells about −40 %, wall time at par
 - `internal/council/tasks_test.go` — the planner's task list and its rules
   (plan 11.10), checks that stop moving (11.11), a review without its verdict
   sent back (11.12), the builder's coordinator instruction.
+- `server/council_usage_test.go` — the done chunk's per-role usage, and a
+  cached prompt counted as sent.
 - `cmd/council_run_test.go` — a one-shot prompt reaches the council.
 - `app/ui/council_test.go` — a council keeps `think:false`, and every other
   request is left as upstream built it. `app/ui/app/src/hooks/useCouncil.test.ts`
