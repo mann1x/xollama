@@ -380,6 +380,19 @@ paths:
   asked for is an empty build (recorded, shapes nothing, offers no target).
   Guards: `TestTheBuilderShapesTheCouncilTheUserDefined`,
   `TestABuilderThatSaysNothingShapesNothing`.
+- **The front (11.5, `internal/council/front.go`)**: on a tool turn,
+  `WithRouting` (server, after `WithEvidence`/`WithBroadcast`, same list for
+  every member) adds `council_forward`/`council_rebuild`. `fronted` (a
+  ToolModel and the forward tool in the list) replaces `Decide` and `direct`
+  with the synthesizer's front call (`Front` role, key "f", on the owner
+  session like the planner). Only `Front` may call the routing tools
+  (`refusedRouting`), and they are `local`. A rebuild runs `MakeBuild` inside
+  the front loop, and `rebuilt()` answers it with the new setup. A forward
+  sets `p.Route` to council. A direct answer keeps `keptWith(Previous,
+  Build)`. The route decision offers `continue` only when `canContinue`.
+  Guards: `TestTheSynthesizerTakesTheRequestFirst`,
+  `TestTheSynthesizerRebuildsTheCouncilForNewWork`, `TestOnlyTheFrontRoutes`,
+  `TestAToolTurnGoesThroughTheSynthesizerFirst` (checked by removal).
 - **A repeated call (11.2)**: `transcript` appends `repeatedCall` to a result
   that repeats, word for word, an earlier identical call's result in the same
   member's turns. Keep it generic: it serves any tool.

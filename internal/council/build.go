@@ -204,7 +204,23 @@ const RouteRebuild = "rebuild"
 
 const rebuildChoice = `If the latest message is new work that this target does not fit, reply {"route":"rebuild"} instead of {"route":"council"}.`
 
-var routeSchemaRebuild = json.RawMessage(`{"type":"object","properties":{"route":{"type":"string","enum":["direct","continue","council","rebuild"]}},"required":["route"]}`)
+// routeSchema is the route decision's schema: the routes this turn offers.
+func (cfg Config) routeSchema() json.RawMessage {
+	routes := []string{`"direct"`, `"council"`}
+	if cfg.canContinue() {
+		routes = []string{`"direct"`, `"continue"`, `"council"`}
+	}
+	if cfg.previousBuild() != nil {
+		routes = append(routes, `"rebuild"`)
+	}
+	return json.RawMessage(`{"type":"object","properties":{"route":{"type":"string","enum":[` + strings.Join(routes, ",") + `]}},"required":["route"]}`)
+}
+
+// canContinue reports whether the last deliberation can be continued.
+func (cfg Config) canContinue() bool {
+	_, _, ok := continuing(cfg.Previous)
+	return ok
+}
 
 // previousBuild is the build the council's last deliberation left.
 func (cfg Config) previousBuild() *Build {
@@ -212,4 +228,18 @@ func (cfg Config) previousBuild() *Build {
 		return nil
 	}
 	return cfg.Previous.Build
+}
+
+// keptWith is the deliberation a direct answer leaves: the one before, with
+// a build the front made meanwhile.
+func keptWith(prev *Progress, b *Build) *Progress {
+	if b == nil {
+		return prev
+	}
+	k := Progress{Route: RouteCouncil}
+	if prev != nil {
+		k = prev.clone()
+	}
+	k.Build = b.clone()
+	return &k
 }

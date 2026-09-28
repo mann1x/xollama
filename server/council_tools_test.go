@@ -292,3 +292,37 @@ func TestAWorkerWithNoLayerRunsInsideTheOwner(t *testing.T) {
 		t.Fatalf("%d workers; closed %v (the owner must stay)", workers, closed)
 	}
 }
+
+// On a tool turn the synthesizer takes the request on the conversation's
+// session, in place of the planner's route decision: a request it answers
+// is one call, one it forwards goes to the council. Its routing tools never
+// reach the client.
+func TestAToolTurnGoesThroughTheSynthesizerFirst(t *testing.T) {
+	for _, route := range []string{`{"route":"direct"}`, `{"route":"council"}`} {
+		councilStateKeyIn(t, t.TempDir())
+		e := &councilEngine{route: route}
+		s := councilToolServer(t, e)
+		empty := ""
+		req := api.ChatRequest{
+			Model: "council", Tools: councilTestTools, CouncilChatState: &empty, SessionID: "conv-front",
+			Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}},
+		}
+		var content string
+		for _, c := range toolChat(t, s, req) {
+			content += c.Message.Content
+			for _, call := range c.Message.ToolCalls {
+				t.Errorf("%s: a call reached the client: %+v", route, call)
+			}
+		}
+		if e.count("route") != 0 || e.count("front") != 1 || e.sessions[0] != "conv-front" {
+			t.Errorf("%s: roles %v sessions %v; want the front first, on the conversation's session, and no route call", route, e.roles, e.sessions)
+		}
+		want, members := "Hello there!", 1
+		if route == `{"route":"council"}` {
+			want, members = "The sky is blue because air scatters blue light most.", 8 // front, builder, planner, 2 researchers, 2 critics, synthesizer
+		}
+		if content != want || len(e.roles) != members {
+			t.Errorf("%s: content %q from %d calls %v", route, content, len(e.roles), e.roles)
+		}
+	}
+}

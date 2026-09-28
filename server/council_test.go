@@ -74,13 +74,13 @@ var compactionReplies = map[string]string{
 	"compaction-retrospective": "## What worked\n- Answering from the law first.",
 }
 
-var councilMarkers = []string{`{"route":"direct"}`, "ROLE: PLANNER. The council", "ROLE: RESEARCHER", "ROLE: CRITIC", "ROLE: SYNTHESIZER", "ROLE: BUILDER"}
+var councilMarkers = []string{`{"route":"direct"}`, "ROLE: PLANNER. The council", "ROLE: RESEARCHER", "ROLE: CRITIC", "ROLE: SYNTHESIZER", "ROLE: BUILDER", "COUNCIL: You are the council's synthesizer"}
 
 func (e *councilEngine) complete(ctx context.Context, r llm.CompletionRequest, fn func(llm.CompletionResponse)) error {
 	role, at := "chat", -1
 	for i, m := range councilMarkers {
 		if j := strings.LastIndex(r.Prompt, m); j > at {
-			at, role = j, []string{"route", "planner", "researcher", "critic", "synthesizer", "builder"}[i]
+			at, role = j, []string{"route", "planner", "researcher", "critic", "synthesizer", "builder", "front"}[i]
 		}
 	}
 	for m, cr := range compactionMarkers {
@@ -133,6 +133,14 @@ func (e *councilEngine) complete(ctx context.Context, r llm.CompletionRequest, f
 	}[role]
 	if role == "route" && e.route == `{"route":"direct"}` {
 		reply = e.route
+	}
+	if role == "front" {
+		// The synthesizer's front turn (11.5): a direct route is its answer,
+		// any other hands the request to the council.
+		reply = "Hello there!"
+		if e.route != `{"route":"direct"}` && !strings.Contains(r.Prompt[at:], "<tool>") {
+			reply = `{"name": "council_forward", "arguments": {}}`
+		}
 	}
 	if name := e.tools[role]; name != "" && !strings.Contains(r.Prompt[at:], "<tool>") {
 		// Each brief reads its own file: the same read twice would go out

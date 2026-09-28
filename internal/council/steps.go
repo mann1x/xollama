@@ -73,8 +73,6 @@ func confirmed(critique string) (string, bool) {
 // stoppedCritique stands for a critic stopped because another confirmed.
 const stoppedCritique = "(stopped: another critic confirmed where the error is)"
 
-var routeSchema = json.RawMessage(`{"type":"object","properties":{"route":{"type":"string","enum":["direct","council"]}},"required":["route"]}`)
-
 func planSchema(n int) json.RawMessage {
 	return json.RawMessage(fmt.Sprintf(`{"type":"object","properties":{"plan":{"type":"string"},"briefs":{"type":"array","items":{"type":"string"},"minItems":%d,"maxItems":%d}},"required":["plan","briefs"]}`, n, n))
 }
@@ -160,13 +158,7 @@ func memberWhere(req Request) string {
 // council's own model even when the planner has another: the direct answer
 // continues the conversation, which is the council model's to give.
 func Decide(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message) (string, error) {
-	schema := routeSchema
-	if cfg.Previous != nil {
-		schema = routeSchemaContinue
-	}
-	if cfg.previousBuild() != nil {
-		schema = routeSchemaRebuild
-	}
+	schema := cfg.routeSchema()
 	out, err := m.Stream(ctx, Request{
 		Role: Planner, Messages: append(clone(conv), routeRequest(cfg)),
 		Seed: d.Decide.Seed, Temperature: d.Decide.Temperature, MaxTokens: 16, Format: schema,
@@ -181,7 +173,7 @@ func Decide(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Messag
 		switch {
 		case v.Route == "direct":
 			return "direct", nil
-		case v.Route == RouteContinue && cfg.Previous != nil:
+		case v.Route == RouteContinue && cfg.canContinue():
 			return RouteContinue, nil
 		case v.Route == RouteRebuild && cfg.previousBuild() != nil:
 			return RouteRebuild, nil
@@ -224,7 +216,7 @@ func IsPlannerRequest(s string) bool {
 // b133: without it, two of six storage questions were answered directly).
 func routeRequest(cfg Config) api.Message {
 	msg := routeMsg
-	if cfg.Previous != nil {
+	if cfg.canContinue() {
 		msg = routeMsgContinue
 	}
 	if b := cfg.previousBuild(); b != nil {

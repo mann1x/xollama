@@ -112,6 +112,9 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	if cfg.Broadcast {
 		req.Tools = council.WithBroadcast(req.Tools) // 10.6, behind council.broadcast
 	}
+	// 11.5: the synthesizer takes a tool turn's request first, and forwards it
+	// or has the council rebuilt with these.
+	req.Tools = council.WithRouting(req.Tools)
 
 	conv, system := councilConversation(m, req.Messages)
 	cfg.System = system
@@ -649,7 +652,7 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 // decision, a direct answer and the plan continue the conversation, and a
 // direct answer is then served from the same KV a plain chat would have used.
 func (cm *councilMembers) memberSession(r council.Request) string {
-	if cm.session == "" || r.Role == council.Planner || r.Role == council.Builder || r.Role == roleCompactWriter {
+	if cm.session == "" || r.Role == council.Planner || r.Role == council.Builder || r.Role == council.Front || r.Role == roleCompactWriter {
 		return cm.session
 	}
 	id := cm.session + "~" + string(r.Role)

@@ -51,6 +51,8 @@ func MemberKey(r Role, index, round int) string {
 		k = fmt.Sprintf("c%d", index+1)
 	case Synthesizer:
 		k = "s"
+	case Front:
+		k = "f"
 	default:
 		k = "d"
 	}
@@ -61,7 +63,7 @@ func MemberKey(r Role, index, round int) string {
 }
 
 // writes reports whether a role answers the user, and so may change things.
-func writes(r Role) bool { return r == Synthesizer || r == Planner }
+func writes(r Role) bool { return r == Synthesizer || r == Planner || r == Front }
 
 // maxRefusals bounds how often a member that calls only tools it may not is
 // asked again; after that its text stands.
@@ -70,7 +72,10 @@ const maxRefusals = 2
 const (
 	refusedWrite = "Refused: %s can change things, and only the synthesizer calls such tools. Say in your reply what should change instead."
 	refusedName  = "Refused: there is no tool named %s."
-	noResult     = "(no result came back for this call)"
+	// refusedRouting answers a member other than the front that calls one
+	// of its tools: the council is already working on the request.
+	refusedRouting = "Refused: %s is the synthesizer's, when it takes a request; you are already working on this one."
+	noResult       = "(no result came back for this call)"
 	// repeatedCall follows a result that repeats, word for word, the one an
 	// earlier call with the same arguments got. Measured on eleven2go on
 	// b177: a synthesizer sent the same failing edit 15 times in one turn.
@@ -91,6 +96,8 @@ func (cfg Config) may(r Role, c api.ToolCall) (bool, string) {
 	switch {
 	case !ok:
 		return false, fmt.Sprintf(refusedName, c.Function.Name)
+	case routing(c.Function.Name) && r != Front:
+		return false, fmt.Sprintf(refusedRouting, c.Function.Name)
 	case !t.Function.ReadOnly && !writes(r):
 		return false, fmt.Sprintf(refusedWrite, c.Function.Name)
 	}
@@ -111,6 +118,10 @@ func (cfg Config) transcript(r Role, key string, turns []api.Message) []api.Mess
 				res = why
 			} else if c.Function.Name == PostTool {
 				res = cfg.postAnswer(r, key, c)
+			} else if c.Function.Name == RebuildTool {
+				res = cfg.rebuilt()
+			} else if c.Function.Name == ForwardTool {
+				res = "Handed to the council."
 			} else if local(c) {
 				res = cfg.lookup(c)
 				if folded[c.ID] {
@@ -213,7 +224,7 @@ func (cfg Config) toolNote(r Role) string {
 	}
 	note := fmt.Sprintf(" You may call these tools, which only read: %s. Call them first, for the facts you need, and write your report only once their results are in. The others change things, and only the synthesizer calls them.%s", strings.Join(ro, ", "), prose)
 	if r == Researcher && slices.ContainsFunc(cfg.Tools, func(t api.Tool) bool {
-		return !t.Function.ReadOnly && t.Function.Name != EvidenceTool && t.Function.Name != PostTool
+		return !t.Function.ReadOnly && t.Function.Name != EvidenceTool && t.Function.Name != PostTool && !routing(t.Function.Name)
 	}) {
 		// Researchers propose, the synthesizer tests (11.4): ab-4's
 		// researchers reported a diagnosis nobody checked.

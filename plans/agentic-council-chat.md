@@ -1840,9 +1840,13 @@ Built 2026-09-28: the builder (`internal/council/build.go`). It runs on the
 owner before the first plan and on a `rebuild` route. Its instructions,
 unset-role think budgets and `MaxTests` (0..12) are applied over the user's
 council. `Progress.Build` is state field 9, kept across turns. The route
-decision reads the target and offers `rebuild`. Open: the synthesizer's front
-turn on tool turns (`council_forward`/`council_rebuild`), which replaces the
-planner's route decision there.
+decision reads the target and offers `rebuild`. Also built the same day: the
+synthesizer's front turn on tool turns (`internal/council/front.go`). It
+replaces the route decision and the direct answer there. It answers on the
+conversation's session, or calls `council_forward` (the builder first when
+there is no build) or `council_rebuild` (it is told the new setup, then
+forwards). Turns without tools keep the planner's route decision, with
+`rebuild`. Open: preemption (11.4) and 11.3, then the live A/B.
 
 The earlier draft, where these differ:
 - A council starts with only the synthesizer. The first request it forwards to

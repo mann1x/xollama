@@ -6,9 +6,10 @@ description: One model name that answers every turn with a planner, researchers,
 A **council** is a model that answers each chat turn by consulting itself
 several times before it replies:
 
-1. a **planner** decides whether the message needs the council at all. A
-   greeting or a trivial fact it answers directly, in one short call;
-2. otherwise it writes a plan, and **researchers** work on it in parallel;
+1. the message is taken first by the **synthesizer** on a turn with tools, and
+   by a **planner** otherwise. Either decides whether it needs the council at
+   all, and a greeting, a trivial fact or a quick change is answered directly;
+2. otherwise the planner writes a plan, and **researchers** work on it in parallel;
 3. a **critic** reviews the plan and the findings, looking for errors, gaps
    and disagreements (more critics run in parallel, when configured);
 4. a **synthesizer** writes the one answer the client receives.
@@ -291,9 +292,23 @@ The builder shapes the council you defined and never changes it:
   only member that changes anything.
 
 The build is kept with the council's deliberation, in the server's memory and
-in `council_chat_state`. On a later message, the route decision reads the
-target and can send the message to a council built again (`rebuild`) when it
-is new work the target does not fit. A reply from the builder that is not the
+in `council_chat_state`. On a later message, whoever takes the request reads
+the target and judges whether the message continues that work. New work the
+target does not fit goes to a council built again.
+
+On a turn with tools, the **synthesizer** takes each request first, in place
+of the planner's route decision. It is the member that answers you and the
+only one that changes anything, and it runs on the conversation's own session,
+so a quick request costs one call, as a plain chat turn does. It has two tools
+of its own, which never reach your client:
+
+- `council_forward` hands the request to the council. The first time, the
+  builder sets the council up before the planner starts.
+- `council_rebuild` has the builder set the council up again for new work.
+  The synthesizer is told the new target and instructions, then forwards.
+
+On a turn without tools, the planner's short route decision does the same job,
+with `rebuild` as one of its answers. A reply from the builder that is not the
 JSON asked for shapes nothing: the council runs as configured.
 
 ## Researchers propose, the synthesizer checks

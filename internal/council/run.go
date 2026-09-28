@@ -164,6 +164,38 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 	}
 
 	route := p.Route
+	if route == "" && cfg.fronted(m) {
+		// The synthesizer takes the request first (front.go).
+		route = RouteFront
+		mark(func() { p.Route = route })
+	}
+	if route == RouteFront {
+		key := MemberKey(Front, 0, 0)
+		fcfg := cfg.apply(cfg.previousBuild())
+		fcfg.build = p.Build
+		ans, turns, next, err := front(ctx, m.(ToolModel), fcfg, d, conv, emit, p.Suspended[key], func(ctx context.Context) (*Build, error) {
+			b, err := MakeBuild(ctx, m, cfg, d, conv, emit)
+			if err == nil {
+				mark(func() { p.Build = b.clone() })
+			}
+			return b, err
+		})
+		if err != nil {
+			return Result{Route: route, Draws: d}, err
+		}
+		if next == "" {
+			answered(key, turns)
+			if res, ok := suspended(Result{Route: "direct", Draws: d}, member{Front, key}); ok {
+				return res, nil
+			}
+			return Result{Route: "direct", Answer: ans, Draws: d, Kept: keptWith(cfg.Previous, p.Build)}, nil
+		}
+		route = next
+		mark(func() {
+			delete(p.Suspended, key)
+			p.Route = route
+		})
+	}
 	if route == "" {
 		var err error
 		if route, err = Decide(ctx, m, cfg, d, conv); err != nil {
