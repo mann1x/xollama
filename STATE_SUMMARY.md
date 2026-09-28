@@ -5,6 +5,10 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — council: the builder reads only the user; unsent checks are sent; reviews stream.**
+> - Fourth simple run (5b331d1b) peeked mid-run: `n_slots = 4 (live = 4)`. The builder no longer names a place or a cause. The synthesizer never called `council_review`.
+> - Built: the builder reads the system prompt and the user's messages only, on its own session (`5b331d1b`). A check the synthesizer moves on from (its next call changes something) is sent for it, and the DONE's check reuses that id. Reviews stream as `Reviewer N` thinking at delivery (`b336b144`).
+
 > **2026-09-28 — council 11.9: the critics review the synthesizer's checks while it works.**
 > - Third simple run on eleven2go (311010f9, `--kv-residency-mode head` relief): unfixed, 60 trips, 3466 s, no engine fault. The synthesizer made 27 edits against 11 checks with no second reader.
 > - Built, as the owner designed it: `council_review` queues a check (the change plus what the calls returned). A per-conversation desk runs one reviewer per critic in the background, and each finished review reaches the synthesizer before its next step. Only DONE waits for the reviews still out, and sends its last check itself when it was never sent.

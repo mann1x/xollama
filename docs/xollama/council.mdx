@@ -358,7 +358,10 @@ sends what it changed to the critics with `council_review`, and keeps
 working. The critics take the checks in order, each judging what the calls
 actually returned, and every finished review reaches the synthesizer before
 its next step. Only a `VERDICT: DONE` waits: it stands once the reviews still
-out are in. When a check was never sent, the DONE sends it itself.
+out are in. When the synthesizer makes its next change without sending the
+check before it, the council sends that check for it, and a DONE sends its
+last check itself. With thinking shown, each review appears in the
+deliberation as it reaches the synthesizer, under "Reviewer 1", "Reviewer 2".
 
 Without tools there is nothing to check with, and the council answers once, as
 before. The cycles travel in `council_chat_state`, so a resumed turn starts at

@@ -450,6 +450,12 @@ paths:
     it after `reviewIdle` idle.
   - Background members have no tools. `ownWindow` states their window
     on opencoti, where no window books the whole pool.
+  - `sendForReview` also sends an `unsentCheck` when the synthesizer's next
+    call changes something (id `auto_<check>`; a read is still checking).
+    `sendLast` at DONE reuses that id, or sends an `uncheckedChange`.
+  - Reviews are shown at delivery through `cfg.show`, as `Reviewer` thinking
+    (set in `callFrom` when the deliberation is shown); `memberName` numbers
+    reviewers.
 - **The builder (11.5, `internal/council/build.go`)**: `Builder` reads
   `builderConversation` only (system + the user's unheaded messages: no
   answers, member work or tool results — it anchored on them twice). It runs
