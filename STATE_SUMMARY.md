@@ -5,6 +5,10 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — The xOllama tray no longer exits when a stock Ollama tray started first.**
+> - Found on eleven2go after the 9070 XT reboot. At logon the xOllama app logged "existing instance found, exiting": its single-instance check is `FindWindowW` on the tray window class, and the class was still upstream's `OllamaClass`, which Ollama's own tray had already registered.
+> - It also sent Ollama's app a focus request. The class is now `xOllamaClass` (the `app-state` hook). The source guard in `internal/onboarding` flags `"OllamaClass"` and fails without the fix.
+
 > **2026-09-28 — Engine pin moved to b208 for v0.34.4-xollama.3 (owner's ruling).**
 > - opencoti `2609281805001` (b208, rev `f8fc1116`, mail #540): the V100 fixes (KVarN collapse 0447, the engine picking the CUDA 12 payload below cc 7.5), the #530 scatter assert (0448), the drafter-KV fixes (0449/0450) and the wider TinyBLAS GEMM (0451).
 > - Measured on these bytes (`as-ollama/b208-ab`), against b177: compat 8/8; llama3 76.8 tok/s (75.5); multislot 144 (142); gemma4 identical.

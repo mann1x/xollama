@@ -152,9 +152,10 @@ local SSH keypair; `manifest/` holds the manifest/blob model (`manifest.go`,
 **Internal-only packages** under `internal/`: `internal/cloud` (cloud host
 policy), `internal/modelref` (model reference parsing), `internal/onboarding`
 (first-run app state; on Windows it, the app/server logs, `ollama.pid` and the
-settings database live under `%LOCALAPPDATA%\xOllama`, not upstream's `Ollama` —
+settings database live under `%LOCALAPPDATA%\xOllama`, not upstream's `Ollama`,
+and the tray's window class is `xOllamaClass` —
 `app-state` hook, also in `app/store/store.go`, `app/wintray/menus.go`,
-`app/cmd/app/app_windows.go` and `app/server/server_windows.go`),
+`app/wintray/tray.go`, `app/cmd/app/app_windows.go` and `app/server/server_windows.go`),
 `internal/orderedmap` (insertion-ordered maps behind the
 tool schemas), `internal/fsowner` (hands files a root run creates to the owner
 of the model store; `create.go` wrappers, `preflight.go` warning — see
