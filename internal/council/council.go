@@ -152,7 +152,10 @@ const (
 	DefaultJitter      = 0.02
 )
 
-var defaultMaxTokens = map[Role]int{Planner: 512, Researcher: 384, Critic: 256, Synthesizer: 1024}
+// The caps are room, not a target: the prompts ask for terse replies. A
+// researcher capped at 384 tokens could not carry its findings and their
+// evidence (owner's ruling 2026-09-28: "the council should not be starved").
+var defaultMaxTokens = map[Role]int{Planner: 2048, Researcher: 2048, Critic: 1024, Synthesizer: 2048}
 
 // FromModel resolves a model's council section against the defaults.
 // temperature is the model's own, after request and Modelfile options.

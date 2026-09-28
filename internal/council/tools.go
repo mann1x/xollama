@@ -71,6 +71,10 @@ const (
 	refusedWrite = "Refused: %s can change things, and only the synthesizer calls such tools. Say in your reply what should change instead."
 	refusedName  = "Refused: there is no tool named %s."
 	noResult     = "(no result came back for this call)"
+	// repeatedCall follows a result that repeats, word for word, the one an
+	// earlier call with the same arguments got. Measured on eleven2go on
+	// b177: a synthesizer sent the same failing edit 15 times in one turn.
+	repeatedCall = "\n\n[council: the same call with the same arguments as %s, and the same result. Repeating it will not change the outcome: re-read what it acts on, or try something different.]"
 )
 
 func (cfg Config) tool(name string) (api.Tool, bool) {
@@ -98,6 +102,7 @@ func (cfg Config) may(r Role, c api.ToolCall) (bool, string) {
 func (cfg Config) transcript(r Role, key string, turns []api.Message) []api.Message {
 	var out []api.Message
 	folded := cfg.folded(r, key, turns)
+	seen := map[string]string{}
 	for _, t := range turns {
 		out = append(out, t)
 		for _, c := range t.ToolCalls {
@@ -115,6 +120,12 @@ func (cfg Config) transcript(r Role, key string, turns []api.Message) []api.Mess
 				res = s
 				if folded[c.ID] {
 					res = indexed(ref, s)
+				}
+				same := readKey(c) + "\x00" + s
+				if first, ok := seen[same]; ok {
+					res += fmt.Sprintf(repeatedCall, first)
+				} else {
+					seen[same] = c.ID
 				}
 			}
 			out = append(out, api.Message{Role: "tool", Content: res, ToolName: c.Function.Name, ToolCallID: c.ID})
@@ -229,7 +240,7 @@ func replyText(turns []api.Message, last string) string {
 }
 
 // maxEvidence caps one tool result carried in a reply's evidence.
-const maxEvidence = 4000
+const maxEvidence = 16000
 
 // evidence is what a researcher or critic read, carried in its reply to every
 // member after it: each call it made and the client's result. Measured live

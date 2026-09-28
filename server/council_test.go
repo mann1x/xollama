@@ -527,10 +527,10 @@ func TestAThinkingRoleReasonsWithinItsBudgetAndHidesIt(t *testing.T) {
 	// reason.
 	want := map[string][2]int{
 		"route":       {0, 16},
-		"planner":     {2048, 512 + 2048},
-		"researcher":  {4096, 384 + 4096},
-		"critic":      {0, 256},
-		"synthesizer": {2048, 1024 + 2048},
+		"planner":     {2048, 2048 + 2048},
+		"researcher":  {4096, 2048 + 4096},
+		"critic":      {0, 1024},
+		"synthesizer": {2048, 2048 + 2048},
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()

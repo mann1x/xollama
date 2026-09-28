@@ -2,6 +2,7 @@ package council
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -484,5 +485,34 @@ func TestANoteReachesTheMateBesideIt(t *testing.T) {
 	}
 	if n != 1 {
 		t.Errorf("r2's last request holds the note %d times, want once", n)
+	}
+}
+
+// A synthesizer that sends the same edit again and gets the same error back is
+// told so under the repeat, in words that fit any tool; a repeat that got a
+// different result, and the first call, carry nothing.
+func TestARepeatedCallWithTheSameResultIsPointedOut(t *testing.T) {
+	cfg := toolCfg()
+	edit := func(id, path string) api.ToolCall {
+		args := api.NewToolCallFunctionArguments()
+		args.Set("path", path)
+		return api.ToolCall{ID: id, Function: api.ToolCallFunction{Name: "write_file", Arguments: args}}
+	}
+	turns := []api.Message{
+		{Role: "assistant", ToolCalls: []api.ToolCall{edit("c0", "a.js")}},
+		{Role: "assistant", ToolCalls: []api.ToolCall{edit("c1", "a.js")}},
+		{Role: "assistant", ToolCalls: []api.ToolCall{edit("c2", "a.js")}},
+		{Role: "assistant", ToolCalls: []api.ToolCall{edit("c3", "b.js")}},
+	}
+	cfg.Results = map[string]string{"s:c0": "error: no match", "s:c1": "error: no match", "s:c2": "ok", "s:c3": "error: no match"}
+	var got []string
+	for _, m := range cfg.transcript(Synthesizer, "s", turns) {
+		if m.Role == "tool" {
+			got = append(got, m.Content)
+		}
+	}
+	want := []string{"error: no match", "error: no match" + fmt.Sprintf(repeatedCall, "c0"), "ok", "error: no match"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("results %q, want %q", got, want)
 	}
 }

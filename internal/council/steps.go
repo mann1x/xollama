@@ -43,8 +43,8 @@ const directIntro = "Answer the user's message above. "
 // the number of briefs -- are added after them, so a replacement keeps working.
 var defaultPrompts = map[Role]string{
 	Planner:     "The council will answer the user's latest message. Write the plan and one brief per researcher.",
-	Researcher:  "Report your findings with the evidence for each.",
-	Critic:      "Review the plan and all findings above: errors, gaps, unsupported claims, disagreements. Say which findings you would keep.",
+	Researcher:  "Report your findings with the evidence for each. Be terse: no restating the brief, no filler.",
+	Critic:      "Review the plan and all findings above: errors, gaps, unsupported claims, disagreements. Say which findings you would keep. Be terse.",
 	Synthesizer: "Write the one answer the user receives, from the findings and honouring the critiques.",
 }
 

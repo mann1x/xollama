@@ -31,7 +31,7 @@ import (
 const PostTool = "council_post"
 
 const (
-	maxNoteChars = 200
+	maxNoteChars = 600
 	maxNotes     = 4
 )
 

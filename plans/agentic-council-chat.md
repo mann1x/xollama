@@ -1741,6 +1741,86 @@ request's system and user messages drive it.
 **Next:** 10.7 ab-4 on eleven2go (v0.34.4-xollama.1 + a dev build): simple, then
 medium and hard, 3 pairs each.
 
+## Phase 11 — a council that works like its members can (ab-4, 2026-09-28)
+
+ab-4 simple on eleven2go (b177, kvarn3, `-c 393216`, two live slots, broadcast
+on): the council had not fixed Manic Miner after 1463 s, where plain fixed it in
+233 s. What went wrong:
+
+- The researchers made one call each. They cannot edit or run anything, their
+  instruction was "report", and their reply cap was 384 tokens.
+- The diagnosis was wrong (template literals; the real bug was `})};` → `});}`),
+  and nothing tested it before the synthesizer acted on it.
+- The synthesizer sent the same failing edit 15 times.
+- Every synthesizer resume re-prefilled about 18k of 20.9k tokens (~20 s a step):
+  its worker session is closed after each call, and the pool layer it attaches
+  on resume ends before its own turns.
+
+The owner's direction (2026-09-28): researchers propose, the synthesizer tests,
+work is split with broadcast on, and every test result goes back to the
+researchers. The council must not be starved. Beyond that, a council is not set
+up in advance for a goal it does not know yet: it adapts to the request.
+
+### 11.1 Caps (built 2026-09-28)
+- Reply caps: planner 2048, researcher 2048, critic 1024, synthesizer 2048 (were
+  512/384/256/1024). The researcher and critic prompts ask for terse replies.
+- Evidence: a result is carried whole up to 4000 characters (was 1500); the
+  preview is 30 lines / 2000 characters (was 10 / 800); one `council_evidence`
+  answer is 16000 characters (was 8000); an evidence entry is capped at 16000
+  (was 4000).
+- A broadcast note is 600 characters (was 200).
+- Left as they are: the 2048 default think budget, `maxLookups` 6,
+  `maxRefusals` 2, and the `ResultBudget` of 1.5 windows. `max_rounds` 1 becomes
+  the test-loop bound in 11.4.
+
+### 11.2 A repeated call is pointed out (built 2026-09-28)
+When a result matches, word for word, the one an earlier call with the same
+tool and arguments got in the member's own transcript, a generic note follows
+it. The note says that repeating the call will not change the outcome, and to
+re-read what it acts on or try something different. The note works for any
+tool. Guard: `TestARepeatedCallWithTheSameResultIsPointedOut` (checked by
+removal).
+
+### 11.3 A resumed member keeps its cache (open; opencoti #525)
+The plan is to keep a suspended member's worker session, and its layer, alive
+across the client's tool round trip, and resume on the same session. This waits
+on opencoti's answer: does a resume without placement reuse the session's own
+cached tokens, and must a pool outlive its attached sessions? Measured goal: a
+resumed synthesizer step prefills only its new tokens.
+
+### 11.4 Researchers propose, the synthesizer tests (design)
+- A researcher's reply is a proposal: the change, where it goes, and how to tell
+  whether it worked. Researchers and critics keep read-only tools, and the
+  synthesizer stays the only writer.
+- The synthesizer applies and tests the proposals. Every result, failed or
+  successful, goes back to the researchers as the next round's input, with the
+  proposal it tested. Up to 6 test cycles run per user turn.
+- With broadcast on, researchers split the work (one part each) and post what
+  has been refuted or confirmed. A running generation cannot take tokens, so a
+  test result or verdict preempts: the member's stream is cancelled at a safe
+  point, its partial output is kept, the result is appended, and it resumes
+  (cheap once 11.3 holds). Only test results and verdicts preempt.
+
+### 11.5 The builder: a council shaped by the request (design)
+- A council starts with only the synthesizer. The first request it forwards to
+  the council summons the **builder** on the planner's slot. The builder reads
+  the system prompt, the user's requests so far, and the tool and MCP surface.
+  It judges what kind of council the task needs and writes each role's
+  instructions, plus a short target summary.
+- The builder decides instructions, member counts and think budgets, within the
+  model's configured maximums. Tool policy is fixed: researchers and critics
+  read, the synthesizer writes.
+- The target summary is kept by the council runtime, in the session and in the
+  sealed `council_chat_state`.
+- On every later user turn, the synthesizer gets the summary and a nudge: is
+  this a continuation or new work, and does the target still fit? Two tools
+  replace the planner's routing: `council_forward` (send the request to the
+  council as it is) and `council_rebuild` (summon the builder; the synthesizer
+  is told when the new instructions are ready, then forwards). Only the
+  synthesizer is given them.
+- The builder carries built-in worked examples, one detailed for coding. They
+  can be replaced with `council.builder.prompt`.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).

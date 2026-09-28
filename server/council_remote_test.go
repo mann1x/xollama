@@ -187,8 +187,8 @@ func TestAThinkingMemberGetsABudgetOnlyWhereOneIsUnderstood(t *testing.T) {
 			}
 			for _, r := range remote.reqs {
 				opts, _ := r["options"].(map[string]any)
-				if r["think"] != tc.want || opts["num_predict"] != float64(384)+budget {
-					t.Errorf("think %v, num_predict %v; want %v and %v", r["think"], opts["num_predict"], tc.want, float64(384)+budget)
+				if r["think"] != tc.want || opts["num_predict"] != float64(2048)+budget {
+					t.Errorf("think %v, num_predict %v; want %v and %v", r["think"], opts["num_predict"], tc.want, float64(2048)+budget)
 				}
 			}
 		})
