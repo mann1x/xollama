@@ -341,7 +341,7 @@ func (s *Server) getIntegrationStatuses(w http.ResponseWriter, _ *http.Request) 
 	statuses = append(statuses, integrationStatus{
 		ID:          "claude-desktop",
 		Name:        "Claude Code (Desktop)",
-		Description: "Use Ollama models in Claude Desktop",
+		Description: "Use xOllama models in Claude Desktop", // xollama-hook: app-brand
 		Installed:   &claudeDesktopInstalled,
 		Action:      "connect",
 	})

@@ -229,7 +229,11 @@ sibling to the `app` workspace (`vite.config.ts`, `vitest.config.ts`). A council
 model gets a badge and a Deliberation toggle (`hooks/useCouncil.ts`,
 `components/CouncilBadge.tsx`, `components/DeliberationButton.tsx`);
 `councilThink` in `app/ui/council.go` (the `council` hook in `app/ui/ui.go`)
-keeps its explicit `think:false`.
+keeps its explicit `think:false`. The app names itself xOllama (`app-brand`
+hook): `AppName` in `app/wintray/brand_xollama.go` for the tray, notifications
+and window title, and the build-time Vite plugin `xollamaBrand()`
+(`app/ui/app/xollama-brand.ts`) for the UI's strings — see
+`.claude/rules/app-brand.md`.
 **Desktop updates**: `app/updater/fork.go` reads this fork's GitHub releases
 (`XOLLAMA_UPDATE_FEED`, `XOLLAMA_UPDATE_PRERELEASE`) instead of `ollama.com`,
 hooked from `app/updater/updater.go` / `app/updater/updater_windows.go`;

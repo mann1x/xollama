@@ -5,6 +5,12 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — The desktop app says xOllama.**
+> - Found on eleven2go: two identical trays, both called Ollama.
+> - Tray tooltip, menu (Open/Quit xOllama), notifications and window title now come from `wintray.AppName`.
+> - The UI's ~170 "Ollama" strings are rewritten at build time by `app/ui/app/xollama-brand.ts` (a Vite plugin), not edited, so UI merges stay clean. "Ollama account" and "Ollama.com" stay, since they name ollama.com.
+> - Registry row `app-brand`. A new icon (the llama with an X painted on its chest) is in review; `app/assets/*.ico` are unchanged until the owner picks one.
+
 > **2026-09-28 — The xOllama tray no longer exits when a stock Ollama tray started first.**
 > - Found on eleven2go after the 9070 XT reboot. At logon the xOllama app logged "existing instance found, exiting": its single-instance check is `FindWindowW` on the tray window class, and the class was still upstream's `OllamaClass`, which Ollama's own tray had already registered.
 > - It also sent Ollama's app a focus request. The class is now `xOllamaClass` (the `app-state` hook). The source guard in `internal/onboarding` flags `"OllamaClass"` and fails without the fix.
