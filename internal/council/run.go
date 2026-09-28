@@ -25,6 +25,9 @@ type Progress struct {
 	// read it (broadcast.go).
 	Notes []Note
 	Seen  map[string]int
+	// Tests are the synthesizer's failed checks, one per test cycle ended
+	// (11.4): each cycle after one reads them all.
+	Tests []string
 }
 
 // RoundProgress is one round's research and review.
@@ -34,7 +37,7 @@ type RoundProgress struct {
 }
 
 func (p Progress) clone() Progress {
-	out := Progress{Route: p.Route, Notes: append([]Note(nil), p.Notes...)}
+	out := Progress{Route: p.Route, Notes: append([]Note(nil), p.Notes...), Tests: append([]string(nil), p.Tests...)}
 	if len(p.Seen) > 0 {
 		out.Seen = maps.Clone(p.Seen)
 	}
@@ -187,6 +190,9 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 		}
 		last := p.Rounds[len(p.Rounds)-1]
 		cfg.continuing = true
+		// A continued synthesizer has no council behind it to send a failed
+		// check back to.
+		cfg.MaxTests = 0
 		key := MemberKey(Synthesizer, 0, 0)
 		ans, turns, err := synthesize(ctx, m, cfg, d, conv, *p.Plan, last.Findings, last.Critiques, emit, p.Suspended[key])
 		if err != nil {
@@ -209,100 +215,122 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 	plan := *p.Plan
 	var findings, critiques []string
 	round := 0
-	for ; ; round++ {
-		mu.Lock()
-		for len(p.Rounds) <= round {
-			p.Rounds = append(p.Rounds, RoundProgress{})
+	// Each test cycle is a council round (or its revisions) and one
+	// synthesizer; a failed check starts the next from its report.
+	for cycle := 0; ; cycle++ {
+		cfg.tests, cfg.cycleStart = p.Tests[:min(cycle, len(p.Tests))], round
+		if cycle > 0 {
+			critiques = nil
 		}
-		p.Rounds[round].Findings = fit(p.Rounds[round].Findings, cfg.Researchers)
-		p.Rounds[round].Critiques = fit(p.Rounds[round].Critiques, cfg.Critics)
-		mu.Unlock()
-		findings = append([]string(nil), p.Rounds[round].Findings...)
-		froms := resumes()
-		var step []member
-		g, gctx := errgroup.WithContext(ctx)
-		for i := range cfg.Researchers {
-			if findings[i] != "" {
-				continue
+		for ; ; round++ {
+			mu.Lock()
+			for len(p.Rounds) <= round {
+				p.Rounds = append(p.Rounds, RoundProgress{})
 			}
-			key := MemberKey(Researcher, i, round)
-			step = append(step, member{Researcher, key})
-			from := froms[key]
-			g.Go(func() error {
-				out, turns, err := research(gctx, m, cfg, d, conv, plan, i, round, critiques, emit, from)
-				if err == nil {
-					settle(key, turns, func() { findings[i], p.Rounds[round].Findings[i] = out, out })
+			p.Rounds[round].Findings = fit(p.Rounds[round].Findings, cfg.Researchers)
+			p.Rounds[round].Critiques = fit(p.Rounds[round].Critiques, cfg.Critics)
+			mu.Unlock()
+			findings = append([]string(nil), p.Rounds[round].Findings...)
+			froms := resumes()
+			var step []member
+			g, gctx := errgroup.WithContext(ctx)
+			for i := range cfg.Researchers {
+				if findings[i] != "" {
+					continue
 				}
-				return err
-			})
-		}
-		if err := g.Wait(); err != nil {
-			return Result{Route: route, Draws: d}, err
-		}
-		if res, ok := suspended(Result{Route: route, Draws: d}, step...); ok {
-			return res, nil
-		}
-		critiques = append([]string(nil), p.Rounds[round].Critiques...)
-		froms = resumes()
-		step = nil
-		// The first critic to confirm where the error is stops the others:
-		// the synthesizer starts on it rather than wait for them.
-		cctx, stop := context.WithCancel(ctx)
-		var confirm atomic.Bool
-		g, gctx = errgroup.WithContext(cctx)
-		for i := range cfg.Critics {
-			if critiques[i] != "" {
-				continue
+				key := MemberKey(Researcher, i, round)
+				step = append(step, member{Researcher, key})
+				from := froms[key]
+				g.Go(func() error {
+					out, turns, err := research(gctx, m, cfg, d, conv, plan, i, round, critiques, emit, from)
+					if err == nil {
+						settle(key, turns, func() { findings[i], p.Rounds[round].Findings[i] = out, out })
+					}
+					return err
+				})
 			}
-			key := MemberKey(Critic, i, round)
-			step = append(step, member{Critic, key})
-			from := froms[key]
-			g.Go(func() error {
-				out, turns, err := critique(gctx, m, cfg, d, conv, plan, findings, i, round, emit, from)
-				if err != nil && confirm.Load() && ctx.Err() == nil {
-					out, turns, err = stoppedCritique, nil, nil
+			if err := g.Wait(); err != nil {
+				return Result{Route: route, Draws: d}, err
+			}
+			if res, ok := suspended(Result{Route: route, Draws: d}, step...); ok {
+				return res, nil
+			}
+			critiques = append([]string(nil), p.Rounds[round].Critiques...)
+			froms = resumes()
+			step = nil
+			// The first critic to confirm where the error is stops the others:
+			// the synthesizer starts on it rather than wait for them.
+			cctx, stop := context.WithCancel(ctx)
+			var confirm atomic.Bool
+			g, gctx = errgroup.WithContext(cctx)
+			for i := range cfg.Critics {
+				if critiques[i] != "" {
+					continue
 				}
-				if err == nil {
-					settle(key, turns, func() { critiques[i], p.Rounds[round].Critiques[i] = out, out })
-					if _, ok := confirmed(out); ok && turns == nil {
-						confirm.Store(true)
-						stop()
+				key := MemberKey(Critic, i, round)
+				step = append(step, member{Critic, key})
+				from := froms[key]
+				g.Go(func() error {
+					out, turns, err := critique(gctx, m, cfg, d, conv, plan, findings, i, round, emit, from)
+					if err != nil && confirm.Load() && ctx.Err() == nil {
+						out, turns, err = stoppedCritique, nil, nil
+					}
+					if err == nil {
+						settle(key, turns, func() { critiques[i], p.Rounds[round].Critiques[i] = out, out })
+						if _, ok := confirmed(out); ok && turns == nil {
+							confirm.Store(true)
+							stop()
+						}
+					}
+					return err
+				})
+			}
+			err := g.Wait()
+			stop()
+			if err != nil {
+				return Result{Route: route, Draws: d}, err
+			}
+			if confirm.Load() {
+				// A critic that was waiting on the client is not asked again.
+				for i := range cfg.Critics {
+					key := MemberKey(Critic, i, round)
+					if _, waiting := p.Suspended[key]; waiting {
+						settle(key, nil, func() { critiques[i], p.Rounds[round].Critiques[i] = stoppedCritique, stoppedCritique })
 					}
 				}
-				return err
-			})
-		}
-		err := g.Wait()
-		stop()
-		if err != nil {
-			return Result{Route: route, Draws: d}, err
-		}
-		if confirm.Load() {
-			// A critic that was waiting on the client is not asked again.
-			for i := range cfg.Critics {
-				key := MemberKey(Critic, i, round)
-				if _, waiting := p.Suspended[key]; waiting {
-					settle(key, nil, func() { critiques[i], p.Rounds[round].Critiques[i] = stoppedCritique, stoppedCritique })
-				}
+			}
+			if res, ok := suspended(Result{Route: route, Draws: d}, step...); ok {
+				return res, nil
+			}
+			if !NeedsRevision(cfg, critiques, round) {
+				break
 			}
 		}
-		if res, ok := suspended(Result{Route: route, Draws: d}, step...); ok {
+		if cycle < len(p.Tests) {
+			// This cycle's check already failed: the turn resumes past it.
+			round++
+			continue
+		}
+		key := MemberKey(Synthesizer, 0, cycle)
+		if cycle > 0 && p.Suspended[key] == nil {
+			// The failed check before it streamed as content too.
+			emit(Event{Role: Synthesizer, Round: cycle, Kind: Content, Text: "\n\n"})
+		}
+		ans, turns, err := synthesize(ctx, m, cfg, d, conv, plan, findings, critiques, emit, p.Suspended[key])
+		if err != nil {
+			return Result{Route: route, Rounds: round + 1, Draws: d}, err
+		}
+		answered(key, turns)
+		if res, ok := suspended(Result{Route: route, Rounds: round + 1, Draws: d}, member{Synthesizer, key}); ok {
 			return res, nil
 		}
-		if !NeedsRevision(cfg, critiques, round) {
-			break
+		if cfg.retested(ans, cycle) {
+			mark(func() { p.Tests = append(p.Tests, ans) })
+			round++
+			continue
 		}
+		return Result{Route: route, Answer: ans, Rounds: round + 1, Draws: d, Kept: Kept(p)}, nil
 	}
-	key := MemberKey(Synthesizer, 0, 0)
-	ans, turns, err := synthesize(ctx, m, cfg, d, conv, plan, findings, critiques, emit, p.Suspended[key])
-	if err != nil {
-		return Result{Route: route, Rounds: round + 1, Draws: d}, err
-	}
-	answered(key, turns)
-	if res, ok := suspended(Result{Route: route, Rounds: round + 1, Draws: d}, member{Synthesizer, key}); ok {
-		return res, nil
-	}
-	return Result{Route: route, Answer: ans, Rounds: round + 1, Draws: d, Kept: Kept(p)}, nil
 }
 
 // member names one member of a step: its role, for the tool policy, and its key.

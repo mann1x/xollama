@@ -212,6 +212,13 @@ func (cfg Config) toolNote(r Role) string {
 		return " Do not call tools: they change things, and only the synthesizer calls them." + prose
 	}
 	note := fmt.Sprintf(" You may call these tools, which only read: %s. Call them first, for the facts you need, and write your report only once their results are in. The others change things, and only the synthesizer calls them.%s", strings.Join(ro, ", "), prose)
+	if r == Researcher && slices.ContainsFunc(cfg.Tools, func(t api.Tool) bool {
+		return !t.Function.ReadOnly && t.Function.Name != EvidenceTool && t.Function.Name != PostTool
+	}) {
+		// Researchers propose, the synthesizer tests (11.4): ab-4's
+		// researchers reported a diagnosis nobody checked.
+		note += " When the task needs a change, propose it: what to change, where, and how to check that it worked. The synthesizer makes and checks it."
+	}
 	if r == Critic {
 		// Measured live: critics re-read every file the researchers had read.
 		note += " The findings carry the tool results the researchers read; call a tool only for what they lack."
@@ -331,7 +338,9 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 		}
 		if len(rep.Calls) == 0 {
 			out := replyText(turns, rep.Content)
-			if !writes(req.Role) {
+			// A failed check goes back to the researchers with what the
+			// synthesizer's calls returned, as a finding carries its reads.
+			if !writes(req.Role) || (req.Role == Synthesizer && cfg.retested(out, req.Round)) {
 				out += cfg.evidence(req.Role, key, turns)
 			}
 			return out, nil, nil

@@ -97,8 +97,12 @@ type Config struct {
 	Jitter float64
 	// Seed, when non-nil, makes a turn reproducible. Nil draws a random seed
 	// per member per request.
-	Seed             *int64
-	MaxRounds        int
+	Seed      *int64
+	MaxRounds int
+	// MaxTests bounds the test cycles of a turn with tools (11.4): the
+	// synthesizer applies and checks the council's proposals, and a failed
+	// check sends its result back to the researchers.
+	MaxTests         int
 	ShowDeliberation bool
 	// Broadcast offers council_post to members working side by side
 	// (broadcast.go).
@@ -137,6 +141,10 @@ type Config struct {
 	Previous *Progress
 	// continuing marks a synthesizer continuing the previous deliberation.
 	continuing bool
+	// tests are the reports of the turn's failed checks so far, and
+	// cycleStart the round the current test cycle began at (RunFrom).
+	tests      []string
+	cycleStart int
 	// ResultBudget is the characters of tool results a member carries whole
 	// in its own turns; past it the rest travel by ref. 0 is the default.
 	ResultBudget int
@@ -150,6 +158,7 @@ const (
 	DefaultResearchers = 2
 	DefaultCritics     = 1
 	DefaultJitter      = 0.02
+	DefaultMaxTests    = 6
 )
 
 // The caps are room, not a target: the prompts ask for terse replies. A
@@ -163,7 +172,7 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 	cfg := Config{
 		Researchers: DefaultResearchers, Critics: DefaultCritics,
 		Temperature: temperature, Jitter: DefaultJitter,
-		MaxRounds: 1, ShowDeliberation: true,
+		MaxRounds: 1, MaxTests: DefaultMaxTests, ShowDeliberation: true,
 		MaxTokens: map[Role]int{}, Prompts: map[Role]string{}, Models: map[Role]string{},
 		Hosts: map[Role]string{}, Think: map[Role]string{},
 		Charter: Charter(c),
@@ -253,7 +262,8 @@ func NewDraws(cfg Config) Draws {
 		t := cfg.Temperature * (1 + cfg.Jitter*(2*src.Float64()-1))
 		return Draw{Seed: seed(), Temperature: t}
 	}
-	rounds := max(cfg.MaxRounds, 1)
+	// Each test cycle may take every revision round again.
+	rounds := max(cfg.MaxRounds, 1) * (max(cfg.MaxTests, 0) + 1)
 	d := Draws{
 		Decide: fixed(), Direct: fixed(), Plan: fixed(), Synth: fixed(),
 		Researchers: make([][]Draw, rounds), Critics: make([][]Draw, rounds),

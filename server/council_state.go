@@ -28,7 +28,7 @@ package server
 //	          6 kept(Progress) 7 kept_n(varint) 8 kept_prefix(bytes)  -- the deliberation an
 //	          answered turn leaves for the next (council_continue.go)
 //	Progress  1 route(string) 2 plan(Plan) 3 rounds(Round, repeated) 4 suspended(Member, repeated)
-//	          5 notes(Note, repeated) 6 seen(Seen, repeated)
+//	          5 notes(Note, repeated) 6 seen(Seen, repeated) 7 tests(string, repeated)
 //	Note      1 id(string) 2 from(string) 3 text(string)
 //	Seen      1 key(string) 2 n(varint)
 //	Member    1 key(string) 2 turns(bytes: the member's []api.Message as JSON)
@@ -170,6 +170,9 @@ func marshalProgress(p council.Progress) []byte {
 		sb = protowire.AppendTag(sb, 2, protowire.VarintType)
 		sb = protowire.AppendVarint(sb, uint64(p.Seen[k]))
 		b = appendBytes(b, 6, sb)
+	}
+	for _, t := range p.Tests {
+		b = appendRepeated(b, 7, t)
 	}
 	return b
 }
@@ -389,6 +392,8 @@ func unmarshalProgress(b []byte) (council.Progress, error) {
 				}
 				p.Seen[key] = int(seen)
 			}
+		case 7:
+			p.Tests = append(p.Tests, string(v))
 		}
 		return nil
 	})

@@ -9,7 +9,8 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 > - ab-4 simple on eleven2go (kvarn3, `-c 393216`, two live slots): the council was unfixed at 1463 s against plain's 233 s. The researchers could not test, were capped at 384 tokens, and read once each. The diagnosis went untested. The synthesizer repeated one failing edit 15 times, and each of its resumes re-prefilled about 18k tokens.
 > - 11.1: reply caps 2048/2048/1024/2048 (planner/researcher/critic/synthesizer) with terse prompts, evidence carried whole to 4000 characters and capped at 16000, notes 600 characters.
 > - 11.2: a result that repeats an earlier identical call's result gets a generic note (`TestARepeatedCallWithTheSameResultIsPointedOut`, checked by removal).
-> - Open: 11.3 keeps a resumed member's cache (asked opencoti, #525). 11.4 (researchers propose, the synthesizer tests, results fed back) and 11.5 (the builder) are designed in the plan.
+> - 11.4 test loop: researchers propose, the synthesizer checks, and a failed check (`VERDICT: RETEST`, with its evidence) goes back to every member of the next cycle, up to 6 cycles, carried in the state (Progress field 7). Loop and prefix checked by removal.
+> - Open: 11.3 keeps a resumed member's cache (asked opencoti, #525). Still open in 11.4: splitting the work and preemption. 11.5 (the builder) is designed in the plan. No live run yet.
 
 > **2026-09-28 — v0.34.4-xollama.2 published (pre-release) and installed on eleven2go; a council says --kv-unified once.**
 > - PR #4 merged as `ac1af15c` (23 checks green); release run 36356726357 published the pre-release, not promoted. Installed on eleven2go with `/SILENT` through the scheduled task: 22 s, exit 0, the think-budget Ollama untouched (same process, files, models and uninstall entry); `xollama.exe` byte-identical to the release, PAYLOAD_ID equal. Docker image dispatched on the tag.

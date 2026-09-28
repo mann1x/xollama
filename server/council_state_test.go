@@ -124,6 +124,20 @@ func TestTheNotesBoardTravelsInTheState(t *testing.T) {
 	}
 }
 
+// The failed checks of a turn (11.4) travel in the state, in order, so a
+// resumed turn starts at the cycle after the last.
+func TestTheFailedChecksTravelInTheState(t *testing.T) {
+	s := testState()
+	s.progress.Tests = []string{"tried a; the test failed. " + council.Retest, "tried b; still failing. " + council.Retest}
+	got, err := unmarshalCouncilState(s.marshal())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.progress.Tests, s.progress.Tests) {
+		t.Errorf("tests = %q, want %q", got.progress.Tests, s.progress.Tests)
+	}
+}
+
 // The key is kept in the store, owner-only, and read back after a restart.
 func TestTheCouncilStateKeyIsKept(t *testing.T) {
 	dir := t.TempDir()

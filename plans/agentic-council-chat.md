@@ -1788,7 +1788,21 @@ on opencoti's answer: does a resume without placement reuse the session's own
 cached tokens, and must a pool outlive its attached sessions? Measured goal: a
 resumed synthesizer step prefills only its new tokens.
 
-### 11.4 Researchers propose, the synthesizer tests (design)
+### 11.4 Researchers propose, the synthesizer tests (loop built 2026-09-28; split and preemption open)
+- Built: a synthesizer ends a failed check with `VERDICT: RETEST`. The report,
+  with its calls' evidence, becomes `Progress.Tests` (state field 7) and
+  starts the next cycle. `base` gives every member of that cycle all failed
+  checks after the plan. Researchers are asked to propose (what, where, how to
+  check) when a tool that changes something exists. `MaxTests` defaults to 6.
+  The continue route does not loop. Guards:
+  `TestAFailedCheckGoesBackToTheResearchers`,
+  `TestATurnResumesPastAFailedCheck` and
+  `TestTheFailedChecksTravelInTheState` (loop and prefix checked by removal).
+- Watch live: each cycle builds its own layers, since the failed checks
+  change the prefix. A cycle that runs within one trip holds more pools than
+  `councilPoolSeats` counts. A pool that can't be built runs on the owner, so
+  this is slower, not wrong.
+- Design:
 - A researcher's reply is a proposal: the change, where it goes, and how to tell
   whether it worked. Researchers and critics keep read-only tools, and the
   synthesizer stays the only writer.

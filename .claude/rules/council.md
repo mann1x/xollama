@@ -355,3 +355,16 @@ paths:
   the board persists through `Progress.Notes`/`Seen` (state Progress fields
   5-6). Keep the caps (`maxNoteChars`, `maxNotes`) and the "do not wait"
   wording: the named risk is members chatting instead of working.
+- **Test cycles (11.4)**: `Config.MaxTests` (`DefaultMaxTests` 6) bounds a
+  tool turn's cycles. A synthesizer ending with `Retest` ("VERDICT: RETEST")
+  carries its evidence like a finding, is recorded in `Progress.Tests` (state
+  Progress field 7), and starts the next cycle. `base` adds every failed check
+  after the plan, so all members of a cycle share one prefix. The synthesizer
+  key and `Request.Round` are the cycle ("s", "s.2"...). Critics' `REVISE` and
+  `NeedsRevision` count rounds from `cfg.cycleStart`. The continue route sets
+  `MaxTests` 0. Researchers are asked to propose only when a tool that changes
+  something exists. Guards: `TestAFailedCheckGoesBackToTheResearchers`,
+  `TestATurnResumesPastAFailedCheck`, `TestTheFailedChecksTravelInTheState`.
+- **A repeated call (11.2)**: `transcript` appends `repeatedCall` to a result
+  that repeats, word for word, an earlier identical call's result in the same
+  member's turns. Keep it generic: it serves any tool.

@@ -260,10 +260,42 @@ func MakePlan(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Mess
 	return p, nil
 }
 
-// base is the conversation plus the plan: the prefix every later member shares.
+// base is the conversation plus the plan: the prefix every later member
+// shares. From the second test cycle on it carries the failed checks so far,
+// so no member proposes again what a check refuted.
 func base(cfg Config, conv []api.Message, p Plan) []api.Message {
 	b, _ := json.Marshal(p)
-	return append(clone(conv), planMsg(cfg), api.Message{Role: "assistant", Content: string(b)})
+	out := append(clone(conv), planMsg(cfg), api.Message{Role: "assistant", Content: string(b)})
+	if len(cfg.tests) > 0 {
+		out = append(out, user(testsIntro+joinNumbered("TEST", cfg.tests)))
+	}
+	return out
+}
+
+// Retest is what the synthesizer ends with when a check of the council's
+// proposals failed and the council should propose again from its result.
+const Retest = "VERDICT: RETEST"
+
+// testsIntro leads the failed checks every member of a later cycle reads.
+const testsIntro = "The synthesizer applied the council's proposals and checked them; these checks failed. Each says what was tried and what came back. Do not propose again what a check refuted; build on what it showed.\n\n"
+
+// testing reports whether the synthesizer of cycle may send the council back:
+// only with tools to check with, and within the bound.
+func (cfg Config) testing(cycle int) bool {
+	return len(cfg.Tools) > 0 && cycle < cfg.MaxTests
+}
+
+// testNote asks the synthesizer to check its changes and report a failure.
+func (cfg Config) testNote(cycle int) string {
+	if !cfg.testing(cycle) {
+		return ""
+	}
+	return fmt.Sprintf(" Check each change with the tools where it can be checked. If a check fails and the findings give you nothing else to try, end with %q followed by what you tried and what the check returned: the council proposes again from that.", Retest)
+}
+
+// retested reports whether a synthesizer's reply is a failed check sent back.
+func (cfg Config) retested(reply string, cycle int) bool {
+	return cfg.testing(cycle) && strings.Contains(reply, Retest)
 }
 
 // Research runs researcher i. prior holds the previous round's critiques, if any.
@@ -293,7 +325,7 @@ func Critique(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Mess
 
 func critique(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, p Plan, findings []string, i, round int, emit Emit, turns []api.Message) (string, []api.Message, error) {
 	instr := prompt(cfg, Critic) + cfg.toolNote(Critic)
-	if round+1 < max(cfg.MaxRounds, 1) {
+	if round-cfg.cycleStart+1 < max(cfg.MaxRounds, 1) {
 		instr += fmt.Sprintf(" If the findings are not good enough to answer from, end with %q.", Revise)
 	}
 	if len(cfg.Tools) > 0 {
@@ -310,7 +342,7 @@ func critique(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Mess
 
 // NeedsRevision reports whether another round is wanted and allowed.
 func NeedsRevision(cfg Config, critiques []string, round int) bool {
-	if round+1 >= max(cfg.MaxRounds, 1) || slices.ContainsFunc(critiques, func(c string) bool { _, ok := confirmed(c); return ok }) {
+	if round-cfg.cycleStart+1 >= max(cfg.MaxRounds, 1) || slices.ContainsFunc(critiques, func(c string) bool { _, ok := confirmed(c); return ok }) {
 		return false
 	}
 	for _, c := range critiques {
@@ -341,14 +373,15 @@ func Synthesize(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Me
 }
 
 func synthesize(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, p Plan, findings, critiques []string, emit Emit, turns []api.Message) (string, []api.Message, error) {
+	cycle := len(cfg.tests)
 	msgs := append(base(cfg, conv, p), user(joinNumbered("FINDINGS OF RESEARCHER", findings)),
 		user(joinNumbered("CRITIQUE", critiques)),
-		user("ROLE: SYNTHESIZER. "+prompt(cfg, Synthesizer)+cfg.toolNote(Synthesizer)+confirmedNote(cfg, critiques)+continuedNote(cfg)))
+		user("ROLE: SYNTHESIZER. "+prompt(cfg, Synthesizer)+cfg.toolNote(Synthesizer)+confirmedNote(cfg, critiques)+continuedNote(cfg)+cfg.testNote(cycle)))
 	if cfg.System != "" {
 		msgs = append(msgs, user(systemIntro+cfg.System))
 	}
 	return callFrom(ctx, m, cfg, emit, Request{
-		Role: Synthesizer, Model: cfg.Models[Synthesizer], Host: cfg.Hosts[Synthesizer], Messages: msgs,
+		Role: Synthesizer, Round: cycle, Model: cfg.Models[Synthesizer], Host: cfg.Hosts[Synthesizer], Messages: msgs,
 		Seed: d.Synth.Seed, Temperature: d.Synth.Temperature, MaxTokens: maxTok(cfg, Synthesizer), Think: cfg.Think[Synthesizer],
 	}, Content, turns)
 }

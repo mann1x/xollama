@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ollama/ollama/api"
@@ -180,6 +181,22 @@ func TestResearchersAreToldWhichToolsOnlyRead(t *testing.T) {
 		note := strings.Contains(last, "You may call these tools, which only read: read_files.")
 		if want := c.Role == Researcher || c.Role == Critic; note != want {
 			t.Errorf("%s: tool note %v in %q", c.Role, note, last)
+		}
+		// Researchers propose the change that write_file would make.
+		if propose := strings.Contains(last, "propose it"); propose != (c.Role == Researcher) {
+			t.Errorf("%s: asked to propose %v", c.Role, propose)
+		}
+	}
+	// With only tools that read there is no change to propose.
+	cfg := toolCfg()
+	cfg.Tools = testTools[:1]
+	s = &toolStub{stub: stub{route: `{"route":"council"}`}}
+	if _, err := Run(t.Context(), cfg, s, conv, func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range s.calls {
+		if strings.Contains(c.Messages[len(c.Messages)-1].Content, "propose it") {
+			t.Errorf("%s asked to propose a change with no tool that makes one", c.Role)
 		}
 	}
 }
@@ -514,5 +531,98 @@ func TestARepeatedCallWithTheSameResultIsPointedOut(t *testing.T) {
 	want := []string{"error: no match", "error: no match" + fmt.Sprintf(repeatedCall, "c0"), "ok", "error: no match"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("results %q, want %q", got, want)
+	}
+}
+
+// retestStub's synthesizer reports a failed check fails times, then answers.
+type retestStub struct {
+	toolStub
+	fails int
+	synth atomic.Int32
+}
+
+func (s *retestStub) StreamTools(ctx context.Context, req Request, onToken func(string)) (Reply, error) {
+	if req.Role != Synthesizer {
+		return s.toolStub.StreamTools(ctx, req, onToken)
+	}
+	s.mu.Lock()
+	s.calls = append(s.calls, req)
+	s.mu.Unlock()
+	n := int(s.synth.Add(1))
+	out := "fixed it"
+	if n <= s.fails {
+		out = fmt.Sprintf("tried change %d; the test failed. %s", n, Retest)
+	}
+	onToken(out)
+	return Reply{Content: out}, nil
+}
+
+// A failed check goes back to the council: the next cycle's researchers,
+// critics and synthesizer read every failed check so far, and the answer is
+// the last synthesizer's. Without tools there is nothing to check with, and
+// the bound stops the loop.
+func TestAFailedCheckGoesBackToTheResearchers(t *testing.T) {
+	s := &retestStub{toolStub: toolStub{stub: stub{route: `{"route":"council"}`}}, fails: 2}
+	res, err := Run(t.Context(), toolCfg(), s, conv, func(Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Answer != "fixed it" || s.synth.Load() != 3 {
+		t.Fatalf("answer %q after %d synthesizers, want the third's", res.Answer, s.synth.Load())
+	}
+	if got := s.count(Researcher); got != 3*DefaultResearchers {
+		t.Errorf("%d researcher calls, want %d", got, 3*DefaultResearchers)
+	}
+	var last Request
+	for _, c := range s.calls {
+		if c.Role == Researcher {
+			last = c
+		}
+	}
+	all := ""
+	for _, m := range last.Messages {
+		all += m.Content + "\n"
+	}
+	if !strings.Contains(all, "TEST 1:\ntried change 1") || !strings.Contains(all, "TEST 2:\ntried change 2") {
+		t.Errorf("the last cycle's researcher did not read both failed checks:\n%s", all)
+	}
+
+	// Bounded: two cycles at most, the second's report is the answer.
+	s = &retestStub{toolStub: toolStub{stub: stub{route: `{"route":"council"}`}}, fails: 5}
+	cfg := toolCfg()
+	cfg.MaxTests = 1
+	res, _ = Run(t.Context(), cfg, s, conv, func(Event) {})
+	if s.synth.Load() != 2 || !strings.Contains(res.Answer, "tried change 2") {
+		t.Errorf("bound 1: %d synthesizers, answer %q", s.synth.Load(), res.Answer)
+	}
+
+	// No tools, no checks: the first answer stands.
+	s = &retestStub{toolStub: toolStub{stub: stub{route: `{"route":"council"}`}}, fails: 5}
+	res, _ = Run(t.Context(), FromModel(nil, 0.7), s, conv, func(Event) {})
+	if n := s.count(Synthesizer); n != 1 || s.count(Researcher) != DefaultResearchers {
+		t.Errorf("without tools: %d synthesizers, want 1 (answer %q)", n, res.Answer)
+	}
+}
+
+// A turn resumed after a failed check starts at the next cycle: the check
+// that failed is not run again.
+func TestATurnResumesPastAFailedCheck(t *testing.T) {
+	s := &retestStub{toolStub: toolStub{stub: stub{route: `{"route":"council"}`}}}
+	from := Progress{
+		Route: "council", Plan: &Plan{Plan: "p", Briefs: []string{"a", "b"}},
+		Rounds: []RoundProgress{{Findings: []string{"f1", "f2"}, Critiques: []string{"c1"}}},
+		Tests:  []string{"tried the first change. " + Retest},
+	}
+	res, err := RunFrom(t.Context(), toolCfg(), s, conv, from, nil, func(Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Answer != "fixed it" || s.synth.Load() != 1 || s.count(Researcher) != DefaultResearchers {
+		t.Fatalf("answer %q, %d synthesizers, %d researchers; want one cycle past the check", res.Answer, s.synth.Load(), s.count(Researcher))
+	}
+	for _, c := range s.calls {
+		if c.Role == Synthesizer && (c.Round != 1 || !strings.Contains(c.Messages[len(c.Messages)-4].Content, "TEST 1:\ntried the first change")) {
+			t.Errorf("the synthesizer ran as cycle %d without the failed check", c.Round)
+		}
 	}
 }

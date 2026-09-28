@@ -269,6 +269,28 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
      {"role":"tool","tool_call_id":"r1:call_x","content":"Deadline: 14 October."}]}
   ```
 
+## Researchers propose, the synthesizer checks
+
+On a turn with tools, the researchers and critics only read, and the
+synthesizer is the only member that changes anything. When the task needs a
+change and your client offers a tool that makes one, each researcher proposes
+it: what to change, where, and how to check that it worked. The synthesizer
+makes the changes it judges right and checks them with the tools.
+
+When a check fails and the findings leave nothing else to try, the synthesizer
+ends with `VERDICT: RETEST` and says what it tried and what the check returned.
+The council then goes round again. Every member of the next cycle reads each
+failed check so far, and is told not to propose again what a check refuted.
+The researchers propose from there, the critics review, and the synthesizer
+checks again. A turn runs at most 6 cycles. The last synthesizer's reply is
+the answer, and each failed check stays in the content before it, so you see
+what was tried.
+
+Without tools there is nothing to check with, and the council answers once, as
+before. The cycles travel in `council_chat_state`, so a resumed turn starts at
+the cycle after the last failed check. A turn that continues the last
+deliberation (below) runs its synthesizer alone and does not go round again.
+
 ## One council for the whole conversation
 
 The council behind a chat stays alive between your messages. When a turn ends
