@@ -986,7 +986,7 @@ func (cm *councilMembers) place(ctx context.Context, r council.Request, req *api
 	if t == nil || r.Model != "" {
 		return nil, "", none
 	}
-	if r.Role == council.Planner || r.Role == roleCompactWriter {
+	if r.Role == council.Planner || r.Role == council.Builder || r.Role == roleCompactWriter {
 		req.SessionID = t.owner
 		return t.ownerPlacement(ctx, r.Messages), "", none
 	}

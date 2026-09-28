@@ -269,6 +269,33 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
      {"role":"tool","tool_call_id":"r1:call_x","content":"Deadline: 14 October."}]}
   ```
 
+## A council shaped by the work
+
+A council is configured before anyone knows what it will be asked, so its own
+instructions are general. The first time a request goes to the council, a
+**builder** runs where the planner does. It reads your system prompt, your
+requests so far and the tools your client offers, and judges what kind of work
+this is. Then it writes, for each role, an instruction that fits the work, and
+chooses how much each role thinks and how many check cycles the work deserves
+(below). A proof-reading job gets one cycle, a bug fix six, a feature across
+several files more, up to 12. It also writes a target: a few sentences saying
+what the council is set up for.
+
+The builder shapes the council you defined and never changes it:
+
+- The roles, their counts and models stay as they are.
+- A role prompt you set stands; the builder's instruction follows it.
+- A think setting you set stands; the builder chooses only for the roles you
+  left unset.
+- Researchers and critics still only read, and the synthesizer is still the
+  only member that changes anything.
+
+The build is kept with the council's deliberation, in the server's memory and
+in `council_chat_state`. On a later message, the route decision reads the
+target and can send the message to a council built again (`rebuild`) when it
+is new work the target does not fit. A reply from the builder that is not the
+JSON asked for shapes nothing: the council runs as configured.
+
 ## Researchers propose, the synthesizer checks
 
 On a turn with tools, the researchers and critics only read, and the

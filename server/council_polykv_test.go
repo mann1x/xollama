@@ -203,7 +203,7 @@ func TestACouncilOnPolyKVBuildsItsTreeOnce(t *testing.T) {
 	for i, role := range e.roles {
 		pl := e.placements[i]
 		switch role {
-		case "route", "planner":
+		case "route", "planner", "builder":
 			if e.sessions[i] != owner || pl == nil || pl.NumCtx != 16384 || pl.PoolID != nil {
 				t.Errorf("%s: session %q placement %+v, want the owner booking 16384", role, e.sessions[i], pl)
 			}

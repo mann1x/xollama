@@ -30,6 +30,9 @@ type Progress struct {
 	// the planner made for cycle c from them.
 	Tests   []string
 	Replans []Plan
+	// Build is the builder's shaping of the council (build.go), kept with
+	// the deliberation so later turns read its target.
+	Build *Build
 }
 
 // RoundProgress is one round's research and review.
@@ -39,7 +42,7 @@ type RoundProgress struct {
 }
 
 func (p Progress) clone() Progress {
-	out := Progress{Route: p.Route, Notes: append([]Note(nil), p.Notes...), Tests: append([]string(nil), p.Tests...)}
+	out := Progress{Route: p.Route, Notes: append([]Note(nil), p.Notes...), Tests: append([]string(nil), p.Tests...), Build: p.Build.clone()}
 	if len(p.Seen) > 0 {
 		out.Seen = maps.Clone(p.Seen)
 	}
@@ -191,8 +194,9 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 			if !ok {
 				return Result{Route: route, Draws: d}, errNothingToContinue
 			}
-			mark(func() { p.Plan, p.Rounds = &pl, []RoundProgress{last} })
+			mark(func() { p.Plan, p.Rounds, p.Build = &pl, []RoundProgress{last}, cfg.Previous.Build.clone() })
 		}
+		cfg = cfg.apply(p.Build)
 		last := p.Rounds[len(p.Rounds)-1]
 		cfg.continuing = true
 		// A continued synthesizer has no council behind it to send a failed
@@ -210,6 +214,21 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 		return Result{Route: route, Answer: ans, Draws: d, Kept: Kept(p)}, nil
 	}
 
+	// The builder shapes the council the first time a request reaches it, and
+	// again when the request is new work its target does not fit.
+	if p.Build == nil {
+		b := cfg.previousBuild()
+		if b == nil || route == RouteRebuild {
+			var err error
+			if b, err = MakeBuild(ctx, m, cfg, d, conv, emit); err != nil {
+				return Result{Route: route, Draws: d}, err
+			}
+		}
+		if b != nil {
+			mark(func() { p.Build = b.clone() })
+		}
+	}
+	cfg = cfg.apply(p.Build)
 	if p.Plan == nil {
 		plan, err := MakePlan(ctx, m, cfg, d, conv, emit)
 		if err != nil {

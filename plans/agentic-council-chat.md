@@ -1836,6 +1836,14 @@ Owner's answers (2026-09-28):
 - Preemption only for test results and verdicts. The examples are built into
   xollama.
 
+Built 2026-09-28: the builder (`internal/council/build.go`). It runs on the
+owner before the first plan and on a `rebuild` route. Its instructions,
+unset-role think budgets and `MaxTests` (0..12) are applied over the user's
+council. `Progress.Build` is state field 9, kept across turns. The route
+decision reads the target and offers `rebuild`. Open: the synthesizer's front
+turn on tool turns (`council_forward`/`council_rebuild`), which replaces the
+planner's route decision there.
+
 The earlier draft, where these differ:
 - A council starts with only the synthesizer. The first request it forwards to
   the council summons the **builder** on the planner's slot. The builder reads

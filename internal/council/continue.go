@@ -42,7 +42,7 @@ func Kept(p Progress) *Progress {
 		return nil
 	}
 	last := p.Rounds[len(p.Rounds)-1]
-	k := Progress{Route: RouteCouncil, Plan: p.Plan, Rounds: []RoundProgress{last}}
+	k := Progress{Route: RouteCouncil, Plan: p.Plan, Rounds: []RoundProgress{last}, Build: p.Build}
 	k = k.clone()
 	return &k
 }

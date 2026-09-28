@@ -649,7 +649,7 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 // decision, a direct answer and the plan continue the conversation, and a
 // direct answer is then served from the same KV a plain chat would have used.
 func (cm *councilMembers) memberSession(r council.Request) string {
-	if cm.session == "" || r.Role == council.Planner || r.Role == roleCompactWriter {
+	if cm.session == "" || r.Role == council.Planner || r.Role == council.Builder || r.Role == roleCompactWriter {
 		return cm.session
 	}
 	id := cm.session + "~" + string(r.Role)

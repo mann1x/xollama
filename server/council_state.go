@@ -29,7 +29,10 @@ package server
 //	          answered turn leaves for the next (council_continue.go)
 //	Progress  1 route(string) 2 plan(Plan) 3 rounds(Round, repeated) 4 suspended(Member, repeated)
 //	          5 notes(Note, repeated) 6 seen(Seen, repeated) 7 tests(string, repeated)
-//	          8 replans(Plan, repeated)
+//	          8 replans(Plan, repeated) 9 build(Build)
+//	Build     1 target(string) 2 instruction(RoleText, repeated) 3 think(RoleN, repeated)
+//	          4 max_tests(varint)
+//	RoleText  1 role(string) 2 text(string)       RoleN  1 role(string) 2 n(varint)
 //	Note      1 id(string) 2 from(string) 3 text(string)
 //	Seen      1 key(string) 2 n(varint)
 //	Member    1 key(string) 2 turns(bytes: the member's []api.Message as JSON)
@@ -173,7 +176,68 @@ func marshalProgress(p council.Progress) []byte {
 	for _, pl := range p.Replans {
 		b = appendBytes(b, 8, marshalPlan(pl))
 	}
+	if p.Build != nil {
+		b = appendBytes(b, 9, marshalBuild(p.Build))
+	}
 	return b
+}
+
+func marshalBuild(bd *council.Build) []byte {
+	var b []byte
+	b = appendString(b, 1, bd.Target)
+	for _, r := range slices.Sorted(maps.Keys(bd.Instructions)) {
+		var rb []byte
+		rb = appendString(rb, 1, string(r))
+		rb = appendString(rb, 2, bd.Instructions[r])
+		b = appendBytes(b, 2, rb)
+	}
+	for _, r := range slices.Sorted(maps.Keys(bd.Think)) {
+		var rb []byte
+		rb = appendString(rb, 1, string(r))
+		rb = protowire.AppendTag(rb, 2, protowire.VarintType)
+		rb = protowire.AppendVarint(rb, uint64(bd.Think[r]))
+		b = appendBytes(b, 3, rb)
+	}
+	b = protowire.AppendTag(b, 4, protowire.VarintType)
+	return protowire.AppendVarint(b, uint64(bd.MaxTests))
+}
+
+func unmarshalBuild(v []byte) (*council.Build, error) {
+	bd := &council.Build{Instructions: map[council.Role]string{}, Think: map[council.Role]int{}}
+	err := fields(v, func(num protowire.Number, typ protowire.Type, v []byte, n uint64) error {
+		switch {
+		case num == 1 && typ == protowire.BytesType:
+			bd.Target = string(v)
+		case (num == 2 || num == 3) && typ == protowire.BytesType:
+			var role, text string
+			var k uint64
+			if err := fields(v, func(num protowire.Number, typ protowire.Type, v []byte, n uint64) error {
+				switch {
+				case num == 1 && typ == protowire.BytesType:
+					role = string(v)
+				case num == 2 && typ == protowire.BytesType:
+					text = string(v)
+				case num == 2 && typ == protowire.VarintType:
+					k = n
+				}
+				return nil
+			}); err != nil {
+				return err
+			}
+			if role == "" {
+				return nil
+			}
+			if num == 2 {
+				bd.Instructions[council.Role(role)] = text
+			} else {
+				bd.Think[council.Role(role)] = int(k)
+			}
+		case num == 4 && typ == protowire.VarintType:
+			bd.MaxTests = int(n)
+		}
+		return nil
+	})
+	return bd, err
 }
 
 func marshalPlan(p council.Plan) []byte {
@@ -414,6 +478,12 @@ func unmarshalProgress(b []byte) (council.Progress, error) {
 				return err
 			}
 			p.Replans = append(p.Replans, pl)
+		case 9:
+			bd, err := unmarshalBuild(v)
+			if err != nil {
+				return err
+			}
+			p.Build = bd
 		}
 		return nil
 	})

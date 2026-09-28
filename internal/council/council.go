@@ -147,6 +147,8 @@ type Config struct {
 	cycleStart int
 	// first is the turn's first plan, which a re-plan follows (base).
 	first *Plan
+	// build is the builder's shaping of this turn's council (build.go).
+	build *Build
 	// ResultBudget is the characters of tool results a member carries whole
 	// in its own turns; past it the rest travel by ref. 0 is the default.
 	ResultBudget int
@@ -166,7 +168,7 @@ const (
 // The caps are room, not a target: the prompts ask for terse replies. A
 // researcher capped at 384 tokens could not carry its findings and their
 // evidence (owner's ruling 2026-09-28: "the council should not be starved").
-var defaultMaxTokens = map[Role]int{Planner: 2048, Researcher: 2048, Critic: 1024, Synthesizer: 2048}
+var defaultMaxTokens = map[Role]int{Planner: 2048, Researcher: 2048, Critic: 1024, Synthesizer: 2048, Builder: 3072}
 
 // FromModel resolves a model's council section against the defaults.
 // temperature is the model's own, after request and Modelfile options.
@@ -265,7 +267,7 @@ func NewDraws(cfg Config) Draws {
 		return Draw{Seed: seed(), Temperature: t}
 	}
 	// Each test cycle may take every revision round again.
-	rounds := max(cfg.MaxRounds, 1) * (max(cfg.MaxTests, 0) + 1)
+	rounds := max(cfg.MaxRounds, 1) * (max(cfg.MaxTests, maxBuildTests) + 1)
 	d := Draws{
 		Decide: fixed(), Direct: fixed(), Plan: fixed(), Synth: fixed(),
 		Researchers: make([][]Draw, rounds), Critics: make([][]Draw, rounds),

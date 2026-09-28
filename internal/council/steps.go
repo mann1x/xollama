@@ -164,6 +164,9 @@ func Decide(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Messag
 	if cfg.Previous != nil {
 		schema = routeSchemaContinue
 	}
+	if cfg.previousBuild() != nil {
+		schema = routeSchemaRebuild
+	}
 	out, err := m.Stream(ctx, Request{
 		Role: Planner, Messages: append(clone(conv), routeRequest(cfg)),
 		Seed: d.Decide.Seed, Temperature: d.Decide.Temperature, MaxTokens: 16, Format: schema,
@@ -180,6 +183,8 @@ func Decide(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Messag
 			return "direct", nil
 		case v.Route == RouteContinue && cfg.Previous != nil:
 			return RouteContinue, nil
+		case v.Route == RouteRebuild && cfg.previousBuild() != nil:
+			return RouteRebuild, nil
 		}
 	}
 	return RouteCouncil, nil
@@ -221,6 +226,9 @@ func routeRequest(cfg Config) api.Message {
 	msg := routeMsg
 	if cfg.Previous != nil {
 		msg = routeMsgContinue
+	}
+	if b := cfg.previousBuild(); b != nil {
+		msg += " " + b.targetNote() + " " + rebuildChoice
 	}
 	if c := cfg.charter(); c != "" {
 		return user(c + "\n\n" + msg)

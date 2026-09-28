@@ -369,6 +369,17 @@ paths:
   `MaxTests` 0. Researchers are asked to propose only when a tool that changes
   something exists. Guards: `TestAFailedCheckGoesBackToTheResearchers`,
   `TestATurnResumesPastAFailedCheck`, `TestTheFailedChecksTravelInTheState`.
+- **The builder (11.5, `internal/council/build.go`)**: `Builder` runs on the
+  owner like the planner (`memberSession`, `place`), before the first plan of a
+  council route with no kept build, and on `RouteRebuild`. `apply` appends its
+  instructions to `prompt(cfg, r)` ("For this work: ..."), sets think only for
+  roles the user left unset (levels map to 1024/2048/4096), and sets `MaxTests`
+  (0..12). The user's roles, counts, models, prompts and think settings stand,
+  and the tool policy is fixed. `Progress.Build` (state Progress field 9)
+  travels in `Kept`, the continue route included. A reply that isn't the JSON
+  asked for is an empty build (recorded, shapes nothing, offers no target).
+  Guards: `TestTheBuilderShapesTheCouncilTheUserDefined`,
+  `TestABuilderThatSaysNothingShapesNothing`.
 - **A repeated call (11.2)**: `transcript` appends `repeatedCall` to a result
   that repeats, word for word, an earlier identical call's result in the same
   member's turns. Keep it generic: it serves any tool.

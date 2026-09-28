@@ -130,6 +130,12 @@ func TestTheFailedChecksTravelInTheState(t *testing.T) {
 	s := testState()
 	s.progress.Tests = []string{"tried a; the test failed. " + council.Retest, "tried b; still failing. " + council.Retest}
 	s.progress.Replans = []council.Plan{{Plan: "p2", Briefs: []string{"x", "y"}}, {Plan: "p3", Briefs: []string{"z", "w"}}}
+	s.progress.Build = &council.Build{
+		Target:       "Fixing a bug in a JavaScript game.",
+		Instructions: map[council.Role]string{council.Researcher: "read before concluding", council.Synthesizer: "one edit at a time"},
+		Think:        map[council.Role]int{council.Researcher: 2048, council.Critic: 0},
+		MaxTests:     8,
+	}
 	got, err := unmarshalCouncilState(s.marshal())
 	if err != nil {
 		t.Fatal(err)
@@ -139,6 +145,9 @@ func TestTheFailedChecksTravelInTheState(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.progress.Replans, s.progress.Replans) {
 		t.Errorf("replans = %+v, want %+v", got.progress.Replans, s.progress.Replans)
+	}
+	if !reflect.DeepEqual(got.progress.Build, s.progress.Build) {
+		t.Errorf("build = %+v, want %+v", got.progress.Build, s.progress.Build)
 	}
 }
 
@@ -189,8 +198,8 @@ func TestACouncilTurnSendsItsState(t *testing.T) {
 	req := api.ChatRequest{Model: "council", CouncilChatState: &empty, Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}}}
 	chunks := chatChunks(t, s, req)
 	checkpoints, done := stateChunks(chunks)
-	if len(checkpoints) != 6 || done == "" {
-		t.Fatalf("%d checkpoints, done state %v; want 6 and one", len(checkpoints), done != "")
+	if len(checkpoints) != 7 || done == "" {
+		t.Fatalf("%d checkpoints, done state %v; want 7 and one", len(checkpoints), done != "")
 	}
 	for _, c := range chunks {
 		if c.CouncilChatState != "" && !c.Done && (c.Message.Content != "" || c.Message.Thinking != "" || c.Council != nil) {
@@ -217,11 +226,11 @@ func TestABrokenOffTurnResumes(t *testing.T) {
 	empty := ""
 	req := api.ChatRequest{Model: "council", CouncilChatState: &empty, Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}}}
 	checkpoints, _ := stateChunks(chatChunks(t, s, req))
-	if len(checkpoints) != 6 {
+	if len(checkpoints) != 7 {
 		t.Fatalf("%d checkpoints", len(checkpoints))
 	}
-	// After the route, the plan and both researchers.
-	blob := checkpoints[3]
+	// After the route, the build, the plan and both researchers.
+	blob := checkpoints[4]
 	st, err := openCouncilState(blob)
 	if err != nil || st.progress.Plan == nil || st.progress.Rounds[0].Findings[0] == "" || st.progress.Rounds[0].Findings[1] == "" {
 		t.Fatalf("checkpoint 4: %v %+v", err, st.progress)

@@ -17,6 +17,7 @@ type stub struct {
 	mu      sync.Mutex
 	calls   []Request
 	route   string
+	build   string
 	fail    Role
 	revise  bool
 	live    atomic.Int32
@@ -53,6 +54,11 @@ func (s *stub) Stream(ctx context.Context, req Request, onToken func(string)) (s
 	switch {
 	case req.Format != nil && strings.Contains(string(req.Format), "route"):
 		out = s.route
+	case req.Format != nil && strings.Contains(string(req.Format), `"target"`):
+		out = s.build
+		if out == "" {
+			out = `{"target":"t","planner":"","researcher":"","critic":"","synthesizer":"","max_tests":6}`
+		}
 	case req.Format != nil:
 		out = `{"plan":"p","briefs":["a","b","c","d"]}`
 	case req.Role == Critic && s.revise:
@@ -136,9 +142,9 @@ func TestTheCouncilRunsEveryRoleAtItsWidth(t *testing.T) {
 	if s.count(Synthesizer) != 1 || res.Answer != "synthesizer says" {
 		t.Errorf("answer %q", res.Answer)
 	}
-	// plan + 3 findings + 1 critique as thinking, the answer as content
-	if thinking != 5 || content != 1 || done != 6 {
-		t.Errorf("thinking %d content %d done %d, want 5, 1 and 6", thinking, content, done)
+	// build + plan + 3 findings + 1 critique as thinking, the answer as content
+	if thinking != 6 || content != 1 || done != 7 {
+		t.Errorf("thinking %d content %d done %d, want 6, 1 and 7", thinking, content, done)
 	}
 }
 
@@ -296,7 +302,8 @@ func TestEachRoleCarriesItsThinkButNeverTheRoute(t *testing.T) {
 	if _, err := Run(t.Context(), cfg, s, conv, func(Event) {}); err != nil {
 		t.Fatal(err)
 	}
-	want := map[Role]string{Planner: "on", Researcher: "high", Critic: "", Synthesizer: "1024"}
+	// The builder runs where the planner does, and reasons as it does.
+	want := map[Role]string{Planner: "on", Builder: "on", Researcher: "high", Critic: "", Synthesizer: "1024"}
 	for _, c := range s.calls {
 		isRoute := c.Format != nil && strings.Contains(string(c.Format), "route")
 		switch {
@@ -425,7 +432,7 @@ func TestEveryMemberSharesOnePrefix(t *testing.T) {
 						t.Errorf("the plan request does not open with the charter: %q", c.Messages[len(shared)].Content)
 					}
 				}
-				if c.Role != Planner && route == `{"route":"council"}` && !strings.HasPrefix(c.Messages[len(shared)].Content, DefaultCharter) {
+				if c.Role != Planner && c.Role != Builder && route == `{"route":"council"}` && !strings.HasPrefix(c.Messages[len(shared)].Content, DefaultCharter) {
 					t.Errorf("%s does not continue from the plan request", c.Role)
 				}
 			}
@@ -467,8 +474,8 @@ func TestATurnResumesFromItsProgress(t *testing.T) {
 		t.Fatal(err)
 	}
 	// route, plan, two researchers, one critic
-	if len(points) != 5 {
-		t.Fatalf("%d checkpoints, want 5: %+v", len(points), points)
+	if len(points) != 6 {
+		t.Fatalf("%d checkpoints, want 6: %+v", len(points), points)
 	}
 	last := points[len(points)-1]
 	if last.Route != "council" || last.Plan == nil || len(last.Rounds) != 1 || last.Rounds[0].Critiques[0] == "" || last.Rounds[0].Findings[0] == "" {
@@ -476,9 +483,9 @@ func TestATurnResumesFromItsProgress(t *testing.T) {
 	}
 
 	// Broken off after the first researcher: the rest runs, nothing twice.
-	from := points[2]
+	from := points[3]
 	if from.Rounds[0].Findings[0] == "" && from.Rounds[0].Findings[1] == "" {
-		t.Fatalf("checkpoint 3 holds no finding: %+v", from)
+		t.Fatalf("checkpoint 4 holds no finding: %+v", from)
 	}
 	done := 0
 	for _, f := range from.Rounds[0].Findings {
@@ -491,8 +498,8 @@ func TestATurnResumesFromItsProgress(t *testing.T) {
 	if err != nil || res.Answer == "" {
 		t.Fatalf("resume: %v %+v", err, res)
 	}
-	if s.count(Planner) != 0 {
-		t.Errorf("the planner was asked again %d times", s.count(Planner))
+	if s.count(Planner) != 0 || s.count(Builder) != 0 {
+		t.Errorf("the planner was asked again %d times, the builder %d", s.count(Planner), s.count(Builder))
 	}
 	if n := s.count(Researcher); n != cfg.Researchers-done {
 		t.Errorf("%d researchers asked, want %d", n, cfg.Researchers-done)

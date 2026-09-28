@@ -609,11 +609,10 @@ func TestAFailedCheckGoesBackToTheResearchers(t *testing.T) {
 		t.Errorf("the last cycle's researcher did not read both failed checks:\n%s", all)
 	}
 
-	// Bounded: two cycles at most, the second's report is the answer.
-	s = &retestStub{toolStub: toolStub{stub: stub{route: `{"route":"council"}`}}, fails: 5}
-	cfg := toolCfg()
-	cfg.MaxTests = 1
-	res, _ = Run(t.Context(), cfg, s, conv, func(Event) {})
+	// Bounded by the builder: one check sent back at most, the second
+	// synthesizer's reply is the answer.
+	s = &retestStub{toolStub: toolStub{stub: stub{route: `{"route":"council"}`, build: `{"target":"t","planner":"","researcher":"","critic":"","synthesizer":"","max_tests":1}`}}, fails: 5}
+	res, _ = Run(t.Context(), toolCfg(), s, conv, func(Event) {})
 	if s.synth.Load() != 2 || !strings.Contains(res.Answer, "Status 2") {
 		t.Errorf("bound 1: %d synthesizers, answer %q", s.synth.Load(), res.Answer)
 	}

@@ -74,13 +74,13 @@ var compactionReplies = map[string]string{
 	"compaction-retrospective": "## What worked\n- Answering from the law first.",
 }
 
-var councilMarkers = []string{`{"route":"direct"}`, "ROLE: PLANNER. The council", "ROLE: RESEARCHER", "ROLE: CRITIC", "ROLE: SYNTHESIZER"}
+var councilMarkers = []string{`{"route":"direct"}`, "ROLE: PLANNER. The council", "ROLE: RESEARCHER", "ROLE: CRITIC", "ROLE: SYNTHESIZER", "ROLE: BUILDER"}
 
 func (e *councilEngine) complete(ctx context.Context, r llm.CompletionRequest, fn func(llm.CompletionResponse)) error {
 	role, at := "chat", -1
 	for i, m := range councilMarkers {
 		if j := strings.LastIndex(r.Prompt, m); j > at {
-			at, role = j, []string{"route", "planner", "researcher", "critic", "synthesizer"}[i]
+			at, role = j, []string{"route", "planner", "researcher", "critic", "synthesizer", "builder"}[i]
 		}
 	}
 	for m, cr := range compactionMarkers {
@@ -129,6 +129,7 @@ func (e *councilEngine) complete(ctx context.Context, r llm.CompletionRequest, f
 		"critic":      "Keep both findings.",
 		"synthesizer": "The sky is blue because air scatters blue light most.",
 		"chat":        "Hello there!",
+		"builder":     `{"target":"Explaining a physical phenomenon.","planner":"","researcher":"","critic":"","synthesizer":"","max_tests":2}`,
 	}[role]
 	if role == "route" && e.route == `{"route":"direct"}` {
 		reply = e.route
@@ -329,10 +330,10 @@ func TestACouncilModelAnswersWithItsMembers(t *testing.T) {
 		}
 	}
 	last := chunks[len(chunks)-1]
-	if !last.Done || last.DoneReason != "stop" || last.EvalCount != 5*7 {
-		t.Errorf("final chunk %+v, want done/stop and the members' 35 eval tokens", last)
+	if !last.Done || last.DoneReason != "stop" || last.EvalCount != 5*8 {
+		t.Errorf("final chunk %+v, want done/stop and the members' 40 eval tokens", last)
 	}
-	for role, n := range map[string]int{"route": 1, "planner": 1, "researcher": 2, "critic": 2, "synthesizer": 1} {
+	for role, n := range map[string]int{"route": 1, "builder": 1, "planner": 1, "researcher": 2, "critic": 2, "synthesizer": 1} {
 		if got := e.count(role); got != n {
 			t.Errorf("%s calls = %d, want %d", role, got, n)
 		}
@@ -528,6 +529,7 @@ func TestAThinkingRoleReasonsWithinItsBudgetAndHidesIt(t *testing.T) {
 	want := map[string][2]int{
 		"route":       {0, 16},
 		"planner":     {2048, 2048 + 2048},
+		"builder":     {2048, 3072 + 2048},
 		"researcher":  {4096, 2048 + 4096},
 		"critic":      {0, 1024},
 		"synthesizer": {2048, 2048 + 2048},
