@@ -2147,6 +2147,29 @@ Helpfulness is the other half. Measuring it takes swapping one role at a time
 to a bigger model on the same tasks (a role-upgrade matrix), which is
 proposed, not run.
 
+### 11.14 The synthesizer applies the proposals together (built 2026-09-28)
+Medium on 032db6c2: the council fixed it in 1101 s and 27 trips, plain in
+91 s and 11. Plain read the file once, made four edits in a row and checked
+once. The council paid one whole cycle (re-plan, research, critique,
+synthesizer) per fault. The consultants council (csl-2026-09-28-1441-4bbf)
+found the cause in our own prompt. `testNote` said "apply the council's
+proposals and check them, one at a time … After each change, run its
+check", and the builder's coding example repeated it. The researchers were
+asked to "propose it", one change.
+
+Now:
+- The synthesizer makes every proposed change that does not conflict in one
+  reply (several tool calls travel in one trip), then checks once.
+- A new failure whose place and fix the check's output and the material
+  already show, the synthesizer fixes itself and checks again. RETEST is left
+  for a fault that needs investigating.
+- Researchers propose every fault they find in their part, not only the first.
+- The builder's example says the same.
+
+Guard: `TestTheSynthesizerAppliesTheProposalsTogether` (and the researcher
+wording in `TestResearchersAreToldWhichToolsOnlyRead`), checked by removal.
+Next: medium on this build, against plain's 91 s.
+
 ### 11.11 Checks that stop moving change the approach (built 2026-09-28)
 The fifth simple run (b336b144) returned the same "missing ) after argument
 list" from every check for 60 trips. The plain arm fixed the task in 27 trips:

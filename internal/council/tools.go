@@ -232,7 +232,9 @@ func (cfg Config) toolNote(r Role) string {
 	}) {
 		// Researchers propose, the synthesizer tests (11.4): ab-4's
 		// researchers reported a diagnosis nobody checked.
-		note += " When the task needs a change, propose it: what to change, where, and how to check that it worked. The synthesizer makes and checks it." + wholeNote
+		// Every fault it finds, not the first: one fault per report cost a
+		// whole check cycle per fault on medium (1101 s against plain's 91).
+		note += " When the task needs changes, propose every one you find in your part, not only the first: for each, what to change, where, and how to check that it worked. The synthesizer makes them together and checks them." + wholeNote
 	}
 	if r == Critic && slices.ContainsFunc(cfg.Tools, func(t api.Tool) bool {
 		return !t.Function.ReadOnly && t.Function.Name != EvidenceTool && t.Function.Name != PostTool && t.Function.Name != ReviewTool && !routing(t.Function.Name)

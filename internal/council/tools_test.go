@@ -187,7 +187,7 @@ func TestResearchersAreToldWhichToolsOnlyRead(t *testing.T) {
 			t.Errorf("%s: tool note %v in %q", c.Role, note, last)
 		}
 		// Researchers propose the change that write_file would make.
-		if propose := strings.Contains(last, "propose it"); propose != (c.Role == Researcher) {
+		if propose := strings.Contains(last, "propose every one you find"); propose != (c.Role == Researcher) {
 			t.Errorf("%s: asked to propose %v", c.Role, propose)
 		}
 	}
@@ -199,7 +199,7 @@ func TestResearchersAreToldWhichToolsOnlyRead(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, c := range s.calls {
-		if strings.Contains(c.Messages[len(c.Messages)-1].Content, "propose it") {
+		if strings.Contains(c.Messages[len(c.Messages)-1].Content, "propose every one you find") {
 			t.Errorf("%s asked to propose a change with no tool that makes one", c.Role)
 		}
 	}

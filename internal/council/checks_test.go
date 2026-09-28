@@ -214,3 +214,27 @@ func TestFailedChecksCarryToTheNextTurn(t *testing.T) {
 		t.Errorf("a rebuilt council read the old work's checks:\n%s", got)
 	}
 }
+
+// A testing synthesizer makes the council's changes together and checks
+// once, and fixes a next failure its check already shows: one change per
+// check cost a whole cycle per fault on medium (1101 s against plain's 91).
+func TestTheSynthesizerAppliesTheProposalsTogether(t *testing.T) {
+	s := &retestStub{toolStub: toolStub{stub: stub{route: `{"route":"council"}`}}}
+	if _, err := Run(t.Context(), toolCfg(), s, conv, func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	got := all(lastOf(s.calls, Synthesizer))
+	for _, want := range []string{"in one reply -- several tool calls at once", "run the check, once", "fix that too and check again"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the synthesizer's instruction lacks %q", want)
+		}
+	}
+	for _, p := range []string{got, builderPrompt} {
+		if strings.Contains(p, "at a time") {
+			t.Errorf("an instruction still asks for one change at a time")
+		}
+	}
+	if !strings.Contains(builderPrompt, "report every fault found in its part") {
+		t.Error("the builder's example does not ask researchers for every fault")
+	}
+}

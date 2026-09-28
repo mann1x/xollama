@@ -456,6 +456,12 @@ paths:
   - Reviews are shown at delivery through `cfg.show`, as `Reviewer` thinking
     (set in `callFrom` when the deliberation is shown); `memberName` numbers
     reviewers.
+- **Changes together, one check (11.14)**: `testNote` asks for every
+  non-conflicting proposal in one reply, then one check, and lets the
+  synthesizer fix a next failure its check already shows. Researchers report
+  every fault in their part. Never bring back "one at a time": it cost a whole
+  cycle per fault (medium 1101 s vs plain 91 s). Guard:
+  `TestTheSynthesizerAppliesTheProposalsTogether`.
 - **Usage per role (`council_usage_v1`, `server/council_usage.go`)**: every
   member call's done metrics go into `councilMembers.usage` (`usageBook`,
   keyed by role, model and host), both locally and through `remote`. The turn's

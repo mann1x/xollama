@@ -5,6 +5,12 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — council 11.14: the synthesizer applies the proposals together.**
+> - The consultants council (csl-2026-09-28-1441-4bbf) traced medium's slowness to our own synthesizer prompt: "one at a time … after each change, run its check".
+> - Now the synthesizer makes every non-conflicting proposed edit in one reply and checks once. It fixes a next failure its check already shows, and hands back only what needs investigating. Researchers report every fault in their part.
+> - Hard council on 032db6c2: at trip 57 of 60, unfixed (the same `dDec` stray brace, whole-method rewrites of the wrong methods).
+> - Next: deploy, medium against plain's 91 s; then the role-upgrade matrix (follow-up csl-2026-09-28-1521-242f).
+
 > **2026-09-28 — council: medium fixed, 12× slower than plain; usage per role reported.**
 > - Medium on 032db6c2 (eleven2go): council **fixed**, 27 trips, 1101 s. Plain **fixed**, 11 trips, 91 s. It read the file once, fixed seven faults in four edits and checked once; the council paid a whole check cycle per fault.
 > - The consultants council has been asked for optimizations (brief: `/srv/ml/xollama-phase2/consult-council/BRIEF.md`).
