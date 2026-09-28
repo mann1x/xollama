@@ -8,7 +8,11 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 > **2026-09-28 — council 11.14: the synthesizer applies the proposals together.**
 > - The consultants council (csl-2026-09-28-1441-4bbf) traced medium's slowness to our own synthesizer prompt: "one at a time … after each change, run its check".
 > - Now the synthesizer makes every non-conflicting proposed edit in one reply and checks once. It fixes a next failure its check already shows, and hands back only what needs investigating. Researchers report every fault in their part.
-> - Hard council on 032db6c2: at trip 57 of 60, unfixed (the same `dDec` stray brace, whole-method rewrites of the wrong methods).
+> - Hard on 032db6c2: **a cliff for both arms**.
+>   - Council: unfixed at the 60-trip cap, 4129 s; last error `Unexpected token ')'`.
+>   - Plain: unfixed at the cap, 538 s; last error `Unexpected token '{'`.
+>   - Both got past the first "missing )" and stalled on the misplaced braces further down.
+>   - Plain's usage (the first run recorded): 60 calls, 4.2M prompt tokens sent (2.06M cached), 21k written.
 > - Next: deploy, medium against plain's 91 s; then the role-upgrade matrix (follow-up csl-2026-09-28-1521-242f).
 
 > **2026-09-28 — council: medium fixed, 12× slower than plain; usage per role reported.**
