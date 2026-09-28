@@ -1993,6 +1993,43 @@ Guards: `TestACouncilStartsWithTheEnginesParallelSlots`,
 `TestCloudMembersRunCloudParallelAtATime` and
 `TestOnlyCloudMembersTakeACloudSlot`. Each was checked by removal.
 
+### 11.9 The critics review the synthesizer's checks, asynchronously (built 2026-09-28)
+The owner, on the synthesizer doing nearly every call, checks included: "why
+not telling him to ask the critics to review its checks?", then: "they should
+be async, the synthesizer sends to the critic something to review and they
+got queued, every time a critic completes a review, the synthesizer gets back
+those processed."
+
+The third simple run on eleven2go (311010f9, `head` relief) shows why. It
+stayed unfixed at 60 trips and 3466 s with no engine fault, and the
+synthesizer made 27 edits against 11 checks.
+
+Built:
+- `council_review` (`internal/council/review.go`, synthesizer only, answered
+  in place) queues a job: the change it states, and what its calls actually
+  returned since the check it sent before.
+- A `Desk` per conversation (`server/council_review.go`, `councilDesks`) runs
+  one reviewer per critic, on the critic's model and think settings, each on
+  its own session (`~reviewer-N`). The reviewers carry no tools and state
+  their own window on opencoti (`reviewPlacement`).
+- Before each synthesizer call, the reviews finished since its last call
+  arrive under `[COUNCIL · REVIEWS OF YOUR CHECKS BY THE CRITICS]`.
+- Nothing waits on a review except a DONE verdict. A DONE sends its last
+  check itself when it wasn't sent, and waits up to 3 minutes for the reviews
+  still out. When there are reviews, the synthesizer reads them and either
+  goes back to work or repeats DONE; a DONE that stands keeps the answer the
+  user already read.
+- Reviews are scoped to the turn (`Config.Turn`, the turn's hash), so an
+  earlier turn's review never reaches a later synthesizer. The desk ends when
+  the client leaves, or after 15 minutes with nothing sent.
+
+Guards: `TestTheCriticsReviewAChecksWhileTheSynthesizerWorks`. Its reviewer
+holds the review until the synthesizer's next call has started, so a blocking
+review would hang it. The others are `TestADoneSendsItsLastCheckForReview`,
+`TestTheDeskWorksItsQueue`, `TestOnlyTheSynthesizerSendsChecksForReview`,
+`TestAReviewerStatesAWindowOfItsOwn` and `TestAToolTurnKeepsAReviewDesk`.
+Each was checked by removal. Open: the reviews are not streamed as thinking.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).

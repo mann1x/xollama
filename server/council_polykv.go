@@ -989,6 +989,9 @@ func (t *councilTree) tokens(ctx context.Context, msgs []api.Message) (int, erro
 func (cm *councilMembers) place(ctx context.Context, r council.Request, req *api.ChatRequest) (*llm.Placement, string, func()) {
 	t := cm.tree
 	none := func() {}
+	if p := cm.reviewPlacement(r); p != nil && r.Model == "" {
+		return p, "", none
+	}
 	if t == nil || r.Model != "" {
 		return nil, "", none
 	}

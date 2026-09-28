@@ -353,6 +353,13 @@ members the same way: each tool call under the member that made it, without
 that member's working notes, and a long result already shown once is pointed
 at, not repeated. Your client sends the history as it always has.
 
+While the synthesizer works, the critics review its checks. After a check it
+sends what it changed to the critics with `council_review`, and keeps
+working. The critics take the checks in order, each judging what the calls
+actually returned, and every finished review reaches the synthesizer before
+its next step. Only a `VERDICT: DONE` waits: it stands once the reviews still
+out are in. When a check was never sent, the DONE sends it itself.
+
 Without tools there is nothing to check with, and the council answers once, as
 before. The cycles travel in `council_chat_state`, so a resumed turn starts at
 the cycle after the last failed check. A turn that continues the last

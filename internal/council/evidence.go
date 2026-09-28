@@ -63,7 +63,7 @@ func WithEvidence(tools api.Tools) api.Tools {
 
 // local reports whether a call is answered by the council itself.
 func local(c api.ToolCall) bool {
-	return c.Function.Name == EvidenceTool || c.Function.Name == PostTool || routing(c.Function.Name)
+	return c.Function.Name == EvidenceTool || c.Function.Name == PostTool || c.Function.Name == ReviewTool || routing(c.Function.Name)
 }
 
 func stringArg(c api.ToolCall, key string) string {

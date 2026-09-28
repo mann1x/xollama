@@ -116,6 +116,10 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	// 11.5: the synthesizer takes a tool turn's request first, and forwards it
 	// or has the council rebuilt with these.
 	req.Tools = council.WithRouting(req.Tools)
+	if cfg.Critics > 0 {
+		// 11.9: the synthesizer sends its checks to the critics with it.
+		req.Tools = council.WithReview(req.Tools)
+	}
 
 	conv, system := councilConversation(m, req.Messages)
 	cfg.System = system
@@ -167,6 +171,10 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	// Tools (9.5): every member carries them; a resumed turn's own calls and
 	// results leave the conversation for the members that made them.
 	cfg.Tools, members.tools = req.Tools, req.Tools
+	cfg.Turn = fmt.Sprintf("%x", turnHash)
+	if len(req.Tools) > 0 && cfg.Critics > 0 && members.session != "" {
+		cfg.Reviews = councilDesks.get(members.session, cfg, members)
+	}
 	if from.Route != "" {
 		all := conv
 		conv, cfg.Results = councilToolTurn(conv)
@@ -259,6 +267,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 			if errors.Is(err, context.Canceled) {
 				if c.Request.Context().Err() != nil {
 					members.closeSessions() // the client left
+					councilDesks.close(members.session)
 				}
 				return
 			}
@@ -509,6 +518,9 @@ type councilMembers struct {
 	// cloud counts the members on a cloud model running at once
 	// (council_cloud.go); nil counts nothing.
 	cloud chan struct{}
+	// reviewWindow bounds a background reviewer's window on opencoti
+	// (council_review.go); 0 states none.
+	reviewWindow int
 }
 
 func (cm *councilMembers) opened(id string) {
@@ -705,7 +717,7 @@ func (cm *councilMembers) memberSession(r council.Request) string {
 		return cm.session
 	}
 	id := cm.session + "~" + string(r.Role)
-	if r.Role == council.Researcher || r.Role == council.Critic {
+	if r.Role == council.Researcher || r.Role == council.Critic || r.Role == council.Reviewer {
 		id = fmt.Sprintf("%s-%d", id, r.Index+1)
 	}
 	return id

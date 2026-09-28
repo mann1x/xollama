@@ -426,6 +426,21 @@ paths:
   repeated long result (`repeatAt`). It must stay a pure function of the
   messages, or the shared prefix breaks between turns. Calls without a member
   id pass unchanged.
+- **Reviews (11.9, `internal/council/review.go`, `server/council_review.go`)**:
+  `ReviewTool` is `local` and only the synthesizer's (`may`). `sendForReview`
+  runs after `post` in `callTools`; `Take(cfg.Turn)` runs before every
+  synthesizer call. Never make the synthesizer wait on a review except at
+  DONE (`Wait`, `reviewWait`); that is the owner's design.
+  - A review judges the calls' results (`checkEvidence`), never only the
+    synthesizer's account of them.
+  - The DONE gate keeps `gatedReply` (the answer the user read) and mutes the
+    reply that follows.
+  - Job ids are `Turn/key:call`, since the desk outlives turns.
+  - The server keeps one desk per session (`councilDesks.get`, remade when
+    the critic count changes), closes it when the client leaves, and closes
+    it after `reviewIdle` idle.
+  - Background members have no tools. `reviewPlacement` states their window
+    on opencoti, where no window books the whole pool.
 - **The builder (11.5, `internal/council/build.go`)**: `Builder` runs on the
   owner like the planner (`memberSession`, `place`), before the first plan of a
   council route with no kept build, and on `RouteRebuild`. `apply` appends its

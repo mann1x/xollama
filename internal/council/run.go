@@ -3,6 +3,7 @@ package council
 import (
 	"context"
 	"maps"
+	"strconv"
 	"sync"
 	"sync/atomic"
 
@@ -95,6 +96,15 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 	}
 	if len(conv) == 0 {
 		return Result{}, ErrNoConversation
+	}
+	if cfg.Turn == "" {
+		cfg.Turn = strconv.Itoa(len(conv))
+	}
+	for i := len(conv) - 1; i >= 0; i-- {
+		if conv[i].Role == "user" {
+			cfg.request = conv[i].Content
+			break
+		}
 	}
 	emit = serial(emit)
 	d := NewDraws(cfg)

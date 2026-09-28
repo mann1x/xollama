@@ -98,6 +98,8 @@ func (cfg Config) may(r Role, c api.ToolCall) (bool, string) {
 		return false, fmt.Sprintf(refusedName, c.Function.Name)
 	case routing(c.Function.Name) && r != Front:
 		return false, fmt.Sprintf(refusedRouting, c.Function.Name)
+	case c.Function.Name == ReviewTool && r != Synthesizer:
+		return false, fmt.Sprintf(refusedRouting, c.Function.Name)
 	case !t.Function.ReadOnly && !writes(r):
 		return false, fmt.Sprintf(refusedWrite, c.Function.Name)
 	}
@@ -122,6 +124,8 @@ func (cfg Config) transcript(r Role, key string, turns []api.Message) []api.Mess
 				res = cfg.rebuilt()
 			} else if c.Function.Name == ForwardTool {
 				res = "Handed to the council."
+			} else if c.Function.Name == ReviewTool {
+				res = "Sent to the critics. Keep working: their review reaches you when it is done."
 			} else if local(c) {
 				res = cfg.lookup(c)
 				if folded[c.ID] {
@@ -213,7 +217,7 @@ func (cfg Config) toolNote(r Role) string {
 	}
 	var ro []string
 	for _, t := range cfg.Tools {
-		if t.Function.ReadOnly && t.Function.Name != EvidenceTool && t.Function.Name != PostTool {
+		if t.Function.ReadOnly && t.Function.Name != EvidenceTool && t.Function.Name != PostTool && t.Function.Name != ReviewTool {
 			ro = append(ro, t.Function.Name)
 		}
 	}
@@ -224,14 +228,14 @@ func (cfg Config) toolNote(r Role) string {
 	}
 	note := fmt.Sprintf(" You may call these tools, which only read: %s. Call them first, for the facts you need, and write your report only once their results are in. The others change things, and only the synthesizer calls them.%s", strings.Join(ro, ", "), prose)
 	if r == Researcher && slices.ContainsFunc(cfg.Tools, func(t api.Tool) bool {
-		return !t.Function.ReadOnly && t.Function.Name != EvidenceTool && t.Function.Name != PostTool && !routing(t.Function.Name)
+		return !t.Function.ReadOnly && t.Function.Name != EvidenceTool && t.Function.Name != PostTool && t.Function.Name != ReviewTool && !routing(t.Function.Name)
 	}) {
 		// Researchers propose, the synthesizer tests (11.4): ab-4's
 		// researchers reported a diagnosis nobody checked.
 		note += " When the task needs a change, propose it: what to change, where, and how to check that it worked. The synthesizer makes and checks it."
 	}
 	if r == Critic && slices.ContainsFunc(cfg.Tools, func(t api.Tool) bool {
-		return !t.Function.ReadOnly && t.Function.Name != EvidenceTool && t.Function.Name != PostTool && !routing(t.Function.Name)
+		return !t.Function.ReadOnly && t.Function.Name != EvidenceTool && t.Function.Name != PostTool && t.Function.Name != ReviewTool && !routing(t.Function.Name)
 	}) {
 		// Measured in ab-5: critics called edit_file three times to test a
 		// proposal, and were refused each time.
@@ -326,7 +330,10 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 	key := MemberKey(req.Role, req.Index, req.Round)
 	own := req.Messages
 	refusals, lookups, preempts := 0, 0, 0
-	nudged := false
+	nudged, gated := false, false
+	// gatedReply is the DONE reply that waited for the critics' reviews
+	// (11.9): the user has read it.
+	gatedReply, stream := "", onToken
 	// unverdicted is the reply that ended without a verdict (C): the user
 	// has read it, so the nudged reply only adds the verdict to it, unseen.
 	unverdicted := ""
@@ -335,6 +342,12 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 			// Into the member's own turns, so its prefix stays and a resume
 			// reads them where they were.
 			turns = append(slices.Clone(turns), *n)
+		}
+		if cfg.canReview(req.Role) {
+			// 11.9: the reviews finished since its last call, as they landed.
+			if rs := cfg.Reviews.Take(cfg.Turn); len(rs) > 0 {
+				turns = append(slices.Clone(turns), reviewsMsg(rs))
+			}
 		}
 		if req.Role == Synthesizer && cfg.testing(req.Round) {
 			// D: a cycle's steps are bounded; past them the synthesizer is
@@ -396,6 +409,33 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 				rep.Content = unverdicted
 			}
 		}
+		if gatedReply != "" {
+			// The reply after the reviews a DONE waited for: back to work
+			// streams again; a DONE that stands keeps the answer the user
+			// has read.
+			if len(rep.Calls) > 0 && unverdicted == "" {
+				onToken = stream
+			}
+			if len(rep.Calls) == 0 && strings.Contains(rep.Content, Done) && !strings.Contains(rep.Content, Retest) {
+				rep.Content = gatedReply
+			}
+			gatedReply = ""
+		}
+		if len(rep.Calls) == 0 && cfg.canReview(req.Role) && cfg.testing(req.Round) && !gated && strings.Contains(rep.Content, Done) {
+			// 11.9: DONE stands once the reviews still out are in, and the
+			// last check was sent for one.
+			gated = true
+			if toolSteps(turns) > 0 && !reviewedLast(turns) {
+				cfg.Reviews.Submit(cfg.reviewJob(key, turns, api.ToolCall{ID: fmt.Sprintf("done_%d", len(turns))}, cfg.Reviews.Sent()+1))
+			}
+			cfg.Reviews.Wait(ctx, reviewWait)
+			if rs := cfg.Reviews.Take(cfg.Turn); len(rs) > 0 {
+				gatedReply = rep.Content
+				turns = append(slices.Clone(turns), api.Message{Role: "assistant", Content: rep.Content}, reviewsMsg(rs), user(reviewedNudge))
+				onToken = func(string) {}
+				continue
+			}
+		}
 		if len(rep.Calls) == 0 {
 			out := replyText(turns, rep.Content)
 			// A failed check goes back to the researchers with what the
@@ -407,12 +447,13 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 		}
 		turns = append(slices.Clone(turns), api.Message{Role: "assistant", Content: rep.Content, ToolCalls: named(rep.Calls, len(turns))})
 		cfg.post(req.Role, key, turns[len(turns)-1].ToolCalls)
+		cfg.sendForReview(req.Role, key, turns)
 		if len(cfg.forwarded(req.Role, key, turns)) > 0 {
 			return "", turns, nil
 		}
 		// A turn that only read evidence back, or repeated reads the turn has
 		// made, is answered here, at once.
-		if (slices.ContainsFunc(rep.Calls, local) && (cfg.canLookup() || cfg.canPost(req.Role))) || slices.ContainsFunc(rep.Calls, cfg.cachedRead) {
+		if (slices.ContainsFunc(rep.Calls, local) && (cfg.canLookup() || cfg.canPost(req.Role) || cfg.canReview(req.Role))) || slices.ContainsFunc(rep.Calls, cfg.cachedRead) {
 			if lookups++; lookups > maxLookups {
 				return replyText(turns, ""), nil, nil
 			}

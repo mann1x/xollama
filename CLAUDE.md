@@ -202,6 +202,8 @@ researchers and critics, writes by the synthesizer; `internal/council/evidence.g
 the server-answered `council_evidence` tool that reads a large result back by ref;
 `internal/council/reads.go`: shared reads, a repeated read-only call answered in place;
 `internal/council/broadcast.go`: the opt-in `council_post` notes between same-role members;
+`internal/council/review.go`: the synthesizer's `council_review` checks, queued for critics
+in the background, a per-conversation desk in `server/council_review.go`;
 `server/council_tools.go`), and a one-shot
 `xollama run <council> "…"` goes through chat (`cmd/council_run.go`) — see
 `.claude/rules/model-config.md` and `.claude/rules/council.md`.

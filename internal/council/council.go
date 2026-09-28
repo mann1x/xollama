@@ -142,6 +142,16 @@ type Config struct {
 	// turn continues that conversation; it offers the planner the continue
 	// route (continue.go).
 	Previous *Progress
+	// Reviews is where the synthesizer's checks go for the critics to
+	// review while it works (review.go); nil offers no reviews.
+	Reviews Reviews
+	// Turn names the user turn this run answers, the same on every trip of
+	// it: it tells this turn's reviews from an earlier turn's. The server
+	// sets it from the turn's hash; "" falls back to the conversation's
+	// length.
+	Turn string
+	// request is the user's latest message, which a review is made against.
+	request string
 	// continuing marks a synthesizer continuing the previous deliberation.
 	continuing bool
 	// tests are the reports of the turn's failed checks so far, and

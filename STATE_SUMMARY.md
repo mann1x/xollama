@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — council 11.9: the critics review the synthesizer's checks while it works.**
+> - Third simple run on eleven2go (311010f9, `--kv-residency-mode head` relief): unfixed, 60 trips, 3466 s, no engine fault. The synthesizer made 27 edits against 11 checks with no second reader.
+> - Built, as the owner designed it: `council_review` queues a check (the change plus what the calls returned). A per-conversation desk runs one reviewer per critic in the background, and each finished review reaches the synthesizer before its next step. Only DONE waits for the reviews still out, and sends its last check itself when it was never sent.
+> - Next: deploy, rerun simple on eleven2go.
+
 > **2026-09-28 — council 11.8: all the engine's parallel slots; cloud members counted apart.**
 > - The council ran with 2 live slots of eleven2go's 4, because xollama sized them to its widest step. It now starts with the engine's parallel ceiling (4 by default, `slots.max`), with its local width as the floor.
 > - Members on a cloud model take no engine slot: they run `council.cloud_parallel` at a time (default 3, `--council-cloud-parallel`), one count per council model.

@@ -486,7 +486,7 @@ func synthesize(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Me
 	cycle := len(cfg.tests)
 	msgs := append(base(cfg, conv, p), sourced(findingsSource, findingsIntro+joinNumbered("FINDINGS OF RESEARCHER", findings)),
 		sourced(critiqueSource, critiquesIntro+joinNumbered("CRITIQUE", critiques)),
-		user("ROLE: SYNTHESIZER. "+prompt(cfg, Synthesizer)+cfg.toolNote(Synthesizer)+confirmedNote(cfg, critiques)+continuedNote(cfg)+cfg.testNote(cycle)))
+		user("ROLE: SYNTHESIZER. "+prompt(cfg, Synthesizer)+cfg.toolNote(Synthesizer)+confirmedNote(cfg, critiques)+continuedNote(cfg)+cfg.testNote(cycle)+cfg.reviewNote(cycle)))
 	if cfg.System != "" {
 		msgs = append(msgs, sourced(systemSource, systemIntro+cfg.System))
 	}
