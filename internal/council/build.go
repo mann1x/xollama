@@ -39,15 +39,17 @@ type Build struct {
 	// Think is the budget, in tokens, of each role the user left without a
 	// think setting; 0 is none.
 	Think map[Role]int
-	// MaxTests bounds the check cycles of a turn (11.4).
+	// MaxTests bounds the check cycles of a turn (11.4), and MaxSteps the
+	// synthesizer's tool steps in one cycle before it reports back.
 	MaxTests int
+	MaxSteps int
 }
 
 func (b *Build) clone() *Build {
 	if b == nil {
 		return nil
 	}
-	out := &Build{Target: b.Target, MaxTests: b.MaxTests, Instructions: map[Role]string{}, Think: map[Role]int{}}
+	out := &Build{Target: b.Target, MaxTests: b.MaxTests, MaxSteps: b.MaxSteps, Instructions: map[Role]string{}, Think: map[Role]int{}}
 	for r, s := range b.Instructions {
 		out.Instructions[r] = s
 	}
@@ -63,19 +65,29 @@ var thinkLevels = map[string]int{"off": 0, "low": 1024, "medium": 2048, "high": 
 
 const maxBuildTests = 12
 
+// A synthesizer's steps in one cycle: the builder chooses within these, and
+// DefaultMaxSteps holds without a build.
+const (
+	minSteps        = 2
+	maxSteps        = 16
+	DefaultMaxSteps = 6
+)
+
 var builtRoles = []Role{Planner, Researcher, Critic, Synthesizer}
 
 var buildSchema = json.RawMessage(`{"type":"object","properties":{` +
 	`"target":{"type":"string"},` +
 	`"planner":{"type":"string"},"researcher":{"type":"string"},"critic":{"type":"string"},"synthesizer":{"type":"string"},` +
 	`"think":{"type":"object","properties":{"planner":{"enum":["off","low","medium","high"]},"researcher":{"enum":["off","low","medium","high"]},"critic":{"enum":["off","low","medium","high"]},"synthesizer":{"enum":["off","low","medium","high"]}}},` +
-	`"max_tests":{"type":"integer","minimum":0,"maximum":12}},` +
+	`"max_tests":{"type":"integer","minimum":0,"maximum":12},"max_steps":{"type":"integer","minimum":2,"maximum":16}},` +
 	`"required":["target","planner","researcher","critic","synthesizer","max_tests"]}`)
 
 // builderPrompt is the builder's instruction. Its examples are the owner's
 // ask: practical ones, and a detailed one for coding, the work a coding
 // agent's system prompt and tools make obvious.
-const builderPrompt = `ROLE: BUILDER. You set up the council for the work in the conversation above, before it starts. Read the system prompt, the user's requests so far and the tools listed at the start (or that there are none): they say what kind of work this is. Then write, for each role, a short instruction that fits this work -- what to look at, what a good result is, what to avoid. Each is added to the role's own instruction, so do not repeat what a role already does, and never give a role a tool it may not call: researchers and critics may only call the tools that read; the synthesizer alone makes changes and runs checks, and it applies the researchers' proposals. Also choose how much each role thinks (off, low, medium, high) and how many check cycles the work deserves (max_tests: 0 when nothing can be checked, a few for simple edits, more for code or science), and write a target: two or three sentences saying what the council is set up for, so a later request can be judged against it.
+const builderPrompt = `ROLE: BUILDER. You set up the council for the work in the conversation above, before it starts. Read the system prompt, the user's requests so far and the tools listed at the start (or that there are none): they say what kind of work this is. Then write, for each role, a short instruction that fits this work -- what to look at, what a good result is, what to avoid. Each is added to the role's own instruction, so do not repeat what a role already does, and never give a role a tool it may not call: researchers and critics may only call the tools that read; the synthesizer alone makes changes and runs checks, and it applies the researchers' proposals. Also choose how much each role thinks (off, low, medium, high) and how many check cycles the work deserves (max_tests: 0 when nothing can be checked, a few for simple edits, more for code or science), and how many tool steps the synthesizer may take in one cycle before it reports back (max_steps: 2 to 16; a few for small edits, more when each check needs several steps), and write a target: two or three sentences saying what the council is set up for, so a later request can be judged against it.
+
+Never name a cause, a suspected place or a fix, even when the conversation already offers one: finding those out is the council's work, and an instruction that names them makes every member look only there (measured: a builder that wrote "focus on template literals" sent the whole council after a theory the first check had already refuted). Say what kind of work this is and how to do it well. Critics judge proposals against the material and the evidence; they never make or run a change, so do not ask them to test.
 
 Examples of the kind of fit wanted:
 
@@ -84,10 +96,11 @@ Examples of the kind of fit wanted:
 - Data analysis with tools that read files and run queries: researchers inspect the data and propose the query or computation that answers the question, with the check that shows it is right; the synthesizer runs it and reports numbers with their source. Think medium. max_tests 3.
 - Coding (a coding agent's system prompt; tools to read, search, edit and run): this is the case to get right.
   - planner: split the work by file, component or hypothesis so researchers do not overlap; after a failed check, plan from what the check showed, not from the first theory.
-  - researcher: read the code the brief names before concluding; locate the defect or the place to change to a file and line; propose the change as the exact edit (old text, new text) and the command that shows it works (a test, a build, a run); say what would prove the proposal wrong; never report a diagnosis that was not read in the code.
+  - planner: when the error does not say where it is, the first job is to locate it: split the material between the researchers so each narrows down its own part, rather than giving each a theory.
+  - researcher: localize before theorizing -- when an error names no place, narrow it down (take the material apart, count what must balance, compare with what works) until one place is left; read the code the brief names before concluding; propose the change as the exact edit (old text, new text) and the command that shows it works (a test, a build, a run); say what would prove the proposal wrong; never report a diagnosis that was not read in the code.
   - critic: check each proposal against the code it cites; reject one that repeats a refuted check; name the proposal most likely to work first.
   - synthesizer: apply one proposal at a time, run its check, and read the whole output; on a failure, re-read the code before editing again and never resend an edit that failed; stop when the check passes and report what changed.
-  Think medium for the researchers and critic, low for the planner and synthesizer. max_tests 6 for a bug fix, 8 or more for a feature across several files.
+  Think medium for the researchers and critic, low for the planner and synthesizer. max_tests 6 for a bug fix, 8 or more for a feature across several files; max_steps 6.
 
 The council, as the user defined it:
 %s
@@ -138,6 +151,7 @@ func parseBuild(out string) *Build {
 		Target, Planner, Researcher, Critic, Synthesizer string
 		Think                                            map[string]string
 		MaxTests                                         *int `json:"max_tests"`
+		MaxSteps                                         *int `json:"max_steps"`
 	}
 	if json.Unmarshal([]byte(strings.TrimSpace(out)), &v) != nil || strings.TrimSpace(v.Target) == "" {
 		// Recorded, so a resumed turn does not ask again; with no target it
@@ -157,6 +171,9 @@ func parseBuild(out string) *Build {
 	}
 	if v.MaxTests != nil {
 		b.MaxTests = min(max(*v.MaxTests, 0), maxBuildTests)
+	}
+	if v.MaxSteps != nil {
+		b.MaxSteps = min(max(*v.MaxSteps, minSteps), maxSteps)
 	}
 	return b
 }
@@ -187,6 +204,9 @@ func (cfg Config) apply(b *Build) Config {
 	}
 	cfg.Prompts, cfg.Think = prompts, think
 	cfg.MaxTests = b.MaxTests
+	if b.MaxSteps > 0 {
+		cfg.MaxSteps = b.MaxSteps
+	}
 	return cfg
 }
 
@@ -242,4 +262,60 @@ func keptWith(prev *Progress, b *Build) *Progress {
 	}
 	k.Build = b.clone()
 	return &k
+}
+
+// The failed checks a council carries between turns (B): the most recent
+// maxPrior, each at most maxPriorChars.
+const (
+	maxPrior      = 6
+	maxPriorChars = 6000
+)
+
+// previousPrior is what the last deliberation leaves of failed checks.
+func (cfg Config) previousPrior() []string {
+	if cfg.Previous == nil {
+		return nil
+	}
+	var out []string
+	for _, s := range cfg.Previous.Prior {
+		if !strings.HasPrefix(s, earlierMark) {
+			s = earlierMark + s
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+func lastPrior(p []string) []string {
+	for i := range p {
+		p[i] = truncate(p[i], maxPriorChars)
+	}
+	return p[max(0, len(p)-maxPrior):]
+}
+
+// earlierMark opens a check carried from an earlier turn, so a rebuild can
+// drop those and keep the front's attempts at the new work.
+const earlierMark = "(earlier turn) "
+
+// dropEarlier keeps only this turn's attempts: a rebuild is new work.
+func dropEarlier(p []string) []string {
+	var out []string
+	for _, s := range p {
+		if !strings.HasPrefix(s, earlierMark) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+const priorIntro = "Checks that already failed before this council began: on earlier turns of this work, or the synthesizer's own attempts this turn. Each says what was tried and what came back. Do not propose again what they refuted; build on what they showed.\n\n"
+
+// withPrior is the conversation followed by the failed checks before this
+// council, when there are some: the builder, the planner and every member
+// read them ahead of the plan.
+func withPrior(conv []api.Message, prior []string) []api.Message {
+	if len(prior) == 0 {
+		return conv
+	}
+	return append(clone(conv), user(priorIntro+joinNumbered("EARLIER CHECK", prior)))
 }

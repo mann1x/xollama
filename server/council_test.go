@@ -134,6 +134,10 @@ func (e *councilEngine) complete(ctx context.Context, r llm.CompletionRequest, f
 	if role == "route" && e.route == `{"route":"direct"}` {
 		reply = e.route
 	}
+	if role == "synthesizer" && strings.Contains(r.Prompt[at:], council.Done) {
+		// Asked for a verdict (a turn that can test), it gives one.
+		reply += " " + council.Done
+	}
 	if role == "front" {
 		// The synthesizer's front turn (11.5): a direct route is its answer,
 		// any other hands the request to the council.

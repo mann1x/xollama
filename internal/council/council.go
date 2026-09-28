@@ -102,7 +102,10 @@ type Config struct {
 	// MaxTests bounds the test cycles of a turn with tools (11.4): the
 	// synthesizer applies and checks the council's proposals, and a failed
 	// check sends its result back to the researchers.
-	MaxTests         int
+	MaxTests int
+	// MaxSteps bounds the synthesizer's tool steps in one cycle: past it, it
+	// is asked to report DONE or RETEST.
+	MaxSteps         int
 	ShowDeliberation bool
 	// Broadcast offers council_post to members working side by side
 	// (broadcast.go).
@@ -176,7 +179,7 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 	cfg := Config{
 		Researchers: DefaultResearchers, Critics: DefaultCritics,
 		Temperature: temperature, Jitter: DefaultJitter,
-		MaxRounds: 1, MaxTests: DefaultMaxTests, ShowDeliberation: true,
+		MaxRounds: 1, MaxTests: DefaultMaxTests, MaxSteps: DefaultMaxSteps, ShowDeliberation: true,
 		MaxTokens: map[Role]int{}, Prompts: map[Role]string{}, Models: map[Role]string{},
 		Hosts: map[Role]string{}, Think: map[Role]string{},
 		Charter: Charter(c),

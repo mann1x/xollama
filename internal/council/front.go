@@ -68,7 +68,15 @@ func (cfg Config) fronted(m Model) bool {
 	return ok && has
 }
 
-const frontMsg = "COUNCIL: You are the council's synthesizer, and you answer the user's latest message above. Answer it yourself, with the tools, when that is quick: a reply, a question, a small change. Call council_forward when it needs investigation or several steps of work: the council researches, plans and proposes, and you then make and check the changes."
+const frontMsg = "COUNCIL: You are the council's synthesizer, and you take the user's latest message above first. Answer it yourself only when you can already see the answer or the change to make: a reply, a question, a change whose place and content you know. When you would have to investigate first -- find a cause you cannot see yet, read and compare to find out what is wrong -- call council_forward now, before investigating: the council investigates in parallel and proposes, and you then make and check the changes."
+
+// frontSteps bounds the front's own tool steps (J): past them it is told to
+// forward, and two steps later the request is forwarded for it. Measured in
+// ab-5: the front investigated for 11 trips before forwarding, and the
+// theory it formed led the whole council.
+const frontSteps = 4
+
+var frontBudgetNote = fmt.Sprintf("You have taken %d tool steps yourself. Unless the answer is in hand now, call council_forward.", frontSteps)
 
 const frontNoBuild = " The council has not been set up yet: the first request you forward sets it up for the work."
 
@@ -115,6 +123,12 @@ func front(ctx context.Context, tm ToolModel, cfg Config, d Draws, conv []api.Me
 	defer emit(Event{Role: Front, Kind: Content, Done: true})
 	refusals, rebuilds := 0, 0
 	for {
+		switch steps := toolSteps(turns); {
+		case steps >= frontSteps+2:
+			return "", turns, RouteCouncil, nil
+		case steps >= frontSteps && !noted(turns, frontBudgetNote):
+			turns = append(slices.Clone(turns), user(frontBudgetNote))
+		}
 		rep, err := tm.StreamTools(ctx, Request{
 			Role: Front, Messages: append(clone(own), cfg.transcript(Front, key, turns)...),
 			Seed: d.Direct.Seed, Temperature: d.Direct.Temperature, MaxTokens: maxTok(cfg, Synthesizer), Think: cfg.Think[Synthesizer],
@@ -128,7 +142,7 @@ func front(ctx context.Context, tm ToolModel, cfg Config, d Draws, conv []api.Me
 		calls := named(rep.Calls, len(turns))
 		turns = append(slices.Clone(turns), api.Message{Role: "assistant", Content: rep.Content, ToolCalls: calls})
 		if slices.ContainsFunc(calls, func(c api.ToolCall) bool { return c.Function.Name == ForwardTool }) {
-			return "", nil, RouteCouncil, nil
+			return "", turns, RouteCouncil, nil
 		}
 		if slices.ContainsFunc(calls, func(c api.ToolCall) bool { return c.Function.Name == RebuildTool }) && rebuilds == 0 {
 			rebuilds++
@@ -146,4 +160,26 @@ func front(ctx context.Context, tm ToolModel, cfg Config, d Draws, conv []api.Me
 			return replyText(turns, ""), nil, "", nil
 		}
 	}
+}
+
+// frontReport is what the front tried before it forwarded, as a failed check
+// for the council (F), or "" when it called nothing the client ran. The
+// council reads it as an attempt that did not settle the request, not as the
+// conversation's word.
+func (cfg Config) frontReport(turns []api.Message) string {
+	if toolSteps(turns) == 0 {
+		return ""
+	}
+	key := MemberKey(Front, 0, 0)
+	var said []string
+	for _, t := range turns {
+		if t.Role == "assistant" && strings.TrimSpace(t.Content) != "" {
+			said = append(said, strings.TrimSpace(t.Content))
+		}
+	}
+	s := "The synthesizer worked on the request itself before forwarding it, and it was not settled."
+	if len(said) > 0 {
+		s += " What it concluded last: " + truncate(said[len(said)-1], 600)
+	}
+	return truncate(s+cfg.evidence(Front, key, turns), maxPriorChars)
 }

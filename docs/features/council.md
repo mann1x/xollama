@@ -151,6 +151,10 @@ council turn 3,139 → 525 tokens, peak KV cells about −40 %, wall time at par
   `TestTheOwnerWindowFollowsThePressure`, `TestCouncilSeatsFollowTheRounds`.
 - `llm/engine_council_test.go` — placement gating and pool 0, resize answers,
   session routing, pressure, seats.
+- `internal/council/checks_test.go` — tool turns that test (ab-5, plan 11.6):
+  a missing verdict asked for once and never streamed twice, a synthesizer's
+  step budget, a front forwarded with its attempts, failed checks carried to
+  the next turn and dropped on a rebuild.
 - `cmd/council_run_test.go` — a one-shot prompt reaches the council.
 - `app/ui/council_test.go` — a council keeps `think:false`, and every other
   request is left as upstream built it. `app/ui/app/src/hooks/useCouncil.test.ts`

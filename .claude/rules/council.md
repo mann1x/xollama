@@ -377,6 +377,26 @@ paths:
   `MaxTests` 0. Researchers are asked to propose only when a tool that changes
   something exists. Guards: `TestAFailedCheckGoesBackToTheResearchers`,
   `TestATurnResumesPastAFailedCheck`, `TestTheFailedChecksTravelInTheState`.
+- **ab-5 fixes (11.6)**:
+  - `MaxSteps` (`DefaultMaxSteps` 6; builder `max_steps` 2..16, state Build
+    field 5) bounds a testing synthesizer's tool steps in `callTools`: a
+    `budgetNote` at the bound, then a forced `Retest` report two steps later.
+  - A testing synthesizer's reply without a verdict gets `verdictNudge` once.
+    The nudged call streams nowhere (`onToken` is swapped out), and only its
+    verdict joins the reply the user read. Never let it stream again: the user
+    would read the answer twice.
+  - `Progress.Prior` (state Progress field 10) holds failed checks from before
+    this council: `Kept` merges Prior+Tests (`lastPrior`, 6 × 6000);
+    `previousPrior` marks them `earlierMark`; `RouteRebuild` and the front's
+    rebuild drop them (`dropEarlier`); `frontReport` adds the front's own
+    attempts. `withPrior` puts them after the conversation for every member,
+    the builder and the planner included.
+  - The front is bounded by `frontSteps` (4): at the bound it gets
+    `frontBudgetNote`, and two steps later it is forwarded.
+  - Findings and critiques are introduced as claims (`findingsIntro`,
+    `critiquesIntro`). The builder must never name a cause or a fix (it
+    anchored the whole council in ab-5).
+  - Guards are in `internal/council/checks_test.go`; each was checked by removal.
 - **The builder (11.5, `internal/council/build.go`)**: `Builder` runs on the
   owner like the planner (`memberSession`, `place`), before the first plan of a
   council route with no kept build, and on `RouteRebuild`. `apply` appends its

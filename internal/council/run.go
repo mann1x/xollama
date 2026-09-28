@@ -30,6 +30,10 @@ type Progress struct {
 	// the planner made for cycle c from them.
 	Tests   []string
 	Replans []Plan
+	// Prior are the checks that failed before this turn's council began:
+	// on earlier turns of the same work, and the front's own attempts this
+	// turn (B, F). Every member reads them, ahead of the plan.
+	Prior []string
 	// Build is the builder's shaping of the council (build.go), kept with
 	// the deliberation so later turns read its target.
 	Build *Build
@@ -42,7 +46,7 @@ type RoundProgress struct {
 }
 
 func (p Progress) clone() Progress {
-	out := Progress{Route: p.Route, Notes: append([]Note(nil), p.Notes...), Tests: append([]string(nil), p.Tests...), Build: p.Build.clone()}
+	out := Progress{Route: p.Route, Notes: append([]Note(nil), p.Notes...), Tests: append([]string(nil), p.Tests...), Prior: append([]string(nil), p.Prior...), Build: p.Build.clone()}
 	if len(p.Seen) > 0 {
 		out.Seen = maps.Clone(p.Seen)
 	}
@@ -164,6 +168,11 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 	}
 
 	route := p.Route
+	if route == "" && cfg.previousBuild() != nil && len(p.Prior) == 0 {
+		// B: the checks that failed on earlier turns of the same work come
+		// with it; a rebuild, for new work, drops them below.
+		mark(func() { p.Prior = cfg.previousPrior() })
+	}
 	if route == "" && cfg.fronted(m) {
 		// The synthesizer takes the request first (front.go).
 		route = RouteFront
@@ -176,7 +185,10 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 		ans, turns, next, err := front(ctx, m.(ToolModel), fcfg, d, conv, emit, p.Suspended[key], func(ctx context.Context) (*Build, error) {
 			b, err := MakeBuild(ctx, m, cfg, d, conv, emit)
 			if err == nil {
-				mark(func() { p.Build = b.clone() })
+				mark(func() {
+					p.Build = b.clone()
+					p.Prior = dropEarlier(p.Prior)
+				})
 			}
 			return b, err
 		})
@@ -191,9 +203,13 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 			return Result{Route: "direct", Answer: ans, Draws: d, Kept: keptWith(cfg.Previous, p.Build)}, nil
 		}
 		route = next
+		report := fcfg.frontReport(turns)
 		mark(func() {
 			delete(p.Suspended, key)
 			p.Route = route
+			if report != "" {
+				p.Prior = append(p.Prior, report)
+			}
 		})
 	}
 	if route == "" {
@@ -248,6 +264,9 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 
 	// The builder shapes the council the first time a request reaches it, and
 	// again when the request is new work its target does not fit.
+	if route == RouteRebuild {
+		mark(func() { p.Prior = dropEarlier(p.Prior) })
+	}
 	if p.Build == nil {
 		b := cfg.previousBuild()
 		if b == nil || route == RouteRebuild {
@@ -261,6 +280,7 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 		}
 	}
 	cfg = cfg.apply(p.Build)
+	conv = withPrior(conv, p.Prior)
 	if p.Plan == nil {
 		plan, err := MakePlan(ctx, m, cfg, d, conv, emit)
 		if err != nil {
@@ -394,7 +414,7 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 			round++
 			continue
 		}
-		return Result{Route: route, Answer: ans, Rounds: round + 1, Draws: d, Kept: Kept(p)}, nil
+		return Result{Route: route, Answer: withoutVerdict(ans), Rounds: round + 1, Draws: d, Kept: Kept(p)}, nil
 	}
 }
 

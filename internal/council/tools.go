@@ -230,6 +230,13 @@ func (cfg Config) toolNote(r Role) string {
 		// researchers reported a diagnosis nobody checked.
 		note += " When the task needs a change, propose it: what to change, where, and how to check that it worked. The synthesizer makes and checks it."
 	}
+	if r == Critic && slices.ContainsFunc(cfg.Tools, func(t api.Tool) bool {
+		return !t.Function.ReadOnly && t.Function.Name != EvidenceTool && t.Function.Name != PostTool && !routing(t.Function.Name)
+	}) {
+		// Measured in ab-5: critics called edit_file three times to test a
+		// proposal, and were refused each time.
+		note += " You cannot make or test a change: judge each proposal against the material and the evidence."
+	}
 	if r == Critic {
 		// Measured live: critics re-read every file the researchers had read.
 		note += " The findings carry the tool results the researchers read; call a tool only for what they lack."
@@ -320,11 +327,25 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 	own := req.Messages
 	refusals, lookups, preempts := 0, 0, 0
 	nudged := false
+	// unverdicted is the reply that ended without a verdict (C): the user
+	// has read it, so the nudged reply only adds the verdict to it, unseen.
+	unverdicted := ""
 	for {
 		if n := cfg.unread(req.Role, key); n != nil {
 			// Into the member's own turns, so its prefix stays and a resume
 			// reads them where they were.
 			turns = append(slices.Clone(turns), *n)
+		}
+		if req.Role == Synthesizer && cfg.testing(req.Round) {
+			// D: a cycle's steps are bounded; past them the synthesizer is
+			// told to report, and two steps later its report is taken as is.
+			switch steps := toolSteps(turns); {
+			case steps >= cfg.MaxSteps+2:
+				out := replyText(turns, "") + "\n\n" + Retest + " The cycle's tool steps ran out before a check passed."
+				return out + cfg.evidence(req.Role, key, turns), nil, nil
+			case steps >= cfg.MaxSteps && !noted(turns, budgetNote(cfg.MaxSteps)):
+				turns = append(slices.Clone(turns), user(budgetNote(cfg.MaxSteps)))
+			}
 		}
 		req.Messages = append(clone(own), cfg.transcript(req.Role, key, turns)...)
 		rep, partial, preempted, err := cfg.streamPreemptible(ctx, tm, req, key, onToken)
@@ -356,6 +377,24 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 			nudged = true
 			own = append(clone(own), api.Message{Role: "assistant", Content: rep.Content}, user(narratedNudge))
 			continue
+		}
+		verdict := firstIndex(rep.Content, []string{Retest, Done})
+		if len(rep.Calls) == 0 && req.Role == Synthesizer && cfg.testing(req.Round) && unverdicted == "" && verdict < 0 && strings.TrimSpace(rep.Content) != "" {
+			// C: the loop turns on the verdict; one that is missing is asked
+			// for once (ab-5: a failed synthesizer answered instead, twice).
+			unverdicted = rep.Content
+			turns = append(slices.Clone(turns), api.Message{Role: "assistant", Content: rep.Content}, user(verdictNudge))
+			onToken = func(string) {}
+			continue
+		}
+		if len(rep.Calls) == 0 && unverdicted != "" {
+			// The verdict joins the reply the user read; without one, that
+			// reply stands as the answer.
+			if verdict >= 0 {
+				rep.Content = unverdicted + "\n\n" + strings.TrimSpace(rep.Content[verdict:])
+			} else {
+				rep.Content = unverdicted
+			}
 		}
 		if len(rep.Calls) == 0 {
 			out := replyText(turns, rep.Content)
@@ -407,4 +446,20 @@ func (cfg Config) streamPreemptible(ctx context.Context, tm ToolModel, req Reque
 	}
 	cfg.board.wasPreempted(key) // a verdict that came as it finished changes nothing
 	return rep, "", false, err
+}
+
+// toolSteps counts a member's turns that called a tool the client runs.
+func toolSteps(turns []api.Message) int {
+	n := 0
+	for _, t := range turns {
+		if t.Role == "assistant" && slices.ContainsFunc(t.ToolCalls, func(c api.ToolCall) bool { return !local(c) }) {
+			n++
+		}
+	}
+	return n
+}
+
+// noted reports whether the member's turns already carry note.
+func noted(turns []api.Message, note string) bool {
+	return slices.ContainsFunc(turns, func(t api.Message) bool { return t.Role == "user" && t.Content == note })
 }

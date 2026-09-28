@@ -125,7 +125,8 @@ func TestTheNotesBoardTravelsInTheState(t *testing.T) {
 }
 
 // The failed checks of a turn (11.4) travel in the state, in order, so a
-// resumed turn starts at the cycle after the last.
+// resumed turn starts at the cycle after the last; so do the checks carried
+// from before it and the builder's step budget.
 func TestTheFailedChecksTravelInTheState(t *testing.T) {
 	s := testState()
 	s.progress.Tests = []string{"tried a; the test failed. " + council.Retest, "tried b; still failing. " + council.Retest}
@@ -135,13 +136,18 @@ func TestTheFailedChecksTravelInTheState(t *testing.T) {
 		Instructions: map[council.Role]string{council.Researcher: "read before concluding", council.Synthesizer: "one edit at a time"},
 		Think:        map[council.Role]int{council.Researcher: 2048, council.Critic: 0},
 		MaxTests:     8,
+		MaxSteps:     5,
 	}
+	s.progress.Prior = []string{"(earlier turn) tried c; failed.", "The synthesizer worked on the request itself."}
 	got, err := unmarshalCouncilState(s.marshal())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got.progress.Tests, s.progress.Tests) {
 		t.Errorf("tests = %q, want %q", got.progress.Tests, s.progress.Tests)
+	}
+	if !reflect.DeepEqual(got.progress.Prior, s.progress.Prior) {
+		t.Errorf("prior = %q, want %q", got.progress.Prior, s.progress.Prior)
 	}
 	if !reflect.DeepEqual(got.progress.Replans, s.progress.Replans) {
 		t.Errorf("replans = %+v, want %+v", got.progress.Replans, s.progress.Replans)

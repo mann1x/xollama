@@ -330,6 +330,19 @@ synthesizer checks again. With thinking shown, you watch the deliberation
 start over. A turn runs at most 6 cycles, and the last synthesizer's reply is
 the answer.
 
+The synthesizer's part in a cycle is to apply the council's proposals and
+check them, not to investigate on its own. It has 6 tool steps per cycle (the
+builder may set 2 to 16). When they run out, what it tried goes back to the
+council as a failed check. A synthesizer that forgets the verdict is asked for
+it once, without you seeing the answer twice.
+
+Failed checks outlive the turn. On your next message about the same work,
+every member reads what was already tried and refuted. New work, which the
+synthesizer rebuilds the council for, starts clean. When the synthesizer
+takes a request first and finds it needs investigating, it forwards the
+request before digging in. It has at most 4 tool steps of its own, and what it
+tried reaches the council the same way.
+
 Without tools there is nothing to check with, and the council answers once, as
 before. The cycles travel in `council_chat_state`, so a resumed turn starts at
 the cycle after the last failed check. A turn that continues the last

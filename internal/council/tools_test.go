@@ -50,6 +50,9 @@ func (s *toolStub) StreamTools(ctx context.Context, req Request, onToken func(st
 		return Reply{Content: "let me look", Calls: []api.ToolCall{{Function: api.ToolCallFunction{Name: name, Arguments: args}}}}, nil
 	}
 	out := string(req.Role) + " says " + strings.Join(results, "|")
+	if req.Role == Synthesizer {
+		out += " " + Done
+	}
 	onToken(out)
 	return Reply{Content: out}, nil
 }
@@ -550,7 +553,7 @@ func (s *retestStub) StreamTools(ctx context.Context, req Request, onToken func(
 	s.calls = append(s.calls, req)
 	s.mu.Unlock()
 	n := int(s.synth.Add(1))
-	out := "fixed it"
+	out := "fixed it " + Done
 	if n <= s.fails {
 		out = fmt.Sprintf("Status %d: still failing, trying again.\n\n%s tried change %d; the test failed.", n, Retest, n)
 	}

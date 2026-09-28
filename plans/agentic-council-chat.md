@@ -1883,6 +1883,59 @@ The earlier draft, where these differ:
 - The builder carries built-in worked examples, one detailed for coding. They
   can be replaced with `council.builder.prompt`.
 
+### 11.6 ab-5 and the fixes it asked for (built 2026-09-28)
+ab-5, simple: plain fixed it on solidPC in 339 s and 30 trips. On eleven2go
+plain took 162 s and 20 trips, while the council declared done without a fix
+(659 s, 24 trips); on solidPC the council ran 3405 s and 60 trips unfixed.
+Read from the transcripts, the members are served exactly as a plain turn is
+(same ChatHandler, template and options; only 2 of 140 replies hit a cap).
+What differs is what they read:
+- At trip 28, the synthesizer's request is 65 messages and 144k characters.
+  The client's history shows every member's calls as one assistant, and holds
+  five copies of the 30 KB file and the front's wrong claims.
+- The plan, findings and critiques arrive as user messages and are obeyed as
+  instructions.
+- The builder copied the front's template-literal theory into every role.
+- The first cycle's synthesizer investigated on its own for 16 trips instead
+  of testing proposals.
+- Failed checks were lost between user turns, and the loop depended on the
+  model writing `VERDICT: RETEST`.
+- Critics tried `edit_file`.
+
+The fixes (owner: "do A–H"; I and J from the same reading):
+- A: the builder never names a cause, place or fix, only the kind of work
+  and how to do it well.
+- B: failed checks outlive the turn while its work stands (`Kept` →
+  `Progress.Prior`, state field 10, at most 6 of 6000 characters). A rebuild
+  drops them, keeping this turn's front attempts. Every member reads them
+  ahead of the plan (`withPrior`).
+- C: a testing synthesizer that ends without a verdict is asked for one once.
+  The nudged reply is unseen, and only its verdict joins the reply the user
+  already read.
+- D: a cycle's tool steps are bounded (`MaxSteps`, default 6, the builder's
+  `max_steps` 2..16, Build field 5). At the bound the synthesizer is told; two
+  steps later its report is taken as a failed check.
+- E: the synthesizer's test note says to apply the council's proposals one at
+  a time, never to investigate on its own, and to end with `VERDICT: DONE` or
+  `VERDICT: RETEST`.
+- F: the front's own attempts before it forwards reach the council as a
+  failed check (`frontReport`).
+- G: the coding example asks researchers to localize before theorizing and
+  the planner to locate first.
+- H: critics are told they cannot make or test a change.
+- I: findings and critiques are introduced as claims, not facts or
+  instructions.
+- J: the front answers only when the answer or change is already in view,
+  and calls `council_forward` before investigating. It is told to forward
+  after 4 tool steps, and forwarded two later.
+
+Guards: `TestASynthesizerWithoutAVerdictIsAskedForOne`,
+`TestASynthesizerThatKeepsInvestigatingRunsOutOfSteps`,
+`TestAFrontThatInvestigatesIsForwardedWithItsAttempts`,
+`TestFailedChecksCarryToTheNextTurn` and `TestTheFailedChecksTravelInTheState`.
+Each guard was checked by removing its fix. Next: rerun simple on eleven2go,
+then medium and hard once each to look for a cliff.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).

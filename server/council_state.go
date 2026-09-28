@@ -182,6 +182,9 @@ func marshalProgress(p council.Progress) []byte {
 	if p.Build != nil {
 		b = appendBytes(b, 9, marshalBuild(p.Build))
 	}
+	for _, t := range p.Prior {
+		b = appendRepeated(b, 10, t)
+	}
 	return b
 }
 
@@ -202,7 +205,12 @@ func marshalBuild(bd *council.Build) []byte {
 		b = appendBytes(b, 3, rb)
 	}
 	b = protowire.AppendTag(b, 4, protowire.VarintType)
-	return protowire.AppendVarint(b, uint64(bd.MaxTests))
+	b = protowire.AppendVarint(b, uint64(bd.MaxTests))
+	if bd.MaxSteps > 0 {
+		b = protowire.AppendTag(b, 5, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(bd.MaxSteps))
+	}
+	return b
 }
 
 func unmarshalBuild(v []byte) (*council.Build, error) {
@@ -237,6 +245,8 @@ func unmarshalBuild(v []byte) (*council.Build, error) {
 			}
 		case num == 4 && typ == protowire.VarintType:
 			bd.MaxTests = int(n)
+		case num == 5 && typ == protowire.VarintType:
+			bd.MaxSteps = int(n)
 		}
 		return nil
 	})
@@ -489,6 +499,8 @@ func unmarshalProgress(b []byte) (council.Progress, error) {
 				return err
 			}
 			p.Build = bd
+		case 10:
+			p.Prior = append(p.Prior, string(v))
 		}
 		return nil
 	})

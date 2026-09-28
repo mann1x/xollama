@@ -5,6 +5,13 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — council 11.6: ab-5 read, and the fixes it asked for.**
+> - ab-5 simple: plain fixed it on both hosts (solidPC 339 s / 30 trips capped, eleven2go 162 s / 20). The council did not (solidPC 3405 s / 60, unfixed; eleven2go 659 s / 24, declared done unfixed).
+> - Members are served exactly as a plain turn: same ChatHandler, template and options; 2 of 140 replies hit a cap. The delta is context. The client history carries every member's calls as one assistant, five copies of the file and the front's wrong claims. Findings arrived as user messages and were obeyed. The builder anchored every role on the front's theory. The synthesizer investigated for 16 trips instead of testing.
+> - Built (A–J): the builder never names a cause; failed checks are carried across turns (`Progress.Prior`, state field 10); the verdict is nudged once and never re-streamed; a synthesizer step budget (`MaxSteps` 6, builder `max_steps`, Build field 5); a test note that forbids investigating on its own; the front's attempts reach the council; localize-first coding example; critics told they cannot test; findings framed as claims; the front forwards before investigating (4 steps, then forced). Guards are in `internal/council/checks_test.go`, each checked by removal.
+> - #468 (opencoti) on the 3090, 70B q3_K_S, 32k: `--kv-residency-mode auto` beats `head`. Decode 2.45 vs 2.10 tok/s at 1k and 0.24 vs 0.16 at 24k: auto keeps 59 layers on the GPU against head's 48. Mailed as #529.
+> - Next: redeploy to eleven2go, rerun simple, then medium and hard once each.
+
 > **2026-09-28 — council Phase 11 opened: caps raised, a repeated call pointed out.**
 > - ab-4 simple on eleven2go (kvarn3, `-c 393216`, two live slots): the council was unfixed at 1463 s against plain's 233 s. The researchers could not test, were capped at 384 tokens, and read once each. The diagnosis went untested. The synthesizer repeated one failing edit 15 times, and each of its resumes re-prefilled about 18k tokens.
 > - 11.1: reply caps 2048/2048/1024/2048 (planner/researcher/critic/synthesizer) with terse prompts, evidence carried whole to 4000 characters and capped at 16000, notes 600 characters.
