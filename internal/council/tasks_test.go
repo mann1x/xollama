@@ -205,3 +205,42 @@ func TestTheBuilderMakesThePlannerTheCoordinator(t *testing.T) {
 		}
 	}
 }
+
+// A planner that numbers its list afresh updates the tasks it names, never
+// the ones its numbers land on: the sixth simple run wrote 0, 1, 2 against the
+// list's #1, #2, #3. Every plan is kept with the list's ids, so no member
+// reads the planner's 0s.
+func TestARenumberedListUpdatesTheTasksItNames(t *testing.T) {
+	s := &retestStub{toolStub: toolStub{stub: stub{route: `{"route":"council"}`, plan: func(req Request) string {
+		if req.Round == 0 {
+			return `{"plan":"p","briefs":["a","b"],"tasks":[{"id":0,"task":"Run the check","status":"assigned","researcher":1},{"id":0,"task":"Read the code for errors","status":"assigned","researcher":2}]}`
+		}
+		return `{"plan":"p2","briefs":["a","b"],"tasks":[{"id":0,"task":"Run the check","status":"done","outcome":"it fails"},{"id":1,"task":"read the code for errors","status":"refuted","outcome":"nothing there"},{"id":2,"task":"Replace the failing part whole","status":"assigned","researcher":1}]}`
+	}}}, fails: 1}
+	res, err := Run(t.Context(), toolCfg(), s, conv, func(Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Task{
+		{ID: 1, Task: "Run the check", Status: TaskDone, Outcome: "it fails"},
+		{ID: 2, Task: "read the code for errors", Status: TaskRefuted, Outcome: "nothing there"},
+		{ID: 3, Task: "Replace the failing part whole", Status: TaskAssigned, Researcher: 1},
+	}
+	if fmt.Sprint(res.Kept.Tasks) != fmt.Sprint(want) {
+		t.Fatalf("list\n%+v\nwant\n%+v", res.Kept.Tasks, want)
+	}
+	for _, c := range s.calls {
+		if got := all(c); c.Role != Planner && strings.Contains(got, header(planSource)) && strings.Contains(got, `"id":0`) {
+			t.Fatalf("a %s read a plan with the planner's own numbering:\n%s", c.Role, got)
+		}
+	}
+	var replan Request
+	for _, c := range s.calls {
+		if c.Role == Planner && c.Round > 0 {
+			replan = c
+		}
+	}
+	if got := all(replan); strings.Contains(got, `"id":0`) || !strings.Contains(got, `"id":2,"task":"Read the code for errors"`) {
+		t.Errorf("the re-plan did not read its first plan in the list's numbering:\n%s", got)
+	}
+}

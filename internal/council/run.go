@@ -316,8 +316,11 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 			return Result{Route: route, Draws: d}, err
 		}
 		mark(func() {
-			p.Plan = &plan
+			// The plan is kept with the list's ids, so the members and the
+			// re-plans read one numbering, never the planner's 0s.
 			p.Tasks = mergeTasks(p.Tasks, planTasks(plan), cfg.Researchers)
+			plan.Tasks = append([]Task(nil), p.Tasks...)
+			p.Plan = &plan
 		})
 	}
 	plan := *p.Plan
@@ -337,8 +340,9 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 					return Result{Route: route, Rounds: round, Draws: d}, err
 				}
 				mark(func() {
-					p.Replans = append(p.Replans, pl)
 					p.Tasks = mergeTasks(p.Tasks, planTasks(pl), cfg.Researchers)
+					pl.Tasks = append([]Task(nil), p.Tasks...)
+					p.Replans = append(p.Replans, pl)
 				})
 			}
 			plan = p.Replans[cycle-1]

@@ -14,9 +14,11 @@ import (
 
 // stub answers every role with a fixed reply and records the calls.
 type stub struct {
-	mu      sync.Mutex
-	calls   []Request
-	route   string
+	mu    sync.Mutex
+	calls []Request
+	route string
+	// plan, when set, is the planner's reply to a plan request.
+	plan    func(Request) string
 	build   string
 	fail    Role
 	revise  bool
@@ -59,6 +61,8 @@ func (s *stub) Stream(ctx context.Context, req Request, onToken func(string)) (s
 		if out == "" {
 			out = `{"target":"t","planner":"","researcher":"","critic":"","synthesizer":"","max_tests":6}`
 		}
+	case req.Format != nil && s.plan != nil:
+		out = s.plan(req)
 	case req.Format != nil:
 		out = `{"plan":"p","briefs":["a","b","c","d"]}`
 	case req.Role == Critic && s.revise:

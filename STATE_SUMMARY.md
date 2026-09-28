@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — council: task ids keep the list's numbering.**
+> - Sixth simple run (34924cbe), in progress: the stuck note fired, and the planner dropped the template-literal theory at the third plan. Its re-plans numbered the task list from 0 again, so updates landed on the wrong tasks.
+> - Fixed: plans are kept with the list's ids, tasks are matched by their words before their id, and the rule says never to renumber (`TestARenumberedListUpdatesTheTasksItNames`, checked by removal).
+> - Next: finish run 6, redeploy, then the b203 rerun for opencoti #533.
+
 > **2026-09-28 — council 11.10–11.12: a task list for the planner, stuck checks, reviews with verdicts.**
 > - Fifth simple run (b336b144): unfixed, 60 trips, 1619 s. Six reviews fired and were mostly right to refute, but only one carried its `REVIEW:` line. Every check returned the same "missing ) after argument list". The plain arm fixed the task in 27 trips, with a whole-file rewrite at trip 20, then followed the new errors.
 > - Built:

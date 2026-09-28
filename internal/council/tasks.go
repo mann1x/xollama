@@ -13,7 +13,9 @@ package council
 
 import (
 	"fmt"
+	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/ollama/ollama/api"
 )
@@ -49,10 +51,8 @@ func closed(s string) bool { return s == TaskDone || s == TaskRefuted }
 // council of researchers.
 func mergeTasks(prev, next []Task, researchers int) []Task {
 	out := append([]Task(nil), prev...)
-	at := map[int]int{}
 	top := 0
-	for i, t := range out {
-		at[t.ID] = i
+	for _, t := range out {
 		top = max(top, t.ID)
 	}
 	for _, t := range next {
@@ -76,18 +76,18 @@ func mergeTasks(prev, next []Task, researchers int) []Task {
 		if closed(t.Status) {
 			t.Researcher = 0
 		}
-		i, known := at[t.ID]
-		if !known || t.ID <= 0 {
+		i := updates(out, t)
+		if i < 0 {
 			if t.Task == "" || len(out) >= maxTasks {
 				continue
 			}
 			top++
 			t.ID = top
-			at[t.ID] = len(out)
 			out = append(out, t)
 			continue
 		}
 		old := out[i]
+		t.ID = old.ID
 		if old.Status == TaskRefuted {
 			// Refuted stays refuted: no researcher is given it again.
 			continue
@@ -98,6 +98,66 @@ func mergeTasks(prev, next []Task, researchers int) []Task {
 		out[i] = t
 	}
 	return out
+}
+
+// updates is the index in list of the task t updates, or -1 for a new one.
+// The text decides before the id: a planner that numbers its list afresh
+// (it did on the sixth simple run, from 0 again, against the list's #1..)
+// would otherwise write each update over another task. An id stands only
+// for a task whose text t leaves out or keeps close to.
+func updates(list []Task, t Task) int {
+	if key := taskWords(t.Task); len(key) > 0 {
+		for i, o := range list {
+			if sameWords(taskWords(o.Task), key) {
+				return i
+			}
+		}
+	}
+	if t.ID <= 0 {
+		return -1
+	}
+	for i, o := range list {
+		if o.ID == t.ID {
+			if strings.TrimSpace(t.Task) == "" || closeWords(taskWords(o.Task), taskWords(t.Task)) {
+				return i
+			}
+			return -1
+		}
+	}
+	return -1
+}
+
+// taskWords is a task's text as its lowercased words.
+func taskWords(s string) []string {
+	return strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+}
+
+func sameWords(a, b []string) bool { return slices.Equal(a, b) }
+
+// closeWords is whether two texts share at least half the words of the
+// shorter one.
+func closeWords(a, b []string) bool {
+	as, bs := wordSet(a), wordSet(b)
+	if len(as) == 0 || len(bs) == 0 {
+		return false
+	}
+	shared := 0
+	for w := range bs {
+		if as[w] {
+			shared++
+		}
+	}
+	return 2*shared >= min(len(as), len(bs))
+}
+
+func wordSet(ws []string) map[string]bool {
+	m := map[string]bool{}
+	for _, w := range ws {
+		m[w] = true
+	}
+	return m
 }
 
 // tasksFromBriefs is the list a plan without one stands for: a task per
@@ -143,7 +203,7 @@ func tasksMsg(ts []Task) []api.Message {
 }
 
 // ledgerRules is the planner's standing instruction for the list.
-const ledgerRules = `You are the council's coordinator: you keep its task list and schedule the researchers on it. In "tasks", write the whole list: every task already on it stays, with its id; add a task for each new piece of work (id 0 for a new one). Status: "open" (not started), "assigned" with "researcher" (who works on it now), "done" or "refuted" with "outcome" (the evidence that settled it: a check's output, a result). A refuted task is never assigned again. Each brief is the tasks you assign to that researcher, by id and in words. Close tasks only on evidence, never on a member's claim alone.`
+const ledgerRules = `You are the council's coordinator: you keep its task list and schedule the researchers on it. In "tasks", write the whole list: every task already on it stays, with its id as the list shows it (#3 is id 3), never renumbered; add a task for each new piece of work with id 0. Status: "open" (not started), "assigned" with "researcher" (who works on it now), "done" or "refuted" with "outcome" (the evidence that settled it: a check's output, a result). A refuted task is never assigned again. Each brief is the tasks you assign to that researcher, by id and in words. Close tasks only on evidence, never on a member's claim alone.`
 
 // taskSchema is the JSON schema of one task.
 func taskSchema(researchers int) string {

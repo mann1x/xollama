@@ -460,7 +460,9 @@ paths:
   JSON carries `"tasks"`; `mergeTasks` enforces the rules (no deletion, an
   outcome to close, a real researcher to assign, refuted stays refuted, new
   ids after the last). It is a schema field, never a tool: the planner has no
-  tool loop. Carried in `Kept` and state Progress 12/13 (Plan 3); every
+  tool loop. A task is matched by its words before its id (`updates`): a
+  planner renumbers from 0 (sixth simple run). Plans are kept with the list's
+  ids (`plan.Tasks` set after the merge), so no member reads the planner's 0s. Carried in `Kept` and state Progress 12/13 (Plan 3); every
   rebuild drops it with `dropEarlier`.
 - **Stuck checks (11.11, `internal/council/stuck.go`)**: `Progress.Checks`
   (state Progress 11) keeps each failed cycle's last read-only result;

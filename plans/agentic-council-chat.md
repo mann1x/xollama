@@ -2096,6 +2096,20 @@ Guards: `TestTheTaskListKeepsItsRules`, `TestThePlannerKeepsTheTaskList`
 (carried, shown at the re-plan, dropped on both rebuilds) and
 `TestTheBuilderMakesThePlannerTheCoordinator`. Each was checked by removal.
 
+Fixed the same day, from the sixth simple run (34924cbe): the planner numbered
+its re-plan's list from 0 again (0, 1, 2 against the list's #1, #2, #3), so
+each update landed on another task. It had read two numberings: the list's,
+and the `id 0`s of its own first plan, which the re-plan request repeats as
+it wrote them. Now:
+- every plan and re-plan is kept with the list's ids, so no member and no
+  re-plan reads the planner's 0s;
+- `mergeTasks` matches a task by its words first (`updates`), and an id stands
+  only for a task whose text is left out or shares at least half its words;
+- the rule says to keep the id the list shows (#3 is id 3), never renumbered.
+
+Guard: `TestARenumberedListUpdatesTheTasksItNames` (the run's shape), checked
+by removal of each of the three.
+
 ### 11.11 Checks that stop moving change the approach (built 2026-09-28)
 The fifth simple run (b336b144) returned the same "missing ) after argument
 list" from every check for 60 trips. The plain arm fixed the task in 27 trips:
