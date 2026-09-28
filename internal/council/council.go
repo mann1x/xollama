@@ -152,6 +152,15 @@ type Config struct {
 	Turn string
 	// request is the user's latest message, which a review is made against.
 	request string
+	// carried is the task list this turn began with, from the turns before;
+	// ledger the list as it stands (tasks.go).
+	carried, ledger []Task
+	// checks are the outputs of the failed cycles' last checks, aligned
+	// with tests (stuck.go).
+	checks []string
+	// checked receives the synthesizer's last check output when its cycle
+	// ends; nil records nothing.
+	checked *string
 	// showReviews streams the reviews the synthesizer gets as thinking
 	// (callFrom sets it); nil shows nothing.
 	showReviews func(round int, rs []Review)

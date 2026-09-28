@@ -139,12 +139,19 @@ func TestTheFailedChecksTravelInTheState(t *testing.T) {
 		MaxSteps:     5,
 	}
 	s.progress.Prior = []string{"(earlier turn) tried c; failed.", "The synthesizer worked on the request itself."}
+	s.progress.Checks = []string{"SyntaxError at 1", ""}
+	s.progress.Tasks = []council.Task{{ID: 1, Task: "find the fault", Status: council.TaskRefuted, Outcome: "the check did not move"}, {ID: 2, Task: "rewrite it", Status: council.TaskAssigned, Researcher: 2}}
+	s.progress.Carried = []council.Task{{ID: 1, Task: "find the fault", Status: council.TaskOpen}}
+	s.progress.Replans[0].Tasks = s.progress.Tasks
 	got, err := unmarshalCouncilState(s.marshal())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got.progress.Tests, s.progress.Tests) {
 		t.Errorf("tests = %q, want %q", got.progress.Tests, s.progress.Tests)
+	}
+	if !reflect.DeepEqual(got.progress.Checks, s.progress.Checks) || !reflect.DeepEqual(got.progress.Tasks, s.progress.Tasks) || !reflect.DeepEqual(got.progress.Carried, s.progress.Carried) {
+		t.Errorf("checks %q tasks %+v carried %+v", got.progress.Checks, got.progress.Tasks, got.progress.Carried)
 	}
 	if !reflect.DeepEqual(got.progress.Prior, s.progress.Prior) {
 		t.Errorf("prior = %q, want %q", got.progress.Prior, s.progress.Prior)

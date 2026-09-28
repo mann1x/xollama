@@ -585,7 +585,7 @@ func TestAFailedCheckGoesBackToTheResearchers(t *testing.T) {
 	for _, c := range s.calls {
 		if c.Role == Planner && c.Round > 0 {
 			replans++
-			if last := c.Messages[len(c.Messages)-2].Content + c.Messages[len(c.Messages)-1].Content; !strings.Contains(last, fmt.Sprintf("TEST %d:", c.Round)) || !strings.Contains(last, "Plan the work again") {
+			if last := all(c); !strings.Contains(last, fmt.Sprintf("TEST %d:", c.Round)) || !strings.Contains(last, "Plan the work again") {
 				t.Errorf("re-plan %d without its checks: %q", c.Round, last)
 			}
 		}

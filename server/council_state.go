@@ -185,6 +185,15 @@ func marshalProgress(p council.Progress) []byte {
 	for _, t := range p.Prior {
 		b = appendRepeated(b, 10, t)
 	}
+	for _, c := range p.Checks {
+		b = appendRepeated(b, 11, c)
+	}
+	for _, t := range p.Tasks {
+		b = appendBytes(b, 12, marshalTask(t))
+	}
+	for _, t := range p.Carried {
+		b = appendBytes(b, 13, marshalTask(t))
+	}
 	return b
 }
 
@@ -259,7 +268,44 @@ func marshalPlan(p council.Plan) []byte {
 	for _, br := range p.Briefs {
 		b = appendRepeated(b, 2, br)
 	}
+	for _, t := range p.Tasks {
+		b = appendBytes(b, 3, marshalTask(t))
+	}
 	return b
+}
+
+// A task: 1 id, 2 task, 3 status, 4 researcher, 5 outcome.
+func marshalTask(t council.Task) []byte {
+	var b []byte
+	b = protowire.AppendTag(b, 1, protowire.VarintType)
+	b = protowire.AppendVarint(b, uint64(max(t.ID, 0)))
+	b = appendString(b, 2, t.Task)
+	b = appendString(b, 3, t.Status)
+	if t.Researcher > 0 {
+		b = protowire.AppendTag(b, 4, protowire.VarintType)
+		b = protowire.AppendVarint(b, uint64(t.Researcher))
+	}
+	return appendString(b, 5, t.Outcome)
+}
+
+func unmarshalTask(v []byte) (council.Task, error) {
+	var t council.Task
+	err := fields(v, func(num protowire.Number, typ protowire.Type, v []byte, n uint64) error {
+		switch {
+		case num == 1 && typ == protowire.VarintType:
+			t.ID = int(n)
+		case num == 2 && typ == protowire.BytesType:
+			t.Task = string(v)
+		case num == 3 && typ == protowire.BytesType:
+			t.Status = string(v)
+		case num == 4 && typ == protowire.VarintType:
+			t.Researcher = int(n)
+		case num == 5 && typ == protowire.BytesType:
+			t.Outcome = string(v)
+		}
+		return nil
+	})
+	return t, err
 }
 
 func unmarshalPlan(v []byte) (council.Plan, error) {
@@ -270,6 +316,12 @@ func unmarshalPlan(v []byte) (council.Plan, error) {
 			pl.Plan = string(v)
 		case num == 2 && typ == protowire.BytesType:
 			pl.Briefs = append(pl.Briefs, string(v))
+		case num == 3 && typ == protowire.BytesType:
+			t, err := unmarshalTask(v)
+			if err != nil {
+				return err
+			}
+			pl.Tasks = append(pl.Tasks, t)
 		}
 		return nil
 	})
@@ -501,6 +553,18 @@ func unmarshalProgress(b []byte) (council.Progress, error) {
 			p.Build = bd
 		case 10:
 			p.Prior = append(p.Prior, string(v))
+		case 11:
+			p.Checks = append(p.Checks, string(v))
+		case 12, 13:
+			t, err := unmarshalTask(v)
+			if err != nil {
+				return err
+			}
+			if num == 12 {
+				p.Tasks = append(p.Tasks, t)
+			} else {
+				p.Carried = append(p.Carried, t)
+			}
 		}
 		return nil
 	})

@@ -74,13 +74,19 @@ func confirmed(critique string) (string, bool) {
 const stoppedCritique = "(stopped: another critic confirmed where the error is)"
 
 func planSchema(n int) json.RawMessage {
-	return json.RawMessage(fmt.Sprintf(`{"type":"object","properties":{"plan":{"type":"string"},"briefs":{"type":"array","items":{"type":"string"},"minItems":%d,"maxItems":%d}},"required":["plan","briefs"]}`, n, n))
+	return json.RawMessage(fmt.Sprintf(`{"type":"object","properties":{"plan":{"type":"string"},"briefs":{"type":"array","items":{"type":"string"},"minItems":%d,"maxItems":%d},"tasks":{"type":"array","items":%s,"maxItems":%d}},"required":["plan","briefs","tasks"]}`, n, n, taskSchema(n), maxTasks))
 }
 
 // Plan is the planner's output on the council path.
 type Plan struct {
 	Plan   string   `json:"plan"`
 	Briefs []string `json:"briefs"`
+	// Tasks is the council's task list as the planner wrote it (tasks.go).
+	Tasks []Task `json:"tasks,omitempty"`
+}
+
+func (p Plan) clone() Plan {
+	return Plan{Plan: p.Plan, Briefs: append([]string(nil), p.Briefs...), Tasks: append([]Task(nil), p.Tasks...)}
 }
 
 func prompt(cfg Config, r Role) string {
@@ -233,8 +239,8 @@ func routeRequest(cfg Config) api.Message {
 // planMsg is the planner's plan request. The charter opens it: every later
 // member continues from it (base), so the charter is prefilled once a turn.
 func planMsg(cfg Config) api.Message {
-	s := fmt.Sprintf(`ROLE: PLANNER. %s Reply with JSON only: {"plan":"<the plan>","briefs":[<exactly %d researcher briefs>]}.`,
-		prompt(cfg, Planner), cfg.Researchers)
+	s := fmt.Sprintf(`ROLE: PLANNER. %s %s Reply with JSON only: {"plan":"<the plan>","briefs":[<exactly %d researcher briefs>],"tasks":[<the task list>]}.`,
+		prompt(cfg, Planner), ledgerRules, cfg.Researchers)
 	s = sourcesNote + "\n\n" + s
 	if c := cfg.charter(); c != "" {
 		s = c + "\n\n" + s
@@ -245,7 +251,7 @@ func planMsg(cfg Config) api.Message {
 // MakePlan writes the plan and one brief per researcher.
 func MakePlan(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, emit Emit) (Plan, error) {
 	out, err := call(ctx, m, cfg, emit, Request{
-		Role: Planner, Model: cfg.Models[Planner], Host: cfg.Hosts[Planner], Messages: append(clone(conv), planMsg(cfg)),
+		Role: Planner, Model: cfg.Models[Planner], Host: cfg.Hosts[Planner], Messages: append(append(clone(conv), tasksMsg(cfg.carried)...), planMsg(cfg)),
 		Seed: d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Planner), Think: cfg.Think[Planner],
 		Format: planSchema(cfg.Researchers),
 	}, Thinking)
@@ -282,7 +288,7 @@ func base(cfg Config, conv []api.Message, p Plan) []api.Message {
 
 // planned is the conversation, the plan request and plan p.
 func planned(cfg Config, conv []api.Message, p Plan) []api.Message {
-	return append(clone(conv), planMsg(cfg), planReply(p))
+	return append(append(clone(conv), tasksMsg(cfg.carried)...), planMsg(cfg), planReply(p))
 }
 
 // planReply is the planner's plan as the members read it: the planner's
@@ -295,9 +301,11 @@ func planReply(p Plan) api.Message {
 // replanRequest is the first plan followed by the failed checks and the
 // planner's instruction to plan the work again.
 func replanRequest(cfg Config, conv []api.Message) []api.Message {
-	return append(planned(cfg, conv, *cfg.first), sourced(testsSource, testsIntro+joinNumbered("TEST", cfg.tests)), user(fmt.Sprintf(
-		"ROLE: PLANNER. Plan the work again from what the checks showed: split what is left into one workload per researcher, and give no researcher what a check refuted. Reply with JSON only: {\"plan\":\"<the plan>\",\"briefs\":[<exactly %d researcher briefs>]}.",
-		cfg.Researchers)))
+	msgs := append(planned(cfg, conv, *cfg.first), sourced(testsSource, cfg.testsBody()))
+	msgs = append(msgs, tasksMsg(cfg.ledger)...)
+	return append(msgs, user(fmt.Sprintf(
+		"ROLE: PLANNER. Plan the work again from what the checks showed: update the task list from them, split what is left into one workload per researcher, and give no researcher what a check refuted. %s Reply with JSON only: {\"plan\":\"<the plan>\",\"briefs\":[<exactly %d researcher briefs>],\"tasks\":[<the task list>]}.",
+		ledgerRules, cfg.Researchers)))
 }
 
 // Replan is the planner's plan for the next test cycle, from the failed
@@ -332,7 +340,7 @@ func (cfg Config) testNote(cycle int) string {
 	if !cfg.testing(cycle) {
 		return ""
 	}
-	return fmt.Sprintf(" Your part now is to apply the council's proposals and check them, one at a time: you do not investigate on your own, and you do not pursue a theory the findings do not propose. After each change, run its check and read the whole output. End with exactly one verdict: %q when the checks pass; or, when a check fails and the proposals are used up, a brief status for the user (where things stand, and that the council is trying again), then %q followed by what you tried and what each check returned. The council plans again from that; the user does not see it. You have %d tool steps for this.", Done, Retest, cfg.MaxSteps)
+	return checkNote + fmt.Sprintf(" Your part now is to apply the council's proposals and check them, one at a time: you do not investigate on your own, and you do not pursue a theory the findings do not propose. After each change, run its check and read the whole output. End with exactly one verdict: %q when the checks pass; or, when a check fails and the proposals are used up, a brief status for the user (where things stand, and that the council is trying again), then %q followed by what you tried and what each check returned. The council plans again from that; the user does not see it. You have %d tool steps for this.", Done, Retest, cfg.MaxSteps)
 }
 
 // Done is what the synthesizer ends with when its checks pass.

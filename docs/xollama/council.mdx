@@ -362,6 +362,17 @@ out are in. When the synthesizer makes its next change without sending the
 check before it, the council sends that check for it, and a DONE sends its
 last check itself. With thinking shown, each review appears in the
 deliberation as it reaches the synthesizer, under "Reviewer 1", "Reviewer 2".
+Every review ends with `REVIEW: CONFIRMED`, `REFUTED` or `UNCLEAR`. A critic
+that leaves the verdict out is asked again with the structure, and a second
+miss counts as unclear.
+
+The planner keeps the council's task list: what each researcher is on, and
+what each task settled or refuted, with the evidence. Every member reads the
+list, the planner updates it after each failed check, and it carries over to
+your next message. When two checks in a row return the same output, the
+council is told to change approach instead of refining the same one. It then
+narrows down where the fault is, or replaces the failing part whole. A check
+whose output changed counts as progress.
 
 Without tools there is nothing to check with, and the council answers once, as
 before. The cycles travel in `council_chat_state`, so a resumed turn starts at

@@ -31,6 +31,11 @@ type Progress struct {
 	// the planner made for cycle c from them.
 	Tests   []string
 	Replans []Plan
+	// Tasks is the council's task list as it stands; Carried the list the
+	// turn began with (tasks.go). Checks is each failed cycle's last check
+	// output, aligned with Tests (stuck.go).
+	Tasks, Carried []Task
+	Checks         []string
 	// Prior are the checks that failed before this turn's council began:
 	// on earlier turns of the same work, and the front's own attempts this
 	// turn (B, F). Every member reads them, ahead of the plan.
@@ -47,16 +52,19 @@ type RoundProgress struct {
 }
 
 func (p Progress) clone() Progress {
-	out := Progress{Route: p.Route, Notes: append([]Note(nil), p.Notes...), Tests: append([]string(nil), p.Tests...), Prior: append([]string(nil), p.Prior...), Build: p.Build.clone()}
+	out := Progress{
+		Route: p.Route, Notes: append([]Note(nil), p.Notes...), Tests: append([]string(nil), p.Tests...), Prior: append([]string(nil), p.Prior...), Build: p.Build.clone(),
+		Tasks: append([]Task(nil), p.Tasks...), Carried: append([]Task(nil), p.Carried...), Checks: append([]string(nil), p.Checks...),
+	}
 	if len(p.Seen) > 0 {
 		out.Seen = maps.Clone(p.Seen)
 	}
 	if p.Plan != nil {
-		pl := Plan{Plan: p.Plan.Plan, Briefs: append([]string(nil), p.Plan.Briefs...)}
+		pl := p.Plan.clone()
 		out.Plan = &pl
 	}
 	for _, pl := range p.Replans {
-		out.Replans = append(out.Replans, Plan{Plan: pl.Plan, Briefs: append([]string(nil), pl.Briefs...)})
+		out.Replans = append(out.Replans, pl.clone())
 	}
 	for _, r := range p.Rounds {
 		out.Rounds = append(out.Rounds, RoundProgress{
@@ -181,7 +189,13 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 	if route == "" && cfg.previousBuild() != nil && len(p.Prior) == 0 {
 		// B: the checks that failed on earlier turns of the same work come
 		// with it; a rebuild, for new work, drops them below.
-		mark(func() { p.Prior = cfg.previousPrior() })
+		mark(func() {
+			p.Prior = cfg.previousPrior()
+			if cfg.Previous != nil {
+				p.Tasks = append([]Task(nil), cfg.Previous.Tasks...)
+				p.Carried = append([]Task(nil), cfg.Previous.Tasks...)
+			}
+		})
 	}
 	if route == "" && cfg.fronted(m) {
 		// The synthesizer takes the request first (front.go).
@@ -198,6 +212,7 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 				mark(func() {
 					p.Build = b.clone()
 					p.Prior = dropEarlier(p.Prior)
+					p.Tasks, p.Carried = nil, nil
 				})
 			}
 			return b, err
@@ -275,7 +290,10 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 	// The builder shapes the council the first time a request reaches it, and
 	// again when the request is new work its target does not fit.
 	if route == RouteRebuild {
-		mark(func() { p.Prior = dropEarlier(p.Prior) })
+		mark(func() {
+			p.Prior = dropEarlier(p.Prior)
+			p.Tasks, p.Carried = nil, nil
+		})
 	}
 	if p.Build == nil {
 		b := cfg.previousBuild()
@@ -291,12 +309,16 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 	}
 	cfg = cfg.apply(p.Build)
 	conv = withPrior(conv, p.Prior)
+	cfg.carried = p.Carried
 	if p.Plan == nil {
 		plan, err := MakePlan(ctx, m, cfg, d, conv, emit)
 		if err != nil {
 			return Result{Route: route, Draws: d}, err
 		}
-		mark(func() { p.Plan = &plan })
+		mark(func() {
+			p.Plan = &plan
+			p.Tasks = mergeTasks(p.Tasks, planTasks(plan), cfg.Researchers)
+		})
 	}
 	plan := *p.Plan
 	var findings, critiques []string
@@ -305,6 +327,7 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 	// synthesizer; a failed check starts the next from its report.
 	for cycle := 0; ; cycle++ {
 		cfg.tests, cfg.cycleStart, cfg.first = p.Tests[:min(cycle, len(p.Tests))], round, p.Plan
+		cfg.checks, cfg.ledger = p.Checks[:min(cycle, len(p.Checks))], p.Tasks
 		if cycle > 0 {
 			critiques = nil
 			// The planner schedules the work again from the failed checks.
@@ -313,7 +336,10 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 				if err != nil {
 					return Result{Route: route, Rounds: round, Draws: d}, err
 				}
-				mark(func() { p.Replans = append(p.Replans, pl) })
+				mark(func() {
+					p.Replans = append(p.Replans, pl)
+					p.Tasks = mergeTasks(p.Tasks, planTasks(pl), cfg.Researchers)
+				})
 			}
 			plan = p.Replans[cycle-1]
 		}
@@ -411,7 +437,10 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 			// The failed check before it streamed as content too.
 			emit(Event{Role: Synthesizer, Round: cycle, Kind: Content, Text: "\n\n"})
 		}
-		ans, turns, err := synthesize(ctx, m, cfg, d, conv, plan, findings, critiques, emit, p.Suspended[key])
+		var check string
+		scfg := cfg
+		scfg.checked = &check
+		ans, turns, err := synthesize(ctx, m, scfg, d, conv, plan, findings, critiques, emit, p.Suspended[key])
 		if err != nil {
 			return Result{Route: route, Rounds: round + 1, Draws: d}, err
 		}
@@ -420,7 +449,10 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 			return res, nil
 		}
 		if cfg.retested(ans, cycle) {
-			mark(func() { p.Tests = append(p.Tests, ans) })
+			mark(func() {
+				p.Tests = append(p.Tests, ans)
+				p.Checks = append(fit(p.Checks, len(p.Tests)-1), check)
+			})
 			round++
 			continue
 		}

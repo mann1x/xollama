@@ -180,7 +180,9 @@ runner anyway, as any two tags do: upstream's `ManifestDigest` is in the launch
 config. A council turn is served by `internal/council/` (the
 errgroup runner: route-only decision, researchers and critics in parallel,
 synthesizer; `internal/council/build.go`: the builder, on its own `~builder` session and reading only the user's messages,
-shapes each role's instructions, think budget and check cycles for the work) and `server/council.go` (members as in-process chat turns, each
+shapes each role's instructions, think budget and check cycles for the work;
+`internal/council/tasks.go`: the planner's task list, carried in every plan's JSON;
+`internal/council/stuck.go`: tells the next cycle whether a failed check's output moved) and `server/council.go` (members as in-process chat turns, each
 on its own engine session; on opencoti with PolyKV, `server/council_polykv.go`
 builds the turn's pool tree — the planner attached to the conversation's root
 pool, kept between turns — and `llm/engine_council.go` is its client;

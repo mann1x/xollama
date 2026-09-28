@@ -2054,6 +2054,85 @@ disturbs the owner's cache. Guarded in
 `TestEarlierTurnsReachTheMembersAttributed` (checked by removal) and
 `TestACouncilOnPolyKVBuildsItsTreeOnce`.
 
+### 11.10 The planner keeps the council's task list (built 2026-09-28)
+The owner: "is the planner keeping history? he should act as a coordinator
+and program/task manager … consider if we need to give him a task manager as
+a tool so he can only plan and schedule work on the researchers with it".
+
+Before this, the planner did not keep history. A re-plan saw its first plan
+and the failed checks, but not its own re-plans or what the researchers had
+settled. Nothing recorded which hypothesis a check had refuted, so the same
+fix was tried again.
+
+Built (`internal/council/tasks.go`):
+- The plan's JSON schema requires `"tasks"`: id, task, status (open,
+  assigned, done, refuted), the researcher it is assigned to, and the outcome.
+  Every member reads the list under
+  `[COUNCIL · THE COUNCIL'S TASK LIST, KEPT BY THE PLANNER]`, and each re-plan
+  reads it and updates it (`replanRequest`, `ledgerRules`).
+- The runtime keeps the rules, whatever the planner writes (`mergeTasks`):
+  - no task is deleted;
+  - done or refuted needs an outcome, or the task is open again;
+  - assigned needs a researcher that exists;
+  - refuted stays refuted;
+  - new tasks are numbered after the last.
+  There are at most 24 tasks of 400 characters.
+- The list travels in `Kept` and in `council_chat_state` (Progress fields
+  12 tasks and 13 carried, Plan field 3), so the next turn's planner starts
+  from it. A rebuild (the front's or `RouteRebuild`) drops it with the
+  earlier checks.
+- The builder must write the planner's instruction as a coordinator's. It
+  says what one task is for this kind of work and what evidence closes one,
+  and that the planner reads the list and every failed check before
+  planning again (`builderPrompt`).
+
+The choice: a field in the plan, not a tool. The planner answers in one
+structured reply and has no tool loop. A task-manager tool would give it one,
+a round trip per update, for the same operations. The field lets it do
+nothing but plan and schedule, and the runtime enforces the manager's rules
+either way.
+
+Guards: `TestTheTaskListKeepsItsRules`, `TestThePlannerKeepsTheTaskList`
+(carried, shown at the re-plan, dropped on both rebuilds) and
+`TestTheBuilderMakesThePlannerTheCoordinator`. Each was checked by removal.
+
+### 11.11 Checks that stop moving change the approach (built 2026-09-28)
+The fifth simple run (b336b144) returned the same "missing ) after argument
+list" from every check for 60 trips. The plain arm fixed the task in 27 trips:
+it rewrote the file whole at trip 20, then followed each new error. The
+council's own rules had forbidden that larger change.
+
+Built (`internal/council/stuck.go`):
+- The last read-only call's result of each failed cycle is recorded
+  (`Progress.Checks`, state Progress field 11; 2000 characters each).
+- The failed-check list marks each check as the same output as the one
+  before it or a changed one (`sameNote`, `movedNote`). A changed output is
+  progress, and the lead to follow.
+- After two checks in a row with the same output (whitespace ignored), every
+  member of the next cycle reads `stuckNote`: change approach, find where the
+  fault is by narrowing what the check exercises, or replace the failing part
+  whole. The note names no topic (the owner: "make sure the nudge is agnostic
+  of the topic"); a test holds it free of domain words.
+- Researchers may propose a whole-part replacement (`wholeNote`), and the
+  synthesizer's check wording says a changed error is progress (`checkNote`).
+
+Guard: `TestACouncilThatDoesNotMoveTheCheckChangesApproach` (same outputs →
+stuck; changing outputs → moved, never stuck), checked by removal.
+
+### 11.12 A review always ends with its verdict (built 2026-09-28)
+On the fifth run, one of the six reviews carried the `REVIEW:` line. The
+owner: "That's what a critic does, always … reject the output of the critic
+and tell him to output his answer with the format that was requested, giving
+him the structure to follow."
+
+Built: the reviewer is given the structure (`CHANGE:`, `CHECK:`, then one
+`REVIEW:` line). A reply without its verdict (`verdictOf`) is sent back once,
+with `reviewFormatNudge` repeating the structure. A second miss is delivered
+marked `REVIEW: UNCLEAR (the critic gave no verdict)`, so it is never read as
+a confirmation.
+
+Guard: `TestAReviewWithoutAVerdictIsSentBack`, checked by removal.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).

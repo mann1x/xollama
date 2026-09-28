@@ -5,6 +5,15 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — council 11.10–11.12: a task list for the planner, stuck checks, reviews with verdicts.**
+> - Fifth simple run (b336b144): unfixed, 60 trips, 1619 s. Six reviews fired and were mostly right to refute, but only one carried its `REVIEW:` line. Every check returned the same "missing ) after argument list". The plain arm fixed the task in 27 trips, with a whole-file rewrite at trip 20, then followed the new errors.
+> - Built:
+>   - the planner keeps a task list in its plan (`tasks.go`, with rules the runtime enforces, carried across turns and dropped on a rebuild), and the builder writes its instruction as a coordinator's;
+>   - two checks in a row with the same output tell the council to change approach (`stuck.go`, topic-agnostic), a changed output counts as progress, and a whole-part replacement is allowed;
+>   - a review without its verdict is sent back once with the structure, then marked unclear.
+> - Tests were checked by removal; the full sweep, race, lint and hooks are clean.
+> - Next: deploy to eleven2go, rerun simple; if it passes, medium and hard once each.
+
 > **2026-09-28 — council: the builder reads only the user; unsent checks are sent; reviews stream.**
 > - Fourth simple run (5b331d1b) peeked mid-run: `n_slots = 4 (live = 4)`. The builder no longer names a place or a cause. The synthesizer never called `council_review`.
 > - Built: the builder reads the system prompt and the user's messages only, on its own session (`5b331d1b`). A check the synthesizer moves on from (its next call changes something) is sent for it, and the DONE's check reuses that id. Reviews stream as `Reviewer N` thinking at delivery (`b336b144`).

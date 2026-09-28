@@ -205,7 +205,18 @@ func (d *Desk) work(ctx context.Context, m Model, cfg Config, i int) {
 		case d.wake <- struct{}{}:
 		default:
 		}
-		text, err := m.Stream(ctx, reviewRequest(cfg, j, i), func(string) {})
+		req := reviewRequest(cfg, j, i)
+		text, err := m.Stream(ctx, req, func(string) {})
+		if err == nil && verdictOf(text) == "" {
+			// Rejected: a review without its verdict is sent back once,
+			// with the structure it must take.
+			req.Messages = append(clone(req.Messages), api.Message{Role: "assistant", Content: text}, user(reviewFormatNudge))
+			if again, err2 := m.Stream(ctx, req, func(string) {}); err2 == nil && verdictOf(again) != "" {
+				text = again
+			} else {
+				text = strings.TrimSpace(text) + "\n" + ReviewUnclear + " (the critic gave no verdict)"
+			}
+		}
 		if err != nil {
 			text = fmt.Sprintf("The review could not be made (%v). %s", err, ReviewUnclear)
 		}
@@ -226,7 +237,25 @@ const (
 	checkSource  = "A CHECK THE SYNTHESIZER SENT FOR REVIEW"
 )
 
-const reviewInstr = "ROLE: CRITIC %d, REVIEWING A CHECK. The synthesizer is making the changes the user asked for and checking them; it keeps working while you review. Judge only from what its calls returned, not from its account of them: did the change do what it says, did it break something new, and does the check's output show that the change works? Name the line or the output you rely on. At most 120 words, plain text. End with exactly one of: %q (the check shows it works), %q (it does not, or the change broke something) or %q."
+var reviewInstr = "ROLE: CRITIC %d, REVIEWING A CHECK. The synthesizer is making the changes the user asked for and checking them; it keeps working while you review. Judge only from what its calls returned, not from its account of them: did the change do what it says, did it break something new, and does the check's output show that the change works? Name the line or the output you rely on. At most 120 words, plain text, in this structure:\n" + reviewStructure
+
+// reviewStructure is the form every review takes; a review without its
+// verdict is sent back with it (a critic judges, always: the owner).
+var reviewStructure = fmt.Sprintf("CHANGE: <what the change did, from the calls' results>\nCHECK: <what the check's output shows, quoted where it matters>\nThen, as the last line, exactly one of:\n%s (the check shows it works)\n%s (it does not, or the change broke something)\n%s (the output cannot tell)", ReviewConfirmed, ReviewRefuted, ReviewUnclear)
+
+// reviewFormatNudge sends back a review that ended without its verdict.
+var reviewFormatNudge = "Your review did not end with its verdict, so it cannot be used. Write it again in this structure, and nothing else:\n" + reviewStructure
+
+// verdictOf is the verdict a review ends with, or "".
+func verdictOf(text string) string {
+	last := ""
+	for _, v := range []string{ReviewConfirmed, ReviewRefuted, ReviewUnclear} {
+		if i := strings.LastIndex(text, v); i >= 0 && (last == "" || i > strings.LastIndex(text, last)) {
+			last = v
+		}
+	}
+	return last
+}
 
 // reviewRequest is critic i's review of j: the user's request, the check, and
 // the instruction -- short, so a review costs a fraction of a council step.
@@ -237,7 +266,7 @@ func reviewRequest(cfg Config, j ReviewJob, i int) Request {
 	}
 	msgs = append(msgs,
 		sourced(checkSource, fmt.Sprintf("What it says it changed: %s\n\nWhat its calls returned since the check it sent before:%s", j.Change, j.Evidence)),
-		user(sourcesNote+"\n\n"+fmt.Sprintf(reviewInstr, i+1, ReviewConfirmed, ReviewRefuted, ReviewUnclear)))
+		user(sourcesNote+"\n\n"+fmt.Sprintf(reviewInstr, i+1)))
 	return Request{
 		Role: Reviewer, Index: i, Model: cfg.Models[Critic], Host: cfg.Hosts[Critic], Messages: msgs,
 		Seed: rand.Int64(), Temperature: cfg.Temperature, MaxTokens: maxTok(cfg, Critic), Think: cfg.Think[Critic],

@@ -232,7 +232,7 @@ func (cfg Config) toolNote(r Role) string {
 	}) {
 		// Researchers propose, the synthesizer tests (11.4): ab-4's
 		// researchers reported a diagnosis nobody checked.
-		note += " When the task needs a change, propose it: what to change, where, and how to check that it worked. The synthesizer makes and checks it."
+		note += " When the task needs a change, propose it: what to change, where, and how to check that it worked. The synthesizer makes and checks it." + wholeNote
 	}
 	if r == Critic && slices.ContainsFunc(cfg.Tools, func(t api.Tool) bool {
 		return !t.Function.ReadOnly && t.Function.Name != EvidenceTool && t.Function.Name != PostTool && t.Function.Name != ReviewTool && !routing(t.Function.Name)
@@ -355,6 +355,7 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 			// told to report, and two steps later its report is taken as is.
 			switch steps := toolSteps(turns); {
 			case steps >= cfg.MaxSteps+2:
+				cfg.recordCheck(key, turns)
 				out := replyText(turns, "") + "\n\n" + Retest + " The cycle's tool steps ran out before a check passed."
 				return out + cfg.evidence(req.Role, key, turns), nil, nil
 			case steps >= cfg.MaxSteps && !noted(turns, budgetNote(cfg.MaxSteps)):
@@ -437,6 +438,9 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 			}
 		}
 		if len(rep.Calls) == 0 {
+			if req.Role == Synthesizer {
+				cfg.recordCheck(key, turns)
+			}
 			out := replyText(turns, rep.Content)
 			// A failed check goes back to the researchers with what the
 			// synthesizer's calls returned, as a finding carries its reads.

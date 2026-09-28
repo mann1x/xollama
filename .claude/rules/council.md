@@ -456,6 +456,19 @@ paths:
   - Reviews are shown at delivery through `cfg.show`, as `Reviewer` thinking
     (set in `callFrom` when the deliberation is shown); `memberName` numbers
     reviewers.
+- **The task list (11.10, `internal/council/tasks.go`)**: the planner's plan
+  JSON carries `"tasks"`; `mergeTasks` enforces the rules (no deletion, an
+  outcome to close, a real researcher to assign, refuted stays refuted, new
+  ids after the last). It is a schema field, never a tool: the planner has no
+  tool loop. Carried in `Kept` and state Progress 12/13 (Plan 3); every
+  rebuild drops it with `dropEarlier`.
+- **Stuck checks (11.11, `internal/council/stuck.go`)**: `Progress.Checks`
+  (state Progress 11) keeps each failed cycle's last read-only result;
+  `testsBody` marks same/moved and adds `stuckNote` after `stuckAfter` same
+  outputs. Keep every note topic-agnostic (owner's condition; the test lists
+  forbidden words).
+- **A review always has its verdict (11.12)**: `Desk.work` re-asks once with
+  `reviewFormatNudge`; a second miss is `REVIEW: UNCLEAR`, never a pass.
 - **The builder (11.5, `internal/council/build.go`)**: `Builder` reads
   `builderConversation` only (system + the user's unheaded messages: no
   answers, member work or tool results — it anchored on them twice). It runs
