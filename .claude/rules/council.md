@@ -436,6 +436,15 @@ paths:
   - The DONE gate keeps `gatedReply` (the answer the user read) and mutes the
     reply that follows.
   - Job ids are `Turn/key:call`, since the desk outlives turns.
+  - A check the synthesizer moved on from unsent is sent for it
+    (`unsentCheck`, id `auto_<call>`): a read-only call after a change, with
+    no `ReviewTool` call after it, when the next turn changes something
+    (measured: the synthesizer never called the tool). At DONE `sendLast`
+    sends that check under the same id, else an unchecked last change
+    (`uncheckedChange`, `done_<n>`).
+  - With the deliberation shown, `callFrom` sets `showReviews`: each review
+    taken streams as its critic's thinking, role `council.Reviewer`, named
+    with its index by `memberName` in `server/council.go`.
   - The server keeps one desk per session (`councilDesks.get`, remade when
     the critic count changes), closes it when the client leaves, and closes
     it after `reviewIdle` idle.

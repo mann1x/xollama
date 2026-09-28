@@ -2028,7 +2028,22 @@ holds the review until the synthesizer's next call has started, so a blocking
 review would hang it. The others are `TestADoneSendsItsLastCheckForReview`,
 `TestTheDeskWorksItsQueue`, `TestOnlyTheSynthesizerSendsChecksForReview`,
 `TestAReviewerStatesAWindowOfItsOwn` and `TestAToolTurnKeepsAReviewDesk`.
-Each was checked by removal. Open: the reviews are not streamed as thinking.
+Each was checked by removal.
+
+Followed the same day, on the fourth simple run (5b331d1b):
+- The synthesizer never called `council_review`, so a check it moves on from
+  is now sent for it. That happens when its next call makes a change; another
+  read is still part of checking. The DONE gate sends its last check under
+  that same id, so no check is reviewed twice, and a change never checked is
+  sent with the DONE.
+- Reviews stream as thinking when they reach the synthesizer, under
+  "Reviewer N" (the owner: "stream the reviews as thinking too"). A review
+  that finishes while the client runs a tool has no response open, so
+  delivery is the moment it can always be shown.
+
+Guards: `TestACheckLeftUnsentIsSentForTheSynthesizer`,
+`TestACheckIsReviewedOnce` (found a double review first) and
+`TestAReviewHasItsReviewersHeading`. Each was checked by removal.
 
 The builder anchored again on that run, with a place taken from an earlier
 turn's tool results ("likely in the Level class methods on lines 115-126").

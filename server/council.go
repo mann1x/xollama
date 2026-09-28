@@ -482,7 +482,7 @@ func (t *thinkingTags) forget(key string) {
 
 func memberName(e council.Event) string {
 	name := strings.ToUpper(string(e.Role[:1])) + string(e.Role[1:])
-	if e.Role == council.Researcher || e.Role == council.Critic {
+	if e.Role == council.Researcher || e.Role == council.Critic || e.Role == council.Reviewer {
 		name = fmt.Sprintf("%s %d", name, e.Index+1)
 	}
 	if e.Round > 0 {

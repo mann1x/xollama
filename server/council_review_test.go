@@ -76,3 +76,10 @@ func TestAToolTurnKeepsAReviewDesk(t *testing.T) {
 		t.Error("a closed desk stayed")
 	}
 }
+
+// A review streams under its reviewer's heading.
+func TestAReviewHasItsReviewersHeading(t *testing.T) {
+	if got := memberName(council.Event{Role: council.Reviewer, Index: 1, Round: 2}); got != "Reviewer 2 (round 3)" {
+		t.Errorf("heading %q", got)
+	}
+}

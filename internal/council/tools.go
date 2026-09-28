@@ -346,6 +346,7 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 		if cfg.canReview(req.Role) {
 			// 11.9: the reviews finished since its last call, as they landed.
 			if rs := cfg.Reviews.Take(cfg.Turn); len(rs) > 0 {
+				cfg.show(req.Round, rs)
 				turns = append(slices.Clone(turns), reviewsMsg(rs))
 			}
 		}
@@ -425,11 +426,10 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 			// 11.9: DONE stands once the reviews still out are in, and the
 			// last check was sent for one.
 			gated = true
-			if toolSteps(turns) > 0 && !reviewedLast(turns) {
-				cfg.Reviews.Submit(cfg.reviewJob(key, turns, api.ToolCall{ID: fmt.Sprintf("done_%d", len(turns))}, cfg.Reviews.Sent()+1))
-			}
+			cfg.sendLast(key, turns)
 			cfg.Reviews.Wait(ctx, reviewWait)
 			if rs := cfg.Reviews.Take(cfg.Turn); len(rs) > 0 {
+				cfg.show(req.Round, rs)
 				gatedReply = rep.Content
 				turns = append(slices.Clone(turns), api.Message{Role: "assistant", Content: rep.Content}, reviewsMsg(rs), user(reviewedNudge))
 				onToken = func(string) {}

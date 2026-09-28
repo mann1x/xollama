@@ -152,6 +152,9 @@ type Config struct {
 	Turn string
 	// request is the user's latest message, which a review is made against.
 	request string
+	// showReviews streams the reviews the synthesizer gets as thinking
+	// (callFrom sets it); nil shows nothing.
+	showReviews func(round int, rs []Review)
 	// continuing marks a synthesizer continuing the previous deliberation.
 	continuing bool
 	// tests are the reports of the turn's failed checks so far, and

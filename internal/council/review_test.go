@@ -196,3 +196,76 @@ type modelFunc func(ctx context.Context, req Request, onToken func(string)) (str
 func (f modelFunc) Stream(ctx context.Context, req Request, onToken func(string)) (string, error) {
 	return f(ctx, req, onToken)
 }
+
+// movingOnStub's synthesizer changes the file, checks it, changes it again
+// without sending the check, then declares the work done.
+type movingOnStub struct {
+	reviewStub
+	next []string // the synthesizer's calls, in order, before its DONE
+}
+
+func (s *movingOnStub) StreamTools(ctx context.Context, req Request, onToken func(string)) (Reply, error) {
+	if req.Role != Synthesizer {
+		return s.toolStub.StreamTools(ctx, req, onToken)
+	}
+	s.mu.Lock()
+	s.calls = append(s.calls, req)
+	s.mu.Unlock()
+	n := 0
+	for _, m := range req.Messages {
+		n += len(m.ToolCalls)
+	}
+	next := s.next
+	if n < len(next) {
+		c := readCall("", "game.html")
+		c.Function.Name = next[n]
+		return Reply{Calls: []api.ToolCall{c}}, nil
+	}
+	return Reply{Content: "fixed it " + Done}, nil
+}
+
+// A check the synthesizer moved on from without sending is sent for it, once,
+// and the reviews reach the deliberation as the reviewer's thinking.
+func TestACheckLeftUnsentIsSentForTheSynthesizer(t *testing.T) {
+	s := &movingOnStub{reviewStub: reviewStub{toolStub: toolStub{stub: stub{route: `{"route":"council"}`}}, skipReview: true, began: make(chan bool)}, next: []string{"write_file", "read_files", "write_file"}}
+	cfg := reviewCfg(t, &s.reviewStub)
+	cfg.Reviews = NewDesk(t.Context(), s, cfg, cfg.Critics)
+	var thinking []Event
+	emit := func(e Event) {
+		if e.Role == Reviewer && e.Kind == Thinking && !e.Done {
+			thinking = append(thinking, e)
+		}
+	}
+	names := []string{"write_file", "read_files", "write_file"}
+	res, err := Run(t.Context(), cfg, s, conv, emit)
+	for trip := 0; err == nil && len(res.Calls) > 0; trip++ {
+		cfg.Results = map[string]string{res.Calls[0].ID: "RESULT " + names[min(trip, 2)]}
+		res, err = RunFrom(t.Context(), cfg, s, conv, res.Progress, nil, emit)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	var auto int
+	for _, r := range s.reviews {
+		if strings.Contains(all(r), "sent this check for it when it moved on") {
+			auto++
+		}
+	}
+	if auto != 1 {
+		t.Fatalf("%d checks sent on moving on, want 1 (of %d reviews)", auto, len(s.reviews))
+	}
+	if len(thinking) == 0 || !strings.HasPrefix(thinking[0].Text, "Review of check 1: ") || thinking[0].Index != 0 {
+		t.Errorf("the review was not streamed as the reviewer's thinking: %+v", thinking)
+	}
+}
+
+// A DONE after a check already sent on moving on does not send it again.
+func TestACheckIsReviewedOnce(t *testing.T) {
+	s := &movingOnStub{reviewStub: reviewStub{toolStub: toolStub{stub: stub{route: `{"route":"council"}`}}, skipReview: true, began: make(chan bool)}, next: []string{"write_file", "read_files", "read_files"}}
+	cfg := reviewCfg(t, &s.reviewStub)
+	cfg.Reviews = NewDesk(t.Context(), s, cfg, cfg.Critics)
+	drive(t, cfg, s)
+	if len(s.reviews) != 1 {
+		t.Errorf("%d reviews of one check", len(s.reviews))
+	}
+}

@@ -314,27 +314,102 @@ func (cfg Config) checkEvidence(key string, turns []api.Message) string {
 }
 
 // sendForReview queues the ReviewTool calls of the synthesizer's last turn.
+// A check it moved on from without sending is sent for it: when its last turn
+// makes the next change, the check after the change before, if no ReviewTool
+// call followed it (measured on the fourth simple run: the synthesizer never
+// called the tool). Another read is still checking, not moving on.
 func (cfg Config) sendForReview(r Role, key string, turns []api.Message) {
 	if !cfg.canReview(r) || len(turns) == 0 {
 		return
 	}
-	for _, c := range turns[len(turns)-1].ToolCalls {
+	last := turns[len(turns)-1].ToolCalls
+	changes := slices.ContainsFunc(last, func(x api.ToolCall) bool { return !local(x) && !cfg.readOnly(x) })
+	if c, ok := cfg.unsentCheck(turns); ok && changes && !slices.ContainsFunc(last, func(x api.ToolCall) bool { return x.Function.Name == ReviewTool }) {
+		j := cfg.reviewJob(key, turns[:len(turns)-1], api.ToolCall{ID: "auto_" + c.ID}, cfg.Reviews.Sent()+1)
+		j.Change = "It did not say: the council sent this check for it when it moved on."
+		cfg.Reviews.Submit(j)
+	}
+	for _, c := range last {
 		if c.Function.Name == ReviewTool {
 			cfg.Reviews.Submit(cfg.reviewJob(key, turns, c, cfg.Reviews.Sent()+1))
 		}
 	}
 }
 
-// reviewedLast reports whether the synthesizer's last client call was
-// followed by a check it sent for review.
-func reviewedLast(turns []api.Message) bool {
-	for i := len(turns) - 1; i >= 0; i-- {
-		for _, c := range turns[i].ToolCalls {
-			if c.Function.Name == ReviewTool {
-				return true
+// unsentCheck is the synthesizer's last check -- a call that only reads,
+// made after a call that changes something -- when no ReviewTool call came
+// after it, before its last turn.
+func (cfg Config) unsentCheck(turns []api.Message) (api.ToolCall, bool) {
+	var check api.ToolCall
+	changed, found := false, false
+	for _, t := range turns[:len(turns)-1] {
+		for _, c := range t.ToolCalls {
+			switch {
+			case c.Function.Name == ReviewTool:
+				found, changed = false, false
+			case local(c):
+			case cfg.readOnly(c):
+				if changed {
+					check, found = c, true
+				}
+			default:
+				changed, found = true, false
 			}
-			if !local(c) {
+		}
+	}
+	return check, found
+}
+
+// readOnly reports whether c's tool only reads.
+func (cfg Config) readOnly(c api.ToolCall) bool {
+	t, ok := cfg.tool(c.Function.Name)
+	return ok && t.Function.ReadOnly
+}
+
+// show streams reviews as thinking, when the deliberation is shown.
+func (cfg Config) show(round int, rs []Review) {
+	if cfg.showReviews != nil {
+		cfg.showReviews(round, rs)
+	}
+}
+
+// showReviews emits each review as its reviewer's thinking.
+func showReviews(emit Emit, round int, rs []Review) {
+	for _, r := range rs {
+		emit(Event{Role: Reviewer, Index: r.Critic, Round: round, Kind: Thinking, Text: fmt.Sprintf("Review of check %d: %s", r.N, r.Text)})
+		emit(Event{Role: Reviewer, Index: r.Critic, Round: round, Kind: Thinking, Done: true})
+	}
+}
+
+// sendLast sends, with a DONE, the check it stands on -- under the id the
+// check would have been sent with on moving on, so it is not sent twice --
+// or, when the last change was never checked, the change itself.
+func (cfg Config) sendLast(key string, turns []api.Message) {
+	if c, ok := cfg.unsentCheck(append(slices.Clone(turns), api.Message{})); ok {
+		j := cfg.reviewJob(key, turns, api.ToolCall{ID: "auto_" + c.ID}, cfg.Reviews.Sent()+1)
+		j.Change = "It did not say: it declared the work done after this check."
+		cfg.Reviews.Submit(j)
+		return
+	}
+	if cfg.uncheckedChange(turns) {
+		j := cfg.reviewJob(key, turns, api.ToolCall{ID: fmt.Sprintf("done_%d", len(turns))}, cfg.Reviews.Sent()+1)
+		j.Change = "It did not say: it declared the work done without a check after its last change."
+		cfg.Reviews.Submit(j)
+	}
+}
+
+// uncheckedChange reports whether the synthesizer's last client call changed
+// something, with no ReviewTool call after it.
+func (cfg Config) uncheckedChange(turns []api.Message) bool {
+	for i := len(turns) - 1; i >= 0; i-- {
+		for j := len(turns[i].ToolCalls) - 1; j >= 0; j-- {
+			c := turns[i].ToolCalls[j]
+			switch {
+			case c.Function.Name == ReviewTool:
 				return false
+			case local(c):
+			default:
+				return !cfg.readOnly(c)
 			}
 		}
 	}

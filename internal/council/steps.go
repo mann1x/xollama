@@ -116,6 +116,9 @@ func callFrom(ctx context.Context, m Model, cfg Config, emit Emit, req Request, 
 		defer emit(Event{Role: req.Role, Index: req.Index, Round: req.Round, Kind: k, Done: true})
 	}
 	if tm, ok := m.(ToolModel); ok && len(cfg.Tools) > 0 && req.Format == nil {
+		if cfg.ShowDeliberation {
+			cfg.showReviews = func(round int, rs []Review) { showReviews(emit, round, rs) }
+		}
 		return callTools(ctx, tm, cfg, req, turns, onToken)
 	}
 	out, err := m.Stream(ctx, req, onToken)
