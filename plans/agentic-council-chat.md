@@ -2096,7 +2096,12 @@ Guards: `TestTheTaskListKeepsItsRules`, `TestThePlannerKeepsTheTaskList`
 (carried, shown at the re-plan, dropped on both rebuilds) and
 `TestTheBuilderMakesThePlannerTheCoordinator`. Each was checked by removal.
 
-Fixed the same day, from the sixth simple run (34924cbe): the planner numbered
+The sixth simple run (34924cbe) fixed the task: 40 trips, 1401 s, against
+plain's 27. Two cycles chased the wrong theory against one unchanged output.
+Then the stuck note fired, and the third cycle replaced the faulty method
+whole. It followed each moved error (`sX`, then `collide`) to the fix.
+
+Fixed the same day, from the same run: the planner numbered
 its re-plan's list from 0 again (0, 1, 2 against the list's #1, #2, #3), so
 each update landed on another task. It had read two numberings: the list's,
 and the `id 0`s of its own first plan, which the re-plan request repeats as
