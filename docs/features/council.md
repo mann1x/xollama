@@ -155,6 +155,10 @@ council turn 3,139 → 525 tokens, peak KV cells about −40 %, wall time at par
   a missing verdict asked for once and never streamed twice, a synthesizer's
   step budget, a front forwarded with its attempts, failed checks carried to
   the next turn and dropped on a rebuild.
+- `internal/council/history_test.go` — earlier turns attributed per member,
+  working notes dropped, repeats pointed at; every council message headed by
+  its source. `server/council_tools_test.go`
+  `TestEarlierTurnsReachTheMembersAttributed` covers the hook.
 - `cmd/council_run_test.go` — a one-shot prompt reaches the council.
 - `app/ui/council_test.go` — a council keeps `think:false`, and every other
   request is left as upstream built it. `app/ui/app/src/hooks/useCouncil.test.ts`

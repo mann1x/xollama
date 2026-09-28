@@ -52,7 +52,7 @@ func TestTheSynthesizerTakesTheRequestFirst(t *testing.T) {
 	if res.Answer != "front answers" || res.Route != "direct" || len(s.calls) != 1 || s.calls[0].Role != Front {
 		t.Fatalf("direct: answer %q route %q calls %d", res.Answer, res.Route, len(s.calls))
 	}
-	if last := s.calls[0].Messages[len(s.calls[0].Messages)-1].Content; !strings.HasPrefix(last, frontMsg) || !strings.Contains(last, frontNoBuild) {
+	if last := s.calls[0].Messages[len(s.calls[0].Messages)-1].Content; !strings.Contains(last, frontMsg) || !strings.Contains(last, frontNoBuild) {
 		t.Errorf("the front's instruction %q", last)
 	}
 

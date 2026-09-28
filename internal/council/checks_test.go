@@ -31,7 +31,7 @@ func (s *stepStub) StreamTools(ctx context.Context, req Request, onToken func(st
 		switch {
 		case s.verdict != "":
 			out += " " + s.verdict
-		case req.Messages[len(req.Messages)-1].Content == verdictNudge:
+		case req.Messages[len(req.Messages)-1].Content == user(verdictNudge).Content:
 			out += " " + Done
 		}
 		onToken(out)
@@ -91,7 +91,7 @@ func TestASynthesizerWithoutAVerdictIsAskedForOne(t *testing.T) {
 	if n := s.count(Synthesizer); n != 2 {
 		t.Fatalf("%d synthesizer calls, want 2", n)
 	}
-	if last := lastOf(s.calls, Synthesizer); last.Messages[len(last.Messages)-1].Content != verdictNudge {
+	if last := lastOf(s.calls, Synthesizer); last.Messages[len(last.Messages)-1].Content != user(verdictNudge).Content {
 		t.Errorf("the second call was not the nudge: %+v", last.Messages[len(last.Messages)-1])
 	}
 	if res.Answer != "the fix is in" {
@@ -171,8 +171,12 @@ func TestAFrontThatInvestigatesIsForwardedWithItsAttempts(t *testing.T) {
 	}
 	for _, role := range []Role{Planner, Researcher, Critic, Synthesizer} {
 		got := all(lastOf(s.calls, role))
-		if !strings.Contains(got, priorIntro) || !strings.Contains(got, "worked on the request itself") || !strings.Contains(got, "I think it is in f.go") {
+		if !strings.Contains(got, header(priorSource)+priorIntro) || !strings.Contains(got, "worked on the request itself") || !strings.Contains(got, `read_files {"path":"f`) {
 			t.Errorf("%s did not read the front's attempts", role)
+		}
+		// Its calls and their results, never its theory.
+		if strings.Contains(got, "I think it is in f.go") {
+			t.Errorf("%s read the front's own conclusion", role)
 		}
 	}
 }

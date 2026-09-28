@@ -136,7 +136,7 @@ func (cfg Config) architecture() string {
 func MakeBuild(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, emit Emit) (*Build, error) {
 	out, err := call(ctx, m, cfg, emit, Request{
 		Role: Builder, Model: cfg.Models[Planner], Host: cfg.Hosts[Planner],
-		Messages: append(clone(conv), user(fmt.Sprintf(builderPrompt, cfg.architecture()))),
+		Messages: append(clone(conv), user(sourcesNote+"\n\n"+fmt.Sprintf(builderPrompt, cfg.architecture()))),
 		Seed:     d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Builder), Think: cfg.Think[Planner],
 		Format: buildSchema,
 	}, Thinking)
@@ -317,5 +317,5 @@ func withPrior(conv []api.Message, prior []string) []api.Message {
 	if len(prior) == 0 {
 		return conv
 	}
-	return append(clone(conv), user(priorIntro+joinNumbered("EARLIER CHECK", prior)))
+	return append(clone(conv), sourced(priorSource, priorIntro+joinNumbered("EARLIER CHECK", prior)))
 }

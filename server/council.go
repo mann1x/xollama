@@ -172,6 +172,10 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		cfg.Reads = council.SharedReads(cfg.Tools, all[len(conv):])
 		full = conv
 	}
+	// The earlier turns as the members read them: each forwarded call under
+	// the member that made it, without its working notes (internal/council
+	// History).
+	conv = council.History(conv)
 	compactor := s.councilCompactorFor(ctx, m, req, members, tree, cfg, reserve)
 	if compactor != nil {
 		conv = compactor.compact(ctx, conv, "", false, pressure)

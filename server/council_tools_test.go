@@ -345,3 +345,39 @@ func TestAToolTurnGoesThroughTheSynthesizerFirst(t *testing.T) {
 		}
 	}
 }
+
+// The client's record of an earlier council turn reaches every member with
+// each call under the member that made it, and without the member's own
+// working notes (internal/council History).
+func TestEarlierTurnsReachTheMembersAttributed(t *testing.T) {
+	councilStateKeyIn(t, t.TempDir())
+	e := &councilEngine{route: `{"route":"council"}`}
+	s := councilToolServer(t, e)
+	empty := ""
+	args := api.NewToolCallFunctionArguments()
+	args.Set("path", "notes.txt")
+	req := api.ChatRequest{
+		Model: "council", Tools: councilTestTools, CouncilChatState: &empty, SessionID: "conv-history",
+		Messages: []api.Message{
+			{Role: "user", Content: "Why is the sky blue?"},
+			{Role: "assistant", Content: "SURELY-THE-OZONE", ToolCalls: []api.ToolCall{{ID: "r1:call_1", Function: api.ToolCallFunction{Name: "read_files", Arguments: args}}}},
+			{Role: "tool", ToolCallID: "r1:call_1", Content: "NOTES-DATA"},
+			{Role: "assistant", Content: "Scattering."},
+			{Role: "user", Content: "Say more."},
+		},
+	}
+	toolChat(t, s, req)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if len(e.prompts) == 0 {
+		t.Fatal("no member ran")
+	}
+	for i, p := range e.prompts {
+		if strings.Contains(p, "SURELY-THE-OZONE") {
+			t.Errorf("%s read a member's working note from an earlier turn", e.roles[i])
+		}
+		if !strings.Contains(p, "[COUNCIL · RESEARCHER 1 · TOOL CALLS]") || !strings.Contains(p, "NOTES-DATA") {
+			t.Errorf("%s did not read the earlier call under its member", e.roles[i])
+		}
+	}
+}

@@ -341,7 +341,16 @@ every member reads what was already tried and refuted. New work, which the
 synthesizer rebuilds the council for, starts clean. When the synthesizer
 takes a request first and finds it needs investigating, it forwards the
 request before digging in. It has at most 4 tool steps of its own, and what it
-tried reaches the council the same way.
+tried reaches the council the same way: its calls and their results, not
+its own conclusions.
+
+Every message a member reads from the council names who wrote it, for example
+`[COUNCIL · FINDINGS OF THE RESEARCHERS]` or `[COUNCIL · INSTRUCTIONS FOR YOU]`.
+Your messages carry no header, so a member never takes another member's work
+for your request. Your client's record of earlier turns is shown to the
+members the same way: each tool call under the member that made it, without
+that member's working notes, and a long result already shown once is pointed
+at, not repeated. Your client sends the history as it always has.
 
 Without tools there is nothing to check with, and the council answers once, as
 before. The cycles travel in `council_chat_state`, so a resumed turn starts at

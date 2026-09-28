@@ -94,7 +94,7 @@ func frontRequest(cfg Config, conv []api.Message) []api.Message {
 	if cfg.System != "" {
 		s += "\n\n" + systemIntro + cfg.System
 	}
-	return append(clone(conv), user(s))
+	return append(clone(conv), user(sourcesNote+"\n\n"+s))
 }
 
 // rebuilt answers a RebuildTool call with the setup it produced.
@@ -170,16 +170,9 @@ func (cfg Config) frontReport(turns []api.Message) string {
 	if toolSteps(turns) == 0 {
 		return ""
 	}
-	key := MemberKey(Front, 0, 0)
-	var said []string
-	for _, t := range turns {
-		if t.Role == "assistant" && strings.TrimSpace(t.Content) != "" {
-			said = append(said, strings.TrimSpace(t.Content))
-		}
-	}
-	s := "The synthesizer worked on the request itself before forwarding it, and it was not settled."
-	if len(said) > 0 {
-		s += " What it concluded last: " + truncate(said[len(said)-1], 600)
-	}
-	return truncate(s+cfg.evidence(Front, key, turns), maxPriorChars)
+	// Only the calls and what they returned: the front's own conclusions
+	// stay out, so its first theory does not lead the council (ab-5 rerun:
+	// the whole first cycle chased the front's guess).
+	s := "The synthesizer worked on the request itself before forwarding it, and it was not settled. What it called, and what came back:"
+	return truncate(s+cfg.evidence(Front, MemberKey(Front, 0, 0), turns), maxPriorChars)
 }

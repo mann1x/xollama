@@ -428,11 +428,11 @@ func TestEveryMemberSharesOnePrefix(t *testing.T) {
 					}
 				}
 				if c.Role == Planner && c.Format != nil && strings.Contains(string(c.Format), "briefs") {
-					if !strings.HasPrefix(c.Messages[len(shared)].Content, DefaultCharter) {
+					if !strings.HasPrefix(c.Messages[len(shared)].Content, header(instructionsSource)+DefaultCharter) {
 						t.Errorf("the plan request does not open with the charter: %q", c.Messages[len(shared)].Content)
 					}
 				}
-				if c.Role != Planner && c.Role != Builder && route == `{"route":"council"}` && !strings.HasPrefix(c.Messages[len(shared)].Content, DefaultCharter) {
+				if c.Role != Planner && c.Role != Builder && route == `{"route":"council"}` && !strings.HasPrefix(c.Messages[len(shared)].Content, header(instructionsSource)+DefaultCharter) {
 					t.Errorf("%s does not continue from the plan request", c.Role)
 				}
 			}
@@ -456,7 +456,7 @@ func TestTheRouteDecisionReadsTheCharter(t *testing.T) {
 		t.Fatal(err)
 	}
 	route := s.calls[0]
-	if route.Format == nil || !strings.HasPrefix(route.Messages[len(route.Messages)-1].Content, DefaultCharter) {
+	if route.Format == nil || !strings.HasPrefix(route.Messages[len(route.Messages)-1].Content, header(instructionsSource)+DefaultCharter) {
 		t.Errorf("the route decision does not open with the charter: %+v", route.Messages)
 	}
 }

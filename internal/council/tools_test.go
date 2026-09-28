@@ -37,7 +37,7 @@ func (s *toolStub) StreamTools(ctx context.Context, req Request, onToken func(st
 		}
 	}
 	key := MemberKey(req.Role, req.Index, req.Round)
-	if s.narrate[key] && len(results) == 0 && req.Messages[len(req.Messages)-1].Content != narratedNudge {
+	if s.narrate[key] && len(results) == 0 && req.Messages[len(req.Messages)-1].Content != user(narratedNudge).Content {
 		out := "I called read_files and it returned INVENTED-DATA."
 		onToken(out)
 		return Reply{Content: out}, nil
@@ -490,7 +490,7 @@ func TestANoteReachesTheMateBesideIt(t *testing.T) {
 			lastR2 = c
 		}
 		for _, m := range c.Messages {
-			if strings.HasPrefix(m.Content, "NOTES FROM") && key != "r2" {
+			if strings.HasPrefix(m.Content, header(notesSource)) && key != "r2" {
 				t.Errorf("%s read its mate's notes %q", key, m.Content)
 			}
 			if c.Role == Critic && m.Role == "tool" && !strings.HasPrefix(m.Content, "Refused: no council member works beside you") {
@@ -500,7 +500,7 @@ func TestANoteReachesTheMateBesideIt(t *testing.T) {
 	}
 	n := 0
 	for _, m := range lastR2.Messages {
-		if strings.HasPrefix(m.Content, "NOTES FROM") && strings.Contains(m.Content, "- r1: The brace at line 119") {
+		if strings.HasPrefix(m.Content, header(notesSource)) && strings.Contains(m.Content, "- r1: The brace at line 119") {
 			n++
 		}
 	}
@@ -585,7 +585,7 @@ func TestAFailedCheckGoesBackToTheResearchers(t *testing.T) {
 	for _, c := range s.calls {
 		if c.Role == Planner && c.Round > 0 {
 			replans++
-			if last := c.Messages[len(c.Messages)-1].Content; !strings.Contains(last, fmt.Sprintf("TEST %d:", c.Round)) || !strings.Contains(last, "Plan the work again") {
+			if last := c.Messages[len(c.Messages)-2].Content + c.Messages[len(c.Messages)-1].Content; !strings.Contains(last, fmt.Sprintf("TEST %d:", c.Round)) || !strings.Contains(last, "Plan the work again") {
 				t.Errorf("re-plan %d without its checks: %q", c.Round, last)
 			}
 		}

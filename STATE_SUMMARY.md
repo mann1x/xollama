@@ -5,6 +5,12 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — council 11.7: every message names its writer; earlier turns attributed.**
+> - eleven2go simple rerun on b96e3c96: unfixed, 667 s / 24 trips. The engine asserted in cycle 3 (opencoti #530: position-window scatter, two sequences prefilling, kv-unified, `auto` residency). Cycle 2 had edited the right line and found both missing functions. The bounds held (front 3 steps, synthesizer 6 per cycle).
+> - The owner's points: the history should show the member; wrong claims must not stay in view; council messages must name their role and the user's stay plain; no anchoring. Built: `council.History` (calls split per member and headed, working notes dropped, repeats pointed at), source headers on every council message plus `sourcesNote`, and the front's report cut to its calls and results.
+> - Relief on eleven2go: `XOLLAMA_ENGINE_ARGS=--kv-residency-mode head` (user env) until #530 is fixed.
+> - Next: redeploy, simple on eleven2go, then medium and hard once each.
+
 > **2026-09-28 — council 11.6: ab-5 read, and the fixes it asked for.**
 > - ab-5 simple: plain fixed it on both hosts (solidPC 339 s / 30 trips capped, eleven2go 162 s / 20). The council did not (solidPC 3405 s / 60, unfixed; eleven2go 659 s / 24, declared done unfixed).
 > - Members are served exactly as a plain turn: same ChatHandler, template and options; 2 of 140 replies hit a cap. The delta is context. The client history carries every member's calls as one assistant, five copies of the file and the front's wrong claims. Findings arrived as user messages and were obeyed. The builder anchored every role on the front's theory. The synthesizer investigated for 16 trips instead of testing.

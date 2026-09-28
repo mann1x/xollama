@@ -397,6 +397,20 @@ paths:
     `critiquesIntro`). The builder must never name a cause or a fix (it
     anchored the whole council in ab-5).
   - Guards are in `internal/council/checks_test.go`; each was checked by removal.
+- **Sources (11.7, `internal/council/sources.go`)**: `user()` is an instruction
+  and is headed `[COUNCIL · INSTRUCTIONS FOR YOU]`. Another member's work goes
+  through `sourced(source, ...)`, and the plan reply through `planReply`. Never
+  add a council message to a member's conversation without a header: a user
+  turn without one is the user's. `sourcesNote` rides in the plan request,
+  the route decision, the front and the builder. `IsPlannerRequest` strips the
+  header. `noted` compares against the headed note.
+- **History (11.7, `internal/council/history.go`)**: `server/council.go` runs
+  `council.History(conv)` before compaction. It splits the earlier turns'
+  forwarded calls by member key (`callMember`, the `ForwardedID` prefix),
+  drops the member's text and thinking beside its calls, and points at a
+  repeated long result (`repeatAt`). It must stay a pure function of the
+  messages, or the shared prefix breaks between turns. Calls without a member
+  id pass unchanged.
 - **The builder (11.5, `internal/council/build.go`)**: `Builder` runs on the
   owner like the planner (`memberSession`, `place`), before the first plan of a
   council route with no kept build, and on `RouteRebuild`. `apply` appends its

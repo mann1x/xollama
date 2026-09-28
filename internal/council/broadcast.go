@@ -258,7 +258,7 @@ func (cfg Config) unread(r Role, key string) *api.Message {
 	if len(lines) == 0 {
 		return nil
 	}
-	m := user("NOTES FROM THE MEMBERS WORKING BESIDE YOU (for your information; do not reply, do not wait):\n" + strings.Join(lines, "\n"))
+	m := sourced(notesSource, "Notes from the members working beside you (for your information; do not reply, do not wait):\n"+strings.Join(lines, "\n"))
 	return &m
 }
 

@@ -1936,6 +1936,44 @@ Guards: `TestASynthesizerWithoutAVerdictIsAskedForOne`,
 Each guard was checked by removing its fix. Next: rerun simple on eleven2go,
 then medium and hard once each to look for a cliff.
 
+### 11.7 Who said what (built 2026-09-28)
+The simple rerun on eleven2go (b96e3c96) stayed unfixed at 667 s and 24
+trips. The engine asserted in cycle 3 (opencoti #530, position-window
+scatter with two sequences prefilling), after cycle 2 had found the right
+line and both missing functions. The bounds held. The first cycle still
+chased the front's first guess, which F had carried as "what it concluded
+last". The owner's points on the delta, and what was built for each:
+- **The client's history should show the member.** `council.History` rewrites
+  the earlier turns once, the same for every member:
+  - each forwarded call is split out under its member (`[COUNCIL · RESEARCHER
+    1, ROUND 2 · TOOL CALLS]`), with that member's results;
+  - a long result identical to an earlier one becomes a pointer.
+  It runs in `server/council.go` before compaction, after the session id and
+  `councilToolTurn`.
+- **Wrong claims must not stay in view.** The member's own text beside its
+  calls is dropped from the history. The front's report (F) carries only its
+  calls and what they returned.
+- **Every council message names the role that wrote it; the user's stay
+  plain.** A template has only system, user, assistant and tool turns, so
+  another member's work can only arrive as a user turn. That is why the
+  findings read as orders. Each council message now opens with its source
+  (`sources.go`: instructions for you, the planner's plan, the researchers'
+  findings, the critics' reviews, the synthesizer's failed checks, checks
+  from before, notes from mates, the user's system prompt). `sourcesNote`
+  tells every member that only unheaded messages are the user's. The
+  re-plan's failed checks are their own message, apart from the planner's
+  instruction.
+- **The builder's anchoring** is covered by A (it never names a cause) and by
+  F above: the builder reads the conversation only, and the front's prose no
+  longer reaches anyone.
+
+Guards: `TestEarlierTurnsShowWhichMemberCalled`,
+`TestEveryCouncilMessageNamesItsSource`,
+`TestEarlierTurnsReachTheMembersAttributed` (server), and the front-attempts
+test, which now refuses the front's conclusion. Each was checked by removal.
+Relief for #530 on eleven2go: `XOLLAMA_ENGINE_ARGS=--kv-residency-mode head`,
+an operator setting on the test host, until opencoti's fix.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).

@@ -83,8 +83,6 @@ type Plan struct {
 	Briefs []string `json:"briefs"`
 }
 
-func user(s string) api.Message { return api.Message{Role: "user", Content: s} }
-
 func prompt(cfg Config, r Role) string {
 	if p := cfg.Prompts[r]; p != "" {
 		return p
@@ -192,7 +190,7 @@ func Direct(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Messag
 func direct(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, emit Emit, turns []api.Message) (string, []api.Message, error) {
 	msgs := conv
 	if cfg.System != "" {
-		msgs = append(clone(conv), user(directIntro+systemIntro+cfg.System))
+		msgs = append(clone(conv), sourced(systemSource, directIntro+systemIntro+cfg.System))
 	}
 	return callFrom(ctx, m, cfg, emit, Request{
 		Role: Planner, Messages: msgs, Seed: d.Direct.Seed,
@@ -207,6 +205,7 @@ const plannerRole = "ROLE: PLANNER."
 // IsPlannerRequest reports whether a message is one of the planner's
 // instructions, the first message the council adds after the conversation.
 func IsPlannerRequest(s string) bool {
+	s = withoutHeader(s)
 	return strings.HasPrefix(s, plannerRole) || strings.Contains(s, "\n\n"+plannerRole+" ")
 }
 
@@ -223,9 +222,9 @@ func routeRequest(cfg Config) api.Message {
 		msg += " " + b.targetNote() + " " + rebuildChoice
 	}
 	if c := cfg.charter(); c != "" {
-		return user(c + "\n\n" + msg)
+		return user(c + "\n\n" + sourcesNote + "\n\n" + msg)
 	}
-	return user(msg)
+	return user(sourcesNote + "\n\n" + msg)
 }
 
 // planMsg is the planner's plan request. The charter opens it: every later
@@ -233,6 +232,7 @@ func routeRequest(cfg Config) api.Message {
 func planMsg(cfg Config) api.Message {
 	s := fmt.Sprintf(`ROLE: PLANNER. %s Reply with JSON only: {"plan":"<the plan>","briefs":[<exactly %d researcher briefs>]}.`,
 		prompt(cfg, Planner), cfg.Researchers)
+	s = sourcesNote + "\n\n" + s
 	if c := cfg.charter(); c != "" {
 		s = c + "\n\n" + s
 	}
@@ -274,22 +274,27 @@ func base(cfg Config, conv []api.Message, p Plan) []api.Message {
 	if len(cfg.tests) == 0 || cfg.first == nil {
 		return planned(cfg, conv, p)
 	}
-	b, _ := json.Marshal(p)
-	return append(replanRequest(cfg, conv), api.Message{Role: "assistant", Content: string(b)})
+	return append(replanRequest(cfg, conv), planReply(p))
 }
 
 // planned is the conversation, the plan request and plan p.
 func planned(cfg Config, conv []api.Message, p Plan) []api.Message {
+	return append(clone(conv), planMsg(cfg), planReply(p))
+}
+
+// planReply is the planner's plan as the members read it: the planner's
+// turn, headed so the members after it do not take it for their own.
+func planReply(p Plan) api.Message {
 	b, _ := json.Marshal(p)
-	return append(clone(conv), planMsg(cfg), api.Message{Role: "assistant", Content: string(b)})
+	return api.Message{Role: "assistant", Content: header(planSource) + string(b)}
 }
 
 // replanRequest is the first plan followed by the failed checks and the
 // planner's instruction to plan the work again.
 func replanRequest(cfg Config, conv []api.Message) []api.Message {
-	return append(planned(cfg, conv, *cfg.first), user(fmt.Sprintf(
-		"%s%s\n\nROLE: PLANNER. Plan the work again from what the checks showed: split what is left into one workload per researcher, and give no researcher what a check refuted. Reply with JSON only: {\"plan\":\"<the plan>\",\"briefs\":[<exactly %d researcher briefs>]}.",
-		testsIntro, joinNumbered("TEST", cfg.tests), cfg.Researchers)))
+	return append(planned(cfg, conv, *cfg.first), sourced(testsSource, testsIntro+joinNumbered("TEST", cfg.tests)), user(fmt.Sprintf(
+		"ROLE: PLANNER. Plan the work again from what the checks showed: split what is left into one workload per researcher, and give no researcher what a check refuted. Reply with JSON only: {\"plan\":\"<the plan>\",\"briefs\":[<exactly %d researcher briefs>]}.",
+		cfg.Researchers)))
 }
 
 // Replan is the planner's plan for the next test cycle, from the failed
@@ -412,7 +417,7 @@ func Research(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Mess
 func research(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, p Plan, i, round int, prior []string, emit Emit, turns []api.Message) (string, []api.Message, error) {
 	msgs := base(cfg, conv, p)
 	if len(prior) > 0 {
-		msgs = append(msgs, user(joinNumbered("CRITIQUE", prior)))
+		msgs = append(msgs, sourced(critiqueSource, critiquesIntro+joinNumbered("CRITIQUE", prior)))
 	}
 	msgs = append(msgs, user(fmt.Sprintf("ROLE: RESEARCHER %d. Your brief: %s\n%s%s", i+1, p.Briefs[i], prompt(cfg, Researcher), cfg.toolNote(Researcher))))
 	dr := d.Researchers[round][i]
@@ -436,7 +441,7 @@ func critique(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Mess
 	if len(cfg.Tools) > 0 {
 		instr += fmt.Sprintf(" If a finding names the exact place of an error and you have checked it there, end with %q and the place (path:line), so the change starts at once.", Confirmed)
 	}
-	msgs := append(base(cfg, conv, p), user(findingsIntro+joinNumbered("FINDINGS OF RESEARCHER", findings)),
+	msgs := append(base(cfg, conv, p), sourced(findingsSource, findingsIntro+joinNumbered("FINDINGS OF RESEARCHER", findings)),
 		user(fmt.Sprintf("ROLE: CRITIC %d. %s", i+1, instr)))
 	dc := d.Critics[round][i]
 	return callFrom(ctx, m, cfg, emit, Request{
@@ -479,11 +484,11 @@ func Synthesize(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Me
 
 func synthesize(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, p Plan, findings, critiques []string, emit Emit, turns []api.Message) (string, []api.Message, error) {
 	cycle := len(cfg.tests)
-	msgs := append(base(cfg, conv, p), user(findingsIntro+joinNumbered("FINDINGS OF RESEARCHER", findings)),
-		user(critiquesIntro+joinNumbered("CRITIQUE", critiques)),
+	msgs := append(base(cfg, conv, p), sourced(findingsSource, findingsIntro+joinNumbered("FINDINGS OF RESEARCHER", findings)),
+		sourced(critiqueSource, critiquesIntro+joinNumbered("CRITIQUE", critiques)),
 		user("ROLE: SYNTHESIZER. "+prompt(cfg, Synthesizer)+cfg.toolNote(Synthesizer)+confirmedNote(cfg, critiques)+continuedNote(cfg)+cfg.testNote(cycle)))
 	if cfg.System != "" {
-		msgs = append(msgs, user(systemIntro+cfg.System))
+		msgs = append(msgs, sourced(systemSource, systemIntro+cfg.System))
 	}
 	if cfg.testing(cycle) {
 		emit = holdBack(emit, Retest, Done)

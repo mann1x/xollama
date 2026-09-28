@@ -461,5 +461,6 @@ func toolSteps(turns []api.Message) int {
 
 // noted reports whether the member's turns already carry note.
 func noted(turns []api.Message, note string) bool {
+	note = user(note).Content
 	return slices.ContainsFunc(turns, func(t api.Message) bool { return t.Role == "user" && t.Content == note })
 }
