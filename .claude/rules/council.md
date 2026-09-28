@@ -456,6 +456,17 @@ paths:
   - Reviews are shown at delivery through `cfg.show`, as `Reviewer` thinking
     (set in `callFrom` when the deliberation is shown); `memberName` numbers
     reviewers.
+- **Loop guards (11.15, `internal/council/loops.go`, from Cerebriline)**:
+  `may` refuses a writing call whose old/new text pair is equal (`noChange`,
+  answered in place, never forwarded). `sends` counts a writing call sent
+  again with the same arguments AND the same result; `transcript` appends
+  `strikeNote(n)`, and at `loopStrikes` `callTools` ends the member's steps
+  (`strikeStop`, RETEST when testing). Reads keep `repeatedCall`. Keep the
+  count reset on a different result: the call did something else.
+- **The front's handoff (11.15)**: `frontRead` (reads after its last change)
+  goes to every member as `frontReadSource` (`Progress.Read`, state 14, never
+  kept); `frontReport` is only its changes onward, or "" when it only read.
+  `frontSteps` is 3.
 - **Changes together, one check (11.14)**: `testNote` asks for every
   non-conflicting proposal in one reply, then one check, and lets the
   synthesizer fix a next failure its check already shows. Researchers report

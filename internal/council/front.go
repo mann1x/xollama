@@ -74,7 +74,7 @@ const frontMsg = "COUNCIL: You are the council's synthesizer, and you take the u
 // forward, and two steps later the request is forwarded for it. Measured in
 // ab-5: the front investigated for 11 trips before forwarding, and the
 // theory it formed led the whole council.
-const frontSteps = 4
+const frontSteps = 3
 
 var frontBudgetNote = fmt.Sprintf("You have taken %d tool steps yourself. Unless the answer is in hand now, call council_forward.", frontSteps)
 
@@ -173,6 +173,55 @@ func (cfg Config) frontReport(turns []api.Message) string {
 	// Only the calls and what they returned: the front's own conclusions
 	// stay out, so its first theory does not lead the council (ab-5 rerun:
 	// the whole first cycle chased the front's guess).
-	s := "The synthesizer worked on the request itself before forwarding it, and it was not settled. What it called, and what came back:"
-	return truncate(s+cfg.evidence(Front, MemberKey(Front, 0, 0), turns), maxPriorChars)
+	// Only when it changed something: reads alone are no attempt, and
+	// framed as a failed check they sent the researchers to read again
+	// (frontRead carries them instead).
+	first, _ := cfg.changes(turns)
+	if first < 0 {
+		return ""
+	}
+	s := "The synthesizer worked on the request itself before forwarding it, and it was not settled. What it changed and checked, and what came back:"
+	return truncate(s+cfg.evidenceOf(Front, MemberKey(Front, 0, 0), turns, func(at int, _ api.ToolCall) bool { return at >= first }), maxPriorChars)
+}
+
+// frontRead is what the front read that nothing changed since: research the
+// council starts from, instead of reading it again (the consultants' #4:
+// the front's reads were redone by the researchers, a trip each). A read
+// before one of the front's own changes is not in it: it may be stale.
+func (cfg Config) frontRead(turns []api.Message) string {
+	_, last := cfg.changes(turns)
+	ev := cfg.evidenceOf(Front, MemberKey(Front, 0, 0), turns, func(at int, c api.ToolCall) bool { return at > last && cfg.readOnly(c) })
+	if ev == "" {
+		return ""
+	}
+	return truncate(frontReadIntro+ev, maxPriorChars)
+}
+
+// frontReadIntro opens the front's reads for the council.
+const frontReadIntro = "The synthesizer read these before forwarding the request, and nothing has changed them since. Start from them: where a result is shown by its ref, read it back with council_evidence rather than calling the tool again."
+
+// frontReadSource heads the front's reads.
+const frontReadSource = "WHAT THE SYNTHESIZER ALREADY READ"
+
+// changes is the index, in the front's transcript, of its first and its last
+// message that changed something, or -1, -1.
+func (cfg Config) changes(turns []api.Message) (first, last int) {
+	first, last = -1, -1
+	for at, m := range cfg.transcript(Front, MemberKey(Front, 0, 0), turns) {
+		if m.Role == "assistant" && slices.ContainsFunc(m.ToolCalls, func(c api.ToolCall) bool { return !local(c) && !cfg.readOnly(c) }) {
+			if first < 0 {
+				first = at
+			}
+			last = at
+		}
+	}
+	return first, last
+}
+
+// withRead puts the front's reads after the conversation, for every member.
+func withRead(conv []api.Message, read string) []api.Message {
+	if read == "" {
+		return conv
+	}
+	return append(clone(conv), sourced(frontReadSource, read))
 }

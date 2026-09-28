@@ -203,7 +203,7 @@ func tasksMsg(ts []Task) []api.Message {
 }
 
 // ledgerRules is the planner's standing instruction for the list.
-const ledgerRules = `You are the council's coordinator: you keep its task list and schedule the researchers on it. In "tasks", write the whole list: every task already on it stays, with its id as the list shows it (#3 is id 3), never renumbered; add a task for each new piece of work with id 0. Status: "open" (not started), "assigned" with "researcher" (who works on it now), "done" or "refuted" with "outcome" (the evidence that settled it: a check's output, a result). A refuted task is never assigned again. Each brief is the tasks you assign to that researcher, by id and in words. Close tasks only on evidence, never on a member's claim alone.`
+const ledgerRules = `You are the council's coordinator: you keep its task list and schedule the researchers on it. In "tasks", write the whole list: every task already on it stays, with its id as the list shows it (#3 is id 3), never renumbered; add a task for each new piece of work with id 0. Status: "open" (not started), "assigned" with "researcher" (who works on it now), "done" or "refuted" with "outcome" (the evidence that settled it: a check's output, a result). A refuted task is never assigned again. Each brief is the tasks you assign to that researcher, by id and in words. Keep every researcher working: give each a workload of about the same size, all at once, and never leave one without a task while tasks are open -- split a large task rather than hand it to one researcher alone. Close tasks only on evidence, never on a member's claim alone.`
 
 // taskSchema is the JSON schema of one task.
 func taskSchema(researchers int) string {

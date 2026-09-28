@@ -102,6 +102,8 @@ func (cfg Config) may(r Role, c api.ToolCall) (bool, string) {
 		return false, fmt.Sprintf(refusedRouting, c.Function.Name)
 	case !t.Function.ReadOnly && !writes(r):
 		return false, fmt.Sprintf(refusedWrite, c.Function.Name)
+	case !t.Function.ReadOnly && noOp(c):
+		return false, noChange
 	}
 	return true, ""
 }
@@ -111,6 +113,7 @@ func (cfg Config) may(r Role, c api.ToolCall) (bool, string) {
 func (cfg Config) transcript(r Role, key string, turns []api.Message) []api.Message {
 	var out []api.Message
 	folded := cfg.folded(r, key, turns)
+	sent := cfg.sends(key, turns)
 	seen := map[string]string{}
 	for _, t := range turns {
 		out = append(out, t)
@@ -137,7 +140,9 @@ func (cfg Config) transcript(r Role, key string, turns []api.Message) []api.Mess
 					res = indexed(ref, s)
 				}
 				same := readKey(c) + "\x00" + s
-				if first, ok := seen[same]; ok {
+				if n := sent[c.ID]; n >= 2 {
+					res += strikeNote(n)
+				} else if first, ok := seen[same]; ok {
 					res += fmt.Sprintf(repeatedCall, first)
 				} else {
 					seen[same] = c.ID
@@ -279,14 +284,20 @@ const maxEvidence = 16000
 // never saw a file it was asked to edit, and either read it again or claimed
 // an edit it never made; critics re-read what the researchers had read.
 func (cfg Config) evidence(r Role, key string, turns []api.Message) string {
+	return cfg.evidenceOf(r, key, turns, nil)
+}
+
+// evidenceOf is evidence of the calls keep takes, by their message's index in
+// the member's transcript; a nil keep takes every call.
+func (cfg Config) evidenceOf(r Role, key string, turns []api.Message, keep func(at int, c api.ToolCall) bool) string {
 	var b strings.Builder
-	for _, m := range cfg.transcript(r, key, turns) {
+	for at, m := range cfg.transcript(r, key, turns) {
 		if m.Role != "assistant" {
 			continue
 		}
 		for _, c := range m.ToolCalls {
 			res, ref, ok := cfg.result(key, c)
-			if ok2, _ := cfg.may(r, c); !ok || !ok2 || local(c) {
+			if ok2, _ := cfg.may(r, c); !ok || !ok2 || local(c) || (keep != nil && !keep(at, c)) {
 				continue
 			}
 			if b.Len() == 0 {
@@ -351,6 +362,16 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 				cfg.show(req.Round, rs)
 				turns = append(slices.Clone(turns), reviewsMsg(rs))
 			}
+		}
+		if writes(req.Role) && cfg.struck(key, turns) {
+			// The same change sent loopStrikes times with the same result:
+			// the member's steps end here, with the last send's result in.
+			out := replyText(turns, "") + "\n\n" + strikeStop
+			if req.Role == Synthesizer && cfg.testing(req.Round) {
+				cfg.recordCheck(key, turns)
+				out = replyText(turns, "") + "\n\n" + Retest + " " + strikeStop
+			}
+			return out + cfg.evidence(req.Role, key, turns), nil, nil
 		}
 		if req.Role == Synthesizer && cfg.testing(req.Round) {
 			// D: a cycle's steps are bounded; past them the synthesizer is

@@ -131,3 +131,29 @@ func TestOnlyTheFrontRoutes(t *testing.T) {
 		t.Errorf("researcher note %q", note)
 	}
 }
+
+// A front that changed something forwards its attempt from the first change
+// on; of its reads only those after its last change are current research.
+func TestAFrontsReadsAreResearchAndItsChangesAnAttempt(t *testing.T) {
+	cfg := frontCfg()
+	key := MemberKey(Front, 0, 0)
+	write := api.ToolCall{ID: "w", Function: api.ToolCallFunction{Name: "write_file", Arguments: api.NewToolCallFunctionArguments()}}
+	turns := []api.Message{
+		{Role: "assistant", ToolCalls: []api.ToolCall{readCall("r0", "before.go")}},
+		{Role: "assistant", ToolCalls: []api.ToolCall{write}},
+		{Role: "assistant", ToolCalls: []api.ToolCall{readCall("r2", "after.go")}},
+	}
+	cfg.Results = map[string]string{
+		ForwardedID(key, "r0"): "old text", ForwardedID(key, "w"): "written", ForwardedID(key, "r2"): "new text",
+	}
+	report, read := cfg.frontReport(turns), cfg.frontRead(turns)
+	if !strings.Contains(report, "write_file") || !strings.Contains(report, "after.go") || strings.Contains(report, "before.go") {
+		t.Errorf("the attempt is not the change and what followed it:\n%s", report)
+	}
+	if !strings.Contains(read, "after.go") || strings.Contains(read, "before.go") || strings.Contains(read, "write_file") {
+		t.Errorf("the reads are not the current ones:\n%s", read)
+	}
+	if got := cfg.frontReport(turns[:1]); got != "" {
+		t.Errorf("a front that only read made an attempt: %q", got)
+	}
+}

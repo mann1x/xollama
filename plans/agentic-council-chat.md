@@ -2170,6 +2170,45 @@ Guard: `TestTheSynthesizerAppliesTheProposalsTogether` (and the researcher
 wording in `TestResearchersAreToldWhichToolsOnlyRead`), checked by removal.
 Next: medium on this build, against plain's 91 s.
 
+### 11.15 Less waiting: the consultants' #3–#6 (built 2026-09-28)
+The owner took the consultants' proposals #3–#6, with #3 and #5 as Cerebriline
+has them ("we are paying exceptional latency so anything that helps is
+welcome"). #2, overlapping the stages, waits for the follow-up on flow modes.
+
+- **#3, a change that changes nothing** (`internal/council/loops.go`, ported
+  from Cerebriline's editor): a call to a writing tool whose old and new text
+  are the same (`old_text`/`new_text` and the usual pairs) is refused in place
+  with "No change: …". It is never forwarded, so it costs no trip.
+- **Anti-loop** (Cerebriline's `loop-detection.ts`): a writing call that a
+  member sends again with the same arguments, and that gets the same result
+  back, carries Cerebriline's steering ladder with a strike count (look at the
+  target with a read tool; change what produces it; leave it and take the
+  next thing). At `loopStrikes` (4) the member's steps end, with a report (a
+  RETEST in a testing cycle). A different result starts the count again.
+- **#5, a refused change** (Cerebriline's first steering step): the
+  synthesizer is told to read the target as it is now and make the change
+  again from that text, never the same call unchanged. The builder's example
+  no longer says "never resend an edit that failed". On hard, the one edit to
+  `dDec` (where the fault was) was refused and never tried again.
+- **#4, the front's handoff**: `frontSteps` goes from 4 to 3. The front's
+  reads that nothing changed since reach every member as research
+  (`[COUNCIL · WHAT THE SYNTHESIZER ALREADY READ]`, read back by ref with
+  `council_evidence`; state Progress field 14, this turn only). Its failed
+  attempt is only its changes and what followed them; a front that only read
+  made no attempt.
+- **#6, no idle researchers**: the planner's rules say every researcher gets a
+  workload of about the same size, all at once, and none is left without a
+  task while tasks are open. Work stealing in the runtime (a researcher that
+  finishes early takes the next open task) goes with #2.
+
+Guards: `TestANoOpChangeIsRefusedInPlace`,
+`TestTheSameChangeSentAgainEndsTheSteps`,
+`TestARepeatedCallWithTheSameResultIsPointedOut`,
+`TestTheCouncilIsToldToRedoARefusedChangeAndKeepResearchersBusy`,
+`TestAFrontsReadsAreResearchAndItsChangesAnAttempt` and
+`TestAFrontThatInvestigatesIsForwardedWithItsAttempts`, each checked by
+removal. The test driver now accumulates results as `councilToolTurn` does.
+
 ### 11.11 Checks that stop moving change the approach (built 2026-09-28)
 The fifth simple run (b336b144) returned the same "missing ) after argument
 list" from every check for 60 trips. The plain arm fixed the task in 27 trips:

@@ -5,6 +5,15 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — council 11.15: loop guards from Cerebriline, the front's handoff, no idle researchers.**
+> - The consultants' #3–#6, as the owner took them (#2 waits for the flow-modes follow-up):
+>   - a no-op change is refused in place;
+>   - a changing call resent with the same result gets Cerebriline's steering ladder, and at 4 strikes the member reports;
+>   - a refused change is redone from the text as it is now;
+>   - the front stops at 3 steps, and its current reads reach every member as research, not as a failed attempt;
+>   - the planner keeps every researcher working.
+> - Next: deploy, then measure.
+
 > **2026-09-28 — b203 holds on eleven2go; the council missed simple on it.**
 > - opencoti #530 rerun: b203 host (2609281335001) with the b201 Win DLL, the `head` relief removed (`auto` residency, POSITION_WINDOW on), 4 live slots, unified KV.
 >   - The simple council ran 60 trips in 2028 s, 5 cycles, with no assert; log sent (#538).

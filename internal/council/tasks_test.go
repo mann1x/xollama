@@ -114,7 +114,13 @@ func driveResults(t *testing.T, cfg Config, m Model, result func(trip int) strin
 	t.Helper()
 	res, err := Run(t.Context(), cfg, m, conv, func(Event) {})
 	for trip := 0; err == nil && len(res.Calls) > 0; trip++ {
-		cfg.Results = map[string]string{}
+		if trip > 200 {
+			t.Fatal("the council never stopped calling tools")
+		}
+		// Every result since the user's message, as councilToolTurn gives.
+		if cfg.Results == nil {
+			cfg.Results = map[string]string{}
+		}
 		for _, c := range res.Calls {
 			cfg.Results[c.ID] = result(trip)
 		}

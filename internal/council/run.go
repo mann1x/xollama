@@ -40,6 +40,9 @@ type Progress struct {
 	// on earlier turns of the same work, and the front's own attempts this
 	// turn (B, F). Every member reads them, ahead of the plan.
 	Prior []string
+	// Read is what the front read that nothing changed since (frontRead),
+	// for this turn's members; it is not kept for the next turn.
+	Read string
 	// Build is the builder's shaping of the council (build.go), kept with
 	// the deliberation so later turns read its target.
 	Build *Build
@@ -54,7 +57,7 @@ type RoundProgress struct {
 func (p Progress) clone() Progress {
 	out := Progress{
 		Route: p.Route, Notes: append([]Note(nil), p.Notes...), Tests: append([]string(nil), p.Tests...), Prior: append([]string(nil), p.Prior...), Build: p.Build.clone(),
-		Tasks: append([]Task(nil), p.Tasks...), Carried: append([]Task(nil), p.Carried...), Checks: append([]string(nil), p.Checks...),
+		Tasks: append([]Task(nil), p.Tasks...), Carried: append([]Task(nil), p.Carried...), Checks: append([]string(nil), p.Checks...), Read: p.Read,
 	}
 	if len(p.Seen) > 0 {
 		out.Seen = maps.Clone(p.Seen)
@@ -228,13 +231,14 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 			return Result{Route: "direct", Answer: ans, Draws: d, Kept: keptWith(cfg.Previous, p.Build)}, nil
 		}
 		route = next
-		report := fcfg.frontReport(turns)
+		report, read := fcfg.frontReport(turns), fcfg.frontRead(turns)
 		mark(func() {
 			delete(p.Suspended, key)
 			p.Route = route
 			if report != "" {
 				p.Prior = append(p.Prior, report)
 			}
+			p.Read = read
 		})
 	}
 	if route == "" {
@@ -308,7 +312,7 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 		}
 	}
 	cfg = cfg.apply(p.Build)
-	conv = withPrior(conv, p.Prior)
+	conv = withRead(withPrior(conv, p.Prior), p.Read)
 	cfg.carried = p.Carried
 	if p.Plan == nil {
 		plan, err := MakePlan(ctx, m, cfg, d, conv, emit)

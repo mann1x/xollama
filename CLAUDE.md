@@ -182,7 +182,9 @@ errgroup runner: route-only decision, researchers and critics in parallel,
 synthesizer; `internal/council/build.go`: the builder, on its own `~builder` session and reading only the user's messages,
 shapes each role's instructions, think budget and check cycles for the work;
 `internal/council/tasks.go`: the planner's task list, carried in every plan's JSON;
-`internal/council/stuck.go`: tells the next cycle whether a failed check's output moved) and `server/council.go` (members as in-process chat turns, each
+`internal/council/stuck.go`: tells the next cycle whether a failed check's output moved;
+`internal/council/loops.go`: Cerebriline's loop guards, a no-op edit refused in place
+and a write repeated with the same result struck until the member's steps end) and `server/council.go` (members as in-process chat turns, each
 on its own engine session; on opencoti with PolyKV, `server/council_polykv.go`
 builds the turn's pool tree — the planner attached to the conversation's root
 pool, kept between turns — and `llm/engine_council.go` is its client;

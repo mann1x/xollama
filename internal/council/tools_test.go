@@ -532,9 +532,26 @@ func TestARepeatedCallWithTheSameResultIsPointedOut(t *testing.T) {
 			got = append(got, m.Content)
 		}
 	}
-	want := []string{"error: no match", "error: no match" + fmt.Sprintf(repeatedCall, "c0"), "ok", "error: no match"}
+	// A change sent again unchanged, with the same result, is steered
+	// (Cerebriline's ladder); a different result starts the count again.
+	want := []string{"error: no match", "error: no match" + strikeNote(2), "ok", "error: no match"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("results %q, want %q", got, want)
+	}
+	// A read with the same result is pointed out as before.
+	reads := []api.Message{
+		{Role: "assistant", ToolCalls: []api.ToolCall{readCall("r0", "a.js")}},
+		{Role: "assistant", ToolCalls: []api.ToolCall{readCall("r1", "a.js")}},
+	}
+	cfg.Results = map[string]string{"s:r0": "text", "s:r1": "text"}
+	got = nil
+	for _, m := range cfg.transcript(Synthesizer, "s", reads) {
+		if m.Role == "tool" {
+			got = append(got, m.Content)
+		}
+	}
+	if want := []string{"text", "text" + fmt.Sprintf(repeatedCall, "r0")}; !slices.Equal(got, want) {
+		t.Fatalf("reads %q, want %q", got, want)
 	}
 }
 

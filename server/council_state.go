@@ -194,6 +194,9 @@ func marshalProgress(p council.Progress) []byte {
 	for _, t := range p.Carried {
 		b = appendBytes(b, 13, marshalTask(t))
 	}
+	if p.Read != "" {
+		b = appendRepeated(b, 14, p.Read)
+	}
 	return b
 }
 
@@ -555,6 +558,8 @@ func unmarshalProgress(b []byte) (council.Progress, error) {
 			p.Prior = append(p.Prior, string(v))
 		case 11:
 			p.Checks = append(p.Checks, string(v))
+		case 14:
+			p.Read = string(v)
 		case 12, 13:
 			t, err := unmarshalTask(v)
 			if err != nil {

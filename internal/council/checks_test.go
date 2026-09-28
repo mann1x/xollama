@@ -166,13 +166,18 @@ func TestAFrontThatInvestigatesIsForwardedWithItsAttempts(t *testing.T) {
 	if !strings.Contains(all(lastOf(s.calls, Front)), frontBudgetNote) {
 		t.Error("the front was not told to forward")
 	}
-	if res.Route != RouteCouncil || res.Kept == nil || len(res.Kept.Prior) != 1 {
+	// It only read: that is research the council starts from, not a
+	// failed attempt, and it is not kept for the next turn.
+	if res.Route != RouteCouncil || res.Kept == nil || len(res.Kept.Prior) != 0 || res.Kept.Read != "" {
 		t.Fatalf("route %q, kept %+v", res.Route, res.Kept)
 	}
 	for _, role := range []Role{Planner, Researcher, Critic, Synthesizer} {
 		got := all(lastOf(s.calls, role))
-		if !strings.Contains(got, header(priorSource)+priorIntro) || !strings.Contains(got, "worked on the request itself") || !strings.Contains(got, `read_files {"path":"f`) {
-			t.Errorf("%s did not read the front's attempts", role)
+		if !strings.Contains(got, header(frontReadSource)+frontReadIntro) || !strings.Contains(got, `read_files {"path":"f`) {
+			t.Errorf("%s did not read what the front read", role)
+		}
+		if strings.Contains(got, "worked on the request itself") {
+			t.Errorf("%s read the front's reads as a failed attempt", role)
 		}
 		// Its calls and their results, never its theory.
 		if strings.Contains(got, "I think it is in f.go") {
