@@ -439,10 +439,13 @@ paths:
   - The server keeps one desk per session (`councilDesks.get`, remade when
     the critic count changes), closes it when the client leaves, and closes
     it after `reviewIdle` idle.
-  - Background members have no tools. `reviewPlacement` states their window
+  - Background members have no tools. `ownWindow` states their window
     on opencoti, where no window books the whole pool.
-- **The builder (11.5, `internal/council/build.go`)**: `Builder` runs on the
-  owner like the planner (`memberSession`, `place`), before the first plan of a
+- **The builder (11.5, `internal/council/build.go`)**: `Builder` reads
+  `builderConversation` only (system + the user's unheaded messages: no
+  answers, member work or tool results — it anchored on them twice). It runs
+  on its own session `~builder` with `ownWindow`, never on the owner, whose
+  cache a different prefix would evict. It runs before the first plan of a
   council route with no kept build, and on `RouteRebuild`. `apply` appends its
   instructions to `prompt(cfg, r)` ("For this work: ..."), sets think only for
   roles the user left unset (levels map to 1024/2048/4096), and sets `MaxTests`

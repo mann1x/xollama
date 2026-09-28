@@ -2030,6 +2030,15 @@ review would hang it. The others are `TestADoneSendsItsLastCheckForReview`,
 `TestAReviewerStatesAWindowOfItsOwn` and `TestAToolTurnKeepsAReviewDesk`.
 Each was checked by removal. Open: the reviews are not streamed as thinking.
 
+The builder anchored again on that run, with a place taken from an earlier
+turn's tool results ("likely in the Level class methods on lines 115-126").
+So the builder now reads only the system prompt and the user's own messages
+(`builderConversation`), as the 11.5 design has it. It runs on its own
+session (`~builder`) with a window of its own (`ownWindow`), so it no longer
+disturbs the owner's cache. Guarded in
+`TestEarlierTurnsReachTheMembersAttributed` (checked by removal) and
+`TestACouncilOnPolyKVBuildsItsTreeOnce`.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).

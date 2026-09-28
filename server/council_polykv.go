@@ -989,13 +989,13 @@ func (t *councilTree) tokens(ctx context.Context, msgs []api.Message) (int, erro
 func (cm *councilMembers) place(ctx context.Context, r council.Request, req *api.ChatRequest) (*llm.Placement, string, func()) {
 	t := cm.tree
 	none := func() {}
-	if p := cm.reviewPlacement(r); p != nil && r.Model == "" {
+	if p := cm.ownWindow(r); p != nil && r.Model == "" {
 		return p, "", none
 	}
 	if t == nil || r.Model != "" {
 		return nil, "", none
 	}
-	if r.Role == council.Planner || r.Role == council.Builder || r.Role == council.Front || r.Role == roleCompactWriter {
+	if r.Role == council.Planner || r.Role == council.Front || r.Role == roleCompactWriter {
 		req.SessionID = t.owner
 		return t.ownerPlacement(ctx, r.Messages), "", none
 	}

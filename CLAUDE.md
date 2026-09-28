@@ -179,7 +179,7 @@ only when `polykv` is not `off`. A council tag and its `FROM` base swap the
 runner anyway, as any two tags do: upstream's `ManifestDigest` is in the launch
 config. A council turn is served by `internal/council/` (the
 errgroup runner: route-only decision, researchers and critics in parallel,
-synthesizer; `internal/council/build.go`: the builder, on the planner's slot,
+synthesizer; `internal/council/build.go`: the builder, on its own `~builder` session and reading only the user's messages,
 shapes each role's instructions, think budget and check cycles for the work) and `server/council.go` (members as in-process chat turns, each
 on its own engine session; on opencoti with PolyKV, `server/council_polykv.go`
 builds the turn's pool tree — the planner attached to the conversation's root

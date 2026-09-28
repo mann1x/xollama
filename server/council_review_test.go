@@ -13,15 +13,15 @@ import (
 func TestAReviewerStatesAWindowOfItsOwn(t *testing.T) {
 	cm := &councilMembers{reviewWindow: 8192}
 	r := council.Request{Role: council.Reviewer, MaxTokens: 1024, Messages: []api.Message{{Content: strings.Repeat("x", 3000)}}}
-	p := cm.reviewPlacement(r)
+	p := cm.ownWindow(r)
 	if p == nil || p.NumCtx != 2560 || p.NumCtxMin != 2560 {
 		t.Fatalf("placement %+v, want 2560", p)
 	}
 	r.Messages = []api.Message{{Content: strings.Repeat("x", 90000)}}
-	if p := cm.reviewPlacement(r); p.NumCtx != 8192 {
+	if p := cm.ownWindow(r); p.NumCtx != 8192 {
 		t.Errorf("a long review took %d, want the member window", p.NumCtx)
 	}
-	if cm.reviewPlacement(council.Request{Role: council.Critic}) != nil {
+	if cm.ownWindow(council.Request{Role: council.Critic}) != nil {
 		t.Error("a critic took a reviewer's window")
 	}
 	// place states it, with no tree to place the reviewer on.
@@ -31,7 +31,7 @@ func TestAReviewerStatesAWindowOfItsOwn(t *testing.T) {
 	} else {
 		done()
 	}
-	if (&councilMembers{}).reviewPlacement(r) != nil {
+	if (&councilMembers{}).ownWindow(r) != nil {
 		t.Error("a reviewer stated a window where there is no pool")
 	}
 }

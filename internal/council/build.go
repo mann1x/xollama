@@ -136,7 +136,7 @@ func (cfg Config) architecture() string {
 func MakeBuild(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, emit Emit) (*Build, error) {
 	out, err := call(ctx, m, cfg, emit, Request{
 		Role: Builder, Model: cfg.Models[Planner], Host: cfg.Hosts[Planner],
-		Messages: append(clone(conv), user(sourcesNote+"\n\n"+fmt.Sprintf(builderPrompt, cfg.architecture()))),
+		Messages: append(builderConversation(conv), user(sourcesNote+"\n\n"+fmt.Sprintf(builderPrompt, cfg.architecture()))),
 		Seed:     d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Builder), Think: cfg.Think[Planner],
 		Format: buildSchema,
 	}, Thinking)
@@ -318,4 +318,19 @@ func withPrior(conv []api.Message, prior []string) []api.Message {
 		return conv
 	}
 	return append(clone(conv), sourced(priorSource, priorIntro+joinNumbered("EARLIER CHECK", prior)))
+}
+
+// builderConversation is what the builder reads of the conversation: the
+// system prompt and the user's own messages, never the answers, the members'
+// work or the tools' results. It judges the kind of work, and a result in view
+// gave it a place to name (the third simple run on eleven2go: "likely in the
+// Level class methods on lines 115-126", written into every role).
+func builderConversation(conv []api.Message) []api.Message {
+	var out []api.Message
+	for _, m := range conv {
+		if m.Role == "system" || (m.Role == "user" && !strings.HasPrefix(m.Content, sourceOpen)) {
+			out = append(out, api.Message{Role: m.Role, Content: m.Content, Images: m.Images})
+		}
+	}
+	return out
 }

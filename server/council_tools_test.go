@@ -376,6 +376,14 @@ func TestEarlierTurnsReachTheMembersAttributed(t *testing.T) {
 		if strings.Contains(p, "SURELY-THE-OZONE") {
 			t.Errorf("%s read a member's working note from an earlier turn", e.roles[i])
 		}
+		if e.roles[i] == "builder" {
+			// The builder reads the user's messages only: no result to
+			// anchor on.
+			if strings.Contains(p, "NOTES-DATA") || !strings.Contains(p, "Say more.") {
+				t.Error("the builder read more than the user's messages")
+			}
+			continue
+		}
 		if !strings.Contains(p, "[COUNCIL · RESEARCHER 1 · TOOL CALLS]") || !strings.Contains(p, "NOTES-DATA") {
 			t.Errorf("%s did not read the earlier call under its member", e.roles[i])
 		}

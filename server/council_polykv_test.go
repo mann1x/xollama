@@ -203,9 +203,15 @@ func TestACouncilOnPolyKVBuildsItsTreeOnce(t *testing.T) {
 	for i, role := range e.roles {
 		pl := e.placements[i]
 		switch role {
-		case "route", "planner", "builder":
+		case "route", "planner":
 			if e.sessions[i] != owner || pl == nil || pl.NumCtx != 16384 || pl.PoolID != nil {
 				t.Errorf("%s: session %q placement %+v, want the owner booking 16384", role, e.sessions[i], pl)
+			}
+		case "builder":
+			// It reads only the user's messages, so it shares nothing with the
+			// owner's cache: its own session, and a window of its own.
+			if e.sessions[i] != owner+"~builder" || pl == nil || pl.PoolID != nil || pl.NumCtx == 0 || pl.NumCtx >= 16384 {
+				t.Errorf("builder: session %q placement %+v, want its own session and a small window", e.sessions[i], pl)
 			}
 		default:
 			if pl == nil || pl.PoolID == nil || *pl.PoolID != want[role] || pl.NumCtx != 0 {

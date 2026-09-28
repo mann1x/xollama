@@ -74,16 +74,22 @@ func (r *deskRegistry) close(session string) {
 	}
 }
 
-// reviewPlacement is a reviewer's window when the council runs on opencoti:
-// its request, its reply cap and a margin, rounded, within the member window.
-func (cm *councilMembers) reviewPlacement(r council.Request) *llm.Placement {
-	if cm.reviewWindow <= 0 || r.Role != council.Reviewer {
+// ownWindow is the window of a member that shares nothing with the tree and
+// runs on a session of its own -- a background reviewer, or the builder, which
+// reads only the user's messages -- when the council runs on opencoti: its
+// request, its reply cap and a margin, rounded, within the member window.
+func (cm *councilMembers) ownWindow(r council.Request) *llm.Placement {
+	window := cm.reviewWindow
+	if window <= 0 && cm.tree != nil {
+		window = cm.tree.window
+	}
+	if window <= 0 || (r.Role != council.Reviewer && r.Role != council.Builder) {
 		return nil
 	}
 	n := 0
 	for _, m := range r.Messages {
 		n += len(m.Content)
 	}
-	size := min(roundUp(n/3+r.MaxTokens+512, 256), cm.reviewWindow)
+	size := min(roundUp(n/3+r.MaxTokens+512, 256), window)
 	return &llm.Placement{NumCtx: size, NumCtxMin: size}
 }
