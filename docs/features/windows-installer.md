@@ -303,3 +303,21 @@ owns. Both are the same rule as the listen port
   still set to `Ollama` while `CFBundleName` said `xOllama` — so Finder, the
   Dock and the Open With list all named the app `Ollama`, which is the macOS
   twin of the Add/Remove Programs DisplayName above.
+
+## Stopping xOllama before an install or uninstall
+
+`app/xollama-stop.ps1` stops xOllama's own processes and waits for them to
+exit. The installer runs it from `PrepareToInstall`, before any file is
+replaced (the engine and runners under `lib\ollama` are copied after the
+executables), and the uninstaller runs it from `[UninstallRun]`. It stops:
+
+- every process whose executable is under the install directory;
+- the engines and runners (`llama-server`, `opencoti-*`, `xollama`) those
+  started, wherever they run from, since `XOLLAMA_ENGINE_PATH` can point
+  anywhere;
+- an opencoti engine whose parent is gone. Only xOllama launches opencoti; one
+  started from a shell has a live parent and is left alone.
+
+It replaces `taskkill /im llama-server.exe`, which also stopped a stock
+Ollama's runners beside it and never reached the opencoti engine.
+`-List` prints what it would stop without stopping anything.

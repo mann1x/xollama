@@ -232,7 +232,8 @@ model gets a badge and a Deliberation toggle (`hooks/useCouncil.ts`,
 keeps its explicit `think:false`. The app names itself xOllama (`app-brand`
 hook): `AppName` in `app/wintray/brand_xollama.go` for the tray, notifications
 and window title, and the build-time Vite plugin `xollamaBrand()`
-(`app/ui/app/xollama-brand.ts`) for the UI's strings — see
+(`app/ui/app/xollama-brand.ts`) for the UI's strings; its icons in `app/assets/`
+are made by `scripts/xollama-icon.py` — see
 `.claude/rules/app-brand.md`.
 **Desktop updates**: `app/updater/fork.go` reads this fork's GitHub releases
 (`XOLLAMA_UPDATE_FEED`, `XOLLAMA_UPDATE_PRERELEASE`) instead of `ollama.com`,
@@ -242,7 +243,9 @@ hooked from `app/updater/updater.go` / `app/updater/updater_windows.go`;
 `lib\ollama\PAYLOAD_ID` matches the release's `payload-id.txt` (`payloadId` in
 `scripts/build_windows.ps1`). The installer is `app/xollama.iss` (setup pages
 for Ollama-found, port, API key and KV cache in `app/xollama-setup-pages.iss`,
-full installer only); it always
+full installer only); before an install (`PrepareToInstall`) or uninstall
+(`[UninstallRun]`) it runs `app/xollama-stop.ps1`, which stops only xOllama's
+own processes and engines, never a stock Ollama's `llama-server.exe`; it always
 registers `xollama://` and registers `ollama://` only when nobody already owns
 it (`OllamaSchemeUnclaimed`). macOS declares both schemes and
 `app/cmd/app/app_darwin.m` handles both, because ollama.com picks the sign-in
