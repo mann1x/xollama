@@ -359,7 +359,11 @@ paths:
   tool turn's cycles. A synthesizer ending with `Retest` ("VERDICT: RETEST")
   carries its evidence like a finding, is recorded in `Progress.Tests` (state
   Progress field 7), and starts the next cycle. `base` adds every failed check
-  after the plan, so all members of a cycle share one prefix. The synthesizer
+  after the first plan, then `Replan`'s plan for the cycle (`replanRequest`,
+  run on the owner; `Progress.Replans`, state Progress field 8), so every
+  member of a cycle and its re-plan share one prefix. `holdBack` streams the
+  synthesizer's content up to the verdict only: the status is the user's, the
+  report the council's. The synthesizer
   key and `Request.Round` are the cycle ("s", "s.2"...). Critics' `REVISE` and
   `NeedsRevision` count rounds from `cfg.cycleStart`. The continue route sets
   `MaxTests` 0. Researchers are asked to propose only when a tool that changes

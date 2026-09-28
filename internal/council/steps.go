@@ -249,6 +249,11 @@ func MakePlan(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Mess
 	if err != nil {
 		return Plan{}, err
 	}
+	return parsePlan(cfg, out), nil
+}
+
+// parsePlan reads a planner's reply, filling any brief it left out.
+func parsePlan(cfg Config, out string) Plan {
 	var p Plan
 	if json.Unmarshal([]byte(strings.TrimSpace(out)), &p) != nil || p.Plan == "" {
 		p = Plan{Plan: strings.TrimSpace(out)}
@@ -257,19 +262,48 @@ func MakePlan(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Mess
 		p.Briefs = append(p.Briefs, "Investigate the question from a different angle than the other researchers.")
 	}
 	p.Briefs = p.Briefs[:cfg.Researchers]
-	return p, nil
+	return p
 }
 
 // base is the conversation plus the plan: the prefix every later member
-// shares. From the second test cycle on it carries the failed checks so far,
-// so no member proposes again what a check refuted.
+// shares. From the second test cycle on, the first plan is followed by the
+// failed checks so far and the planner's new plan (replanned), so no member
+// proposes again what a check refuted, and every member of the cycle and the
+// planner's own re-plan share one prefix.
 func base(cfg Config, conv []api.Message, p Plan) []api.Message {
-	b, _ := json.Marshal(p)
-	out := append(clone(conv), planMsg(cfg), api.Message{Role: "assistant", Content: string(b)})
-	if len(cfg.tests) > 0 {
-		out = append(out, user(testsIntro+joinNumbered("TEST", cfg.tests)))
+	if len(cfg.tests) == 0 || cfg.first == nil {
+		return planned(cfg, conv, p)
 	}
-	return out
+	b, _ := json.Marshal(p)
+	return append(replanRequest(cfg, conv), api.Message{Role: "assistant", Content: string(b)})
+}
+
+// planned is the conversation, the plan request and plan p.
+func planned(cfg Config, conv []api.Message, p Plan) []api.Message {
+	b, _ := json.Marshal(p)
+	return append(clone(conv), planMsg(cfg), api.Message{Role: "assistant", Content: string(b)})
+}
+
+// replanRequest is the first plan followed by the failed checks and the
+// planner's instruction to plan the work again.
+func replanRequest(cfg Config, conv []api.Message) []api.Message {
+	return append(planned(cfg, conv, *cfg.first), user(fmt.Sprintf(
+		"%s%s\n\nROLE: PLANNER. Plan the work again from what the checks showed: split what is left into one workload per researcher, and give no researcher what a check refuted. Reply with JSON only: {\"plan\":\"<the plan>\",\"briefs\":[<exactly %d researcher briefs>]}.",
+		testsIntro, joinNumbered("TEST", cfg.tests), cfg.Researchers)))
+}
+
+// Replan is the planner's plan for the next test cycle, from the failed
+// checks in cfg.
+func Replan(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, emit Emit) (Plan, error) {
+	out, err := call(ctx, m, cfg, emit, Request{
+		Role: Planner, Round: len(cfg.tests), Model: cfg.Models[Planner], Host: cfg.Hosts[Planner], Messages: replanRequest(cfg, conv),
+		Seed: d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Planner), Think: cfg.Think[Planner],
+		Format: planSchema(cfg.Researchers),
+	}, Thinking)
+	if err != nil {
+		return Plan{}, err
+	}
+	return parsePlan(cfg, out), nil
 }
 
 // Retest is what the synthesizer ends with when a check of the council's
@@ -290,7 +324,57 @@ func (cfg Config) testNote(cycle int) string {
 	if !cfg.testing(cycle) {
 		return ""
 	}
-	return fmt.Sprintf(" Check each change with the tools where it can be checked. If a check fails and the findings give you nothing else to try, end with %q followed by what you tried and what the check returned: the council proposes again from that.", Retest)
+	return fmt.Sprintf(" Check each change with the tools where it can be checked. If a check fails and the findings give you nothing else to try, write the user a brief status (where things stand and that the council is trying again), then %q followed by what you tried and what the check returned. The council plans again from that; the user does not see it.", Retest)
+}
+
+// holdBack passes a synthesizer's content through up to marker and withholds
+// the rest: a failed check's report is for the council, the status before it
+// for the user. Text that may be the start of marker waits for the next
+// token.
+func holdBack(emit Emit, marker string) Emit {
+	var pending string
+	held := false
+	return func(e Event) {
+		if e.Kind != Content || held {
+			if e.Done && !held && pending != "" {
+				emit(Event{Role: e.Role, Index: e.Index, Round: e.Round, Kind: e.Kind, Text: pending})
+				pending = ""
+			}
+			if !held || e.Done {
+				emit(e)
+			}
+			return
+		}
+		if e.Done {
+			if pending != "" {
+				emit(Event{Role: e.Role, Index: e.Index, Round: e.Round, Kind: e.Kind, Text: pending})
+				pending = ""
+			}
+			emit(e)
+			return
+		}
+		s := pending + e.Text
+		if i := strings.Index(s, marker); i >= 0 {
+			held = true
+			s = strings.TrimRight(s[:i], " \n")
+			if s != "" {
+				emit(Event{Role: e.Role, Index: e.Index, Round: e.Round, Kind: e.Kind, Text: s})
+			}
+			pending = ""
+			return
+		}
+		keep := 0
+		for n := min(len(marker)-1, len(s)); n > 0; n-- {
+			if strings.HasSuffix(s, marker[:n]) {
+				keep = n
+				break
+			}
+		}
+		pending = s[len(s)-keep:]
+		if out := s[:len(s)-keep]; out != "" {
+			emit(Event{Role: e.Role, Index: e.Index, Round: e.Round, Kind: e.Kind, Text: out})
+		}
+	}
 }
 
 // retested reports whether a synthesizer's reply is a failed check sent back.
@@ -379,6 +463,9 @@ func synthesize(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Me
 		user("ROLE: SYNTHESIZER. "+prompt(cfg, Synthesizer)+cfg.toolNote(Synthesizer)+confirmedNote(cfg, critiques)+continuedNote(cfg)+cfg.testNote(cycle)))
 	if cfg.System != "" {
 		msgs = append(msgs, user(systemIntro+cfg.System))
+	}
+	if cfg.testing(cycle) {
+		emit = holdBack(emit, Retest)
 	}
 	return callFrom(ctx, m, cfg, emit, Request{
 		Role: Synthesizer, Round: cycle, Model: cfg.Models[Synthesizer], Host: cfg.Hosts[Synthesizer], Messages: msgs,

@@ -29,6 +29,7 @@ package server
 //	          answered turn leaves for the next (council_continue.go)
 //	Progress  1 route(string) 2 plan(Plan) 3 rounds(Round, repeated) 4 suspended(Member, repeated)
 //	          5 notes(Note, repeated) 6 seen(Seen, repeated) 7 tests(string, repeated)
+//	          8 replans(Plan, repeated)
 //	Note      1 id(string) 2 from(string) 3 text(string)
 //	Seen      1 key(string) 2 n(varint)
 //	Member    1 key(string) 2 turns(bytes: the member's []api.Message as JSON)
@@ -129,12 +130,7 @@ func marshalProgress(p council.Progress) []byte {
 	var b []byte
 	b = appendString(b, 1, p.Route)
 	if p.Plan != nil {
-		var pl []byte
-		pl = appendString(pl, 1, p.Plan.Plan)
-		for _, br := range p.Plan.Briefs {
-			pl = appendRepeated(pl, 2, br)
-		}
-		b = appendBytes(b, 2, pl)
+		b = appendBytes(b, 2, marshalPlan(*p.Plan))
 	}
 	for _, r := range p.Rounds {
 		var rb []byte
@@ -174,7 +170,33 @@ func marshalProgress(p council.Progress) []byte {
 	for _, t := range p.Tests {
 		b = appendRepeated(b, 7, t)
 	}
+	for _, pl := range p.Replans {
+		b = appendBytes(b, 8, marshalPlan(pl))
+	}
 	return b
+}
+
+func marshalPlan(p council.Plan) []byte {
+	var b []byte
+	b = appendString(b, 1, p.Plan)
+	for _, br := range p.Briefs {
+		b = appendRepeated(b, 2, br)
+	}
+	return b
+}
+
+func unmarshalPlan(v []byte) (council.Plan, error) {
+	var pl council.Plan
+	err := fields(v, func(num protowire.Number, typ protowire.Type, v []byte, _ uint64) error {
+		switch {
+		case num == 1 && typ == protowire.BytesType:
+			pl.Plan = string(v)
+		case num == 2 && typ == protowire.BytesType:
+			pl.Briefs = append(pl.Briefs, string(v))
+		}
+		return nil
+	})
+	return pl, err
 }
 
 func marshalRecord(r *compactionRecord) []byte {
@@ -307,16 +329,8 @@ func unmarshalProgress(b []byte) (council.Progress, error) {
 		case 1:
 			p.Route = string(v)
 		case 2:
-			pl := council.Plan{}
-			if err := fields(v, func(num protowire.Number, typ protowire.Type, v []byte, _ uint64) error {
-				switch {
-				case num == 1 && typ == protowire.BytesType:
-					pl.Plan = string(v)
-				case num == 2 && typ == protowire.BytesType:
-					pl.Briefs = append(pl.Briefs, string(v))
-				}
-				return nil
-			}); err != nil {
+			pl, err := unmarshalPlan(v)
+			if err != nil {
 				return err
 			}
 			p.Plan = &pl
@@ -394,6 +408,12 @@ func unmarshalProgress(b []byte) (council.Progress, error) {
 			}
 		case 7:
 			p.Tests = append(p.Tests, string(v))
+		case 8:
+			pl, err := unmarshalPlan(v)
+			if err != nil {
+				return err
+			}
+			p.Replans = append(p.Replans, pl)
 		}
 		return nil
 	})

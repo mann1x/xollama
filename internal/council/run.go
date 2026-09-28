@@ -26,8 +26,10 @@ type Progress struct {
 	Notes []Note
 	Seen  map[string]int
 	// Tests are the synthesizer's failed checks, one per test cycle ended
-	// (11.4): each cycle after one reads them all.
-	Tests []string
+	// (11.4): each cycle after one reads them all. Replans[c-1] is the plan
+	// the planner made for cycle c from them.
+	Tests   []string
+	Replans []Plan
 }
 
 // RoundProgress is one round's research and review.
@@ -44,6 +46,9 @@ func (p Progress) clone() Progress {
 	if p.Plan != nil {
 		pl := Plan{Plan: p.Plan.Plan, Briefs: append([]string(nil), p.Plan.Briefs...)}
 		out.Plan = &pl
+	}
+	for _, pl := range p.Replans {
+		out.Replans = append(out.Replans, Plan{Plan: pl.Plan, Briefs: append([]string(nil), pl.Briefs...)})
 	}
 	for _, r := range p.Rounds {
 		out.Rounds = append(out.Rounds, RoundProgress{
@@ -218,9 +223,18 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 	// Each test cycle is a council round (or its revisions) and one
 	// synthesizer; a failed check starts the next from its report.
 	for cycle := 0; ; cycle++ {
-		cfg.tests, cfg.cycleStart = p.Tests[:min(cycle, len(p.Tests))], round
+		cfg.tests, cfg.cycleStart, cfg.first = p.Tests[:min(cycle, len(p.Tests))], round, p.Plan
 		if cycle > 0 {
 			critiques = nil
+			// The planner schedules the work again from the failed checks.
+			if len(p.Replans) < cycle {
+				pl, err := Replan(ctx, m, cfg, d, conv, emit)
+				if err != nil {
+					return Result{Route: route, Rounds: round, Draws: d}, err
+				}
+				mark(func() { p.Replans = append(p.Replans, pl) })
+			}
+			plan = p.Replans[cycle-1]
 		}
 		for ; ; round++ {
 			mu.Lock()

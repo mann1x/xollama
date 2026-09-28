@@ -145,6 +145,8 @@ type Config struct {
 	// cycleStart the round the current test cycle began at (RunFrom).
 	tests      []string
 	cycleStart int
+	// first is the turn's first plan, which a re-plan follows (base).
+	first *Plan
 	// ResultBudget is the characters of tool results a member carries whole
 	// in its own turns; past it the rest travel by ref. 0 is the default.
 	ResultBudget int

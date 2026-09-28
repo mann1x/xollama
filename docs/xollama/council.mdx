@@ -278,13 +278,15 @@ it: what to change, where, and how to check that it worked. The synthesizer
 makes the changes it judges right and checks them with the tools.
 
 When a check fails and the findings leave nothing else to try, the synthesizer
-ends with `VERDICT: RETEST` and says what it tried and what the check returned.
-The council then goes round again. Every member of the next cycle reads each
-failed check so far, and is told not to propose again what a check refuted.
-The researchers propose from there, the critics review, and the synthesizer
-checks again. A turn runs at most 6 cycles. The last synthesizer's reply is
-the answer, and each failed check stays in the content before it, so you see
-what was tried.
+writes you a brief status (where things stand, and that the council is trying
+again), then `VERDICT: RETEST` with what it tried and what the check returned.
+You get the status as content. The report after the verdict goes to the
+council only. The planner then plans the work again from every failed check
+so far: it splits what is left into one workload per researcher and gives no
+one what a check refuted. The researchers propose, the critics review, and the
+synthesizer checks again. With thinking shown, you watch the deliberation
+start over. A turn runs at most 6 cycles, and the last synthesizer's reply is
+the answer.
 
 Without tools there is nothing to check with, and the council answers once, as
 before. The cycles travel in `council_chat_state`, so a resumed turn starts at

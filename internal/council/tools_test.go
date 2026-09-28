@@ -551,7 +551,7 @@ func (s *retestStub) StreamTools(ctx context.Context, req Request, onToken func(
 	n := int(s.synth.Add(1))
 	out := "fixed it"
 	if n <= s.fails {
-		out = fmt.Sprintf("tried change %d; the test failed. %s", n, Retest)
+		out = fmt.Sprintf("Status %d: still failing, trying again.\n\n%s tried change %d; the test failed.", n, Retest, n)
 	}
 	onToken(out)
 	return Reply{Content: out}, nil
@@ -563,9 +563,31 @@ func (s *retestStub) StreamTools(ctx context.Context, req Request, onToken func(
 // the bound stops the loop.
 func TestAFailedCheckGoesBackToTheResearchers(t *testing.T) {
 	s := &retestStub{toolStub: toolStub{stub: stub{route: `{"route":"council"}`}}, fails: 2}
-	res, err := Run(t.Context(), toolCfg(), s, conv, func(Event) {})
+	var content strings.Builder
+	res, err := Run(t.Context(), toolCfg(), s, conv, func(e Event) {
+		if e.Kind == Content {
+			content.WriteString(e.Text)
+		}
+	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	// The user reads the statuses and the answer, never a report.
+	if got := content.String(); got != "Status 1: still failing, trying again.\n\nStatus 2: still failing, trying again.\n\nfixed it" {
+		t.Errorf("content %q", got)
+	}
+	// The planner plans each cycle again, from the checks.
+	var replans int
+	for _, c := range s.calls {
+		if c.Role == Planner && c.Round > 0 {
+			replans++
+			if last := c.Messages[len(c.Messages)-1].Content; !strings.Contains(last, fmt.Sprintf("TEST %d:", c.Round)) || !strings.Contains(last, "Plan the work again") {
+				t.Errorf("re-plan %d without its checks: %q", c.Round, last)
+			}
+		}
+	}
+	if replans != 2 {
+		t.Errorf("%d re-plans, want 2", replans)
 	}
 	if res.Answer != "fixed it" || s.synth.Load() != 3 {
 		t.Fatalf("answer %q after %d synthesizers, want the third's", res.Answer, s.synth.Load())
@@ -583,7 +605,7 @@ func TestAFailedCheckGoesBackToTheResearchers(t *testing.T) {
 	for _, m := range last.Messages {
 		all += m.Content + "\n"
 	}
-	if !strings.Contains(all, "TEST 1:\ntried change 1") || !strings.Contains(all, "TEST 2:\ntried change 2") {
+	if !strings.Contains(all, "tried change 1; the test failed") || !strings.Contains(all, "tried change 2; the test failed") {
 		t.Errorf("the last cycle's researcher did not read both failed checks:\n%s", all)
 	}
 
@@ -592,7 +614,7 @@ func TestAFailedCheckGoesBackToTheResearchers(t *testing.T) {
 	cfg := toolCfg()
 	cfg.MaxTests = 1
 	res, _ = Run(t.Context(), cfg, s, conv, func(Event) {})
-	if s.synth.Load() != 2 || !strings.Contains(res.Answer, "tried change 2") {
+	if s.synth.Load() != 2 || !strings.Contains(res.Answer, "Status 2") {
 		t.Errorf("bound 1: %d synthesizers, answer %q", s.synth.Load(), res.Answer)
 	}
 
@@ -621,8 +643,35 @@ func TestATurnResumesPastAFailedCheck(t *testing.T) {
 		t.Fatalf("answer %q, %d synthesizers, %d researchers; want one cycle past the check", res.Answer, s.synth.Load(), s.count(Researcher))
 	}
 	for _, c := range s.calls {
-		if c.Role == Synthesizer && (c.Round != 1 || !strings.Contains(c.Messages[len(c.Messages)-4].Content, "TEST 1:\ntried the first change")) {
+		all := ""
+		for _, m := range c.Messages {
+			all += m.Content
+		}
+		if c.Role == Synthesizer && (c.Round != 1 || !strings.Contains(all, "TEST 1:\ntried the first change")) {
 			t.Errorf("the synthesizer ran as cycle %d without the failed check", c.Round)
+		}
+	}
+}
+
+// The report after the verdict never reaches the user, however the tokens
+// split the marker; text that only looked like its start is passed on.
+func TestTheReportAfterTheVerdictIsHeldBack(t *testing.T) {
+	for _, tc := range []struct {
+		tokens []string
+		want   string
+	}{
+		{[]string{"Still fail", "ing. VER", "DICT: RE", "TEST tried x"}, "Still failing. "},
+		{[]string{"A VERSION of it ", "works"}, "A VERSION of it works"},
+		{[]string{"ends on VERD"}, "ends on VERD"},
+	} {
+		var got strings.Builder
+		emit := holdBack(func(e Event) { got.WriteString(e.Text) }, Retest)
+		for _, s := range tc.tokens {
+			emit(Event{Kind: Content, Text: s})
+		}
+		emit(Event{Kind: Content, Done: true})
+		if got.String() != tc.want {
+			t.Errorf("%q: got %q, want %q", tc.tokens, got.String(), tc.want)
 		}
 	}
 }

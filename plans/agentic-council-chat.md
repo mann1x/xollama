@@ -1798,6 +1798,13 @@ resumed synthesizer step prefills only its new tokens.
   `TestAFailedCheckGoesBackToTheResearchers`,
   `TestATurnResumesPastAFailedCheck` and
   `TestTheFailedChecksTravelInTheState` (loop and prefix checked by removal).
+- Owner's answers (2026-09-28): the planner re-plans each cycle from the
+  failed checks, splitting what is left into workloads. The user gets a brief
+  status and the council goes on in the same response. With thinking on, the
+  user sees the deliberation restart. Built: `Replan` (`Progress.Replans`,
+  state field 8), and `holdBack`, which streams the synthesizer up to the
+  verdict only (`TestTheReportAfterTheVerdictIsHeldBack`). The retry bound
+  becomes the builder's to set (11.5); 6 is the default until then.
 - Watch live: each cycle builds its own layers, since the failed checks
   change the prefix. A cycle that runs within one trip holds more pools than
   `councilPoolSeats` counts. A pool that can't be built runs on the owner, so
@@ -1816,6 +1823,20 @@ resumed synthesizer step prefills only its new tokens.
   (cheap once 11.3 holds). Only test results and verdicts preempt.
 
 ### 11.5 The builder: a council shaped by the request (design)
+Owner's answers (2026-09-28):
+- The council record, the target summary included, is kept by xollama in
+  `council_chat_state`, like everything else.
+- The synthesizer replaces the planner's first-step routing, which saves a
+  hop. The planner schedules the researchers' work, splits it into
+  workloads, and re-plans when a request comes back to the council.
+- The builder sets instructions, think budgets and the retry bound, with some
+  freedom: a prose fix needs few retries, coding or science more. Roles and
+  counts stay as the user defined them; the builder gets that architecture
+  and builds on it. Tool rules are fixed: one writer.
+- Preemption only for test results and verdicts. The examples are built into
+  xollama.
+
+The earlier draft, where these differ:
 - A council starts with only the synthesizer. The first request it forwards to
   the council summons the **builder** on the planner's slot. The builder reads
   the system prompt, the user's requests so far, and the tool and MCP surface.

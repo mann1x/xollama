@@ -10,7 +10,8 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 > - 11.1: reply caps 2048/2048/1024/2048 (planner/researcher/critic/synthesizer) with terse prompts, evidence carried whole to 4000 characters and capped at 16000, notes 600 characters.
 > - 11.2: a result that repeats an earlier identical call's result gets a generic note (`TestARepeatedCallWithTheSameResultIsPointedOut`, checked by removal).
 > - 11.4 test loop: researchers propose, the synthesizer checks, and a failed check (`VERDICT: RETEST`, with its evidence) goes back to every member of the next cycle, up to 6 cycles, carried in the state (Progress field 7). Loop and prefix checked by removal.
-> - Open: 11.3 keeps a resumed member's cache (asked opencoti, #525). Still open in 11.4: splitting the work and preemption. 11.5 (the builder) is designed in the plan. No live run yet.
+> - Owner's answers applied: the planner re-plans each cycle from the failed checks (`Replan`, state field 8). The user gets the synthesizer's brief status in the same response while the report after the verdict is held back for the council (`holdBack`).
+> - Open: 11.3 keeps a resumed member's cache (asked opencoti, #525). Still open in 11.4: preemption. The builder is to set the retry bound. 11.5 (the builder) is designed in the plan. No live run yet.
 
 > **2026-09-28 — v0.34.4-xollama.2 published (pre-release) and installed on eleven2go; a council says --kv-unified once.**
 > - PR #4 merged as `ac1af15c` (23 checks green); release run 36356726357 published the pre-release, not promoted. Installed on eleven2go with `/SILENT` through the scheduled task: 22 s, exit 0, the think-budget Ollama untouched (same process, files, models and uninstall entry); `xollama.exe` byte-identical to the release, PAYLOAD_ID equal. Docker image dispatched on the tag.

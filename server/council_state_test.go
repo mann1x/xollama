@@ -129,12 +129,16 @@ func TestTheNotesBoardTravelsInTheState(t *testing.T) {
 func TestTheFailedChecksTravelInTheState(t *testing.T) {
 	s := testState()
 	s.progress.Tests = []string{"tried a; the test failed. " + council.Retest, "tried b; still failing. " + council.Retest}
+	s.progress.Replans = []council.Plan{{Plan: "p2", Briefs: []string{"x", "y"}}, {Plan: "p3", Briefs: []string{"z", "w"}}}
 	got, err := unmarshalCouncilState(s.marshal())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got.progress.Tests, s.progress.Tests) {
 		t.Errorf("tests = %q, want %q", got.progress.Tests, s.progress.Tests)
+	}
+	if !reflect.DeepEqual(got.progress.Replans, s.progress.Replans) {
+		t.Errorf("replans = %+v, want %+v", got.progress.Replans, s.progress.Replans)
 	}
 }
 
