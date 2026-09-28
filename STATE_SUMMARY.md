@@ -5,6 +5,17 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-28 — council 11.14 measured: medium 778 s (was 1101 s); first real per-role usage.**
+> - Medium on d17af426 (eleven2go): council **fixed**, 19 trips, 778 s (was 27 trips, 1101 s; plain: 11, 91 s). One batch of edits fixed the stray brace and every missing function at once.
+> - Per-role usage (`council_usage_v1`, tokens), as prompt share / output share:
+>   - synthesizer: 52 % / 22 %
+>   - researchers: 28 % / 54 %; they also spent the most decode time (310 s)
+>   - critic: 10 % / 13 %
+>   - front: 7 % / 5 %
+>   - planner: 2 % / 5 %
+>   - reviewer and builder: 2 % / 2 %
+> - About 45 % of the prompt came from cache.
+
 > **2026-09-28 — council 11.14: the synthesizer applies the proposals together.**
 > - The consultants council (csl-2026-09-28-1441-4bbf) traced medium's slowness to our own synthesizer prompt: "one at a time … after each change, run its check".
 > - Now the synthesizer makes every non-conflicting proposed edit in one reply and checks once. It fixes a next failure its check already shows, and hands back only what needs investigating. Researchers report every fault in their part.
