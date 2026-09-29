@@ -5,6 +5,14 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — Medium council twice on 2da8f3fd (11.21): fixed twice; the stuck path fires live.**
+> - Run 1: FIXED, 27 trips, 939 s, 1.21 M prompt tokens, 6 edits (0 missed).
+> - Run 2: FIXED, 45 trips, 2,312 s, 2.99 M prompt tokens, 10 edits (1 missed).
+> - The server log now carries `same` 78, `moved` 55 and the stuck note 41 times; on 4770e33b it was `same` 0, `moved` 149, stuck 0.
+>   - In run 2 the planner saw "same" at re-plans 2 and 3, with the stuck note. Then the checks moved (4 and 5), and it fixed the task.
+> - Medium council across today's builds: 26 fixed / 60 not / 31 fixed / 60 not / 27 fixed / 45 fixed. Plain: 11–15 trips, 125–132 s.
+> - Deployed `5ce5f7e7` (the line-number hint) to eleven2go.
+
 > **2026-09-29 — The consultants' answer to csl-2026-09-29-1156-aa48, and why they read old code.**
 > - Their code review of `quote.go` was mostly wrong: no replay, a guard that disables itself, a per-turn budget. The main checkout they read (their `cwd`) was on `sync/upstream-v0.35.0` at `ce7f5147`, two fixes behind. Everything since was committed from a separate worktree on `dev`. My mistake, not the skill's.
 >   - Fixed: the main checkout is back on `dev`, and the worktree is removed.
