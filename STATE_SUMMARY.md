@@ -5,6 +5,20 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — Every load names its model in the server log (`load-log`).**
+> The engines log a load only by its blob path. `server/load_log.go`, from one
+> hook line before `newServerFn` in `server/sched.go`, now writes three Info
+> lines first: `loading model` (name:tag, blob, shards, drafter, projectors,
+> adapters), `model file` (family, quant, parameters, size, layers, embedding,
+> heads, experts used/total, sliding window, trained context) and
+> `model placement` (devices, num_ctx, parallel, batch, predicted memory). All
+> from the GGUF metadata the estimator already parsed and the placement
+> already made: no read, no computation. Logged on every engine, llamacpp
+> included, by the owner's decision (a Go log line, not behaviour). Tests
+> `TestALoadIsLoggedByTheModelsName` (mutation-checked) and
+> `TestALoadWithoutAFileStillNamesTheModel`; Registry row `load-log`. Not yet
+> deployed: eleven2go is running the hard pair.
+
 > **2026-09-29 — Versions follow upstream's, with release candidates; PR #5 is `release: v0.35.0-rc.1.xollama`.**
 > Owner's rule: a version always follows the upstream release dev is based on.
 > Three forms: `v<upstream>-rc.<k>.xollama` (a candidate, the dev builds, never

@@ -622,6 +622,7 @@ func (s *Scheduler) load(req *LlmRequest, systemInfo ml.SystemInfo, gpus []ml.De
 
 			config := llamaServerConfigForModel(req.model)
 			config.ContextShift = req.contextShift
+			logModelLoad(req.model, f, loadGpus, launchOpts, numParallel, predictedForLoad) // xollama-hook: load-log
 			llama, err = s.newServerFn(systemInfo, loadGpus, req.model.ModelPath, f, req.model.AdapterPaths, req.model.ProjectorPaths, launchOpts, numParallel, config)
 			if err != nil {
 				// some older models are not compatible with newer versions of llama.cpp

@@ -153,6 +153,9 @@ stock ollama found on the 11434 fallback rather than driving it.
 local SSH keypair; `manifest/` holds the manifest/blob model (`manifest.go`,
 `layer.go`, `paths.go`) that `server/images.go` reads and writes.
 **Logging**: `logutil/logutil.go` — the shared `slog` handler and `LevelTrace`.
+Every GGUF load is named before the engine starts (`load-log` hook in
+`server/sched.go`, `server/load_log.go`): `loading model`, `model file` and
+`model placement`, from what the estimator already parsed, on every engine.
 **Internal-only packages** under `internal/`: `internal/cloud` (cloud host
 policy), `internal/modelref` (model reference parsing), `internal/onboarding`
 (first-run app state; on Windows it, the app/server logs, `ollama.pid` and the
