@@ -2,7 +2,8 @@
 
 @.wolf/OPENWOLF.md
 
-Soft fork of ollama. `main` = upstream release v0.34.4 + fork changes, carrying the
+Soft fork of ollama. `dev` = upstream release v0.35.0 + fork changes (`main` is still
+v0.34.4 until the next release PR), carrying the
 full upstream history so every `git merge upstream/main` has a real merge-base.
 Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING.md
 
@@ -139,7 +140,7 @@ stock ollama found on the 11434 fallback rather than driving it.
 `api/xollama_apikey_client.go` and sets it with `xollama tweak server --api-key`
 (`cmd/tweak/server.go`); the desktop UI via `app/ui/apikey.go` — see
 `.claude/rules/api-key.md` and `docs/xollama/api-key.mdx`.
-**Discovery** `discover/` · **Transfers** `x/transfer/` · **GGUF** `fs/gguf/`,
+**Discovery** `discover/` · **Transfers** `transfer/` · **GGUF** `fs/gguf/`,
 `fs/safetensors/` · **Types** `types/model/`.
 **CLI support packages**: Modelfile parsing in `parser/` (`parser.go`,
 `expandpath_test.go`), terminal progress bars and spinners in `progress/`

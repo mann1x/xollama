@@ -27,6 +27,45 @@ first if a patch looks missing or out of date.
    other row in this file keys on the PR number, and these cannot. They are
    listed apart, below.
 
+**Status as of 2026-09-29: the set moved to upstream v0.35.0.** Manifest
+`b723d1ce` (`base: v0.35.0`, `integration.sha 5a409087`, 24 patches), consumed
+on `sync/upstream-v0.35.0` after `1ab773d7` merged the upstream tag (one
+conflict: `server/routes.go`, the carried tokenize routes beside upstream's
+`/v1/systemone`). Each patch is its own `--no-ff` merge at the manifest's sha,
+in `patches[]` order. None retires with this sync. Every rebased patch has the
+same diff as its v0.34.4 version (`git patch-id --stable`, tag to sha), so
+each change was already in this tree. Conflicts were resolved `-X ours`,
+and every merge was checked to add nothing over its first parent.
+`LLAMA_CPP_VERSION` stays b11081: `llama/` and `ml/` are byte-identical between
+the tags, and the runtime pin does not move.
+
+| PR | branch | manifest sha | 2026-09-29 merge |
+|---|---|---|---|
+| #17563 | `up-repeat-guard` | `0cca8ca9` | `9d7b8793` |
+| #17564 | `up-truncated-tool-calls` | `84224501` | `daaf2dda` |
+| #17565 | `up-gemma4-object-close` | `4616411b` | `686c643d` |
+| #17566 | `up-think-budget` | `9c25eca3` | `fbb9793e` |
+| #17567 | `up-mlx-libdl` | `4a4aee7f` | `2fce9684` |
+| #17626 | `up-gemma4-stray-channel-name` | `b4d5a95f` | `f6122eb9` |
+| #17914 | `qwen3coder-tolerate-malformed-tool-calls` | `a77e6671` | `e1193418` |
+| #18212 | `up-reasoning-budget-line-boundary` | `af8cee3a` | `daef00e8` |
+| #18281 | `up-native-thinking-replay` | `a516b2a4` | `412f7f72` |
+| #18288 | `up-gemma4-stray-closer` | `69dcca7c` | `ebfbd697` |
+| #18289 | `up-jinja-runner-reuse` | `cec325d9` | `7121d748` |
+| fork-only | `gemma4-toolcall-in-thinking` | `0365a919` | `5cff62f3` |
+| #18624 | `qwen35-toolcall-in-thinking` | `c36a531d` | `4b03303f` |
+| fork-only | `up-gemma4-unparsed-tool-call-content` | `9c91857c` | `d97fa885` |
+| fork-only | `up-toolcall-tags` | `789f3601` | `d04b55cc` |
+| fork-only | `up-codex-request-count-mtime` | `33cf04df` | `2d543a8f` |
+| fork-only | `up-fileutil-root-permission-tests` | `f37a8b4b` | `7393fcdc` |
+| fork-only | `up-gofmt-vision-test-data` | `f81718c6` | `f7832115` |
+| fork-only | `up-lfm2-think-off-discard` | `c4a27037` | `3267d9c8` |
+| fork-only | `up-gemma4-assistant-shape` | `c229262e` | `c523f90e` |
+| fork-only | `up-gemma4-swallowed-key` | `2c1d8dbd` | `e392835c` |
+| fork-only | `up-compat-readme` (stacked) | `56c88176` | `d1098e47` |
+| fork-only | `up-response-scope-think-budget` (stacked) | `e031571a` | `5415f756` |
+| fork-only | `up-modelfile-roundtrip` | `8f615678` | `7d479188` |
+
 **Status as of 2026-09-27: the set moved to upstream v0.34.4.** Manifest
 `3edc2006` (`base: v0.34.4`, `integration.sha e74b1daa`, 22 patches), consumed
 on `sync/upstream-v0.34.4` after `c43d0a68` merged the upstream tag: each patch

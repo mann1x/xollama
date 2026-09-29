@@ -33,6 +33,7 @@ import (
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/auth"
+	"github.com/ollama/ollama/decision"
 	"github.com/ollama/ollama/discover"
 	"github.com/ollama/ollama/envconfig"
 	"github.com/ollama/ollama/format"
@@ -118,10 +119,7 @@ func init() {
 	renderers.RenderImgTags = true
 }
 
-var (
-	errRequired            = errors.New("is required")
-	errTypicalPUnsupported = errors.New("typical_p is no longer supported")
-)
+var errRequired = errors.New("is required")
 
 func (s *Server) modelOptions(model *Model, requestOpts map[string]any) (api.Options, error) {
 	return s.modelOptionsWithEmbeddingBatchDefault(model, requestOpts, shouldApplyEmbeddingBatchDefault(model, requestOpts))
@@ -147,6 +145,7 @@ func (s *Server) modelOptionsWithEmbeddingBatchDefault(model *Model, requestOpts
 		}
 	}
 
+	warnDeprecatedOptions(requestOpts)
 	if err := opts.FromMap(requestOpts); err != nil {
 		return api.Options{}, err
 	}
@@ -175,6 +174,18 @@ func shouldApplyEmbeddingBatchDefault(m *Model, requestOpts map[string]any) bool
 func hasOption(opts map[string]any, name string) bool {
 	_, ok := opts[name]
 	return ok
+}
+
+// deprecatedOptions may still be set per request, and reach the runner, but
+// cannot be saved as model parameters.
+var deprecatedOptions = []string{"typical_p"}
+
+func warnDeprecatedOptions(opts map[string]any) {
+	for _, name := range deprecatedOptions {
+		if opts[name] != nil {
+			slog.Warn("deprecated option provided", "option", name)
+		}
+	}
 }
 
 func usesAutomaticNumCtx(model *Model, requestOpts map[string]any) bool {
@@ -210,11 +221,6 @@ func (s *Server) scheduleRunner(ctx context.Context, model *Model, caps []model.
 
 	if slices.Contains(model.Config.ModelFamilies, "mllama") && len(model.ProjectorPaths) > 0 {
 		return nil, nil, nil, fmt.Errorf("'llama3.2-vision' is no longer compatible with your version of Ollama and has been replaced by a newer version. To re-download, run 'xollama pull llama3.2-vision'")
-	}
-
-	// null is unset, as in Options.FromMap
-	if requestOpts["typical_p"] != nil {
-		return nil, nil, nil, errTypicalPUnsupported
 	}
 
 	if err := model.CheckCapabilities(caps...); err != nil {
@@ -851,6 +857,93 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 	}
 
 	streamResponse(c, ch)
+}
+
+// SystemOneHandler compiles typed questions, scores their allowed answers, and
+// returns probabilities. Callers must select weights trained for the prompt format.
+func (s *Server) SystemOneHandler(c *gin.Context) {
+	// TODO(parthsareen): Check token limits before copying state and schema into
+	// each question's prompt. This byte cap limits memory use until then.
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
+	var req decision.Request
+	if err := c.ShouldBindJSON(&req); err != nil {
+		var sizeErr *http.MaxBytesError
+		if errors.As(err, &sizeErr) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body must not exceed 64 KiB"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	compiled, err := decision.Compile(req)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	ref, err := parseAndValidateModelRef(req.Model)
+	if err != nil {
+		writeModelRefParseError(c, err, http.StatusNotFound, fmt.Sprintf("model '%s' not found", req.Model))
+		return
+	}
+	if ref.Source == modelSourceCloud {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "System One requires a local Nimble or Tev model"})
+		return
+	}
+	name, err := getExistingName(ref.Name)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("model '%s' not found", req.Model)})
+		return
+	}
+	m, err := GetModel(name.String())
+	if err != nil {
+		handleScheduleError(c, req.Model, err)
+		return
+	}
+	if !m.isGGUF() || m.Config.Renderer != "qwen3.5" && !(m.Config.Renderer == "" && m.Config.ModelFamily == "qwen35") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("model %q is not supported by System One; use a local Nimble or Tev GGUF model", req.Model)})
+		return
+	}
+	r, _, _, err := s.scheduleRunner(c.Request.Context(), m, []model.Capability{model.CapabilityCompletion}, nil, req.KeepAlive, nil)
+	if err != nil {
+		handleScheduleError(c, req.Model, err)
+		return
+	}
+	scorer, ok := r.(llm.Scorer)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("model %q does not support System One scoring; use a local Nimble or Tev model with a scoring-capable runner", req.Model)})
+		return
+	}
+	if err := compiled.Render(func(messages []api.Message) (string, error) {
+		if m.System != "" {
+			messages = append([]api.Message{{Role: "system", Content: m.System}}, messages...)
+		}
+		think := &api.ThinkValue{Value: false}
+		if m.HasChatTemplate && chatModeForModel(m) == chatExecutionModeNative {
+			return r.ApplyChatTemplate(c.Request.Context(), llm.ChatRequest{Messages: messages, Think: think})
+		}
+		return renderPrompt(m, messages, nil, think)
+	}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	compiled.Request.MaxTokens = r.ContextLength()
+	result, err := scorer.Score(c.Request.Context(), compiled.Request)
+	if err != nil {
+		s.sched.expireRunnersForRuntimeOOM(m, err)
+		status := http.StatusInternalServerError
+		var statusErr api.StatusError
+		if errors.As(err, &statusErr) {
+			status = statusErr.StatusCode
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	response, err := compiled.Answer(req.Model, result)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 func (s *Server) EmbedHandler(c *gin.Context) {
@@ -2116,6 +2209,7 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.POST("/api/embeddings", s.EmbeddingsHandler)
 	r.POST("/api/tokenize", s.TokenizeHandler)
 	r.POST("/api/detokenize", s.DetokenizeHandler)
+	r.POST("/v1/systemone", s.SystemOneHandler)
 
 	// Inference (OpenAI compatibility)
 	// TODO(cloud-stage-a): apply Modelfile overlay deltas for local models with cloud
@@ -3590,7 +3684,7 @@ func countChatImages(msgs []api.Message) int {
 
 func handleScheduleError(c *gin.Context, name string, err error) {
 	switch {
-	case errors.Is(err, errCapabilities), errors.Is(err, errRequired), errors.Is(err, errTypicalPUnsupported):
+	case errors.Is(err, errCapabilities), errors.Is(err, errRequired):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, context.Canceled):
 		c.JSON(499, gin.H{"error": "request canceled"})

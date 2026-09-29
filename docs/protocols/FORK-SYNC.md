@@ -177,9 +177,10 @@ tree's 005.
 ## The rebase base is the upstream TAG
 
 `up-*` branches are rebased onto **the upstream release tag xollama builds**,
-currently `v0.34.2` — never upstream `main`.
+currently `v0.35.0` — never upstream `main`.
 
-This repo's `main` is upstream release v0.34.2 plus fork changes, carrying the
+This repo's `dev` is upstream release v0.35.0 plus fork changes (`main` follows
+at the next release), carrying the
 full upstream history so every `git merge upstream/main` has a real merge-base.
 A patch rebased onto upstream `main` drags unreleased upstream into that
 merge-base and costs the ~33% per-sync conflict rate the fork was restructured
