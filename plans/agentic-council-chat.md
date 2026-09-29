@@ -2344,6 +2344,35 @@ are replayed onto it (`replay` in `quote.go`; a whole write is the text
 itself), so the read stays current across them. Guard:
 `TestTheReadFollowsTheMembersOwnChanges`, which fails with the replay off.
 
+### 11.25 A member's layer ends at its own instruction (built 2026-09-30)
+
+On solidPC's hard run (569747788), pools 13 and 14 were built 7 s apart on one
+parent, both 6724 long. They were round 2's two researchers, one layer each.
+Their messages, from the member log, are equal up to each one's
+`ROLE: RESEARCHER n` instruction. After it comes
+`[COUNCIL · NOTES FROM YOUR MATES]` (`broadcast` is on in `omni-council-ab5`).
+The layer was cut before the last user message, the notes, so it held the
+member's own instruction and no two researchers ever shared their stage. The
+same cut failed wherever a user message follows the instruction: the user's
+system prompt after the synthesizer's role, and the council's nudges in a tool
+loop (budget, narrated call, verdict, reviews, a cut reply). Those put the
+member's own tool turns into its layer, which is then a private pool on every
+round trip.
+
+Built:
+- `council.OwnPart` (`internal/council/sources.go`): a member's own part starts
+  at its first instruction after the last plan. `workerPlacement` cuts the
+  layer there. The last-user rule remains only for messages that carry no plan.
+- `server/council_layer_log.go` logs each built layer's text past its parent
+  (`council: pool text`). For a sibling on the same parent, it logs where the
+  two diverge (`council: pool shares a prefix with a sibling`), so a sharing
+  miss can be read off the log.
+- The build line logs the parent's id (it printed a pointer) and the layer's
+  key.
+- Guards: `TestOwnPartIsTheMembersInstruction` and
+  `TestResearchersWithNotesShareTheirStage`. The latter fails on the old cut.
+  bug-184.
+
 ### 11.24 A turn's layers are kept across its round trips (built 2026-09-29)
 
 Hard on eleven2go (5ce5f7e7): the pool builds prefilled 582,509 tokens, and

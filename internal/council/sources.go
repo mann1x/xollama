@@ -59,3 +59,28 @@ func withoutHeader(s string) string {
 	}
 	return s
 }
+
+// OwnPart is the index of the member's own part in msgs: its first
+// instruction after the last plan it was given. Everything before is the stage
+// the members of its step share; what follows -- its instruction, the notes of
+// its mates, the user's system prompt, its tool turns and the council's
+// nudges among them -- is its alone. -1 when msgs carry no plan (the route
+// decision, the planner, the front) or no instruction after it.
+func OwnPart(msgs []api.Message) int {
+	plan := -1
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role == "assistant" && strings.HasPrefix(msgs[i].Content, header(planSource)) {
+			plan = i
+			break
+		}
+	}
+	if plan < 0 {
+		return -1
+	}
+	for i := plan + 1; i < len(msgs); i++ {
+		if msgs[i].Role == "user" && strings.HasPrefix(msgs[i].Content, header(instructionsSource)) {
+			return i
+		}
+	}
+	return -1
+}

@@ -581,6 +581,12 @@ paths:
   restricts `lastCheck` to that tool's calls.
 - **Cues (Phase 3)**: `routeCue` in `routeRequest`, `frontCue` in the auto
   front. Topic-agnostic; a stated mode skips both.
+- **A worker's layer ends at its own instruction (11.25, `council.OwnPart`)**:
+  the first `[COUNCIL · INSTRUCTIONS FOR YOU]` message after the last plan,
+  never the last user message. Mates' notes, the user's system prompt and the
+  council's nudges follow the instruction; cut after them, each member's
+  instruction lands in its layer and no two members share a stage. Read a
+  sharing miss off `council: pool shares a prefix with a sibling`.
 - **A turn's layers outlive its round trips (11.24, `council_layers_kept.go`)**:
   a request ending with the members' calls stashes the layers it used (and
   their parents) for the owner. The next request of the same turn adopts them

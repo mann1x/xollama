@@ -5,6 +5,18 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-30 — 11.25: with broadcast on, researchers never shared their stage.**
+> The pools of the same length on solidPC's hard run (13 and 14, 6724) were
+> round 2's two researchers, one layer each. The member log shows their
+> messages equal up to each one's own instruction, then the mates' notes. The
+> layer was cut before the last user message (the notes), so it held the
+> instruction. Now `council.OwnPart` cuts at the member's first instruction
+> after the last plan. That also covers the synthesizer's appended system
+> prompt and the nudges in a tool loop, which had put a member's own turns into
+> its layer. Pool texts and where siblings diverge are logged
+> (`council_layer_log.go`). Tests (mutation-checked); server and council under
+> `-race`, lint clean. bug-184.
+
 > **2026-09-29 — 11.24: a turn's stage layers are kept across its tool round trips.**
 > On hard, 265,334 of the 582,509 tokens the pool builds prefilled were
 > layers the previous request had just released. Each round trip is a new

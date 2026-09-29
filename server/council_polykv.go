@@ -138,7 +138,8 @@ type councilLayer struct {
 	users    int  // workers attached and not yet closed
 	root     bool // the conversation's own layer, kept for the whole turn
 	released bool
-	used     bool // asked for by this request (council_layers_kept.go)
+	used     bool          // asked for by this request (council_layers_kept.go)
+	parent   *councilLayer // the layer it forks, nil for a root
 	// keep outlives the turn: the conversation's root, owned by the owner,
 	// for the next turn to extend. chain is the older roots it was forked
 	// from, oldest first.
@@ -487,17 +488,25 @@ func (t *councilTree) learnGrant(k llm.KVStatus) (llm.KVAllocation, bool) {
 // workerPlacement attaches a worker to the pool of its layer. Nil means the
 // worker could not be pooled and runs on its own, sized booking.
 func (t *councilTree) workerPlacement(ctx context.Context, msgs []api.Message, session string) *llm.Placement {
-	// The layer is what precedes the member's own instruction, the last user
-	// message: the stage every member of its step shares. A member resumed
+	// The layer is what precedes the member's own instruction: the stage
+	// every member of its step shares. A member resumed
 	// after tool calls (9.5) carries its turns and results after that; a
 	// layer cut after them would be a pool of its own on every round trip,
 	// and with two results in a row -- which a template may render as one
 	// block -- no prefix at all (measured on b137: unpooled, it booked its
 	// own cells beside an owner holding the whole cache, and waited out
 	// admission).
-	own := len(msgs) - 1
-	for own > 0 && msgs[own].Role != "user" {
-		own--
+	// The member's own part starts at its instruction, not at the last user
+	// message: its mates' notes, the user's system prompt and the council's
+	// nudges come after it, and a layer cut there held the member's own
+	// instruction -- two researchers of one step built two layers (569747788,
+	// hard: pools 13 and 14, one per researcher, each 6724 long).
+	own := council.OwnPart(msgs)
+	if own < 0 {
+		own = len(msgs) - 1
+		for own > 0 && msgs[own].Role != "user" {
+			own--
+		}
 	}
 	if own < 1 {
 		return nil
@@ -586,9 +595,15 @@ func (t *councilTree) layer(ctx context.Context, text string, msgs []api.Message
 	l.id, l.err = p.ID, err
 	if err == nil {
 		t.mu.Lock()
+		l.parent = parent
 		t.order = append(t.order, l)
 		t.mu.Unlock()
-		slog.Debug("council: pool built", "pool", p.ID, "parent", pid, "len", p.Len, "own", p.OwnLen, "warning", p.Warn)
+		parentID := -1
+		if pid != nil {
+			parentID = *pid
+		}
+		slog.Debug("council: pool built", "pool", p.ID, "parent", parentID, "len", p.Len, "own", p.OwnLen, "key", key, "warning", p.Warn)
+		t.logLayerText(l) // council_layer_log.go
 	}
 	close(l.ready)
 	return l, err
