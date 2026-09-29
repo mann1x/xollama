@@ -282,7 +282,9 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
     you.** When a change names the text it replaces (`old_text`,
     `old_string`, `search`…) on a target (`path`, `file_path`…), and the
     member's own last read of that target has a long start of the quote but
-    not the rest of it, the council answers the call in its place: where
+    not the rest of it, the council answers the call in its place. The
+    member's own changes since that read, which went through, are applied to
+    it first, so the read stays current after an edit. The answer says where
     the quote stops matching, what the read has there, and to quote only the
     smallest span that occurs once. Line numbers in the read are ignored.
     Up to four such answers per member; after that the change is sent to you

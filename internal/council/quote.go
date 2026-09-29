@@ -157,6 +157,13 @@ func (cfg Config) misquotes(r Role, key string, turns []api.Message) map[string]
 
 // misquoted is the in-place answer to change c after the member's turns
 // before, "" when it goes on.
+//
+// The member's reads of the same target count, latest first. Its own changes
+// to that target since a read are replayed onto it, so a read stays current
+// across them: on cf223635 13 of 32 edits missed their text, nearly all right
+// after the member's previous edit went through, when the read counted as
+// stale. A change it cannot replay (its quote not once in the text), or a
+// change of another kind, ends the search.
 func (cfg Config) misquoted(key string, before []api.Message, c api.ToolCall) string {
 	if local(c) || cfg.readOnly(c) {
 		return ""
@@ -166,8 +173,24 @@ func (cfg Config) misquoted(key string, before []api.Message, c api.ToolCall) st
 		return ""
 	}
 	best, hint := 0, ""
-	// The member's reads of the same target, latest first, back to its last
-	// change to it that the tool did not refuse.
+	// since holds the member's changes to the target made after the call
+	// being looked at, latest first.
+	var since []api.ToolCall
+	// seen checks text as it stands now; false when it has the whole quote.
+	seen := func(text string) bool {
+		text, ok := replay(text, since)
+		if !ok {
+			return true
+		}
+		h, n := misquote(target, q, text)
+		if n < 0 {
+			return false
+		}
+		if n > best {
+			best, hint = n, h
+		}
+		return true
+	}
 	for t := len(before) - 1; t >= 0; t-- {
 		for j := len(before[t].ToolCalls) - 1; j >= 0; j-- {
 			p := before[t].ToolCalls[j]
@@ -175,25 +198,57 @@ func (cfg Config) misquoted(key string, before []api.Message, c api.ToolCall) st
 				continue
 			}
 			res, _, ok := cfg.result(key, p)
-			if !ok {
-				continue
-			}
-			if !cfg.readOnly(p) {
-				if refused(res) {
-					continue
+			switch {
+			case !ok, !cfg.readOnly(p) && refused(res):
+			case cfg.readOnly(p):
+				if !seen(ungutter(res)) {
+					return ""
+				}
+			case argString(p, wholeArgs...) != "":
+				// A whole write is the text itself.
+				if !seen(argString(p, wholeArgs...)) {
+					return ""
 				}
 				return hint
-			}
-			h, n := misquote(target, q, ungutter(res))
-			if n < 0 {
-				return ""
-			}
-			if n > best {
-				best, hint = n, h
+			default:
+				if _, _, ok := edited(p); !ok {
+					return hint
+				}
+				since = append(since, p)
 			}
 		}
 	}
 	return hint
+}
+
+// wholeArgs are the arguments a write names the whole new text by.
+var wholeArgs = []string{"content", "contents", "file_text"}
+
+// edited is the old and new text a change names.
+func edited(c api.ToolCall) (string, string, bool) {
+	for _, p := range noOpPairs {
+		o, ok1 := c.Function.Arguments.Get(p[0])
+		n, ok2 := c.Function.Arguments.Get(p[1])
+		os, isO := o.(string)
+		ns, isN := n.(string)
+		if ok1 && ok2 && isO && isN && os != "" {
+			return os, ns, true
+		}
+	}
+	return "", "", false
+}
+
+// replay applies the changes, given latest first, to text in the order they
+// were made; false when one's quote is not once in the text as it stood.
+func replay(text string, since []api.ToolCall) (string, bool) {
+	for i := len(since) - 1; i >= 0; i-- {
+		o, n, _ := edited(since[i])
+		if strings.Count(text, o) != 1 {
+			return "", false
+		}
+		text = strings.Replace(text, o, n, 1)
+	}
+	return text, true
 }
 
 func refused(res string) bool {

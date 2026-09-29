@@ -63,8 +63,9 @@ func TestAChangeTheReadBearsOutGoesOut(t *testing.T) {
 	}{
 		"exact, across lines": {quote: "let a=1;\n" + dIt},
 		"too little matches":  {quote: "function initClouds(){ return clouds.map(function(c){ return c; }) }"},
-		"after a change": {quote: strings.TrimSuffix(dIt, "} })};") + "}}})", turns: func(ts []api.Message) []api.Message {
-			return append(ts[:1:1], api.Message{Role: "assistant", ToolCalls: []api.ToolCall{editCall("w", "let b=2;", "let b=3;")}}, ts[1])
+		"after a change it cannot replay": {quote: strings.TrimSuffix(dIt, "} })};") + "}}})", turns: func(ts []api.Message) []api.Message {
+			// Its quote is not in the read: what the target holds now is unknown.
+			return append(ts[:1:1], api.Message{Role: "assistant", ToolCalls: []api.ToolCall{editCall("w", "not in the read", "x")}}, ts[1])
 		}},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -104,5 +105,41 @@ func TestMisquotesAreAnsweredInPlaceOnlySoOften(t *testing.T) {
 	}
 	if n := len(cfg.misquotes(Synthesizer, "s", turns)); n != maxMisquotes {
 		t.Errorf("%d answered in place, want %d", n, maxMisquotes)
+	}
+}
+
+// The member's own changes since its read are replayed onto it: a misquote
+// after a change that went through is still answered in place, and a quote
+// of what that change wrote goes out.
+func TestTheReadFollowsTheMembersOwnChanges(t *testing.T) {
+	read := "1: let a=1;\n2: " + dIt + "\n3: let b=2;"
+	after := func(change api.ToolCall, result string, more ...api.ToolCall) (Config, []api.Message) {
+		cfg, turns := quoteCase(read, change)
+		mid := []api.Message{{Role: "assistant", ToolCalls: []api.ToolCall{editCall("w", "let b=2;", "let b=3; let cX=0;")}}}
+		for i, m := range more {
+			id := fmt.Sprint("m", i)
+			m.ID = id
+			mid = append(mid, api.Message{Role: "assistant", ToolCalls: []api.ToolCall{m}})
+			cfg.Results[ForwardedID("s", id)] = result
+		}
+		cfg.Results[ForwardedID("s", "w")] = result
+		return cfg, append(append(turns[:1:1], mid...), turns[1])
+	}
+	misq := strings.TrimSuffix(dIt, "} })};") + "}}})"
+	cfg, turns := after(editCall("e", misq, "x"), "edited")
+	if fw := cfg.forwarded(Synthesizer, "s", turns); len(fw) != 0 {
+		t.Errorf("a misquote after the member's own change was forwarded: %+v", fw)
+	}
+	cfg, turns = after(editCall("e", "let a=1;\n"+strings.TrimSuffix(dIt, ";")+";\nlet b=3; let cX=0;", "x"), "edited")
+	if fw := cfg.forwarded(Synthesizer, "s", turns); len(fw) != 1 {
+		t.Errorf("a quote of what the member's change wrote was held: %+v", fw)
+	}
+	// A whole write is the text from then on.
+	whole := api.NewToolCallFunctionArguments()
+	whole.Set("path", "a.js")
+	whole.Set("content", "let z=1;\n"+dIt)
+	cfg, turns = after(editCall("e", misq, "x"), "edited", api.ToolCall{Function: api.ToolCallFunction{Name: "write_file", Arguments: whole}})
+	if fw := cfg.forwarded(Synthesizer, "s", turns); len(fw) != 0 {
+		t.Errorf("a misquote after a whole write was forwarded: %+v", fw)
 	}
 }

@@ -2339,7 +2339,10 @@ Built (`internal/council/quote.go`):
 Measured (eleven2go, medium): FIXED in 26 trips on `96ff1f5d`, then
 UNFIXED at 60 on `cf223635`, with 13 of 32 edits missing their text. The
 misses followed the member's own successful edits, after which its read
-counts as stale. Open: replay those edits onto the read.
+counts as stale. Built the same day: the member's own changes since its read
+are replayed onto it (`replay` in `quote.go`; a whole write is the text
+itself), so the read stays current across them. Guard:
+`TestTheReadFollowsTheMembersOwnChanges`, which fails with the replay off.
 
 ### 11.11 Checks that stop moving change the approach (built 2026-09-28)
 The fifth simple run (b336b144) returned the same "missing ) after argument

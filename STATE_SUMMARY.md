@@ -5,6 +5,12 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — 11.20: the read follows the member's own changes.**
+> - The member's own changes to a target since its last read, when they went through, are now replayed onto that read. A whole write is taken as the text itself.
+> - So a misquote right after an edit is answered in place too. On `cf223635` those were nearly all of the 13 misses.
+> - Guard `TestTheReadFollowsTheMembersOwnChanges`, which fails with the replay off.
+> - Next: deploy, and run medium twice.
+
 > **2026-09-29 — Medium council after 11.20: fixed once, unfixed once; 78e49747 deployed on eleven2go.**
 > - Run 1 on `96ff1f5d`: FIXED, 26 trips, 1,078 s, 3.20 M prompt tokens, 6 edits (1 missed at the client). This is the council's best result on medium so far (earlier: 34 / 54 trips).
 > - Run 2 on `cf223635`: UNFIXED at the 60-trip cap, 3,786 s, 5.67 M prompt tokens, 32 edits (13 missed at the client).

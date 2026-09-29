@@ -470,9 +470,11 @@ paths:
 - **Misquoted changes (11.20, `internal/council/quote.go`)**: `misquotes`
   answers a writer's change in place when its own latest read of the same
   target (gutters dropped) has >= `minQuoted` chars of the quote's start and a
-  mid-line mismatch after it, showing the read's text there. Scan back only to
-  the member's last change to that target the tool did not refuse
-  (`failedWrite` words). Never refuse on a mismatch at a line's end or where
+  mid-line mismatch after it, showing the read's text there. The member's own
+  changes to the target since the read that went through (not `failedWrite`)
+  are replayed onto it (`replay`, oldest first); a whole write (`wholeArgs`)
+  is the text itself; a change whose quote is not once in the text, or one
+  with no old/new pair, ends the scan. Never refuse on a mismatch at a line's end or where
   the read ends: that read showed part. `maxMisquotes` bounds it; an answer
   in place `continue`s `callTools` without spending a refusal. `transcript`
   and `forwarded` must call the same `misquotes`, or a call is both refused
