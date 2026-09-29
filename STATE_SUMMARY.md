@@ -5,6 +5,13 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — Medium council run 2 on e75c7c3e: fixed again, 54 trips / 3,054 s.**
+> - Two of two runs fixed on this build (34 trips / 1,954 s, then 54 / 3,054). Plain: 12 / 114.
+> - Run 2 cleared the syntax errors by trip 35, then followed each runtime error one per check (`initClouds`, `setupLevel`, `sX`, `gameLoop`). 6 of its 21 edits missed their text.
+>   - Re-plan cycles cost 140–290 s per trip; the synthesizer's own trips cost 15–30 s.
+> - Usage (calls / prompt tokens): synthesizer 62 / 2.08 M, researcher 50 / 1.44 M, critic 19 / 0.51 M, planner 7, reviewer 6, front 5, builder 1. Total 4.21 M.
+> - Both runs and today's fixes went to the consultants as a follow-up of `csl-2026-09-28-1844-26be`. The harness plan went with them for review.
+
 > **2026-09-29 — Plan: the council for harnesses, and an integration guide.**
 > - The owner wants the council adaptive in a chat, and usable by agents and as an escalation path, with Cerebriline first. A harness should drive the builder and the council, and say how the council is built, to save trips and avoid mode switches.
 > - New plan `plans/council-harness.md` (PROPOSED):
