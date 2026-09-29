@@ -2224,6 +2224,36 @@ host (`build.go`), so the setting did not exist.
 - Tests: `TestTheBuilderRunsOnItsOwnModel` (mutation-checked: pointing it back
   at the planner fails "its own"), validation, clone, prune and lookup cases.
 
+### 11.17 A writer has room for its edit, and a cut reply is asked again (built 2026-09-29)
+
+The medium council on 837a1fce + b208 (eleven2go 3090) ended unfixed after
+57 trips. Plain fixed the same task in 12 trips / 114 s: it read the file and
+rewrote the whole broken class in one `edit_file`. The council's front and
+synthesizer set out to make the same rewrite, the one stuck detection (11.11)
+recommends. The front's last three calls each stopped at exactly 3,072 output
+tokens, the cap. Every call was cut inside the tool call it was writing, so
+only the prose before it survived ("I'll rewrite the … class"). The class is
+~10.6 k characters, about 3.3 k tokens, and an edit carries the old text and
+the new, about 6.6 k. The cap made the fix impossible.
+
+Built (`internal/council/cut.go`, additive):
+- `writeTok`: a member that writes (`writes`: synthesizer, planner, front) gets
+  a reply cap of at least `writeMaxTokens` = 16384 on a tool turn (in
+  `callTools` and the front's call). Room for an edit of a part twice the size
+  of the one that was cut. Replies without tools keep their caps.
+- `Reply.Cut`: `server/council.go` carries the engine's `done_reason
+  "length"` into the member's reply. A writer's reply that was cut and holds
+  no call is asked again once (`maxCuts`), with `cutNote`: the call was not
+  made and nothing changed, so make the change in smaller steps. The note
+  names no topic. Cut again right after the note, the reply stands, so the
+  council does not loop.
+- Tests: `TestACutWriterIsAskedAgainForASmallerChange` (front and
+  synthesizer), `TestACutWriterIsAskedAgainOnlyOnce`,
+  `TestOnlyAWriterIsAskedAgain`, and `TestACutReplyReachesTheCouncil` (server:
+  done_reason → re-ask, and the cap on the wire). Each was checked by removal:
+  without the retry, without the raised cap, and without reading
+  `DoneReason`.
+
 ### 11.11 Checks that stop moving change the approach (built 2026-09-28)
 The fifth simple run (b336b144) returned the same "missing ) after argument
 list" from every check for 60 trips. The plain arm fixed the task in 27 trips:

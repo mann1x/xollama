@@ -184,6 +184,7 @@ synthesizer; `internal/council/build.go`: the builder, on its own `~builder` ses
 shapes each role's instructions, think budget and check cycles for the work;
 `internal/council/tasks.go`: the planner's task list, carried in every plan's JSON;
 `internal/council/stuck.go`: tells the next cycle whether a failed check's output moved;
+`internal/council/cut.go`: a writer's cap on a tool turn has room for an edit, and a reply cut before its call is asked again;
 `internal/council/loops.go`: Cerebriline's loop guards, a no-op edit refused in place
 and a write repeated with the same result struck until the member's steps end) and `server/council.go` (members as in-process chat turns, each
 on its own engine session; on opencoti with PolyKV, `server/council_polykv.go`

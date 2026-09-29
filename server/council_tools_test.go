@@ -389,3 +389,32 @@ func TestEarlierTurnsReachTheMembersAttributed(t *testing.T) {
 		}
 	}
 }
+
+// A writer's reply the engine ends at its cap reaches the council as cut, and
+// the member is asked again (internal/council cut.go); its cap on a tool turn
+// has room for an edit.
+func TestACutReplyReachesTheCouncil(t *testing.T) {
+	councilStateKeyIn(t, t.TempDir())
+	e := &councilEngine{route: `{"route":"direct"}`, cut: map[string]bool{"front": true}}
+	s := councilToolServer(t, e)
+	empty := ""
+	req := api.ChatRequest{Model: "council", Tools: councilTestTools, CouncilChatState: &empty, Messages: []api.Message{{Role: "user", Content: "Hello!"}}}
+	toolChat(t, s, req)
+	if n := e.count("front"); n != 2 {
+		t.Fatalf("front calls %d, want the cut one asked again", n)
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	var fronts []int
+	for i, r := range e.roles {
+		if r == "front" {
+			fronts = append(fronts, i)
+		}
+	}
+	if !strings.Contains(e.prompts[fronts[1]], "reached its length limit") {
+		t.Error("the second front call does not carry the note")
+	}
+	if p := e.predicts[fronts[0]]; p < 16384 {
+		t.Errorf("the front's cap on a tool turn is %d", p)
+	}
+}

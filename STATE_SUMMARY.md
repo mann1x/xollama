@@ -5,6 +5,15 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — Why the medium council failed, and the fix: a writer has room for its edit.**
+> - Plain medium on 837a1fce + b208 (eleven2go 3090): **fixed** in 12 trips, 114 s, 208 k prompt tokens, 5.2 k output. It read the file and rewrote the whole broken class in one `edit_file`.
+> - The council's front and synthesizer set out to make the same rewrite. The front's last three calls each stopped at exactly 3,072 output tokens, the cap, inside the tool call, so only the prose survived. The class is about 3.3 k tokens, and an edit carries old and new (about 6.6 k).
+> - Built (plan 11.17, `internal/council/cut.go`):
+>   - a writer's cap on a tool turn is at least 16,384;
+>   - `done_reason "length"` reaches the council as `Reply.Cut`, and a cut writer is asked again once for smaller steps.
+>   - Four tests, each checked by removal.
+> - Next: deploy to eleven2go with b22e5649, drop the `--device-backend=cuda` workaround, rerun the medium council. Cloud tests wait until the council works.
+
 > **2026-09-28 — Medium council on 837a1fce + b208 (eleven2go 3090): unfixed.**
 > - 57 trips, 4,137 s. Every one of the 10 checks returned the same `SyntaxError: Unexpected token '{'`, which carries no line number.
 >   - The fault is in `dDec`, which no member ever read, the same miss as simple run 7.

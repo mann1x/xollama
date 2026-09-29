@@ -556,11 +556,11 @@ func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken
 
 // StreamTools is Stream with the tools the member calls (council.ToolModel).
 func (cm *councilMembers) StreamTools(ctx context.Context, r council.Request, onToken func(string)) (council.Reply, error) {
-	out, calls, err := cm.stream(ctx, r, onToken)
-	return council.Reply{Content: out, Calls: calls}, err
+	out, calls, cut, err := cm.stream(ctx, r, onToken)
+	return council.Reply{Content: out, Calls: calls, Cut: cut}, err
 }
 
-func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken func(string)) (string, []api.ToolCall, error) {
+func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken func(string)) (string, []api.ToolCall, bool, error) {
 	cm.calls.Add(1)
 	began := time.Now()
 	stream, off := true, api.ThinkValue{Value: false}
@@ -612,11 +612,11 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 	if r.Host != "" {
 		// A member on another server shares no prefix and calls nothing.
 		out, err := cm.remote(ctx, r, req, onToken)
-		return out, nil, err
+		return out, nil, false, err
 	}
 	release, err := cm.takeCloud(ctx, req.Model)
 	if err != nil {
-		return "", nil, err
+		return "", nil, false, err
 	}
 	defer release()
 	req.Tools = cm.tools
@@ -624,12 +624,12 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 	defer done()
 	body, err := json.Marshal(req)
 	if err != nil {
-		return "", nil, err
+		return "", nil, false, err
 	}
 
 	hr, err := http.NewRequestWithContext(ctx, http.MethodPost, "/api/chat", bytes.NewReader(body))
 	if err != nil {
-		return "", nil, err
+		return "", nil, false, err
 	}
 	hr.Header.Set("Content-Type", "application/json")
 	pr, pw := io.Pipe()
@@ -665,6 +665,7 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 
 	var out strings.Builder
 	var calls []api.ToolCall
+	cut := false
 	sc := bufio.NewScanner(pr)
 	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	for sc.Scan() {
@@ -673,13 +674,13 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 			Error string `json:"error"`
 		}
 		if err := json.Unmarshal(sc.Bytes(), &line); err != nil {
-			return out.String(), nil, fmt.Errorf("council %s: %w", r.Role, err)
+			return out.String(), nil, false, fmt.Errorf("council %s: %w", r.Role, err)
 		}
 		if line.Error != "" {
 			cm.mu.Lock()
 			cm.last = w.status()
 			cm.mu.Unlock()
-			return out.String(), nil, fmt.Errorf("council %s: %s", r.Role, line.Error)
+			return out.String(), nil, false, fmt.Errorf("council %s: %s", r.Role, line.Error)
 		}
 		if t := line.Message.Content; t != "" {
 			out.WriteString(t)
@@ -687,6 +688,7 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 		}
 		calls = append(calls, line.Message.ToolCalls...)
 		if line.Done {
+			cut = line.DoneReason == "length"
 			cached := 0
 			if line.PromptEvalCachedCount != nil {
 				cached = *line.PromptEvalCachedCount
@@ -703,7 +705,7 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		return out.String(), nil, err
+		return out.String(), nil, false, err
 	}
 	// The whole exchange, for reading a turn back member by member.
 	if slog.Default().Enabled(ctx, slog.LevelDebug) {
@@ -712,7 +714,7 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 		slog.Debug("council member", "role", r.Role, "index", r.Index, "round", r.Round, "session", req.SessionID,
 			"messages", string(msgs), "reply", out.String(), "calls", string(reply))
 	}
-	return out.String(), calls, sc.Err()
+	return out.String(), calls, cut, sc.Err()
 }
 
 // memberSession gives each member its own engine session, so parallel members

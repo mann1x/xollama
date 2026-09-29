@@ -85,7 +85,11 @@ paths:
   A thinking role is sent an explicit **token** budget
   (`council.ThinkBudget(setting, cm.window)`), never a level: a level is a
   share of `num_predict`, which for a member is its reply cap. `num_predict`
-  becomes `max_tokens` + budget. `Stream` reads only `Message.Content`, so
+  becomes `max_tokens` + budget. On a tool turn a writer (`writes`) gets at
+  least `writeMaxTokens` (16384, `internal/council/cut.go`): an edit carries
+  old + new text in one call, and a 3,072 cap cut the medium council's fix
+  three times. `done_reason "length"` reaches it as `Reply.Cut`; a cut writer
+  with no call is asked again once (`maxCuts`), never more. `Stream` reads only `Message.Content`, so
   the reasoning is dropped. The route-only decision never carries `think`.
   The cap message is the model's `think_budget_message`; never set one here. Each parallel member gets its own engine session
   named under the conversation's (`<session>~researcher-1`); the planner keeps

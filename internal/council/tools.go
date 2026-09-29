@@ -29,6 +29,8 @@ import (
 type Reply struct {
 	Content string
 	Calls   []api.ToolCall
+	// Cut is a reply the reply cap ended (done_reason "length", cut.go).
+	Cut bool
 }
 
 // ToolModel is a Model whose members can call the client's tools. The
@@ -342,7 +344,8 @@ const narratedNudge = "You wrote about calling tools without calling them, so th
 func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns []api.Message, onToken func(string)) (string, []api.Message, error) {
 	key := MemberKey(req.Role, req.Index, req.Round)
 	own := req.Messages
-	refusals, lookups, preempts := 0, 0, 0
+	req.MaxTokens = writeTok(req.Role, req.MaxTokens)
+	refusals, lookups, preempts, cuts := 0, 0, 0, 0
 	nudged, gated := false, false
 	// gatedReply is the DONE reply that waited for the critics' reviews
 	// (11.9): the user has read it.
@@ -407,6 +410,14 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 		if err != nil {
 			return "", nil, err
 		}
+		if wasCut(req.Role, rep) && cuts < maxCuts {
+			// The call it was writing is lost: asked again, for less at once.
+			cuts++
+			turns = append(slices.Clone(turns), cutTurn())
+			onToken("\n\n(cut at the reply limit: asked again for a smaller change)\n\n")
+			continue
+		}
+		cuts = 0
 		// Researchers only: a critic names the tools the findings used, and
 		// answers from their evidence without calling any.
 		if len(rep.Calls) == 0 && len(turns) == 0 && !nudged && req.Role == Researcher && cfg.narrated(req.Role, rep.Content) {

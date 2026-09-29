@@ -121,7 +121,7 @@ func front(ctx context.Context, tm ToolModel, cfg Config, d Draws, conv []api.Me
 	own := frontRequest(cfg, conv)
 	onToken := func(s string) { emit(Event{Role: Front, Kind: Content, Text: s}) }
 	defer emit(Event{Role: Front, Kind: Content, Done: true})
-	refusals, rebuilds := 0, 0
+	refusals, rebuilds, cuts := 0, 0, 0
 	for {
 		switch steps := toolSteps(turns); {
 		case steps >= frontSteps+2:
@@ -131,11 +131,18 @@ func front(ctx context.Context, tm ToolModel, cfg Config, d Draws, conv []api.Me
 		}
 		rep, err := tm.StreamTools(ctx, Request{
 			Role: Front, Messages: append(clone(own), cfg.transcript(Front, key, turns)...),
-			Seed: d.Direct.Seed, Temperature: d.Direct.Temperature, MaxTokens: maxTok(cfg, Synthesizer), Think: cfg.Think[Synthesizer],
+			Seed: d.Direct.Seed, Temperature: d.Direct.Temperature, MaxTokens: writeTok(Front, maxTok(cfg, Synthesizer)), Think: cfg.Think[Synthesizer],
 		}, onToken)
 		if err != nil {
 			return "", nil, "", err
 		}
+		if wasCut(Front, rep) && cuts < maxCuts {
+			cuts++
+			turns = append(slices.Clone(turns), cutTurn())
+			onToken("\n\n(cut at the reply limit: asked again for a smaller change)\n\n")
+			continue
+		}
+		cuts = 0
 		if len(rep.Calls) == 0 {
 			return replyText(turns, rep.Content), nil, "", nil
 		}

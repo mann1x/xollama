@@ -48,6 +48,8 @@ type councilEngine struct {
 	// tools names the tool a role calls (9.5) until its prompt, after the
 	// role's instruction, holds a result.
 	tools map[string]string
+	// cut ends the named role's first reply at its cap (done_reason length).
+	cut map[string]bool
 }
 
 // compactionMarkers tell the compaction's members apart by their instruction.
@@ -182,7 +184,11 @@ func (e *councilEngine) complete(ctx context.Context, r llm.CompletionRequest, f
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	fn(llm.CompletionResponse{Content: reply[half:], Done: true, DoneReason: llm.DoneReasonStop, PromptEvalCount: 10, EvalCount: 5})
+	why := llm.DoneReasonStop
+	if e.cut[role] && e.count(role) == 1 {
+		why = llm.DoneReasonLength
+	}
+	fn(llm.CompletionResponse{Content: reply[half:], Done: true, DoneReason: why, PromptEvalCount: 10, EvalCount: 5})
 	return nil
 }
 
