@@ -14,6 +14,7 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >   - Phase 4: Cerebriline, built by the ollama session, with quality feedback.
 > - Phase 0 built: `docs/xollama/council-integration.mdx`, the integration guide for harness authors. It covers today's contract, the three use cases, and the planned parts marked as planned.
 > - Phases 1–4 wait for the consultants' answer to the follow-up, which is sent after medium run 2.
+> - Owner's decisions: the field is `council`; `answer` mode offers no hand-off; a harness `build` may override the model's `max_tests` / `max_steps` up or down (a user setting in the harness), within the builder's bound.
 
 > **2026-09-29 — Fork patch 24 merged: `up-modelfile-roundtrip` @ `c8e22c11` (manifest `23a43c77`, fork-only).**
 > - `show --modelfile` writes `TEMPLATE` only for a model that carries one. `create` refuses an unterminated `TEMPLATE`/`SYSTEM` quote that would have swallowed the directives after it.

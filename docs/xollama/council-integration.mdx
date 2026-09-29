@@ -204,7 +204,10 @@ instead of having the council re-derive it:
   without an oracle) and `auto` (today). The council never leaves a mode you
   stated.
 - **`build`:** in the builder's schema. It replaces the builder call and is
-  held to the builder's bounds: no role, model or tool-permission changes.
+  held to the builder's bounds: no role, model or tool-permission changes. Its
+  `max_tests` and `max_steps` override the model's own, up or down, so a
+  harness can pass its user's setting. The builder's upper bound still
+  applies.
 - **`instructions`:** yours, read after the model owner's (Phase 1 adds
   `council.instructions` and `council.builder.instructions` to the model's
   settings).

@@ -1,6 +1,6 @@
 # Council for harnesses: instructions, adaptive chat, agents and escalation
 
-Status: PROPOSED 2026-09-29 (owner's request). Phase 0 (the integration
+Status: PROPOSED 2026-09-29 (owner's request; decisions taken the same day). Phase 0 (the integration
 guide) built the same day. Phases 1-4 wait on the consultants' answer to the
 2026-09-29 follow-up, whose flow modes this plan adopts once they rule.
 
@@ -115,7 +115,8 @@ A new top-level `council` object on `/api/chat`, beside `council_chat_state`:
     mode. Inside `escalate`, the consultants' Escalation / Stream-and-Sift
     transitions apply once they are adopted.
 - **`build`:** a harness-supplied build, in the builder's own schema and
-  bounds.
+  bounds. Its `max_tests` and `max_steps` override the model's own (decision
+  3): the harness sends its user's setting.
   - When present and valid, the builder is not called. That saves a builder
     call and, on a tool turn, the forward round that precedes it.
   - It is kept in the state like the builder's.
@@ -165,11 +166,14 @@ xollama's part:
 The measure is quality and trips per task against plain, per use case, from
 Cerebriline's own runs.
 
-## Open decisions (owner)
+## Decisions (owner, 2026-09-29)
 
-1. The field name: `council` (proposed), or `council_directive`.
-2. Whether `answer` mode still lets the synthesizer ask for the council
-   (a `council_forward` the harness can see as a signal rather than a
-   hidden hand-off). Proposed: no, the harness decides.
-3. Whether a harness `build` may shorten a model owner's `max_tests`.
-   Proposed: yes, never lengthen it.
+1. **The field is `council`.**
+2. **`answer` mode offers no hand-off.** The synthesizer has no
+   `council_forward`; the harness decides when to escalate.
+3. **A harness `build` may override the model's `max_tests` and `max_steps`,
+   up or down.** It will usually be a user setting in the harness's
+   configuration, so it comes from the user, as a request option does. The
+   builder's own bounds (the most the loop can afford, `validBuild`) still
+   apply. Only the model's stated value stops being a ceiling for a stated
+   build.
