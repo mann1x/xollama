@@ -250,3 +250,31 @@ func TestARenumberedListUpdatesTheTasksItNames(t *testing.T) {
 		t.Errorf("the re-plan did not read its first plan in the list's numbering:\n%s", got)
 	}
 }
+
+// The check is the first read after the last change, not a read after it: a
+// search that answers something new each cycle is investigation, and taken
+// for the check it made six identical errors read as progress (eleven2go,
+// 2026-09-29).
+func TestTheCheckIsTheReadAfterTheLastChange(t *testing.T) {
+	cfg := toolCfg()
+	key := MemberKey(Synthesizer, 0, 0)
+	cfg.Results = map[string]string{
+		ForwardedID(key, "r0"): "before any change",
+		ForwardedID(key, "c1"): "SyntaxError",
+		ForwardedID(key, "s1"): "search results",
+		ForwardedID(key, "s2"): "more search results",
+	}
+	step := func(c api.ToolCall) []api.Message {
+		return []api.Message{{Role: "assistant", ToolCalls: []api.ToolCall{c}}, {Role: "tool", ToolCallID: c.ID}}
+	}
+	var turns []api.Message
+	for _, c := range []api.ToolCall{readCall("r0", "a"), editCall("e1", "x", "y"), readCall("c1", "check"), readCall("s1", "search"), readCall("s2", "search2")} {
+		turns = append(turns, step(c)...)
+	}
+	if got := cfg.lastCheck(key, turns); got != "SyntaxError" {
+		t.Errorf("check %q, want the read right after the change", got)
+	}
+	if got := cfg.lastCheck(key, turns[:2]); got != "before any change" {
+		t.Errorf("with no change, check %q, want the last read", got)
+	}
+}

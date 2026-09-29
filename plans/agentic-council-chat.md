@@ -2279,6 +2279,29 @@ Built (`server/council_room.go`, additive):
   nothing to give, not reported) and `TestTheBuilderIsGivenRoomBesideAFullOwner`.
   The latter was checked by removing the call.
 
+### 11.19 The check is the read after the change (built 2026-09-29)
+
+The transcripts of the medium council on 96edc4ae show the plan held on to an
+explanation its checks had refuted, one cycle after another. It converted one
+kind of syntax, then more of it, then another kind. Every check returned the
+same error.
+
+The runtime told it to. Each cycle's "check" was taken as the last read-only
+call, and the synthesizer searched the file after running the check. The
+search answered something new each time, so the planner read "Its check's
+output changed from the one before: progress, and the new output is the lead
+to follow". The stuck note (11.11) never fired.
+
+Built:
+- `lastCheck` (`internal/council/stuck.go`) takes the first read-only call
+  after the cycle's last writing call: the check of the change. A later read
+  is investigation. With no change in the cycle, the last read stands.
+- `stuckNote` also says the explanation behind the unmoved changes is
+  refuted: mark its tasks refuted and assign no more changes of the same kind.
+  It still names no topic.
+- Guard: `TestTheCheckIsTheReadAfterTheLastChange`. With the old `lastCheck`
+  it fails exactly as live ("more search results").
+
 ### 11.11 Checks that stop moving change the approach (built 2026-09-28)
 The fifth simple run (b336b144) returned the same "missing ) after argument
 list" from every check for 60 trips. The plain arm fixed the task in 27 trips:

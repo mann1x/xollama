@@ -25,7 +25,7 @@ const maxCheckChars = 2000
 const stuckAfter = 2
 
 // stuckNote is the change of approach, in words that fit any work.
-const stuckNote = "The last %d checks returned the same output: the changes so far have not moved it. Do not refine the same approach again. Change approach: find where the fault lies first -- narrow down what the check exercises until its output changes -- or replace the failing part whole instead of changing it piece by piece."
+const stuckNote = "The last %d checks returned the same output: the changes so far have not moved it. The explanation behind those changes is refuted: mark its tasks refuted, and assign no more changes of the same kind. Do not refine the same approach again. Change approach: find where the fault lies first -- narrow down what the check exercises until its output changes -- or replace the failing part whole instead of changing it piece by piece."
 
 // movedNote and sameNote say how a check compares with the one before.
 const (
@@ -74,18 +74,42 @@ func sameCheck(a, b string) bool {
 	return strings.Join(strings.Fields(a), " ") == strings.Join(strings.Fields(b), " ")
 }
 
-// lastCheck is the output of the last call of the synthesizer's turns that
-// only reads -- the check it ran -- or "".
+// lastCheck is the output of the check the synthesizer ran on its last
+// change: the first call that only reads after the last call that writes. A
+// read after it is investigation, not the check -- taken for the check, a
+// search that returned something new each cycle read as progress, and the
+// medium council on eleven2go (2026-09-29) was told "changed ... the lead to
+// follow" over six checks that all returned the same error. With no change
+// in the cycle, the last call that only reads stands. "" when there is none.
 func (cfg Config) lastCheck(key string, turns []api.Message) string {
-	for i := len(turns) - 1; i >= 0; i-- {
-		for j := len(turns[i].ToolCalls) - 1; j >= 0; j-- {
-			c := turns[i].ToolCalls[j]
-			if local(c) || !cfg.readOnly(c) {
-				continue
+	var check, last *api.ToolCall
+	wrote := false
+	for i := range turns {
+		for j := range turns[i].ToolCalls {
+			c := &turns[i].ToolCalls[j]
+			switch {
+			case local(*c):
+			case !cfg.readOnly(*c):
+				wrote, check = true, nil
+			default:
+				last = c
+				if wrote && check == nil {
+					check = c
+				}
 			}
-			if res, _, ok := cfg.result(key, c); ok {
-				return truncate(res, maxCheckChars)
-			}
+		}
+	}
+	for _, c := range []*api.ToolCall{check, last} {
+		if c == nil {
+			continue
+		}
+		if res, _, ok := cfg.result(key, *c); ok {
+			return truncate(res, maxCheckChars)
+		}
+		if c == check {
+			// The check's own result is what counts; without it, nothing is
+			// compared rather than a read standing in for it.
+			return ""
 		}
 	}
 	return ""

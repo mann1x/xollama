@@ -5,6 +5,12 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — Why the council kept a refuted explanation: its "moved" signal was wrong.**
+> - In the 96edc4ae transcripts, the planner converted one kind of syntax, then more of it, then another kind, while every check returned the same SyntaxError.
+> - The runtime told it each check had moved. It took the cycle's last read-only call as the check, and that was a search after `run_game`. The stuck note never fired.
+> - Fixed (plan 11.19): the check is the first read after the cycle's last change. The stuck note now also says the explanation behind the unmoved changes is refuted.
+> - `TestTheCheckIsTheReadAfterTheLastChange` fails on the old code exactly as live.
+
 > **2026-09-29 — Medium council on 96edc4ae (eleven2go 3090, 384k context back): unfixed, no stalls.**
 > - 60 trips (the harness limit), 1,695 s (was 4,137 s on 837a1fce). No cut replies and no admission refusals: the cap and placement fixes held.
 > - 23 edits "succeeded". Every check still returned `SyntaxError: Unexpected token '{'`, with no line number.

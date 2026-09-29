@@ -495,7 +495,9 @@ paths:
   ids (`plan.Tasks` set after the merge), so no member reads the planner's 0s. Carried in `Kept` and state Progress 12/13 (Plan 3); every
   rebuild drops it with `dropEarlier`.
 - **Stuck checks (11.11, `internal/council/stuck.go`)**: `Progress.Checks`
-  (state Progress 11) keeps each failed cycle's last read-only result;
+  (state Progress 11) keeps each failed cycle's check: the first read-only
+  result after its last write (`lastCheck`), never a later read -- a search
+  after the check read as "moved" six times on an unchanged error;
   `testsBody` marks same/moved and adds `stuckNote` after `stuckAfter` same
   outputs. Keep every note topic-agnostic (owner's condition; the test lists
   forbidden words).
