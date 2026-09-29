@@ -556,7 +556,7 @@ static NSImage *ollamaApplicationIcon(void) {
                          context:nil];
 
     self.statusItem.menu = menu;
-    [self showIcon];
+    [self refreshStatusItem];
 
     // Application menu
     NSString *appName = @"Ollama";
@@ -755,9 +755,7 @@ static NSImage *ollamaApplicationIcon(void) {
 
 - (void)showUpdateAvailable {
     self.updateAvailable = YES;
-    [self.updateAvailableMenuItem setHidden:NO];
-    [self.restartMenuItem setHidden:NO];
-    [self showIcon];
+    [self refreshStatusItem];
 }
 
 - (void)aboutOllama {
@@ -1498,7 +1496,10 @@ didCompleteWithError:(NSError *)error {
     return NO;
 }
 
-- (void)showIcon {
+- (void)refreshStatusItem {
+    [self.updateAvailableMenuItem setHidden:!self.updateAvailable];
+    [self.restartMenuItem setHidden:!self.updateAvailable];
+
     NSAppearance *appearance = self.statusItem.button.effectiveAppearance;
     NSString *appearanceName = (NSString *)(appearance.name);
     NSString *iconName = @"ollama";
@@ -1525,7 +1526,7 @@ didCompleteWithError:(NSError *)error {
                       ofObject:(id)object
                         change:(NSDictionary<NSKeyValueChangeKey, id> *)change
                        context:(void *)context {
-    [self showIcon];
+    [self refreshStatusItem];
 }
 
 - (void)hide {
@@ -1875,9 +1876,10 @@ decidePolicyForNavigationAction:(WKNavigationAction *)action
 
 AppDelegate *appDelegate;
 void run(bool so, bool sh) {
+    // Retain update notifications that arrive while AppKit initializes.
+    appDelegate = [[AppDelegate alloc] init];
     [NSApplication sharedApplication];
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
-    appDelegate = [[AppDelegate alloc] init];
     [NSApp setDelegate:appDelegate];
     showOnboarding = so;
     startHidden = sh;

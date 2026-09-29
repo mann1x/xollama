@@ -114,6 +114,7 @@ type Server struct {
 	Updater              *updater.Updater
 	UpdateAvailableFunc  func()
 	IntegrationInstalled func(string) bool
+	IntegrationModels    http.Handler
 	ListCloudModels      func(context.Context) (*api.ListResponse, error)
 }
 
@@ -298,6 +299,12 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/cloud", handle(s.cloudSetting))
 	mux.Handle("GET /api/v1/models/cloud", handle(s.getCloudModels))
 	mux.Handle("GET /api/v1/integrations", handle(s.getIntegrationStatuses))
+	if s.IntegrationModels != nil {
+		mux.Handle("GET /api/v1/integrations/{integration}/models", handle(func(w http.ResponseWriter, r *http.Request) error {
+			s.IntegrationModels.ServeHTTP(w, r)
+			return nil
+		}))
+	}
 
 	// Ollama proxy endpoints
 	ollamaProxy := s.ollamaProxy()
