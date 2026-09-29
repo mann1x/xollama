@@ -61,6 +61,7 @@ un-prefixed branch name stays.
 | fork-only | `up-gemma4-assistant-shape` | `fbac8ef1` | `a71b08c2` |
 | fork-only | `up-gemma4-swallowed-key` | `b6771dc2` | `7cdde61b` |
 | fork-only | `up-response-scope-think-budget` | `15ebdeca` | `7f560400` |
+| fork-only (2026-09-29, manifest `23a43c77`) | `up-modelfile-roundtrip` | `c8e22c11` | this merge |
 
 
 Manifest `e314b235` (integration `a47daff5`, same base and llama.cpp) answered

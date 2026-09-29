@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -578,6 +579,10 @@ func ParseFile(r io.Reader) (*Modelfile, error) {
 					role = ""
 				}
 
+				if err := checkSwallowedDirective(cmd.Name, s); err != nil {
+					return nil, &ParserError{LineNumber: currLine, Msg: err.Error()}
+				}
+
 				cmd.Args = s
 				f.Commands = append(f.Commands, cmd)
 			}
@@ -607,6 +612,10 @@ func ParseFile(r io.Reader) (*Modelfile, error) {
 			s = role + ": " + s
 		}
 
+		if err := checkSwallowedDirective(cmd.Name, s); err != nil {
+			return nil, &ParserError{LineNumber: currLine, Msg: err.Error()}
+		}
+
 		cmd.Args = s
 		f.Commands = append(f.Commands, cmd)
 	default:
@@ -620,6 +629,35 @@ func ParseFile(r io.Reader) (*Modelfile, error) {
 	}
 
 	return nil, errMissingFrom
+}
+
+// swallowedDirective matches a line inside a TEMPLATE or SYSTEM value that is
+// a Modelfile directive with an argument: the sign of a quote left open on the
+// directive's own line. SYSTEM, LICENSE and MESSAGE are left out on purpose --
+// a prompt or template can plausibly start a line with those words.
+var swallowedDirective = regexp.MustCompile(`(?m)^[ \t]*(FROM|ADAPTER|DRAFT|TEMPLATE|RENDERER|PARSER|PARAMETER|REQUIRES)[ \t]+\S.*$`)
+
+// checkSwallowedDirective refuses a quoted TEMPLATE or SYSTEM value that ran
+// on over the directives after it.
+//
+// `TEMPLATE "{{ .Prompt }}` with no closing quote reads to the next `"` in the
+// file -- often the opening quote of a later PARAMETER value -- and every
+// RENDERER, PARSER and PARAMETER line in between became template text. The
+// model was created without them and nothing said so: it ran with no renderer,
+// no parser and none of those parameters, and `ollama show` printed them back
+// inside the template, so they looked set.
+func checkSwallowedDirective(name, value string) error {
+	if name != "template" && name != "system" {
+		return nil
+	}
+	if !strings.ContainsAny(value, "\r\n") {
+		return nil
+	}
+	line := swallowedDirective.FindString(value)
+	if line == "" {
+		return nil
+	}
+	return fmt.Errorf("the quoted %s value contains the line %q: its opening quote is not closed where intended, so that directive and the ones after it would become part of the %s instead of being applied; close the quote (or use \"\"\" ... \"\"\")", strings.ToUpper(name), strings.TrimSpace(line), strings.ToUpper(name))
 }
 
 func parseRuneForState(r rune, cs state) (state, rune, error) {

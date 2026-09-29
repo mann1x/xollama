@@ -1043,3 +1043,22 @@ func TestPullManifestRedirectPolicy(t *testing.T) {
 		})
 	}
 }
+
+// A model with no template layer has template.DefaultTemplate in memory, and
+// show used to write it out as `TEMPLATE {{ .Prompt }}`; a create from that
+// Modelfile then gave the model a Go template it never had.
+func TestModelStringWritesOnlyACarriedTemplate(t *testing.T) {
+	m := &Model{ModelPath: "/blobs/sha256-x", Template: template.DefaultTemplate}
+	if got := m.String(); strings.Contains(got, "TEMPLATE") {
+		t.Fatalf("no template layer, but the Modelfile has one:\n%s", got)
+	}
+
+	carried, err := template.Parse("{{ .Prompt }}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = &Model{ModelPath: "/blobs/sha256-x", Template: carried, HasGoTemplate: true}
+	if got := m.String(); !strings.Contains(got, "TEMPLATE {{ .Prompt }}") {
+		t.Fatalf("carried template missing:\n%s", got)
+	}
+}

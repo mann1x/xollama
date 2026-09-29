@@ -100,5 +100,18 @@ mftest:ref-withcfg  ['json/xollama.json', 'model', 'params', 'template']
 
 `server/modelfile_roundtrip_test.go` holds both halves and both negatives;
 `TestXollamaIsNotMistakenForAParameter` in `cmd/create_safetensors_test.go`
-holds the create-path defect. Registry rows `modelfile-roundtrip` and
+holds the create-path defect. Registry row
 `model-config` in [UPSTREAM-SYNC.md](../protocols/UPSTREAM-SYNC.md).
+
+## Carried as a fork patch since 2026-09-29
+
+The `TEMPLATE` gate is no longer a xollama hook. The fork carries it as
+`up-modelfile-roundtrip` (`c8e22c11`, `fork-only`, row 24 of `PATCHES.json`),
+merged here by sha per [FORK-SYNC.md](../protocols/FORK-SYNC.md). Our hook of
+the same condition was retired in that merge, along with its registry row.
+
+The patch also makes `ParseFile` refuse an unterminated quote on `TEMPLATE` or
+`SYSTEM`. Such a quote used to read on to the next quote in the file and
+swallow every `RENDERER` / `PARSER` / `PARAMETER` line in between, silently
+(`parser/swallowed_directive_test.go`). `server/modelfile_roundtrip_test.go`
+still holds the round trip.

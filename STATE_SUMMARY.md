@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — Fork patch 24 merged: `up-modelfile-roundtrip` @ `c8e22c11` (manifest `23a43c77`, fork-only).**
+> - `show --modelfile` writes `TEMPLATE` only for a model that carries one. `create` refuses an unterminated `TEMPLATE`/`SYSTEM` quote that would have swallowed the directives after it.
+> - One conflict, in `server/images.go`: xollama's own `modelfile-roundtrip` hook carried the same condition. Resolved to the patch's side. The hook and its registry row are retired, since the fork now supplies the fix.
+> - `go test ./parser ./server ./cmd` passes, and `check-hooks` reports 28 hooks.
+
 > **2026-09-29 — Medium council on e75c7c3e (eleven2go 3090): fixed.**
 > - **Fixed** in 34 trips and 1,954 s, and declared DONE. The first council fix of medium since d17af426 on b203 (19 trips / 778 s).
 >   - Nine checks: five identical SyntaxErrors, then a changed error (`missing ) after argument list`), then back to the first error, then passing.

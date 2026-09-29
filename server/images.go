@@ -610,19 +610,12 @@ func (m *Model) String() string {
 		})
 	}
 
-	// xollama-hook: modelfile-roundtrip — see docs/features/modelfile-roundtrip.md
-	//
-	// HasGoTemplate, not m.Template. GetModel seeds m.Template with
-	// template.DefaultTemplate so the serving path always has something to
-	// render with, which means m.Template is never nil and this emitted
-	// `TEMPLATE {{ .Prompt }}` for every model that defines no template at
-	// all. That is not a cosmetic difference: `show --modelfile` is how people
-	// derive a new Modelfile from an existing model, so the fabricated line
-	// gets fed back to `create` and bakes a real template layer into a model
-	// that had none -- permanently, and invisibly, changing how it is served.
-	// HasGoTemplate is true only where an actual template/prompt layer was
-	// read, so it is exactly "the model defines one".
-	if m.HasGoTemplate && m.Template != nil {
+	// Only a template the model carries. With no template layer m.Template
+	// is template.DefaultTemplate, and writing it out invented a
+	// `TEMPLATE {{ .Prompt }}` that a create from this Modelfile then stored
+	// as a real layer -- a Go template the model never had, which changes how
+	// it is prompted.
+	if m.Template != nil && m.HasGoTemplate {
 		modelfile.Commands = append(modelfile.Commands, parser.Command{
 			Name: "template",
 			Args: m.Template.String(),
