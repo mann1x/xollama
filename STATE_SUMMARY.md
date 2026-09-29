@@ -5,6 +5,15 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — Medium council on 96edc4ae (eleven2go 3090, 384k context back): unfixed, no stalls.**
+> - 60 trips (the harness limit), 1,695 s (was 4,137 s on 837a1fce). No cut replies and no admission refusals: the cap and placement fixes held.
+> - 23 edits "succeeded". Every check still returned `SyntaxError: Unexpected token '{'`, with no line number.
+>   - The members rewrote syntax they suspected: arrow functions to `function` (which breaks `this` in `gen`) and template literals to concatenation.
+>   - The extra `}` ending `dGrid` was never touched.
+> - Plain fixed the same task in 12 trips / 114 s by reading the file and rewriting the broken class whole. The council's failure is now diagnosis, not capacity.
+> - Usage: synthesizer 59 calls / 1.81 M prompt tokens; researcher 40 / 1.11 M; critic 13 / 0.34 M; planner 6; front 5; reviewer 3; builder 1.
+> - 688d1f53 (owner makes room) deployed afterwards.
+
 > **2026-09-29 — The owner makes room for the builder and the reviewers.**
 > - A member booked on its own session beside the conversation's owner could wait out its whole admission budget when the owner held the whole window. That was the builder's 2-minute refusal on 62c7d5ec.
 > - `roomFor` (plan 11.18, `server/council_room.go`) reads `/kv`'s `largest_admissible`. When it is short of the member's window, the owner shrinks by the difference, never below its used cells plus the turn's reserve. The shrink is applied at once, or deferred if the engine refuses. The next turn grows the owner back.
