@@ -286,7 +286,8 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
     member's own changes since that read, which went through, are applied to
     it first, so the read stays current after an edit. The answer says where
     the quote stops matching, what the read has there, and to quote only the
-    smallest span that occurs once. Line numbers in the read are ignored.
+    smallest span that occurs once. Line numbers in the read are ignored, and
+    a quote that copied them is answered with that, in place.
     Up to four such answers per member; after that the change is sent to you
     and your answer stands.
   - **A confirmed error goes straight to the synthesizer.** A critic that has

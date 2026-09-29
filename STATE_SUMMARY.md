@@ -5,6 +5,12 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — The consultants' answer to csl-2026-09-29-1156-aa48, and why they read old code.**
+> - Their code review of `quote.go` was mostly wrong: no replay, a guard that disables itself, a per-turn budget. The main checkout they read (their `cwd`) was on `sync/upstream-v0.35.0` at `ce7f5147`, two fixes behind. Everything since was committed from a separate worktree on `dev`. My mistake, not the skill's.
+>   - Fixed: the main checkout is back on `dev`, and the worktree is removed.
+> - Kept from the review: a quote that copies the read's line numbers is now answered in place (`numberedQuote`, `TestAQuoteWithLineNumbersIsAnswered`, which fails with the branch off).
+> - Held by the owner: their #1, budgeted localization (a narrowing brief when the check names no place), and the escalate measurement ("first we stabilize"). Their refined hidden-progress rule is recorded, not built.
+
 > **2026-09-29 — Why the council missed the brace: every check read as progress (11.21).**
 > - 4770e33b run 2 had 7 identical `SyntaxError`s, yet the planner was told "changed ... progress" every cycle: 149 `moved` notes in the log, 0 `same`. So the stuck note never fired, and the first theory (template literals) was never refuted.
 > - The cause is `lastCheck` again. "The first read after the last change" took the synthesizer's read of the file it had just edited, after it had run the check and edited again. The e75c7c3e logs show the same: 140 `moved`, 0 `same`.

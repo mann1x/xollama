@@ -143,3 +143,20 @@ func TestTheReadFollowsTheMembersOwnChanges(t *testing.T) {
 		t.Errorf("a misquote after a whole write was forwarded: %+v", fw)
 	}
 }
+
+// A quote copied with the read's line numbers is answered in place with
+// what is wrong with it; the same text without them goes out.
+func TestAQuoteWithLineNumbersIsAnswered(t *testing.T) {
+	read := "1: let a=1;\n2: " + dIt + "\n3: let b=2;"
+	cfg, turns := quoteCase(read, editCall("e", "2: "+dIt+"\n3: let b=2;", "x"))
+	if fw := cfg.forwarded(Synthesizer, "s", turns); len(fw) != 0 {
+		t.Fatalf("a numbered quote was forwarded: %+v", fw)
+	}
+	if got := results(cfg, turns); len(got) != 2 || got[1] != fmt.Sprintf(numberedQuote, "a.js") {
+		t.Errorf("answer %q, want the line-number note", got)
+	}
+	cfg, turns = quoteCase(read, editCall("e", dIt+"\nlet b=2;", "x"))
+	if fw := cfg.forwarded(Synthesizer, "s", turns); len(fw) != 1 {
+		t.Errorf("the quote without numbers was held: %+v", fw)
+	}
+}

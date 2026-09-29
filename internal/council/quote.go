@@ -27,6 +27,10 @@ var targetArgs = []string{"path", "file_path", "filePath", "file", "filename", "
 // a misquote rather than a quote of something else.
 const minQuoted = 32
 
+// numberedQuote answers a quote that carries the read's line numbers: the
+// target has the text, without them.
+const numberedQuote = "Not sent: the text this call replaces carries the line numbers your read of %s showed, and the target has no line numbers: they are the reading tool's, not the text's. Send the same change with the numbers and the separator after them left out of the quote."
+
 // maxMisquotes bounds how often a member's changes are answered in place;
 // past it they go to the client, whose own answer stands.
 const maxMisquotes = 4
@@ -177,9 +181,16 @@ func (cfg Config) misquoted(key string, before []api.Message, c api.ToolCall) st
 	// being looked at, latest first.
 	var since []api.ToolCall
 	// seen checks text as it stands now; false when it has the whole quote.
+	// numbered is the quote without the line numbers a model copied from a
+	// read into it; q itself when it carries none.
+	numbered := ungutter(q)
 	seen := func(text string) bool {
 		text, ok := replay(text, since)
 		if !ok {
+			return true
+		}
+		if numbered != q && !strings.Contains(text, q) && strings.Contains(text, numbered) {
+			best, hint = len(q), fmt.Sprintf(numberedQuote, target)
 			return true
 		}
 		h, n := misquote(target, q, text)

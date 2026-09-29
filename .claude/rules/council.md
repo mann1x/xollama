@@ -474,7 +474,9 @@ paths:
   changes to the target since the read that went through (not `failedWrite`)
   are replayed onto it (`replay`, oldest first); a whole write (`wholeArgs`)
   is the text itself; a change whose quote is not once in the text, or one
-  with no old/new pair, ends the scan. Never refuse on a mismatch at a line's end or where
+  with no old/new pair, ends the scan. A quote carrying the read's gutters
+  (`ungutter(q) != q`) whose unnumbered text the read has is answered with
+  `numberedQuote`. Never refuse on a mismatch at a line's end or where
   the read ends: that read showed part. `maxMisquotes` bounds it; an answer
   in place `continue`s `callTools` without spending a refusal. `transcript`
   and `forwarded` must call the same `misquotes`, or a call is both refused
