@@ -5,6 +5,20 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — 11.22: a stuck re-plan has to change the task list.**
+> From the hard analysis: the planner said it would replace the failing part
+> whole and kept every task open. Now, while the stuck note is in force, a
+> re-plan whose list update refutes no task or adds none is asked again once
+> with `keptNote` (which says what it left undone, and that a whole
+> replacement is a task a researcher writes out and the synthesizer applies in
+> one write); the second answer stands. `approachKept`/`keptNote`
+> (`stuck.go`), `ReplanAgain` (`steps.go`), `run.go`. Tests on the real
+> round-2 list and a run-level one (mutation-checked); council and server
+> suites pass under `-race`. Not measured live yet (eleven2go lent to
+> opencoti). Next, in the owner's order: the 12800-token member windows (the
+> owner: not low priority), the engine memory note to opencoti, the hard
+> rerun when eleven2go is free.
+
 > **2026-09-29 — Why the hard pair ended as it did: the host ran out of virtual memory, and the council's change of approach never became a task.**
 > Engine deaths (eleven2go server log, Windows event 2004): both followed a
 > low-virtual-memory condition. 15:34:55: our b208 engine 33.2 GB + opencoti's

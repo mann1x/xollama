@@ -2,6 +2,8 @@ package council
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"maps"
 	"strconv"
 	"sync"
@@ -362,6 +364,15 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 				pl, err := Replan(ctx, m, cfg, d, conv, emit)
 				if err != nil {
 					return Result{Route: route, Rounds: round, Draws: d}, err
+				}
+				// Told to change approach, the list has to show it (keptNote).
+				if n := cfg.stuck(); n >= stuckAfter {
+					if why := approachKept(p.Tasks, mergeTasks(p.Tasks, planTasks(pl), cfg.Researchers)); why != "" {
+						slog.Debug("council: re-plan kept the refuted approach; asking again", "cycle", cycle, "why", why)
+						if pl, err = ReplanAgain(ctx, m, cfg, d, conv, pl, fmt.Sprintf(keptNote, n, why), emit); err != nil {
+							return Result{Route: route, Rounds: round, Draws: d}, err
+						}
+					}
 				}
 				mark(func() {
 					p.Tasks = mergeTasks(p.Tasks, planTasks(pl), cfg.Researchers)

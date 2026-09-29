@@ -69,6 +69,43 @@ func (cfg Config) testsBody() string {
 	return b.String()
 }
 
+// keptNote sends a re-plan back, once, when the stuck note told the planner to
+// change approach and its update of the list does not: no task refuted, or no
+// task for the new approach. On eleven2go (hard, 5ce5f7e7) the planner wrote
+// in its plan that it would replace the failing part whole, and then kept every
+// task open, assigned the refuted one again and gave the replacement to nobody,
+// so the synthesizer applied local changes once more. The list is what the
+// members work from, so it is where the change of approach has to be.
+const keptNote = "ROLE: PLANNER. The last %d checks returned the same output, and this plan %s: it keeps the approach those checks refuted. Mark each task whose changes they tested as refuted, with their output as its outcome, and add the new approach as a new task (id 0) assigned to a researcher. When the new approach is to replace the failing part whole, that task is to write the whole replacement out in full: the researcher writes it, and the synthesizer applies it in one write. Reply with JSON only, in the same grammar."
+
+// approachKept says how the list's update next of prev keeps the approach,
+// or "" when it changes it: it refutes a task and adds one.
+func approachKept(prev, next []Task) string {
+	was := make(map[int]string, len(prev))
+	for _, t := range prev {
+		was[t.ID] = t.Status
+	}
+	refuted, added := false, false
+	for _, t := range next {
+		old, ok := was[t.ID]
+		switch {
+		case !ok:
+			added = true
+		case t.Status == TaskRefuted && old != TaskRefuted:
+			refuted = true
+		}
+	}
+	switch {
+	case !refuted && !added:
+		return "marks no task refuted and adds none"
+	case !refuted:
+		return "marks no task refuted"
+	case !added:
+		return "adds no task for a new approach"
+	}
+	return ""
+}
+
 // stuck is how many of the last failed checks returned the same output.
 func (cfg Config) stuck() int {
 	checks := cfg.checks[:min(len(cfg.checks), len(cfg.tests))]

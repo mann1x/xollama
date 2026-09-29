@@ -2344,6 +2344,33 @@ are replayed onto it (`replay` in `quote.go`; a whole write is the text
 itself), so the read stays current across them. Guard:
 `TestTheReadFollowsTheMembersOwnChanges`, which fails with the replay off.
 
+### 11.22 A change of approach has to show in the task list (built 2026-09-29)
+
+Hard on eleven2go (5ce5f7e7, 120 trips): plain fixed it in 24 trips by writing
+the whole file at trip 22 (it passes `run_gamefull.js` as `reference.html`
+does); the council made 16 local changes and never wrote a whole part. The
+stuck note fired (58 times in the log). The planner's round-2 plan said
+"instead of piecemeal fixes, I'll replace the entire JavaScript section", and
+its list kept all four tasks `open`, assigned the refuted template-literal
+task again and gave the replacement to nobody. The synthesizer applies what
+the members propose, so the cycle made local changes again. Round 5 narrowed
+to the right place two minutes before the engine died (host out of virtual
+memory, not the council).
+
+Built (`approachKept`, `keptNote` in `internal/council/stuck.go`,
+`ReplanAgain` in `steps.go`, the replan in `run.go`):
+- When the stuck note is in force for a re-plan, the list's update must mark
+  at least one task refuted and add at least one task. Otherwise the planner is
+  asked once more, with its plan and a note that says which of the two it left
+  undone, and that a whole-part replacement is a task: a researcher writes it
+  out in full and the synthesizer applies it in one write. The second answer
+  stands, whatever it is. One extra planner call, only on a stuck cycle.
+- Structural, no topic words (the stuck test's word ban covers `keptNote`).
+- Guards: `TestAReplanThatKeepsTheRefutedApproachIsNamed` (the real round-2
+  list) and `TestAStuckReplanIsAskedAgainOnce` (asked again once when stuck,
+  never while checks move; fails when the rule is disabled).
+- Not yet measured live: eleven2go is lent to opencoti.
+
 ### 11.21 The check is the call the member checks with (built 2026-09-29)
 
 On 4770e33b run 2 the council never found the stray `}` ending `dGrid`. All 7

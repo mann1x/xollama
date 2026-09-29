@@ -278,3 +278,75 @@ func TestTheCheckIsTheReadAfterTheLastChange(t *testing.T) {
 		t.Errorf("with no change, check %q, want the last read", got)
 	}
 }
+
+// The list is where a change of approach has to show: the plan the planner
+// wrote on eleven2go (hard, 5ce5f7e7, round 2) said it would replace the
+// failing part whole and kept all four tasks open, with none new.
+func TestAReplanThatKeepsTheRefutedApproachIsNamed(t *testing.T) {
+	prev := []Task{
+		{ID: 1, Task: "Run game and capture initial error output", Status: TaskOpen},
+		{ID: 2, Task: "Analyze HTML structure for syntax/load issues", Status: TaskOpen},
+		{ID: 3, Task: "Analyze JavaScript logic for runtime errors", Status: TaskOpen},
+		{ID: 4, Task: "Examine template literal syntax in countdown timer code", Status: TaskOpen},
+	}
+	kept := mergeTasks(prev, []Task{
+		{ID: 1, Task: "Run game and capture initial error output", Status: TaskOpen},
+		{ID: 2, Task: "Analyze HTML structure for syntax/load issues", Status: TaskOpen},
+		{ID: 3, Task: "Analyze JavaScript logic for runtime errors", Status: TaskOpen},
+		{ID: 4, Task: "Examine template literal syntax in countdown timer code", Status: TaskOpen},
+	}, 2)
+	if why := approachKept(prev, kept); why != "marks no task refuted and adds none" {
+		t.Errorf("round 2's plan: %q", why)
+	}
+	changed := mergeTasks(prev, []Task{
+		{ID: 4, Task: "Examine template literal syntax in countdown timer code", Status: TaskRefuted, Outcome: "the same error after every change"},
+		{ID: 0, Task: "Write the whole script section out again in full", Status: TaskAssigned, Researcher: 1},
+	}, 2)
+	if why := approachKept(prev, changed); why != "" {
+		t.Errorf("a plan that refutes a task and adds one was sent back: %q", why)
+	}
+	onlyRefuted := mergeTasks(prev, []Task{{ID: 4, Task: prev[3].Task, Status: TaskRefuted, Outcome: "same"}}, 2)
+	if why := approachKept(prev, onlyRefuted); why != "adds no task for a new approach" {
+		t.Errorf("refuted only: %q", why)
+	}
+}
+
+// Stuck, a re-plan that keeps every task as it was is asked again once, with
+// the note; while the checks move, it is not.
+func TestAStuckReplanIsAskedAgainOnce(t *testing.T) {
+	build := `{"target":"t","planner":"","researcher":"","critic":"","synthesizer":"","max_tests":3}`
+	s := &checkStub{toolStub{stub: stub{route: `{"route":"council"}`, build: build}}}
+	driveResults(t, toolCfg(), s, func(int) string { return "SyntaxError: missing ) after argument list" })
+	perRound := map[int]int{}
+	var again Request
+	for _, c := range s.calls {
+		if c.Role == Planner && c.Round > 0 {
+			perRound[c.Round]++
+			if strings.Contains(all(c), "it keeps the approach those checks refuted") {
+				again = c
+			}
+		}
+	}
+	if perRound[3] != 2 || again.Round != 3 {
+		t.Fatalf("planner calls per re-plan round %v; the stuck round-3 re-plan was not asked again once", perRound)
+	}
+	if perRound[1] != 1 {
+		t.Errorf("a re-plan before the checks were stuck was asked again: %v", perRound)
+	}
+	if got := all(again); !strings.Contains(got, "marks no task refuted and adds none") {
+		t.Errorf("the note does not say what the plan left undone:\n%s", got)
+	}
+	for _, topic := range []string{"code", "syntax", "brace", "file", "error"} {
+		if strings.Contains(strings.ToLower(keptNote), topic) {
+			t.Errorf("the note names a topic: %q", topic)
+		}
+	}
+
+	s = &checkStub{toolStub{stub: stub{route: `{"route":"council"}`, build: build}}}
+	driveResults(t, toolCfg(), s, func(trip int) string { return fmt.Sprintf("failure %d", trip) })
+	for _, c := range s.calls {
+		if c.Role == Planner && strings.Contains(all(c), "it keeps the approach those checks refuted") {
+			t.Fatal("a council whose checks moved was asked to change approach")
+		}
+	}
+}

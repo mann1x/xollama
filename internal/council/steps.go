@@ -333,6 +333,21 @@ func Replan(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Messag
 	return parsePlan(cfg, out), nil
 }
 
+// ReplanAgain is the planner's re-plan asked once more: its plan first, then
+// note, which says what the plan left undone.
+func ReplanAgain(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, first Plan, note string, emit Emit) (Plan, error) {
+	out, err := call(ctx, m, cfg, emit, Request{
+		Role: Planner, Round: len(cfg.tests), Model: cfg.Models[Planner], Host: cfg.Hosts[Planner],
+		Messages: append(replanRequest(cfg, conv), planReply(first), user(note)),
+		Seed:     d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Planner), Think: cfg.Think[Planner],
+		Format: planSchema(cfg.Researchers),
+	}, Thinking)
+	if err != nil {
+		return Plan{}, err
+	}
+	return parsePlan(cfg, out), nil
+}
+
 // Retest is what the synthesizer ends with when a check of the council's
 // proposals failed and the council should propose again from its result.
 const Retest = "VERDICT: RETEST"

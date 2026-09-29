@@ -581,6 +581,11 @@ paths:
   restricts `lastCheck` to that tool's calls.
 - **Cues (Phase 3)**: `routeCue` in `routeRequest`, `frontCue` in the auto
   front. Topic-agnostic; a stated mode skips both.
+- **A change of approach shows in the list (11.22, `approachKept`)**: while
+  the stuck note is in force, a re-plan that refutes no task or adds none is
+  asked again once (`keptNote`, `ReplanAgain`); the second answer stands. Judge
+  the ledger diff, never the plan's prose: on hard the prose promised a whole
+  replacement and the list kept every task open.
 - **Which call is the check (11.19, 11.21, `lastCheck`)**: the read-only
   call (tool and arguments, `readKey`) the member called most after its first
   change, the earliest on a tie; one whose latest output equals the previous
