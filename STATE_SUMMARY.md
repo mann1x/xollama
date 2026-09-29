@@ -5,6 +5,14 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — Medium council after 11.20: fixed once, unfixed once; 78e49747 deployed on eleven2go.**
+> - Run 1 on `96ff1f5d`: FIXED, 26 trips, 1,078 s, 3.20 M prompt tokens, 6 edits (1 missed at the client). This is the council's best result on medium so far (earlier: 34 / 54 trips).
+> - Run 2 on `cf223635`: UNFIXED at the 60-trip cap, 3,786 s, 5.67 M prompt tokens, 32 edits (13 missed at the client).
+>   - This build adds the cue line in the front's prompt. At n = 1 each, run-to-run variance can't be told apart from the change.
+> - Why the guard let run 2's misses through: almost all of them follow a successful edit to the same file (trips 34→35, 39→40, 45→46). The guard then treats the member's last read as stale, by design, and forwards the edit. One followed only a partial `find_text` read, which it also skips.
+>   - Next step for 11.20: replay the member's own successful edits onto its last read, so the read stays current after a change.
+> - Deployed `78e49747` (v0.35.0 + everything above) to eleven2go: `0.35.0-dev.78e49747`, `council_directive_v1` advertised, `/v1/systemone` answering.
+
 > **2026-09-29 — Upstream v0.35.0 synced (fork manifest `b723d1ce`).**
 > - `sync/upstream-v0.35.0`:
 >   - `1ab773d7` merged the tag. One conflict, `server/routes.go`: the carried tokenize routes stay beside upstream's new `/v1/systemone`.

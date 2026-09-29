@@ -2336,6 +2336,11 @@ Built (`internal/council/quote.go`):
   `TestAChangeTheReadBearsOutGoesOut` (exact across lines with gutters, too
   little matched, a change in between).
 
+Measured (eleven2go, medium): FIXED in 26 trips on `96ff1f5d`, then
+UNFIXED at 60 on `cf223635`, with 13 of 32 edits missing their text. The
+misses followed the member's own successful edits, after which its read
+counts as stale. Open: replay those edits onto the read.
+
 ### 11.11 Checks that stop moving change the approach (built 2026-09-28)
 The fifth simple run (b336b144) returned the same "missing ) after argument
 list" from every check for 60 trips. The plain arm fixed the task in 27 trips:
