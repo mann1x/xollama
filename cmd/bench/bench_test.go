@@ -690,7 +690,7 @@ func TestBenchmarkModel_PromptTokensExact(t *testing.T) {
 			})
 			defer server.Close()
 
-			t.Setenv("OLLAMA_HOST", server.URL)
+			t.Setenv("XOLLAMA_HOST", server.URL)
 
 			output := captureOutput(func() {
 				if err := BenchmarkModel(fOpt); err != nil {
@@ -740,7 +740,7 @@ func TestBenchmarkModel_PromptSizeDriftWarning(t *testing.T) {
 	})
 	defer server.Close()
 
-	t.Setenv("OLLAMA_HOST", server.URL)
+	t.Setenv("XOLLAMA_HOST", server.URL)
 
 	output := captureOutput(func() {
 		if err := BenchmarkModel(fOpt); err != nil {
@@ -774,7 +774,7 @@ func TestBenchmarkModel_GeneratedPromptVariesByRequest(t *testing.T) {
 	})
 	defer server.Close()
 
-	t.Setenv("OLLAMA_HOST", server.URL)
+	t.Setenv("XOLLAMA_HOST", server.URL)
 
 	captureOutput(func() {
 		if err := BenchmarkModel(fOpt); err != nil {
@@ -817,7 +817,7 @@ func TestBenchmarkModel_PromptCalibrationFailure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	t.Setenv("OLLAMA_HOST", server.URL)
+	t.Setenv("XOLLAMA_HOST", server.URL)
 
 	output := captureOutput(func() {
 		err := BenchmarkModel(fOpt)
@@ -841,7 +841,7 @@ func TestBenchmarkModel_PromptBelowMinimum(t *testing.T) {
 	})
 	defer server.Close()
 
-	t.Setenv("OLLAMA_HOST", server.URL)
+	t.Setenv("XOLLAMA_HOST", server.URL)
 
 	output := captureOutput(func() {
 		err := BenchmarkModel(fOpt)
@@ -866,7 +866,7 @@ func TestBenchmarkModel_PromptAboveMaximum(t *testing.T) {
 	})
 	defer server.Close()
 
-	t.Setenv("OLLAMA_HOST", server.URL)
+	t.Setenv("XOLLAMA_HOST", server.URL)
 
 	output := captureOutput(func() {
 		err := BenchmarkModel(fOpt)

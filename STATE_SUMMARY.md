@@ -5,6 +5,16 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — Upstream v0.35.0 synced (fork manifest `b723d1ce`).**
+> - `sync/upstream-v0.35.0`:
+>   - `1ab773d7` merged the tag. One conflict, `server/routes.go`: the carried tokenize routes stay beside upstream's new `/v1/systemone`.
+>   - The 24 patches followed as `--no-ff` merges at the manifest's shas, in order (`9d7b8793` … `7d479188`; the table is in CARRIED-PATCHES).
+>   - Then `dev` was merged in.
+> - Every rebased patch has the same diff as at v0.34.4 (`git patch-id`). Conflicts were resolved `-X ours`, owner-authorized; every merge was checked to add nothing over its first parent.
+> - Fixed: six new upstream tests in `cmd/bench/bench_test.go` set `OLLAMA_HOST`, which the fork ignores by design, so they reached a live server (404). They now set `XOLLAMA_HOST`, as the file's other tests do.
+> - Checks: `go test ./...`, `-race` on the main packages, `golangci-lint` 0 issues, `check-hooks` and `check-compat-origin` all pass.
+> - llama.cpp stays b11081, and the runtime pin does not move. `main` stays v0.34.4 until the next release PR.
+
 > **2026-09-29 — The council for harnesses: instructions, the directive and the user's cues (plan Phases 1–3).**
 > - `ChatRequest.Council` (`council_directive_v1`) states the turn's `mode`, `instructions`, `build`, `evidence` and `check`.
 >   - `answer` is the synthesizer alone; `escalate` and `deliberate` start the council with no front turn or route decision.
