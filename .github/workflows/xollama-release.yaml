@@ -2,7 +2,13 @@
 # read that first — this file is the mechanism, not the rules.
 #
 # A release is a pull request from dev into main titled `release: v<version>`,
-# whose body is the release notes. While the PR is open this workflow only
+# whose body is the release notes. A version is one of three forms, all on the
+# upstream release dev is based on (RELEASE.md, "Versions and tags"):
+#   v<upstream>-rc.<k>.xollama   a release candidate, never promoted
+#   v<upstream>-xollama          the release: the tree of its last candidate
+#   v<upstream>-xollama.<n>      a re-release on the same upstream
+# Plain semver orders them in exactly that order, which is the order the
+# desktop updater uses. While the PR is open this workflow only
 # checks it. When it is merged (with a merge commit), it builds on
 # GitHub-hosted runners, fills a draft release, and publishes it as a
 # pre-release — which is also what creates the tag, on the merge commit.
@@ -63,6 +69,7 @@ jobs:
       sha: ${{ steps.plan.outputs.sha }}
       version: ${{ steps.plan.outputs.version }}
       tag: ${{ steps.plan.outputs.tag }}
+      kind: ${{ steps.plan.outputs.kind }}
       upstream: ${{ steps.plan.outputs.upstream }}
       engine: ${{ steps.plan.outputs.engine }}
       enginearch: ${{ steps.plan.outputs.enginearch }}
@@ -89,16 +96,21 @@ jobs:
           gh pr view "$pr" --json title,body,state,baseRefName,headRefOid,mergeCommit > pr.json
           title=$(jq -r .title pr.json)
           state=$(jq -r .state pr.json)
-          re='^release: v([0-9]+\.[0-9]+\.[0-9]+)-xollama\.([1-9][0-9]*)$'
+          re='^release: v([0-9]+\.[0-9]+\.[0-9]+)-(rc\.([1-9][0-9]*)\.xollama|xollama(\.([1-9][0-9]*))?)$'
           if ! [[ "$title" =~ $re ]]; then
             # Any other PR into main is not a release, and that is not an error.
             [ "$GITHUB_EVENT_NAME" = pull_request ] && { echo "not a release PR: $title"; exit 0; }
-            fail "PR #$pr is not a release PR: its title must be 'release: v<upstream>-xollama.<n>', got '$title'"
+            fail "PR #$pr is not a release PR: its title must be 'release: v<upstream>-rc.<k>.xollama', 'release: v<upstream>-xollama' or 'release: v<upstream>-xollama.<n>', got '$title'"
           fi
           upstream=${BASH_REMATCH[1]}
-          version="${upstream}-xollama.${BASH_REMATCH[2]}"
+          version="${upstream}-${BASH_REMATCH[2]}"
+          if [ -n "${BASH_REMATCH[3]}" ]; then kind=rc
+          elif [ -z "${BASH_REMATCH[5]}" ]; then kind=release
+          else kind=rerelease; fi
           tag="v$version"
-          out version "$version"; out tag "$tag"; out upstream "$upstream"
+          out version "$version"; out tag "$tag"; out upstream "$upstream"; out kind "$kind"
+          # Every tag this repository publishes as an xOllama release, old and new.
+          tags='^v[0-9]+\.[0-9]+\.[0-9]+-(rc\.[1-9][0-9]*\.xollama|xollama(\.[1-9][0-9]*)?)$'
 
           # check  : PR open, event-driven — validate only, build nothing
           # draft  : manual run on an open PR — build the head into a draft
@@ -142,8 +154,21 @@ jobs:
           fi
           # Newer than everything published, by the order the updater uses.
           newest=$(gh release list --limit 100 --json tagName,isDraft --jq '.[] | select(.isDraft | not) | .tagName' \
-            | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-xollama\.[0-9]+$' || true; } | sed 's/^v//' | { cat; echo "$version"; } | sort -V | tail -1)
+            | { grep -E "$tags" || true; } | sed 's/^v//' | { cat; echo "$version"; } | sort -V | tail -1)
           [ "$newest" = "$version" ] || fail "$version is not newer than the published $newest"
+
+          # The release ships the tree its last candidate was checked on. The
+          # version is stamped into the binaries, so the release is a rebuild;
+          # the same tree is what lets it take the short check (RELEASE.md step 7).
+          if [ "$kind" = release ]; then
+            rc=$(gh release list --limit 100 --json tagName,isDraft --jq '.[] | select(.isDraft | not) | .tagName' \
+              | { grep -E "^v${upstream//./\\.}-rc\.[1-9][0-9]*\.xollama$" || true; } | sort -V | tail -1)
+            [ -n "$rc" ] || fail "$tag has no published candidate; release v$upstream-rc.1.xollama first"
+            git fetch --quiet origin "refs/tags/$rc:refs/tags/$rc"
+            [ "$(git rev-parse "$sha^{tree}")" = "$(git rev-parse "$rc^{tree}")" ] \
+              || fail "$tag must ship the tree of $rc, its last candidate, and $sha differs; release the change as the next candidate"
+            echo "tree matches $rc"
+          fi
 
           # The CUDA and Vulkan backends are borrowed from upstream's release of
           # the same base, which is only sound when both sides built the same
@@ -431,6 +456,7 @@ jobs:
       SHA: ${{ needs.plan.outputs.sha }}
       TAG: ${{ needs.plan.outputs.tag }}
       MODE: ${{ needs.plan.outputs.mode }}
+      KIND: ${{ needs.plan.outputs.kind }}
       UPSTREAM: ${{ needs.plan.outputs.upstream }}
       ENGINE: ${{ needs.plan.outputs.engine }}
       RUNTIME_TAG: ${{ needs.plan.outputs.runtime_tag }}
@@ -466,7 +492,7 @@ jobs:
           # the previous published release carried the same payload.
           id=$(cat assets/payload-id.txt)
           prev=$(gh release list --limit 20 --json tagName,isDraft --jq '.[] | select(.isDraft | not) | .tagName' \
-            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-xollama\.[0-9]+$' | grep -vx "$TAG" | sort -V | tail -1 || true)
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-(rc\.[1-9][0-9]*\.xollama|xollama(\.[1-9][0-9]*)?)$' | grep -vx "$TAG" | sort -V | tail -1 || true)
           if [ -z "$prev" ]; then delta="first release: every install takes \`xOllamaSetup.exe\`"
           elif [ "$(gh release download "$prev" -p payload-id.txt -O - 2>/dev/null)" = "$id" ]; then
             delta="payload unchanged since $prev: updating from it downloads \`xOllamaUpdate.exe\` only"
@@ -499,7 +525,11 @@ jobs:
           gh release edit "$TAG" --draft=false --prerelease --latest=false
           got=$(git ls-remote "https://github.com/$GITHUB_REPOSITORY" "refs/tags/$TAG" | cut -f1)
           [ "$got" = "$SHA" ] || { echo "::error::tag $TAG points at $got, not $SHA"; exit 1; }
-          echo "published $TAG as a pre-release; promote after the test-host check (RELEASE.md step 8)"
+          if [ "$KIND" = rc ]; then
+            echo "published $TAG as a pre-release; a candidate is never promoted: after the test-host check, release v$UPSTREAM-xollama from the same tree"
+          else
+            echo "published $TAG as a pre-release; promote after the test-host check (RELEASE.md step 8)"
+          fi
 
       - name: dry run
         if: env.MODE == 'draft'

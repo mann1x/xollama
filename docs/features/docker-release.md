@@ -85,8 +85,10 @@ docker run -d --gpus all -p 22434:22434 -v xollama:/root/.ollama ghcr.io/mann1x/
 | on a tag whose GitHub release is a **full release** | `release` | `:<version>`, `-amd64`, `:latest` |
 
 The channel is the **GitHub pre-release flag**, as it is for the desktop
-updater. It is not the hyphen in the tag: every `v<upstream>-xollama.<n>` tag
-has one, so under the old hyphen rule every release would have landed on `:dev`.
+updater. It is not the hyphen in the tag: every xOllama tag has one
+(`v<upstream>-rc.<k>.xollama`, `v<upstream>-xollama`, `v<upstream>-xollama.<n>`;
+see `docs/protocols/RELEASE.md`), and a release candidate is always a
+pre-release, so it only ever moves `:dev`; so under the old hyphen rule every release would have landed on `:dev`.
 `:latest` never moves from a branch. The `channel: release` input is refused
 unless the run is on a tag. A tag with no release, or with a draft, counts as a
 pre-release.

@@ -36,36 +36,76 @@ it an update, stop. That is the procedure this replaces.**
    offered it (`XOLLAMA_UPDATE_PRERELEASE=1`). It becomes a stable release, and
    is offered to everyone, only after it has been installed and checked on the
    test host (steps 6–8). Promotion is one explicit command, never a side effect
-   of something else.
+   of something else. **A release candidate is never promoted**: the release
+   made from it is (see *Versions and tags*).
 6. **Verify the artifact, not the build log.** A green run means the steps
    exited 0. It does not mean the installer carries what it should. Steps 5 and
    7 exist for that.
 
 ## Versions and tags
 
+Every version follows the upstream ollama release `dev` is based on. Upstream
+v0.35.0 is only ever released here as a `v0.35.0-…xollama…` version:
+
+| stage | tag | channel |
+|---|---|---|
+| release candidate *k* | `v<upstream>-rc.<k>.xollama`, e.g. `v0.35.0-rc.1.xollama` | pre-release, **never promoted** |
+| the release | `v<upstream>-xollama`, e.g. `v0.35.0-xollama` | pre-release, promoted after the short check |
+| re-release *n* | `v<upstream>-xollama.<n>`, e.g. `v0.35.0-xollama.1` | pre-release, promoted after the full check |
+
+- `<upstream>` is the upstream ollama release that `dev` is based on (the first
+  line of CLAUDE.md). The workflow checks that ollama/ollama has a tag
+  `v<upstream>`, because the GPU backends come from that release (see below).
+- `<k>` and `<n>` count from 1 and restart when `<upstream>` moves. The
+  workflow refuses 0, and refuses any other shape.
+- **Candidates are the dev builds.** Cut as many as the work needs. Each one is
+  installed and checked on the test host like any release (steps 5–7), and is
+  offered to installs on the pre-release channel.
+- **The release ships the tree of its last candidate.** The version is stamped
+  into the binaries, so the release is a rebuild, not a promotion of the
+  candidate's bytes. The workflow refuses a `v<upstream>-xollama` PR whose tree
+  is not the tree of the newest published `v<upstream>-rc.<k>.xollama`, and one
+  with no candidate at all. A change after the last candidate is the next
+  candidate. Because the tree and the pins are the same, the payload id is the
+  same, and the release takes the **short check** (step 7).
+- **A re-release has no candidates.** It fixes a release that is already out.
+  It is cut from `dev` as `v<upstream>-xollama.<n>`, published as a pre-release,
+  given the full check, and promoted as the same bytes. Once
+  `v<upstream>-xollama` is published, a candidate of that upstream sorts below
+  it and is refused.
+- The binary reports the tag without the leading `v`
+  (`xollama --version` → `0.35.0-rc.1.xollama`). The fork's name has to appear
+  in that string: `ResolveHost` (`api/xollama_host.go`) tells an xollama apart
+  from a stock ollama by it when `/api/xollama` is missing.
+
+**Ordering is plain semver, and nothing may add a comparator of its own.** The
+names are chosen so that semver (`app/updater/fork.go`) and `sort -V` (the
+workflow's order check) agree:
+
 ```
-v<upstream>-xollama.<n>        e.g. v0.34.2-xollama.1
+v0.34.4-xollama.2 < v0.35.0-rc.1.xollama < v0.35.0-rc.2.xollama < v0.35.0-rc.10.xollama
+  < v0.35.0-xollama < v0.35.0-xollama.1 < v0.35.0-xollama.2 < v0.35.1-rc.1.xollama
 ```
 
-- `<upstream>` is the upstream ollama release that `main` is based on. It is the
-  first part of `main`'s identity in CLAUDE.md ("upstream release v0.34.2 + fork
-  changes"). The workflow checks that ollama/ollama has a tag `v<upstream>`,
-  because the GPU backends come from that release (see below).
-- `<n>` counts from 1 and restarts at 1 when `<upstream>` moves.
-- The binary reports the tag without the leading `v`
-  (`xollama --version` → `0.34.2-xollama.1`). The fork's name has to appear in
-  that string: `ResolveHost` (`api/xollama_host.go`) tells an xollama apart from
-  a stock ollama by it when `/api/xollama` is missing.
-- Ordering is semver, and `app/updater/fork.go` relies on it.
-  `0.34.2-xollama.2 > 0.34.2-xollama.1`, and `0.34.3-xollama.1` is greater than
-  both. A local dev build (`0.34.2-xollama-05c16dfa`) sorts **above** every
-  `xollama.<n>` of the same base, so a developer's hand-built binary is never
-  offered a "downgrade" to a release.
+The candidate goes **before** the fork's name because a semver pre-release field
+added after `xollama` always sorts higher: `v0.35.0-xollama.rc1` sorts after
+`v0.35.0-xollama.3`, and `sort -V` puts it between `xollama` and `xollama.1`, so
+the updater would offer a candidate to an install already on the release.
+`TestReleaseNamesOrderAsTheyShip` holds the order.
+
+A local build stamped by `git describe` after a candidate reads
+`0.35.0-rc.1.xollama-3-g<sha>`, which sorts after that candidate and before the
+next one. The cross-build deployed to test hosts is stamped
+`0.35.0-dev.<sha>`, which sorts below every candidate of its base, so on the
+pre-release channel it is offered the first candidate.
+
 - The workflow refuses a version that is not greater than every release already
-  published, and it refuses a tag that already exists.
+  published, and it refuses a tag that already exists. Tags from before this
+  scheme (`v0.34.x-xollama.<n>`) keep their place in the order.
 
 The channel is **not** part of the version. It is the GitHub pre-release flag.
-Both channels use the same bytes, so promoting a release rebuilds nothing.
+A re-release is promoted as the bytes that were checked; a release is the
+rebuild of a checked candidate's tree.
 
 ## What a release carries
 
@@ -176,7 +216,7 @@ The usual rules apply (UPSTREAM-SYNC hooks, FORK-SYNC merges, tests). Push
 
 ```sh
 gh pr create --repo mann1x/xollama --base main --head dev \
-  --title "release: v0.34.2-xollama.1" \
+  --title "release: v0.35.0-rc.1.xollama" \
   --body-file notes.md
 ```
 
@@ -212,7 +252,7 @@ anyone without write access, and no tag is created. Download it, install it on
 the test host (steps 6–8) and delete it afterwards:
 
 ```sh
-gh release delete v0.34.2-xollama.1 --repo mann1x/xollama --yes
+gh release delete v0.35.0-rc.1.xollama --repo mann1x/xollama --yes
 ```
 
 A later run for the same tag replaces a draft. It never touches a published
@@ -245,7 +285,7 @@ gh workflow run xollama-release.yaml --repo mann1x/xollama -f pr=<N>
 ### 5. Verify the artifact
 
 ```sh
-tag=v0.34.2-xollama.1
+tag=v0.35.0-rc.1.xollama
 d=backup_models/release-check/$tag      # persistent disk, never /tmp
 mkdir -p "$d" && cd "$d"
 gh release download "$tag" --repo mann1x/xollama --clobber
@@ -288,7 +328,17 @@ It installs per user into `%LOCALAPPDATA%\Programs\xOllama` (no elevation).
 
 ### 7. Verify the install
 
-Check each of these on the host. The installer's exit code is not enough.
+A candidate and a re-release take the **full check**. The release made from a
+candidate takes the **short check**, because the workflow has already proved it
+is that candidate's tree with the same pins: install it over the candidate
+through the updater's small installer, then check only that
+`xollama --version` names the release, `lib\ollama\PAYLOAD_ID` equals its
+`payload-id.txt`, `GET /api/xollama` answers on 22434, and one generation on the
+GPU runs. Anything else failing in the short check means the rebuild differs
+from the candidate: stop and investigate, do not promote.
+
+The full check: verify each of these on the host. The installer's exit code is
+not enough.
 
 - `& "$env:LOCALAPPDATA\Programs\xOllama\xollama.exe" --version` names the tag.
 - `lib\ollama\PAYLOAD_ID` equals the release's `payload-id.txt`.
@@ -304,10 +354,11 @@ odd).
 
 ### 8. Promote
 
-Promote only after step 7 passes:
+Promote only after step 7 passes, and only a release or a re-release, never a
+candidate:
 
 ```sh
-gh release edit v0.34.2-xollama.1 --repo mann1x/xollama --prerelease=false --latest
+gh release edit v0.35.0-xollama --repo mann1x/xollama --prerelease=false --latest
 ```
 
 From that point every installed xOllama on the stable channel is offered the
@@ -316,12 +367,14 @@ release. Nothing is rebuilt.
 The promotion also announces the release on Discord:
 `.github/workflows/discord-announce.yaml` runs on the `released` event, posts
 the release notes through the `TECH_CORNER_DISCOWH` webhook (the same one
-mann1x/osync uses), and never fires for a pre-release. Re-announce a tag with
+mann1x/osync uses), and never fires for a pre-release. It skips a candidate's
+tag even if the candidate was promoted by mistake. Re-announce a tag with
 `gh workflow run discord-announce.yaml --repo mann1x/xollama -f tag=<tag>`.
 A failed post is a warning, not a failed release.
 
-A release that fails step 7 stays a pre-release. Fix it on `dev` and cut
-`xollama.<n+1>`. A published tag is never moved or reused. If the bad
+A candidate that fails step 7 stays a pre-release; fix it on `dev` and cut the
+next candidate. A release or re-release that fails step 7 stays a pre-release
+too; fix it on `dev` and cut the next re-release, `xollama.<n+1>`. A published tag is never moved or reused. If the bad
 pre-release should not stay on offer, delete the release (`gh release delete`,
 which leaves the tag) so the updater stops seeing it.
 
@@ -331,7 +384,8 @@ Installed copies never downgrade on their own, because the updater only moves
 forward. To take a host back, run the previous release's `xOllamaSetup.exe`
 over the top. It is the same AppId, so it replaces the files in place and keeps
 models and settings. To take a bad stable release away from users, delete it
-(or mark it pre-release again) and cut the fix as the next `<n>`.
+(or mark it pre-release again) and cut the fix as the next re-release
+(`v<upstream>-xollama.<n+1>`).
 
 ## What installing does NOT touch
 
@@ -359,8 +413,8 @@ installed release passes step 7, never before. They are the fallback until then.
   this cycle, the channel has to come from the GitHub pre-release flag, the way
   it does here. Tags created by the workflow's `GITHUB_TOKEN` do not trigger
   other workflows, so this cycle cannot start it by accident.
-- **Inno `AppVersion`** is the numeric `<upstream>` (`0.34.2`), because
-  `VersionInfoVersion` must be numeric. Every `xollama.<n>` on one base shows
+- **Inno `AppVersion`** is the numeric `<upstream>` (`0.35.0`), because
+  `VersionInfoVersion` must be numeric. Every candidate, release and re-release on one base shows
   the same version in Add/Remove Programs. Upgrades still work. Use
   `xollama --version` to tell them apart.
 - **No macOS, no Windows arm64, no Linux runtime archive.** Linux hosts

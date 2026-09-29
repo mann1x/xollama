@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/mod/semver"
+
 	"github.com/ollama/ollama/app/version"
 )
 
@@ -479,5 +481,59 @@ func TestOnlyABareSha256CountsAsAPayloadID(t *testing.T) {
 		if got := normalisePayloadID(tt.in); got != tt.want {
 			t.Errorf("normalisePayloadID(%q) = %q, want %q", tt.in, got, tt.want)
 		}
+	}
+}
+
+// The release names are chosen so that semver orders them as they ship: every
+// candidate of an upstream before its release, the release before its
+// re-releases, and all of them before the next upstream's first candidate.
+// `xollama.rc1`, the obvious spelling, sorts after `xollama.3` and would offer
+// a candidate to someone already on the release.
+func TestReleaseNamesOrderAsTheyShip(t *testing.T) {
+	order := []string{
+		"v0.34.4-xollama.2",
+		"v0.35.0-rc.1.xollama",
+		"v0.35.0-rc.2.xollama",
+		"v0.35.0-rc.10.xollama",
+		"v0.35.0-xollama",
+		"v0.35.0-xollama.1",
+		"v0.35.0-xollama.2",
+		"v0.35.1-rc.1.xollama",
+	}
+	for i := 1; i < len(order); i++ {
+		if semver.Compare(semverOf(order[i-1]), semverOf(order[i])) >= 0 {
+			t.Errorf("%s does not sort before %s", order[i-1], order[i])
+		}
+	}
+}
+
+// A candidate is a pre-release, so a stable install never sees one, and a
+// pre-release install moves from its candidate to the release.
+func TestACandidateMovesToItsRelease(t *testing.T) {
+	old := AllowPrerelease
+	t.Cleanup(func() { AllowPrerelease = old })
+
+	f := newFeed(t).
+		release("v0.35.0-rc.1.xollama", true, []byte("rc1")).
+		release("v0.35.0-rc.2.xollama", true, []byte("rc2"))
+	f.use(t)
+	atVersion(t, "0.34.4-xollama.2")
+
+	AllowPrerelease = false
+	if available, resp := checkForkUpdate(t.Context(), &Updater{}); available {
+		t.Fatalf("a stable install was offered the candidate %s", resp.UpdateVersion)
+	}
+
+	AllowPrerelease = true
+	f.release("v0.35.0-xollama", false, []byte("release"))
+	atVersion(t, "0.35.0-rc.2.xollama")
+	available, resp := checkForkUpdate(t.Context(), &Updater{})
+	if !available || resp.UpdateVersion != "v0.35.0-xollama" {
+		t.Fatalf("from rc.2: available=%v version=%q, want v0.35.0-xollama", available, resp.UpdateVersion)
+	}
+
+	atVersion(t, "0.35.0-xollama")
+	if available, resp := checkForkUpdate(t.Context(), &Updater{}); available {
+		t.Fatalf("the release was offered its own candidate %s", resp.UpdateVersion)
 	}
 }

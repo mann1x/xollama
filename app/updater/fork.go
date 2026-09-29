@@ -273,6 +273,13 @@ func pickForkAsset(assets []forkAsset, installer string) (forkAsset, bool) {
 // semverOf normalises a release tag or a build version into something
 // semver.Compare will accept: tags are "v0.34.2", version.Version is "0.34.2",
 // and a dev build is "0.0.0".
+//
+// The fork's tags are named so that plain semver orders them as they ship
+// (docs/protocols/RELEASE.md, "Versions and tags"): v0.35.0-rc.1.xollama <
+// v0.35.0-rc.2.xollama < v0.35.0-xollama < v0.35.0-xollama.1 <
+// v0.35.1-rc.1.xollama. So no comparator of our own is needed here, and none
+// may be written: the release workflow's order check is `sort -V` over the
+// same tags, and the two agree only because both are plain version order.
 func semverOf(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {

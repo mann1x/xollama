@@ -42,7 +42,10 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   `scripts/check-compat-origin.sh origin/main..HEAD` (needs `git fetch fork`
   and `git fetch upstream` locally).
 - `docs/protocols/RELEASE.md` — how a release is cut: a PR `dev`→`main` titled
-  `release: v<upstream>-xollama.<n>` whose body is the notes; hosted CI
+  `release: v<upstream>-rc.<k>.xollama` (a candidate, never promoted), then
+  `release: v<upstream>-xollama` (the last candidate's tree, short check), and
+  `release: v<upstream>-xollama.<n>` for a re-release; the version always
+  follows upstream's, plain semver orders the three, and the PR body is the notes; hosted CI
   (`.github/workflows/xollama-release.yaml`) builds and publishes a pre-release
   from pinned artifacts only — the Windows CPU runtime comes from
   `llama/runtime-pin.txt`, built once by `.github/workflows/xollama-runtime.yaml`

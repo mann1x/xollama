@@ -5,6 +5,32 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — Versions follow upstream's, with release candidates; PR #5 is `release: v0.35.0-rc.1.xollama`.**
+> Owner's rule: a version always follows the upstream release dev is based on.
+> Three forms: `v<upstream>-rc.<k>.xollama` (a candidate, the dev builds, never
+> promoted), `v<upstream>-xollama` (the release, which must ship the tree of
+> the last published candidate and so takes a short install check), and
+> `v<upstream>-xollama.<n>` (a re-release, no candidates, full check). The
+> owner first proposed `xollama.rc<k>`. Measured against both sorters in the
+> release path, that sorts after `xollama.3` under semver (the updater) and
+> between `xollama` and `xollama.1` under `sort -V` (the workflow), so the
+> updater would have offered a candidate to an install already on the release.
+> With the candidate before the fork's name, both sorters agree and no
+> comparator of our own is needed. `xollama-release.yaml`: the title pattern,
+> a `kind` output, the tag filters, and the tree rule for a release.
+> `discord-announce.yaml` never announces a candidate. `app/updater`: the order
+> is documented, and `TestReleaseNamesOrderAsTheyShip` plus
+> `TestACandidateMovesToItsRelease` hold it (compiled for Windows here; they run
+> on CI's windows and macos legs). RELEASE.md's "Versions and tags" and step 7
+> (the short check) are rewritten; CLAUDE.md and the docker docs follow. PR #5
+> (head 339ef4b6, notes as before: v0.35.0 base, b208, council 11.17–11.21)
+> is retitled from the never-cut v0.34.4-xollama.3. Budgeted localization is
+> dropped (owner); the escalate measurement is later.
+> Hard runs started on eleven2go's 3090 (5ce5f7e7, plain then council, 120
+> trips each, up from 60, since both arms ran out at 60 on 2026-09-28; plain
+> at 120 stays at about 320k of the 384k window). The owner lifted the hold on
+> eleven2go for the 3090; the 9070 XT stays opencoti's (mail #556 sent).
+
 > **2026-09-29 — Medium council twice on 2da8f3fd (11.21): fixed twice; the stuck path fires live.**
 > - Run 1: FIXED, 27 trips, 939 s, 1.21 M prompt tokens, 6 edits (0 missed).
 > - Run 2: FIXED, 45 trips, 2,312 s, 2.99 M prompt tokens, 10 edits (1 missed).
