@@ -5,6 +5,12 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — Why the council missed the brace: every check read as progress (11.21).**
+> - 4770e33b run 2 had 7 identical `SyntaxError`s, yet the planner was told "changed ... progress" every cycle: 149 `moved` notes in the log, 0 `same`. So the stuck note never fired, and the first theory (template literals) was never refuted.
+> - The cause is `lastCheck` again. "The first read after the last change" took the synthesizer's read of the file it had just edited, after it had run the check and edited again. The e75c7c3e logs show the same: 140 `moved`, 0 `same`.
+> - Fix: the check is the read-only call the member calls most after its first change. One repeating the previous check is taken first. Replayed over run 2, the stuck note fires from cycle 3.
+> - Guard `TestTheCheckIsTheCallTheMemberChecksWith`, which fails on the old rule exactly as live.
+
 > **2026-09-29 — Medium council twice on 4770e33b (replay): fixed once, unfixed once.**
 > - Run 1: FIXED, 31 trips, 784 s, 1.51 M prompt tokens, 8 edits (1 missed). That is the council's fastest medium fix so far.
 > - Run 2: UNFIXED at the 60-trip cap, 1,644 s, 4.10 M prompt tokens, 11 edits (2 missed).

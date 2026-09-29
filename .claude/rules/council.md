@@ -579,3 +579,11 @@ paths:
   restricts `lastCheck` to that tool's calls.
 - **Cues (Phase 3)**: `routeCue` in `routeRequest`, `frontCue` in the auto
   front. Topic-agnostic; a stated mode skips both.
+- **Which call is the check (11.19, 11.21, `lastCheck`)**: the read-only
+  call (tool and arguments, `readKey`) the member called most after its first
+  change, the earliest on a tie; one whose latest output equals the previous
+  cycle's check wins; its latest result counts. Never "the last read" (a
+  search read as progress) or "the first read after the last change" (a read
+  of the file just edited read as progress). Both made every check look
+  moved, and the stuck note never fired. Count `same`/`moved` notes in a
+  run's log before trusting the stuck path.

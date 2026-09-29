@@ -90,47 +90,87 @@ func sameCheck(a, b string) bool {
 	return strings.Join(strings.Fields(a), " ") == strings.Join(strings.Fields(b), " ")
 }
 
-// lastCheck is the output of the check the synthesizer ran on its last
-// change: the first call that only reads after the last call that writes. A
-// read after it is investigation, not the check -- taken for the check, a
-// search that returned something new each cycle read as progress, and the
-// medium council on eleven2go (2026-09-29) was told "changed ... the lead to
-// follow" over six checks that all returned the same error. With no change
-// in the cycle, the last call that only reads stands. "" when there is none.
+// lastCheck is the output of the check the synthesizer ran on its changes,
+// or "" when there is none.
+//
+// The check is what the member itself uses to check: among the calls that
+// only read, made after its first change, the one (tool and arguments) it
+// called most, the earliest on a tie; one whose output is the previous
+// cycle's check is that same check. Its latest result counts. Twice a
+// narrower rule was wrong on eleven2go:
+//   - "the last read" took a search made after the check (96edc4ae);
+//   - "the first read after the last change" took a read of the file the
+//     synthesizer had just edited, after it had run the check and then
+//     edited again (4770e33b run 2).
+//
+// Both read as a check whose output moved, so six identical errors were
+// reported as progress and the council was never told to change approach.
+// With no change in the cycle, the last call that only reads stands.
 func (cfg Config) lastCheck(key string, turns []api.Message) string {
-	var check, last *api.ToolCall
-	wrote := false
+	type cand struct {
+		n, first int
+		last     api.ToolCall
+	}
+	var order []string
+	cands := map[string]*cand{}
+	var last *api.ToolCall
+	wrote, at := false, 0
 	for i := range turns {
 		for j := range turns[i].ToolCalls {
-			c := &turns[i].ToolCalls[j]
+			c := turns[i].ToolCalls[j]
+			at++
 			switch {
-			case local(*c):
-			case !cfg.readOnly(*c):
-				wrote, check = true, nil
+			case local(c):
+			case !cfg.readOnly(c):
+				wrote = true
 			case cfg.CheckTool != "" && c.Function.Name != cfg.CheckTool:
 				// The harness named its check: other reads are not it.
 			default:
-				last = c
-				if wrote && check == nil {
-					check = c
+				last = &turns[i].ToolCalls[j]
+				if !wrote {
+					continue
 				}
+				k := readKey(c)
+				if cands[k] == nil {
+					cands[k] = &cand{first: at}
+					order = append(order, k)
+				}
+				cands[k].n++
+				cands[k].last = c
 			}
 		}
 	}
-	for _, c := range []*api.ToolCall{check, last} {
-		if c == nil {
-			continue
-		}
-		if res, _, ok := cfg.result(key, *c); ok {
-			return truncate(res, maxCheckChars)
-		}
-		if c == check {
-			// The check's own result is what counts; without it, nothing is
-			// compared rather than a read standing in for it.
+	if len(order) == 0 {
+		if last == nil {
 			return ""
 		}
+		res, _, _ := cfg.result(key, *last)
+		return truncate(res, maxCheckChars)
 	}
-	return ""
+	out := func(k string) (string, bool) {
+		res, _, ok := cfg.result(key, cands[k].last)
+		return truncate(res, maxCheckChars), ok
+	}
+	if n := len(cfg.checks); n > 0 && cfg.checks[n-1] != "" {
+		for _, k := range order {
+			if res, ok := out(k); ok && sameCheck(res, cfg.checks[n-1]) {
+				return res
+			}
+		}
+	}
+	best := order[0]
+	for _, k := range order[1:] {
+		if cands[k].n > cands[best].n {
+			best = k
+		}
+	}
+	res, ok := out(best)
+	if !ok {
+		// The check's own result is what counts; without it, nothing is
+		// compared rather than a read standing in for it.
+		return ""
+	}
+	return res
 }
 
 // checkNote says, in a testing synthesizer's instruction, that a whole

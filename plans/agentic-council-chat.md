@@ -2344,6 +2344,32 @@ are replayed onto it (`replay` in `quote.go`; a whole write is the text
 itself), so the read stays current across them. Guard:
 `TestTheReadFollowsTheMembersOwnChanges`, which fails with the replay off.
 
+### 11.21 The check is the call the member checks with (built 2026-09-29)
+
+On 4770e33b run 2 the council never found the stray `}` ending `dGrid`. All 7
+checks returned the same `SyntaxError: Unexpected token '{'`, yet the planner
+was told "changed from the one before: progress" every cycle (149 such notes
+in that log, none "same"), so the stuck note never fired. The first theory
+(template literals, read into the `{` of the error) was never refuted, and
+every cycle rewrote more template literals.
+
+11.19's rule, "the first read after the cycle's last change", took the
+wrong call again. The synthesizer ran the check, edited again, then read the
+file it had edited, so the recorded "check" was the file's own text, which
+differs after every edit. The e75c7c3e logs show the same thing: `moved`
+140 times, `same` never.
+
+Built (`lastCheck`, `internal/council/stuck.go`):
+- Among the read-only calls after the member's first change, the check is
+  the one (tool and arguments) it called most, the earliest on a tie. One
+  whose latest output is the previous cycle's check is taken first. The
+  harness's named check tool (`council.check`) still restricts the choice.
+- Replayed over run 2's trips, it records the same `run_game` error every
+  cycle, so the stuck note fires from cycle 3.
+- Guard: `TestTheCheckIsTheCallTheMemberChecksWith`. On the old rule it
+  returns the edited file's text, exactly as live.
+  `TestTheCheckIsTheReadAfterTheLastChange` (11.19) still passes.
+
 ### 11.11 Checks that stop moving change the approach (built 2026-09-28)
 The fifth simple run (b336b144) returned the same "missing ) after argument
 list" from every check for 60 trips. The plain arm fixed the task in 27 trips:

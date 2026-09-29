@@ -204,3 +204,43 @@ func TestTheUsersCuesReachTheRouteAndTheFront(t *testing.T) {
 		t.Errorf("answer mode's front is offered a hand-off:\n%s", f)
 	}
 }
+
+// 4770e33b run 2: the synthesizer ran the check, edited again, then read the
+// file it had edited. The check is the call it checks with, not the read
+// after its last change, or every cycle's "check" is the file text and six
+// identical errors read as progress.
+func TestTheCheckIsTheCallTheMemberChecksWith(t *testing.T) {
+	cfg := toolCfg()
+	cfg.Tools = append(cfg.Tools, api.Tool{Type: "function", Function: api.ToolFunction{Name: "run_game", ReadOnly: true}})
+	run := func(id string) api.ToolCall {
+		return api.ToolCall{ID: id, Function: api.ToolCallFunction{Name: "run_game", Arguments: api.NewToolCallFunctionArguments()}}
+	}
+	cfg.Results = map[string]string{
+		ForwardedID("s", "w1"): "edited", ForwardedID("s", "k1"): "SyntaxError: Unexpected token '{'",
+		ForwardedID("s", "k2"): "SyntaxError: Unexpected token '{'", ForwardedID("s", "w2"): "edited",
+		ForwardedID("s", "w3"): "edited", ForwardedID("s", "r"): "1: <html> the file as edited",
+		ForwardedID("s", "f"): "111: a search hit",
+	}
+	search := pathRead("f", "a.js")
+	search.Function.Name = "read_files"
+	turns := []api.Message{
+		{Role: "assistant", ToolCalls: []api.ToolCall{editCall("w1", "a", "b"), run("k1")}},
+		{Role: "assistant", ToolCalls: []api.ToolCall{run("k2")}},
+		{Role: "assistant", ToolCalls: []api.ToolCall{editCall("w2", "c", "d")}},
+		{Role: "assistant", ToolCalls: []api.ToolCall{editCall("w3", "e", "f")}},
+		{Role: "assistant", ToolCalls: []api.ToolCall{pathRead("r", "a.js")}},
+	}
+	if got := cfg.lastCheck("s", turns); got != "SyntaxError: Unexpected token '{'" {
+		t.Errorf("check %q, want the run the member checks with", got)
+	}
+	// One run and one read after it: the earliest, the run, is the check;
+	// and a read whose output repeats the previous check is that check.
+	one := []api.Message{{Role: "assistant", ToolCalls: []api.ToolCall{editCall("w1", "a", "b"), run("k1"), pathRead("r", "a.js")}}}
+	if got := cfg.lastCheck("s", one); got != "SyntaxError: Unexpected token '{'" {
+		t.Errorf("check %q, want the earliest read after the change", got)
+	}
+	cfg.checks = []string{"1: <html> the file as edited"}
+	if got := cfg.lastCheck("s", one); got != "1: <html> the file as edited" {
+		t.Errorf("check %q, want the call that repeats the previous check", got)
+	}
+}
