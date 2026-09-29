@@ -5,6 +5,28 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — Why the hard pair ended as it did: the host ran out of virtual memory, and the council's change of approach never became a task.**
+> Engine deaths (eleven2go server log, Windows event 2004): both followed a
+> low-virtual-memory condition. 15:34:55: our b208 engine 33.2 GB + opencoti's
+> own test engine on the 9070 (2609291336001) 21.8 GB; 15:36:37 SIGSEGV in the
+> CUDA graph path. 16:00:30: 37.3 + 18.6 GB; 16:00:40 `cudaGraphInstantiate`
+> out of memory, abort 0xc0000409; Edge crashed OOM the same second. Commit
+> limit 63 GB on 31 GB RAM. Our engine's host footprint is large for a 10 GB
+> model: 10 sequences, up to 32 context checkpoints each at 85-250 MiB (8.3 GiB
+> live at the second death) plus the prompt cache. Contention, not a new defect.
+> Plain did not localize the fault either: 20 trips on the same template-literal
+> theory with the check unchanged, then `write_file` of the whole file at trip
+> 22, which passes `run_gamefull.js` exactly as `reference.html` does. The
+> council never used `write_file` (16 local edits). The stuck note fired (58
+> times, "or replace the failing part whole"), and planner round 2 wrote "instead
+> of piecemeal fixes, I'll replace the entire JavaScript section", but its
+> briefs kept the refuted theory (task #4, template literals), left every task
+> `open`, and assigned the rewrite to nobody; the synthesizer applies what
+> members propose, so it made local edits again. Round 5 narrowed to "the Level
+> class methods for unclosed braces" (the actual fault, `Level.dDec`) two
+> minutes before the engine died, at trip 48 of 120. Also: four member requests
+> got a 12800-token engine window; one critic's 13196-token request was refused.
+
 > **2026-09-29 — A quantized V the engine refuses without flash attention is retried at f16 (`kv-fa-retry`); hard: plain fixed, council not, both runs ended in an engine death.**
 > llama.cpp resolves `--flash-attn auto` from the actual placement
 > (`llm_fused_op_flash_attn_probe`) and then refuses a quantized V. Upstream
