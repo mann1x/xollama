@@ -10,7 +10,8 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 > - Correction to earlier entries and to the consultants' brief: `} })};` at the end of `dIt` and `dPw` is valid JavaScript (a class body allows a stray `;`; checked with node).
 >   - The council's seven failed edits on `dIt`'s ending were attempts to fix text that was never broken. Those rewrites were no progress, not hidden progress.
 >   - What diagnosing a non-fault costs is now part of the consultation (injected into `csl-2026-09-29-0846-320d`).
-> - Council vs plain on this build: 34 / 54 trips vs 15, and 1,954 / 3,054 s vs 125.
+> - Plain run 2 confirms it: fixed in 11 trips / 132 s, 305 k prompt tokens, 3 edits, all applied. It fixed `dGrid`'s brace, added `sX`, and added the missing top-level functions in one block. Again it never touched `dIt` or `dPw`.
+> - Council vs plain on this build: 34 / 54 trips vs 15 / 11, and 1,954 / 3,054 s vs 125 / 132.
 
 > **2026-09-29 — Medium council run 2 on e75c7c3e: fixed again, 54 trips / 3,054 s.**
 > - Two of two runs fixed on this build (34 trips / 1,954 s, then 54 / 3,054). Plain: 12 / 114.
