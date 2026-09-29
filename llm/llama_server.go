@@ -225,6 +225,9 @@ type llamaServerLaunchConfig struct {
 	// relaunch when a server-wide XOLLAMA_K/V_CACHE_TYPE stock does not
 	// accept met a load stock serves (resolveKVCacheTypesOn).
 	stockKV bool
+	// xollama-hook: kv-fa-retry — forceF16V relaunches with the V half at f16
+	// after the engine refused a quantized V without flash attention.
+	forceF16V bool
 }
 
 func newLlamaServerHTTPClient() *http.Client {
@@ -456,7 +459,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	// The resolver keeps OLLAMA_KV_CACHE_TYPE as the default and lets the
 	// XOLLAMA_* variables and the model's own config override either half.
 	// See docs/xollama/kv-cache.mdx.
-	kvTypes := resolveKVCacheTypesOn(launch.config, launch.kvCacheType, launch.stockKV)
+	kvTypes := launch.withF16V(resolveKVCacheTypesOn(launch.config, launch.kvCacheType, launch.stockKV)) // xollama-hook: kv-fa-retry
 	params = appendKVCacheArgs(params, kvTypes)
 
 	params = appendFlashAttentionArgs(params, launch.config, launch.gpus)
@@ -1397,6 +1400,13 @@ func (s *llamaServerRunner) Load(ctx context.Context, systemInfo ml.SystemInfo, 
 		if retried {
 			if err := s.WaitUntilRunning(ctx); err != nil {
 				return nil, fmt.Errorf("llama-server startup failed after projector CPU offload retry: %w", err)
+			}
+		} else if kvRetried, kvErr := s.retryWithF16V(err); kvErr != nil || kvRetried { // xollama-hook: kv-fa-retry
+			if kvErr != nil {
+				return nil, kvErr
+			}
+			if err := s.WaitUntilRunning(ctx); err != nil {
+				return nil, fmt.Errorf("llama-server startup failed after retrying with an f16 V cache: %w", err)
 			}
 		} else {
 			stockRetried, stockErr := s.retryOnStockEngine(err)

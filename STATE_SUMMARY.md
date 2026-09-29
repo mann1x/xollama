@@ -5,6 +5,30 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — A quantized V the engine refuses without flash attention is retried at f16 (`kv-fa-retry`); hard: plain fixed, council not, both runs ended in an engine death.**
+> llama.cpp resolves `--flash-attn auto` from the actual placement
+> (`llm_fused_op_flash_attn_probe`) and then refuses a quantized V. Upstream
+> v0.35.0 sends the same flags and has no retry, which corrects my earlier
+> claim that upstream falls back to f16 (only its old Go runner did). The
+> owner chose a single retry: on exactly that refusal, relaunch once with V at
+> f16 and warn, only for a V xollama asked for (the model's `kv.v` or
+> `XOLLAMA_V_CACHE_TYPE`). `OLLAMA_KV_CACHE_TYPE` alone keeps upstream's
+> failure. `llm/engine_kv_fa.go` plus three marked lines in
+> `llm/llama_server.go`; four tests, the upstream gate mutation-checked.
+> Verified live on solidPC's xollama-dev (`council-c365.sh`, now the
+> `xollama-kvfa-wip` build, b208 at the pin): `omni-council-64k` (`kv.v`
+> q8_0) CPU-only was refused, retried with `v=f16` (KV 98 → 128 MiB) and
+> answered; the failed start cost 11 s. solidPC's 3090 was busy with
+> opencoti's gemma-4-31B run, hence the CPU-only probe.
+> Hard on eleven2go (5ce5f7e7, 120 trips, `MANIC_NUM_PREDICT=16384`):
+> **plain fixed** in 24 trips, 232 s (oracle PLAYING), and then its next
+> request died with the engine (`wsarecv: forcibly closed`); **council not
+> fixed**, 48 trips, 1440 s, ended by a critic request over its 12800-token
+> slot and then `CUDA error: out of memory` in `cudaGraphInstantiate` on the
+> 3090. The first plain start ran without the reply cap and was aborted after
+> one reply ran more than 20 minutes (kept as `*-ABORTED-uncapped`). Next:
+> the eleven2go server log for both engine deaths.
+
 > **2026-09-29 — Every load names its model in the server log (`load-log`).**
 > The engines log a load only by its blob path. `server/load_log.go`, from one
 > hook line before `newServerFn` in `server/sched.go`, now writes three Info
