@@ -5,6 +5,18 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — Medium council on e75c7c3e (eleven2go 3090): fixed.**
+> - **Fixed** in 34 trips and 1,954 s, and declared DONE. The first council fix of medium since d17af426 on b203 (19 trips / 778 s).
+>   - Nine checks: five identical SyntaxErrors, then a changed error (`missing ) after argument list`), then back to the first error, then passing.
+>   - Twelve edits, three of which missed their text.
+> - Plain on the same build and host: 12 trips / 114 s, so the council is 17× slower.
+> - Usage (calls / prompt / output tokens):
+>   - synthesizer 35 / 1.20 M / 18 k;
+>   - researcher 28 / 0.87 M / 35 k;
+>   - critic 8 / 0.20 M / 9 k;
+>   - planner 4, front 5, reviewer 4, builder 1.
+> - The first attempt on this build died at engine startup: an engine orphaned by the test deploy script held its pinned memory. The script now unloads models before stopping xollama.
+
 > **2026-09-29 — Why the council kept a refuted explanation: its "moved" signal was wrong.**
 > - In the 96edc4ae transcripts, the planner converted one kind of syntax, then more of it, then another kind, while every check returned the same SyntaxError.
 > - The runtime told it each check had moved. It took the cycle's last read-only call as the check, and that was a search after `run_game`. The stuck note never fired.
