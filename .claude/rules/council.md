@@ -581,6 +581,14 @@ paths:
   restricts `lastCheck` to that tool's calls.
 - **Cues (Phase 3)**: `routeCue` in `routeRequest`, `frontCue` in the auto
   front. Topic-agnostic; a stated mode skips both.
+- **A turn's layers outlive its round trips (11.24, `council_layers_kept.go`)**:
+  a request ending with the members' calls stashes the layers it used (and
+  their parents) for the owner. The next request of the same turn adopts them
+  on the same runner and kept root. Anything else releases them newest first,
+  as does `councilStashIdle`. A root rebuild calls `dropAdopted` before the old
+  root goes. Never stash without a kept root (an unowned pool is not the
+  owner's). Never keep a layer the round trip did not use, or stale stages pile
+  up in the owner's cells.
 - **A member sized to its request is sized in tokens (11.23, `ownWindow`)**:
   a background reviewer and the builder state a window of their request plus
   reply cap plus 512, counted by rendering and tokenizing

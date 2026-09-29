@@ -5,6 +5,17 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — 11.24: a turn's stage layers are kept across its tool round trips.**
+> On hard, 265,334 of the 582,509 tokens the pool builds prefilled were
+> layers the previous request had just released. Each round trip is a new
+> request, and only the conversation's root survived one. Now a request
+> ending with the members' calls stashes the layers it used, and the next
+> request of the same turn adopts them, on the same runner and kept root.
+> Anything else releases them, as does 10 minutes without a round trip.
+> `server/council_layers_kept.go`. Six tests (mutation-checked); server and
+> council suites pass under `-race`, lint clean. Not measured live yet: the
+> next hard run counts `pool built` per request.
+
 > **2026-09-29 — 11.23: the 12800-token windows were a reviewer sized by a character estimate.**
 > The small windows on hard were the members sized to their own request (a
 > background reviewer, the builder), not the council's working members (116

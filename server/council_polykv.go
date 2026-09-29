@@ -120,6 +120,13 @@ type councilTree struct {
 	// state cells, so a stage's layer is released once its members are done.
 	recurrent bool
 	workers   map[string]*councilLayer // worker session -> the layer it attached to
+	// stashTurn is set when the request ends with the members' tool calls:
+	// its layers are kept for the turn's next round trip (council_layers_kept.go).
+	// stashed is the last round trip's, until the turn is known (adopt);
+	// adopted is what adopt took, until the root is settled (buildRoot).
+	stashTurn string
+	stashed   *councilStash
+	adopted   []*councilLayer
 }
 
 type councilLayer struct {
@@ -131,6 +138,7 @@ type councilLayer struct {
 	users    int  // workers attached and not yet closed
 	root     bool // the conversation's own layer, kept for the whole turn
 	released bool
+	used     bool // asked for by this request (council_layers_kept.go)
 	// keep outlives the turn: the conversation's root, owned by the owner,
 	// for the next turn to extend. chain is the older roots it was forked
 	// from, oldest first.
@@ -362,6 +370,9 @@ func (t *councilTree) buildRoot(ctx context.Context, conv []api.Message) error {
 		}
 	}
 	if prev != nil {
+		// The layers adopted from the last round trip stand on the old
+		// root: they go first, or the engine keeps it for its children.
+		t.dropAdopted(ctx)
 		// Let the old root go before building afresh: it counts against the
 		// same allocation. Still the owner's: begin found its allocation live,
 		// and nobody else books this session between turns.
@@ -428,6 +439,7 @@ func (t *councilTree) releaseRoot(ctx context.Context, r *councilRoot) {
 // private"). The idle fold builds the root again from the compacted
 // conversation; a fold that fails costs the next turn a rebuild.
 func (t *councilTree) dropKept(ctx context.Context) {
+	t.dropAdopted(ctx) // they stand on the root
 	t.mu.Lock()
 	r := t.kept
 	t.kept = nil
@@ -539,6 +551,7 @@ func (t *councilTree) layer(ctx context.Context, text string, msgs []api.Message
 	key := layerKey(text)
 	t.mu.Lock()
 	if l, ok := t.layers[key]; ok {
+		l.used = true
 		t.mu.Unlock()
 		select {
 		case <-l.ready:
@@ -547,7 +560,7 @@ func (t *councilTree) layer(ctx context.Context, text string, msgs []api.Message
 			return nil, ctx.Err()
 		}
 	}
-	l := &councilLayer{text: text, ready: make(chan struct{})}
+	l := &councilLayer{text: text, ready: make(chan struct{}), used: true}
 	t.layers[key] = l
 	idle := t.idleLeavesLocked(text)
 	t.mu.Unlock()
@@ -689,6 +702,7 @@ func (t *councilTree) release() {
 			order = append(order, l)
 		}
 	}
+	order = t.stashLocked(order, keep)
 	t.order, t.layers = nil, map[string]*councilLayer{}
 	if keep != nil {
 		// The idle council summarises on it; the next turn extends it.
@@ -808,11 +822,15 @@ func (t *councilTree) begin(ctx context.Context) (pressure float64) {
 	// owner's allocation lives: closing it releases its pools, and the id can
 	// then name another conversation's pool. So it is adopted only while live,
 	// and only on the runner that made it.
+	var root *councilRoot
 	if r, had := councilRoots.take(t.owner); had && ok && !t.unowned && r.kv == t.kv {
 		t.mu.Lock()
 		t.kept = &r
 		t.mu.Unlock()
+		root = &r
 	}
+	// The last round trip's layers stand on that root, under the same rule.
+	t.takeStash(ctx, root)
 	if !ok {
 		return 0
 	}

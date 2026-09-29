@@ -2344,6 +2344,38 @@ are replayed onto it (`replay` in `quote.go`; a whole write is the text
 itself), so the read stays current across them. Guard:
 `TestTheReadFollowsTheMembersOwnChanges`, which fails with the replay off.
 
+### 11.24 A turn's layers are kept across its round trips (built 2026-09-29)
+
+Hard on eleven2go (5ce5f7e7): the pool builds prefilled 582,509 tokens, and
+265,334 of them were a layer the previous request had just released. Each
+harness tool round trip is its own HTTP request. Each request built its tree
+and released everything at its end except the conversation's root (pool 1,
+kept on all 47 requests). So after every resume the members' stage layer was
+built again: one 6,636-token layer five times in 78 s, 4.7 s each. The
+reviewers, the first suspect, were 15.6k tokens (1.1 % of the prefill).
+
+Built (`server/council_layers_kept.go`, part of the `council` hook):
+- A request that ends with the members' calls (`suspend`) puts its layers
+  aside for the owner (`stashLocked`, from `release`). It keeps only the layers
+  this request used and the ones they stand on (`used`). An adopted layer that
+  is not asked for again is a stage the turn has moved past, and it is released.
+- The next request takes them in `begin` under the kept root's rules: only on
+  the runner that made them, only while the owner's allocation lives, and only
+  on the same kept root. It adopts them once the turn is known (`adopt`, same
+  turn hash). The members then attach to them, as `layer` finds them by text.
+- Anything else releases them, newest first. That covers another turn, another
+  runner, another root, a rebuilt root (`dropAdopted` runs before the old root
+  goes, since the engine keeps a pool with a child), and a client that does not
+  come back within `councilStashIdle` (10 min).
+- Guards, each mutation-checked (the rule removed, the test fails):
+  `TestARoundTripKeepsItsStageLayers` (the fake engine, two requests of one
+  turn), `TestAnotherTurnReleasesTheKeptLayers`,
+  `TestKeptLayersGoWhenTheClientDoesNotComeBack`,
+  `TestAStashKeepsOnlyTheLayersInUse`, `TestAStashIsAdoptedOnlyWhereItStands`
+  and `TestARebuiltRootDropsTheAdoptedLayersFirst`.
+- Not measured live yet. The measurement is `pool built` per request on the
+  next hard run (the 3090 is lent to opencoti).
+
 ### 11.23 A member sized to its request is sized in tokens (built 2026-09-29)
 
 Hard on eleven2go (5ce5f7e7): four requests ran in a 12800-token engine

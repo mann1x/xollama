@@ -185,6 +185,9 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	// results leave the conversation for the members that made them.
 	cfg.Tools, members.tools = req.Tools, req.Tools
 	cfg.Turn = fmt.Sprintf("%x", turnHash)
+	if tree != nil {
+		tree.adopt(ctx, cfg.Turn) // the last round trip's layers (council_layers_kept.go)
+	}
 	if len(req.Tools) > 0 && cfg.Critics > 0 && members.session != "" {
 		cfg.Reviews = councilDesks.get(members.session, cfg, members)
 	}
@@ -296,6 +299,9 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		var carry council.Progress
 		if len(res.Calls) > 0 {
 			carry = res.Progress
+			if tree != nil {
+				tree.suspend(cfg.Turn) // its layers wait for the next round trip
+			}
 			select {
 			case ch <- api.ChatResponse{Model: req.Model, CreatedAt: time.Now().UTC(), Message: api.Message{Role: "assistant", ToolCalls: res.Calls}}:
 			case <-c.Request.Context().Done():
