@@ -116,7 +116,13 @@ func (f *fakeKV) CloseSession(_ context.Context, id string) error {
 func (f *fakeKV) KV(context.Context) (llm.KVStatus, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.liveAfter > 0 && f.grant == 0 && len(f.e.roles) > 0 {
+	calls := 0
+	if f.councilRunner != nil && f.e != nil {
+		f.e.mu.Lock()
+		calls = len(f.e.roles)
+		f.e.mu.Unlock()
+	}
+	if f.liveAfter > 0 && f.grant == 0 && calls > 0 {
 		f.grant = f.liveAfter
 	}
 	k := llm.KVStatus{Pressure: f.pressure, LargestAdmissible: f.admissible}
@@ -133,7 +139,14 @@ func (f *fakeKV) KV(context.Context) (llm.KVStatus, error) {
 	return k, nil
 }
 
+// ownerLocked reads the engine's calls under the engine's own lock: a turn's
+// idle compaction asks KV while a member's call is still being recorded.
 func (f *fakeKV) ownerLocked() string {
+	if f.councilRunner == nil || f.e == nil {
+		return ""
+	}
+	f.e.mu.Lock()
+	defer f.e.mu.Unlock()
 	for i, r := range f.e.roles {
 		if r == "route" {
 			return f.e.sessions[i]
