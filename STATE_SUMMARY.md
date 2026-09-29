@@ -5,6 +5,13 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — The consultants answered; a misquoted change is now answered in place (11.20).**
+> - `csl-2026-09-29-0846-320d` (34 min). Ranked: (1) a hidden-progress signal, (2) repairing edit quotes, (3) the harness directive, (4) batching by a runtime prompt, (5) runtime escalation, (6) Stream-and-Sift. Measure n = 5 per cell with seeds fixed and jitter 0 before the cloud tests.
+> - Built (2): `internal/council/quote.go`. When a writer's own last read of the same target shows a long start of the change's quote but not the rest, the call is answered in place with the read's own text where the match stops. No trip. At most 4 per member. Four tests, three of which fail with the guard off.
+> - Not built (1), as proposed. Its signal ("same check output, but a write was accepted, so continue") is exactly 96edc4ae's failure: accepted syntax conversions and the same error six times. It would undo 11.19. The correction also stands: on e75c7c3e the rewrites of `dIt`/`dPw` were no progress, and the real faults surfaced one per check, as in plain.
+> - Not built (4). It is a prompt at the step budget, and plain also edits once per trip. The cost is the re-plan cycles (≈1,300 of 1,954 s), not the synthesizer's trips.
+> - The harness review is recorded in `plans/council-harness.md` (Review): verbatim evidence, `answer` skips the route, instructions in the charter, the mode holds for the turn, and an optional check tool named by the harness.
+
 > **2026-09-29 — Plain medium on e75c7c3e: fixed in 15 trips / 125 s. A correction: `dIt`/`dPw` were never faults.**
 > - Plain: 15 trips, 125 s, 549 k prompt tokens, 3 edits, all applied. It changed exactly three places: the extra `}` ending `dGrid`, a missing `sX`, a missing `initClouds`.
 > - Correction to earlier entries and to the consultants' brief: `} })};` at the end of `dIt` and `dPw` is valid JavaScript (a class body allows a stray `;`; checked with node).

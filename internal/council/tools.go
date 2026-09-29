@@ -116,6 +116,7 @@ func (cfg Config) transcript(r Role, key string, turns []api.Message) []api.Mess
 	var out []api.Message
 	folded := cfg.folded(r, key, turns)
 	sent := cfg.sends(key, turns)
+	misq := cfg.misquotes(r, key, turns)
 	seen := map[string]string{}
 	for _, t := range turns {
 		out = append(out, t)
@@ -123,6 +124,8 @@ func (cfg Config) transcript(r Role, key string, turns []api.Message) []api.Mess
 			res := noResult
 			if ok, why := cfg.may(r, c); !ok {
 				res = why
+			} else if h, ok := misq[c.ID]; ok {
+				res = h
 			} else if c.Function.Name == PostTool {
 				res = cfg.postAnswer(r, key, c)
 			} else if c.Function.Name == RebuildTool {
@@ -178,7 +181,11 @@ func (cfg Config) forwarded(r Role, key string, turns []api.Message) []api.ToolC
 		return nil
 	}
 	var out []api.ToolCall
+	misq := cfg.misquotes(r, key, turns)
 	for _, c := range turns[len(turns)-1].ToolCalls {
+		if _, answered := misq[c.ID]; answered {
+			continue
+		}
 		if ok, _ := cfg.may(r, c); ok && !local(c) && !cfg.cachedRead(c) {
 			c.ID = ForwardedID(key, c.ID)
 			out = append(out, c)
@@ -491,6 +498,11 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 		}
 		// A turn that only read evidence back, or repeated reads the turn has
 		// made, is answered here, at once.
+		// A change answered in place (quote.go) costs a step, not a trip nor
+		// a refusal: misquotes bounds it.
+		if misq := cfg.misquotes(req.Role, key, turns); slices.ContainsFunc(turns[len(turns)-1].ToolCalls, func(c api.ToolCall) bool { _, ok := misq[c.ID]; return ok }) {
+			continue
+		}
 		if (slices.ContainsFunc(rep.Calls, local) && (cfg.canLookup() || cfg.canPost(req.Role) || cfg.canReview(req.Role))) || slices.ContainsFunc(rep.Calls, cfg.cachedRead) {
 			if lookups++; lookups > maxLookups {
 				return replyText(turns, ""), nil, nil

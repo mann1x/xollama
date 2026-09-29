@@ -467,6 +467,16 @@ paths:
   `strikeNote(n)`, and at `loopStrikes` `callTools` ends the member's steps
   (`strikeStop`, RETEST when testing). Reads keep `repeatedCall`. Keep the
   count reset on a different result: the call did something else.
+- **Misquoted changes (11.20, `internal/council/quote.go`)**: `misquotes`
+  answers a writer's change in place when its own latest read of the same
+  target (gutters dropped) has >= `minQuoted` chars of the quote's start and a
+  mid-line mismatch after it, showing the read's text there. Scan back only to
+  the member's last change to that target the tool did not refuse
+  (`failedWrite` words). Never refuse on a mismatch at a line's end or where
+  the read ends: that read showed part. `maxMisquotes` bounds it; an answer
+  in place `continue`s `callTools` without spending a refusal. `transcript`
+  and `forwarded` must call the same `misquotes`, or a call is both refused
+  and sent.
 - **The front's handoff (11.15)**: `frontRead` (reads after its last change)
   goes to every member as `frontReadSource` (`Progress.Read`, state 14, never
   kept); `frontReport` is only its changes onward, or "" when it only read.

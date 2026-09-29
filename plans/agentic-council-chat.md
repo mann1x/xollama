@@ -2302,6 +2302,40 @@ Built:
 - Guard: `TestTheCheckIsTheReadAfterTheLastChange`. With the old `lastCheck`
   it fails exactly as live ("more search results").
 
+### 11.20 A misquoted change is answered with the text the read shows (built 2026-09-29)
+
+On e75c7c3e run 2, 6 of 21 edits named text the file did not have. `dIt` is
+one 564-character minified line; to change its last characters the
+synthesizer quoted the whole line, copied 560 characters exactly, then wrote
+the tail as code usually looks (`}}})`, `});}}`, ...) instead of the file's
+`} })};`. Seven attempts, a trip each, on text that was not even a fault. The
+"read the target and quote from it" note (11.15) did not help. The
+consultants (`csl-2026-09-29-0846-320d`) ranked this second, as deterministic.
+
+Built (`internal/council/quote.go`):
+- Before a writer's change is forwarded, the member's own reads of the same
+  target (the `path`-like argument), latest first, back to its last change to
+  that target the tool did not refuse, are searched for the change's quote
+  (the `old_text`-like argument, `noOpPairs`). Line-number gutters are dropped
+  first (`N: `, tab, `|`).
+- A read with the whole quote lets it go. One with at least `minQuoted` (32)
+  characters of its start, a mismatch inside a line and text after it answers
+  the call in place: where the match stops, what the read has there and what
+  the quote has, verbatim, and "quote only the smallest span around the
+  change that occurs once". No trip.
+- A mismatch at a line's end, a read that ends there, or too short a match
+  lets the call go: that read showed only part, or the quote is of
+  something else (an insert written as a replace).
+- At most `maxMisquotes` (4) per member are answered in place; past that the
+  client's own answer stands. An answer in place costs a step, not a
+  refusal.
+- Guards (`quote_test.go`), each failing with the guard off:
+  `TestAMisquotedChangeIsAnsweredWithTheActualText`,
+  `TestARefusedChangeKeepsTheRead`,
+  `TestMisquotesAreAnsweredInPlaceOnlySoOften`; and
+  `TestAChangeTheReadBearsOutGoesOut` (exact across lines with gutters, too
+  little matched, a change in between).
+
 ### 11.11 Checks that stop moving change the approach (built 2026-09-28)
 The fifth simple run (b336b144) returned the same "missing ) after argument
 list" from every check for 60 trips. The plain arm fixed the task in 27 trips:

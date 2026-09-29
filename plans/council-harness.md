@@ -177,3 +177,28 @@ Cerebriline's own runs.
    builder's own bounds (the most the loop can afford, `validBuild`) still
    apply. Only the model's stated value stops being a ceiling for a stated
    build.
+
+## Review (consultants, `csl-2026-09-29-0846-320d`, 2026-09-29)
+
+They say the directive makes the runtime's own escalation logic unnecessary:
+the harness owns the transition, and a stated build and evidence remove the
+front turn, the builder call and the first re-plan cycle. Their amendments,
+open for the owner, with my reading:
+
+1. **`evidence[].result` is the check's output, verbatim.** Then `sameCheck`
+   (`stuck.go`) compares the agent's last check with the council's first,
+   across the boundary. Recommended: cheap, and it makes the evidence
+   measurable.
+2. **`answer` skips the route decision.** `Decide` (`run.go`) runs only on a
+   turn without tools, where the front does not; `answer` must bypass both.
+   Already the intent; the tests will say so.
+3. **Council instructions go in the charter**, the shared prefix every role
+   reads, not into each role's prompt, so PolyKV keeps one prefix.
+   Recommended. Role instructions stay per role.
+4. **A stated mode holds for the turn**; without one, `auto`. Already the
+   intent.
+5. **The harness names its check tool.** That replaces `lastCheck`'s
+   inference ("the first read after the last change"), which has been wrong
+   once already (11.19). Recommended, as an optional `check` field naming the
+   tool; without it, the inference stays.
+

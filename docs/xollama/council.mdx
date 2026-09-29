@@ -276,6 +276,15 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
     and its report points at the first read ("returned the same as
     `r1:call_x`") instead of carrying it twice. A result of a tool that is not
     read-only clears what was read before it.
+  - **A change whose quote the last read does not bear out never reaches
+    you.** When a change names the text it replaces (`old_text`,
+    `old_string`, `search`…) on a target (`path`, `file_path`…), and the
+    member's own last read of that target has a long start of the quote but
+    not the rest of it, the council answers the call in its place: where
+    the quote stops matching, what the read has there, and to quote only the
+    smallest span that occurs once. Line numbers in the read are ignored.
+    Up to four such answers per member; after that the change is sent to you
+    and your answer stands.
   - **A confirmed error goes straight to the synthesizer.** A critic that has
     checked where an error is ends its review with
     `VERDICT: CONFIRMED path:line`. The other critics stop, no further round
