@@ -200,6 +200,26 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 			}
 		})
 	}
+	if route == "" {
+		// A harness's stated mode holds for the turn (directive.go).
+		switch cfg.mode() {
+		case api.CouncilModeAnswer:
+			route = "direct"
+			if _, ok := m.(ToolModel); ok && len(cfg.Tools) > 0 {
+				route = RouteFront
+			}
+		case api.CouncilModeEscalate, api.CouncilModeDeliberate:
+			route = RouteCouncil
+		}
+		if route != "" {
+			mark(func() {
+				p.Route = route
+				if cfg.mode() == api.CouncilModeEscalate {
+					p.Prior = append(p.Prior, cfg.escalated()...)
+				}
+			})
+		}
+	}
 	if route == "" && cfg.fronted(m) {
 		// The synthesizer takes the request first (front.go).
 		route = RouteFront
@@ -210,7 +230,7 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 		fcfg := cfg.apply(cfg.previousBuild())
 		fcfg.build = p.Build
 		ans, turns, next, err := front(ctx, m.(ToolModel), fcfg, d, conv, emit, p.Suspended[key], func(ctx context.Context) (*Build, error) {
-			b, err := MakeBuild(ctx, m, cfg, d, conv, emit)
+			b, err := cfg.makeBuild(ctx, m, d, conv, emit)
 			if err == nil {
 				mark(func() {
 					p.Build = b.clone()
@@ -301,9 +321,9 @@ func RunFrom(ctx context.Context, cfg Config, m Model, conv []api.Message, from 
 	}
 	if p.Build == nil {
 		b := cfg.previousBuild()
-		if b == nil || route == RouteRebuild {
+		if b == nil || route == RouteRebuild || cfg.Stated != nil {
 			var err error
-			if b, err = MakeBuild(ctx, m, cfg, d, conv, emit); err != nil {
+			if b, err = cfg.makeBuild(ctx, m, d, conv, emit); err != nil {
 				return Result{Route: route, Draws: d}, err
 			}
 		}

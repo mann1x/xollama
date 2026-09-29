@@ -558,3 +558,22 @@ paths:
 - **A repeated call (11.2)**: `transcript` appends `repeatedCall` to a result
   that repeats, word for word, an earlier identical call's result in the same
   member's turns. Keep it generic: it serves any tool.
+- **The harness directive (`internal/council/directive.go`,
+  plans/council-harness.md)**: `ChatRequest.Council` → `Config.Direct`. A
+  stated mode sets the route before the front / `Decide` and is never left:
+  `answer` = `RouteFront` on a tool turn (no routing tools, `answerMsg`, no
+  front step budget) else `direct`; `escalate`/`deliberate` = `RouteCouncil`,
+  escalate appending `escalated()` evidence to `Prior`. `makeBuild` returns
+  the stated build over `MakeBuild` at every builder call site, including the
+  front's rebuild. Unknown mode or slot is an error (400), never ignored.
+- **Instructions**: `Config.Instructions[slot]` = `Said{Owner, Client}`.
+  `Everyone` goes through `charter()` (the shared prefix) plus the front and
+  the direct answer; a role's through `prompt()`. `apply` must use
+  `basePrompt`, or the guidance lands twice. Empty guidance must leave every
+  member's messages byte-identical (`TestNoInstructionsChangeNothing`).
+- **Across the hand-off**: `priorCheck()` (escalate only) is the agent's last
+  `evidence.result`; `testsBody` compares the first check with it
+  (`sameAgentNote`/`movedAgentNote`), and `stuck()` counts it. `CheckTool`
+  restricts `lastCheck` to that tool's calls.
+- **Cues (Phase 3)**: `routeCue` in `routeRequest`, `frontCue` in the auto
+  front. Topic-agnostic; a stated mode skips both.

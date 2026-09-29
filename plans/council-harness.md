@@ -1,8 +1,10 @@
 # Council for harnesses: instructions, adaptive chat, agents and escalation
 
-Status: PROPOSED 2026-09-29 (owner's request; decisions taken the same day). Phase 0 (the integration
-guide) built the same day. Phases 1-4 wait on the consultants' answer to the
-2026-09-29 follow-up, whose flow modes this plan adopts once they rule.
+Status: ACTIVE. Proposed 2026-09-29 (owner's request; decisions taken the
+same day). Phase 0 (the integration guide) built the same day. Phases 1-3
+built 2026-09-29 after the consultants' review (below), with the three
+amendments the owner accepted: verbatim evidence, instructions in the charter,
+a check tool the harness names. Phase 4 is the ollama session's.
 
 ## Why
 
@@ -70,7 +72,7 @@ covers the contract as it is today, for a harness author:
 What this plan adds is marked *planned* there, with a link here. Every phase
 below updates the guide in the same commit as the code.
 
-## Phase 1 -- instructions for the council and the builder
+## Phase 1 -- instructions for the council and the builder (built 2026-09-29)
 
 - **Model level** (`types/xollama/council.go`, `xollama tweak model`):
   - `council.instructions`: text every role reads, after its own prompt;
@@ -86,7 +88,7 @@ below updates the guide in the same commit as the code.
 - Tests: every role reads its instructions once, the builder reads its own,
   and a request without them is byte-identical in what members receive.
 
-## Phase 2 -- the harness directive (`council_directive_v1`)
+## Phase 2 -- the harness directive (`council_directive_v1`, built 2026-09-29)
 
 A new top-level `council` object on `/api/chat`, beside `council_chat_state`:
 
@@ -133,7 +135,7 @@ A new top-level `council` object on `/api/chat`, beside `council_chat_state`:
   `escalate` after a plain agent's failed attempt, and `escalate` with a
   stated build.
 
-## Phase 3 -- adaptive in a chat (`mode: auto`)
+## Phase 3 -- adaptive in a chat (`mode: auto`, built 2026-09-29)
 
 What the user says during the chat changes how much of the council a turn
 uses, without a setting:
@@ -147,6 +149,35 @@ uses, without a setting:
   Cerebriline's UI) sends `mode` instead. A stated mode wins over a cue.
 - Tests: cue phrases move the route both ways, and a stated mode is never
   overridden.
+
+## What was built (2026-09-29)
+
+- `api.CouncilDirective` (`api/xollama_council.go`) on `ChatRequest.Council`
+  (`council` hook, `api/types.go`); feature `council_directive_v1`.
+- `internal/council/directive.go`:
+  - `Config.Direct` applies it; an unknown mode or slot is a 400.
+  - `Said{Owner, Client}` per slot: `Everyone` in `charter()`, the front and
+    the direct answer; a role through `prompt()`; the builder in its request.
+  - `makeBuild` takes a stated build (`parseBuild`, the builder's bounds) at
+    every builder call.
+  - `escalated()` turns the evidence into `Prior`, and `priorCheck()` makes
+    the agent's last result the first check compared (`stuck.go`).
+  - `CheckTool` restricts `lastCheck`.
+  - `routeCue` and `frontCue` carry the user's cues.
+- `run.go`: a stated mode sets the route before the front and `Decide`.
+  `front.go`: `answerMsg`, and no step budget, in `answer`.
+- `server/council.go`: a directive serves tools without a state and asks for
+  one; routing tools only in `auto`.
+- Model settings `council.instructions` and `council.<role>.instructions`
+  (`types/xollama/council.go`, `cmd/tweak/council.go`).
+- Tests: `internal/council/directive_test.go`, of which the six directive
+  tests fail with `Direct` disabled; `server/council_directive_test.go`.
+- Changed from the plan: an invalid build is not refused "field by field in
+  `council_notes`", since there is no such channel; a build without a target
+  is ignored and the builder runs. The cue is not stored in the state: it is
+  read from the user's words in the conversation.
+- Not yet measured: `escalate` after a plain agent's failed attempt, and a
+  stated build, on medium (eleven2go).
 
 ## Phase 4 -- Cerebriline (the ollama session integrates it)
 

@@ -1,6 +1,6 @@
 ---
 title: Integrating the council chat
-description: For harness and agent authors. The contract a client drives a council model through, the three ways to use one, and what is planned.
+description: For harness and agent authors. The contract a client drives a council model through, the directive that states what the harness knows, and the three ways to use a council.
 ---
 
 This page is for people writing a **harness**: an agent framework, an IDE
@@ -9,7 +9,7 @@ extension, a chat client that runs tools. It assumes you know
 client must send and read, and how to use a council as a lead chat model, as
 an agent, and as the escalation path of a cheaper agent.
 
-Everything marked **Planned** is designed but not built. It follows
+The design is in
 [`plans/council-harness.md`](https://github.com/mann1x/xollama/blob/dev/plans/council-harness.md),
 and this page changes in the same commit as the code.
 
@@ -30,7 +30,7 @@ and this page changes in the same commit as the code.
   | `council_chat_state_v1` | the resumable state blob |
   | `council_tools_v1` | tools on council turns |
   | `council_usage_v1` | per-role usage on the done chunk |
-  | `council_directive_v1` | **Planned**: the harness directive below |
+  | `council_directive_v1` | `council` on `/api/chat`: the harness directive below |
 
 - `POST /api/show` on a model answers `xollama.council` when it is a council,
   with `enabled`. That is how you tell a council tag from a plain one: the
@@ -165,10 +165,12 @@ Send the user's turns to the council model with the state loop. On a turn
 with tools, the synthesizer takes each request first and answers a quick one
 alone, at the cost of one call. It hands work that needs investigating to
 the council. On a turn without tools, a short route decision does the same.
-The chat is adaptive today in one sense: the council decides per turn.
-**Planned** (Phase 3): the user's own cues about depth ("just a quick
-answer", "take your time") steer that decision, and your UI can state a
-`mode` instead.
+The chat is adaptive: the council decides per turn, and the user's own cues
+steer that decision ("just a quick answer", "take your time and check it").
+The latest cue holds until the user says otherwise. It is read from the
+user's words in the conversation, so it lasts as long as they are there. If
+your UI has its own control (a Deliberation toggle), send a `mode` instead. A
+stated mode wins over any cue.
 
 ### As an agent
 
@@ -186,31 +188,54 @@ and tools to the council model, with `"council_chat_state": ""`. The members
 read the conversation you send, the agent's work included. The synthesizer's
 front turn then decides whether to answer or convene.
 
-**Planned** (`council_directive_v1`, Phase 2). Say what you already know
-instead of having the council re-derive it:
+**With the directive** (`council_directive_v1`). Say what you already know
+instead of having the council work it out again:
 
 ```json
 "council": {
   "mode": "escalate",
-  "evidence": [{"tried": "…", "check": "…", "result": "…"}],
-  "build": {"target": "…", "max_tests": 3},
-  "instructions": {"builder": "…", "synthesizer": "…"}
+  "evidence": [{"tried": "…", "check": "…", "result": "<the check's output, verbatim>"}],
+  "check": "run_tests",
+  "build": {"target": "…", "planner": "", "researcher": "…", "critic": "", "synthesizer": "", "max_tests": 3, "max_steps": 8},
+  "instructions": {"council": "…", "builder": "…", "synthesizer": "…"}
 }
 ```
 
-- **`mode`:** `escalate` skips the front turn, and your `evidence` becomes the
-  failed checks the planner starts from. The other modes are `answer` (the
-  synthesizer alone, no hand-off, plain cost), `deliberate` (the full council
-  without an oracle) and `auto` (today). The council never leaves a mode you
-  stated.
-- **`build`:** in the builder's schema. It replaces the builder call and is
-  held to the builder's bounds: no role, model or tool-permission changes. Its
-  `max_tests` and `max_steps` override the model's own, up or down, so a
-  harness can pass its user's setting. The builder's upper bound still
-  applies.
-- **`instructions`:** yours, read after the model owner's (Phase 1 adds
-  `council.instructions` and `council.builder.instructions` to the model's
-  settings).
+Send it on **every request of the turn**, as you send the tools: a resumed
+turn reads it again. A directive also asks for the state, so a turn with
+tools and a directive is served by the council even without
+`council_chat_state`. Send the state back anyway.
+
+- **`mode`**, which the council never leaves once stated:
+  - `escalate` starts the council at once, with no front turn and no route
+    decision. Your `evidence` becomes the checks that already failed, the
+    section the planner starts from.
+  - `answer` is the synthesizer alone, as a plain agent turn at plain cost.
+    No hand-off is offered, and your loop bounds the steps. On a turn
+    without tools it is one direct call.
+  - `deliberate` starts the council at once, without evidence.
+  - `auto` (or no `mode`) is the council deciding.
+
+  An unknown mode is a `400`, never a silent `auto`.
+- **`evidence`:** your agent's attempts, oldest first. Send each `result`
+  verbatim: under `escalate`, the council compares its first check with your
+  last one. The same output across the hand-off counts toward "the checks
+  stopped moving", which changes the council's approach.
+- **`check`:** the name of your tool whose result is the check of a change.
+  Without it, the council takes the first read-only call after the last
+  change.
+- **`build`:** in the builder's own reply format, as above. When it has a
+  `target`, the builder is not called. It is held to the builder's bounds: no
+  role, model or tool-permission changes; `max_tests` from 0 to 12;
+  `max_steps` from 2 to 16. Its `max_tests` and `max_steps` are your user's
+  setting, and they stand, up or down, within those bounds. A build without a
+  `target` is ignored, and the builder runs.
+- **`instructions`:** added after the model owner's, by slot: `council`
+  (every role, after the charter, in the shared prefix), `builder`, or a role
+  (`planner`, `researcher`, `critic`, `synthesizer`). Each part reaches the
+  members under its source ("INSTRUCTIONS FROM THE CLIENT"). The model's own
+  are `council.instructions` and `council.<role>.instructions`, set with
+  `xollama tweak model`. An unknown slot is a `400`.
 
 ## 8. Placement and PolyKV
 
@@ -234,3 +259,5 @@ Details: [The council chat, what a client sees](/xollama/council#what-a-client-s
 - [ ] No tool of yours named `council_*`.
 - [ ] Read `council_usage` for cost, not the calls you saw.
 - [ ] No `format` on a turn you want the council for.
+- [ ] With `council_directive_v1`: the directive on every request of the
+      turn, and each `evidence[].result` verbatim.

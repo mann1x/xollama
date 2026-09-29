@@ -154,7 +154,7 @@ func MakeBuild(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Mes
 	model, host, think := builderOn(cfg)
 	out, err := call(ctx, m, cfg, emit, Request{
 		Role: Builder, Model: model, Host: host,
-		Messages: append(builderConversation(conv), user(sourcesNote+"\n\n"+fmt.Sprintf(builderPrompt, cfg.architecture()))),
+		Messages: append(builderConversation(conv), user(cfg.withInstructions(sourcesNote+"\n\n"+fmt.Sprintf(builderPrompt, cfg.architecture()), Builder))),
 		Seed:     d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Builder), Think: think,
 		Format: buildSchema,
 	}, Thinking)
@@ -214,7 +214,7 @@ func (cfg Config) apply(b *Build) Config {
 	}
 	for _, r := range builtRoles {
 		if s := b.Instructions[r]; s != "" {
-			prompts[r] = prompt(cfg, r) + " For this work: " + s
+			prompts[r] = basePrompt(cfg, r) + " For this work: " + s
 		}
 		if n, ok := b.Think[r]; ok && cfg.Think[r] == "" && n > 0 {
 			think[r] = strconv.Itoa(n)

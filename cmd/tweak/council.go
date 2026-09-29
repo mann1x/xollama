@@ -172,6 +172,21 @@ func roleFields(name, what string) []field {
 			},
 		},
 		{
+			name:  flag + "-instructions",
+			path:  "council." + name + ".instructions",
+			title: "Council " + name + " instructions — added after its instruction",
+			help: "Text the " + name + " reads after its own instruction, built-in or replaced,\n" +
+				"for " + what + ". It replaces nothing. A client can add its own for one\n" +
+				"request (the council directive).",
+			kind:    kindText,
+			quiet:   true,
+			blocked: councilOff,
+			get:     roleGet(name, func(r *xollama.CouncilRole) string { return r.Instructions }),
+			set: func(c *xollama.Config, v string) error {
+				return setText(v, &councilRole(c, name).Instructions)
+			},
+		},
+		{
 			name:    flag + "-max-tokens",
 			path:    "council." + name + ".max_tokens",
 			title:   "Council " + name + " reply cap",
@@ -523,6 +538,21 @@ func councilFields() []field {
 				return councilGet(c, func(k *xollama.Council) string { return k.Charter })
 			},
 			set: func(c *xollama.Config, v string) error { return setText(v, &council(c).Charter) },
+		},
+		{
+			name:  "council-instructions",
+			path:  "council.instructions",
+			title: "Council instructions — guidance every member reads after the charter",
+			help: "Your standing guidance for this council, such as the house style or what\n" +
+				"to check before answering. It follows the charter in the shared prefix and\n" +
+				"replaces nothing. A client can add its own for one request.",
+			kind:    kindText,
+			quiet:   true,
+			blocked: councilOff,
+			get: func(c *xollama.Config) string {
+				return councilGet(c, func(k *xollama.Council) string { return k.Instructions })
+			},
+			set: func(c *xollama.Config, v string) error { return setText(v, &council(c).Instructions) },
 		},
 	}
 	for _, r := range []struct{ name, what string }{

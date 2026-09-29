@@ -214,6 +214,11 @@ type ChatRequest struct {
 	// even empty, it also asks for the state chunks.
 	CouncilChatState *string `json:"council_chat_state,omitempty"`
 
+	// xollama-hook: council — see plans/council-harness.md
+	// Council is a harness's directive for a council turn
+	// (council_directive_v1). A model without a council ignores it.
+	Council *CouncilDirective `json:"council,omitempty"`
+
 	// xollama-hook: council — see plans/agentic-council-chat.md
 	Placement *Placement `json:"placement,omitempty"`
 }

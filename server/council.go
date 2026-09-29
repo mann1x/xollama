@@ -89,7 +89,7 @@ func councilServes(c *gin.Context, m *Model, req api.ChatRequest) bool {
 	if c.GetBool(councilMemberKey) {
 		return false
 	}
-	return len(req.Messages) > 0 && (len(req.Tools) == 0 || req.CouncilChatState != nil) && len(req.Format) == 0 && !req.DebugRenderOnly
+	return len(req.Messages) > 0 && (len(req.Tools) == 0 || req.CouncilChatState != nil || req.Council != nil) && len(req.Format) == 0 && !req.DebugRenderOnly
 }
 
 // councilChat answers one chat turn with the model's council.
@@ -106,6 +106,16 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// A harness's directive (council_directive_v1, plans/council-harness.md).
+	// It implies a client that resumes, so the turn sends its state.
+	cfg, err := cfg.Direct(req.Council)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Council != nil && req.CouncilChatState == nil {
+		req.CouncilChatState = new(string)
+	}
 
 	// Tools (9.5): the members carry the client's and the council's own
 	// evidence lookup, one list for all, so the shared prefix holds it once.
@@ -115,7 +125,10 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	}
 	// 11.5: the synthesizer takes a tool turn's request first, and forwards it
 	// or has the council rebuilt with these.
-	req.Tools = council.WithRouting(req.Tools)
+	if req.Council == nil || req.Council.Mode == "" || req.Council.Mode == api.CouncilModeAuto {
+		// A stated mode is never left, so there is nothing to route.
+		req.Tools = council.WithRouting(req.Tools)
+	}
 	if cfg.Critics > 0 {
 		// 11.9: the synthesizer sends its checks to the critics with it.
 		req.Tools = council.WithReview(req.Tools)
