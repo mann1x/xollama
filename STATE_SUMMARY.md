@@ -13,8 +13,14 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 > request of the same turn adopts them, on the same runner and kept root.
 > Anything else releases them, as does 10 minutes without a round trip.
 > `server/council_layers_kept.go`. Six tests (mutation-checked); server and
-> council suites pass under `-race`, lint clean. Not measured live yet: the
-> next hard run counts `pool built` per request.
+> council suites pass under `-race`, lint clean. Live on solidPC's 3090
+> (569747788, `omni-council-ab5`, hard, 40 trips): 37 of 40 requests stashed
+> their layers and the next adopted them. Resumes built no pool. Pool builds
+> prefilled 275,292 tokens in 34 builds (6.9k a trip), against eleven2go's
+> 582,509 in 68 (12.1k a trip, a different host and model, so indicative).
+> Nothing failed to release. Not fixed in 40 trips (3,012 s). Open: two pools
+> of the same length (6,724) built 7 s apart on one parent; the texts were not
+> logged, so a duplicate build is not ruled out.
 
 > **2026-09-29 — 11.23: the 12800-token windows were a reviewer sized by a character estimate.**
 > The small windows on hard were the members sized to their own request (a

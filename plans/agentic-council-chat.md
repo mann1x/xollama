@@ -2373,8 +2373,16 @@ Built (`server/council_layers_kept.go`, part of the `council` hook):
   `TestKeptLayersGoWhenTheClientDoesNotComeBack`,
   `TestAStashKeepsOnlyTheLayersInUse`, `TestAStashIsAdoptedOnlyWhereItStands`
   and `TestARebuiltRootDropsTheAdoptedLayersFirst`.
-- Not measured live yet. The measurement is `pool built` per request on the
-  next hard run (the 3090 is lent to opencoti).
+- Measured on solidPC's 3090 (569747788, `omni-council-ab5`, hard, 40 trips,
+  2026-09-29):
+  - 37 requests kept their layers and 36 were adopted; the last stash waited
+    for the idle release.
+  - Resumes built nothing.
+  - 275,292 pool tokens in 34 builds, 6.9k a trip, against 12.1k a trip on
+    eleven2go's run (a different host and model).
+  - No release failed.
+  - Open: pools 13 and 14 have the same parent and the same length, built
+    7 s apart in one request.
 
 ### 11.23 A member sized to its request is sized in tokens (built 2026-09-29)
 
