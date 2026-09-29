@@ -5,6 +5,13 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — Plain medium on e75c7c3e: fixed in 15 trips / 125 s. A correction: `dIt`/`dPw` were never faults.**
+> - Plain: 15 trips, 125 s, 549 k prompt tokens, 3 edits, all applied. It changed exactly three places: the extra `}` ending `dGrid`, a missing `sX`, a missing `initClouds`.
+> - Correction to earlier entries and to the consultants' brief: `} })};` at the end of `dIt` and `dPw` is valid JavaScript (a class body allows a stray `;`; checked with node).
+>   - The council's seven failed edits on `dIt`'s ending were attempts to fix text that was never broken. Those rewrites were no progress, not hidden progress.
+>   - What diagnosing a non-fault costs is now part of the consultation (injected into `csl-2026-09-29-0846-320d`).
+> - Council vs plain on this build: 34 / 54 trips vs 15, and 1,954 / 3,054 s vs 125.
+
 > **2026-09-29 — Medium council run 2 on e75c7c3e: fixed again, 54 trips / 3,054 s.**
 > - Two of two runs fixed on this build (34 trips / 1,954 s, then 54 / 3,054). Plain: 12 / 114.
 > - Run 2 cleared the syntax errors by trip 35, then followed each runtime error one per check (`initClouds`, `setupLevel`, `sX`, `gameLoop`). 6 of its 21 edits missed their text.
