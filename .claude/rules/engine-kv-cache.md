@@ -25,11 +25,15 @@ paths:
 - **Placement follows the same line** (`opencoti-placement` hook). A model whose
   own `kv.k` / `kv.v` only opencoti runs (`llm.NeedsOpencoti`,
   `llm/engine_placement.go`) is placed only on the GPU groups opencoti serves:
-  `opencotiPlacement` in `server/placement_opencoti.go` filters the list
-  `server/sched.go` hands to `selectLlamaServerPlacement`. A server-wide
+  `opencotiPlacement` in `server/placement_opencoti.go` filters the GPU list
+  in `processPending`, right after the device pin, so `load` sees only those
+  GPUs. Never filter only at `selectLlamaServerPlacement`: `liveSlots` and the
+  deny-list ask `WouldUseOpencoti` of the list first, and on the mixed list
+  they drop `slots.live` to one slot. A server-wide
   `XOLLAMA_K_CACHE_TYPE` does not count. No such setting, no opencoti group, or
   `XOLLAMA_ENGINE=llamacpp`: the list is unchanged. Guard:
-  `TestAModelOnlyOpencotiServesIsPlacedWhereOpencotiRuns`; prose in
+  `TestAModelOnlyOpencotiServesIsPlacedWhereOpencotiRuns` and
+  `TestAModelOnlyOpencotiServesLoadsWithItsOwnSlots`; prose in
   `docs/features/device-selection.md`.
 - `stockCacheTypes` is what stock llama.cpp's own parser accepts. Anything
   outside it — opencoti's `kvarn2`..`kvarn6`/`kvarn8` (**no `kvarn7`**: structural,

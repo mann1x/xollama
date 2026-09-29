@@ -5,6 +5,14 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — Medium council rerun on 62c7d5ec: stopped by the placement fix, now fixed again.**
+> - The first rerun without the CUDA pin ended after 5 trips. The engine refused the builder for 2 minutes ("no room"). Nothing to do with the cap fix:
+>   - `opencotiPlacement` (b22e5649) filtered the GPUs only where the model is placed;
+>   - `liveSlots` and the deny-list still saw the 3090 and the 9070 XT together, answered "not opencoti", and dropped `slots.live 2` to one slot;
+>   - the engine launched with `-c 196608`, not 393216, and the conversation's owner booked the whole window.
+> - Fix: the filter runs in `processPending`, right after the device pin, so the whole load sees it. The new `TestAModelOnlyOpencotiServesLoadsWithItsOwnSlots` fails with the old position ("launched with 1 slots, want slots.live's 2").
+> - Also seen: an unpooled member (the builder) waits for its full timeout when the owner holds the whole window. Not changed here.
+
 > **2026-09-29 — Why the medium council failed, and the fix: a writer has room for its edit.**
 > - Plain medium on 837a1fce + b208 (eleven2go 3090): **fixed** in 12 trips, 114 s, 208 k prompt tokens, 5.2 k output. It read the file and rewrote the whole broken class in one `edit_file`.
 > - The council's front and synthesizer set out to make the same rewrite. The front's last three calls each stopped at exactly 3,072 output tokens, the cap, inside the tool call, so only the prose survived. The class is about 3.3 k tokens, and an edit carries old and new (about 6.6 k).

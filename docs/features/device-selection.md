@@ -186,3 +186,12 @@ refused it ("this KV cache configuration needs the opencoti engine"). A
 server-wide `XOLLAMA_K_CACHE_TYPE` does not count: on llama.cpp it falls back
 to the legacy type. `server/placement_opencoti.go`, registry row
 `opencoti-placement`.
+
+The list is filtered in `processPending`, right after the device pin, so the
+whole load sees it, not only the placement. `slots.live` and the
+single-sequence deny-list ask whether opencoti serves the same list. Filtered
+only at the placement call (b22e5649), they saw both cards, answered no, and
+the council model launched with one slot's context (`-c 196608`, not
+`num_ctx × slots.live` = 393216). Its conversation's owner then booked the
+whole window, and the builder was refused for two minutes (eleven2go,
+2026-09-29).
