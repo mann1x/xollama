@@ -5,6 +5,15 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — Medium council twice on 4770e33b (replay): fixed once, unfixed once.**
+> - Run 1: FIXED, 31 trips, 784 s, 1.51 M prompt tokens, 8 edits (1 missed). That is the council's fastest medium fix so far.
+> - Run 2: UNFIXED at the 60-trip cap, 1,644 s, 4.10 M prompt tokens, 11 edits (2 missed).
+>   - It failed in a different way: all 7 checks returned the same first error (the stray `}` ending `dGrid`), and the council never located it.
+>   - It made 36 `find_text` searches, 14 of them by researcher 2, and edited elsewhere.
+> - Misses at the client fell from 13 of 32 edits (`cf223635`) to 1 of 8 and 2 of 11.
+> - Sent to the consultants as follow-up `csl-2026-09-29-1156-aa48` (7 of 11 in the chain), with a review request for `quote.go` and `directive.go`, the re-plan cost, and the escalate measurement.
+>   - Per the owner, n = 5 per cell with the seed fixed is planned for later.
+
 > **2026-09-29 — 11.20: the read follows the member's own changes.**
 > - The member's own changes to a target since its last read, when they went through, are now replayed onto that read. A whole write is taken as the text itself.
 > - So a misquote right after an edit is answered in place too. On `cf223635` those were nearly all of the 13 misses.
