@@ -581,6 +581,12 @@ paths:
   restricts `lastCheck` to that tool's calls.
 - **Cues (Phase 3)**: `routeCue` in `routeRequest`, `frontCue` in the auto
   front. Topic-agnostic; a stated mode skips both.
+- **A member sized to its request is sized in tokens (11.23, `ownWindow`)**:
+  a background reviewer and the builder state a window of their request plus
+  reply cap plus 512, counted by rendering and tokenizing
+  (`councilMembers.tokens`); never estimate from characters/3 again (a
+  13196-token review was sized 12800 and refused). Half the characters only
+  when counting fails.
 - **A change of approach shows in the list (11.22, `approachKept`)**: while
   the stuck note is in force, a re-plan that refutes no task or adds none is
   asked again once (`keptNote`, `ReplanAgain`); the second answer stands. Judge

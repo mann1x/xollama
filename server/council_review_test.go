@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -13,15 +14,16 @@ import (
 func TestAReviewerStatesAWindowOfItsOwn(t *testing.T) {
 	cm := &councilMembers{reviewWindow: 8192}
 	r := council.Request{Role: council.Reviewer, MaxTokens: 1024, Messages: []api.Message{{Content: strings.Repeat("x", 3000)}}}
-	p := cm.ownWindow(r)
-	if p == nil || p.NumCtx != 2560 || p.NumCtxMin != 2560 {
-		t.Fatalf("placement %+v, want 2560", p)
+	// Nothing to count with: half the characters, the reply cap and a margin.
+	p := cm.ownWindow(t.Context(), r)
+	if p == nil || p.NumCtx != 3072 || p.NumCtxMin != 3072 {
+		t.Fatalf("placement %+v, want 3072", p)
 	}
 	r.Messages = []api.Message{{Content: strings.Repeat("x", 90000)}}
-	if p := cm.ownWindow(r); p.NumCtx != 8192 {
+	if p := cm.ownWindow(t.Context(), r); p.NumCtx != 8192 {
 		t.Errorf("a long review took %d, want the member window", p.NumCtx)
 	}
-	if cm.ownWindow(council.Request{Role: council.Critic}) != nil {
+	if cm.ownWindow(t.Context(), council.Request{Role: council.Critic}) != nil {
 		t.Error("a critic took a reviewer's window")
 	}
 	// place states it, with no tree to place the reviewer on.
@@ -31,8 +33,26 @@ func TestAReviewerStatesAWindowOfItsOwn(t *testing.T) {
 	} else {
 		done()
 	}
-	if (&councilMembers{}).ownWindow(r) != nil {
+	if (&councilMembers{}).ownWindow(t.Context(), r) != nil {
 		t.Error("a reviewer stated a window where there is no pool")
+	}
+}
+
+// A reviewer's window holds its request as the engine counts it. On eleven2go
+// (hard, 5ce5f7e7) a third of the characters sized a critic's review at 12800,
+// and the engine refused its 13196 tokens.
+func TestAReviewersWindowHoldsItsRequestInTokens(t *testing.T) {
+	msgs := []api.Message{{Content: strings.Repeat("c.fill();}});", 2000)}} // 26000 characters
+	r := council.Request{Role: council.Reviewer, MaxTokens: 1024, Messages: msgs}
+	// Dense text: more tokens than half its characters.
+	const counted = 15000
+	cm := &councilMembers{reviewWindow: 196608, count: func(context.Context, []api.Message) (int, error) { return counted, nil }}
+	p := cm.ownWindow(t.Context(), r)
+	if p == nil || p.NumCtx < counted+1024 {
+		t.Fatalf("placement %+v: the %d-token review and its reply do not fit", p, counted)
+	}
+	if old := roundUp(26000/3+1024+512, 256); old >= 13196 {
+		t.Fatalf("the case no longer shows the old estimate's shortfall (%d)", old)
 	}
 }
 

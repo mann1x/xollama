@@ -12,9 +12,11 @@ package server
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
+	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/internal/council"
 	"github.com/ollama/ollama/llm"
 )
@@ -59,12 +61,27 @@ func (r *deskRegistry) get(session string, cfg council.Config, members *councilM
 		// On opencoti a request without a window books the whole session
 		// pool; a reviewer states one sized to its request.
 		bg.reviewWindow = members.tree.window
+		bg.count = members.tree.tokens
 	}
 	d := &reviewDesk{desk: council.NewDesk(ctx, bg, cfg, cfg.Critics), cancel: cancel, critics: cfg.Critics, members: bg}
 	d.timer = time.AfterFunc(reviewIdle, func() { r.close(session) })
 	r.m[session] = d
 	return d.desk
 }
+
+// tokens counts a member's messages with count, else the tree's counter.
+func (cm *councilMembers) tokens(ctx context.Context, msgs []api.Message) (int, error) {
+	switch {
+	case cm.count != nil:
+		return cm.count(ctx, msgs)
+	case cm.tree != nil && cm.tree.render != nil && cm.tree.tokenize != nil:
+		return cm.tree.tokens(ctx, msgs)
+	}
+	return 0, errNoCount
+}
+
+// errNoCount is a member set with nothing to count its messages with.
+var errNoCount = errors.New("no token count for this member")
 
 // close ends the conversation's desk: its reviews in flight are cancelled.
 func (r *deskRegistry) close(session string) {
@@ -81,7 +98,13 @@ func (r *deskRegistry) close(session string) {
 // runs on a session of its own -- a background reviewer, or the builder, which
 // reads only the user's messages -- when the council runs on opencoti: its
 // request, its reply cap and a margin, rounded, within the member window.
-func (cm *councilMembers) ownWindow(r council.Request) *llm.Placement {
+//
+// The request is counted in tokens, as the member will send it. An estimate
+// of a third of its characters sized a critic's review at 12800 on eleven2go
+// (hard, 5ce5f7e7) and the engine refused its 13196 tokens: code and JSON
+// run nearer two characters a token. Half the characters is the estimate
+// only when counting fails.
+func (cm *councilMembers) ownWindow(ctx context.Context, r council.Request) *llm.Placement {
 	window := cm.reviewWindow
 	if window <= 0 && cm.tree != nil {
 		window = cm.tree.window
@@ -89,10 +112,14 @@ func (cm *councilMembers) ownWindow(r council.Request) *llm.Placement {
 	if window <= 0 || (r.Role != council.Reviewer && r.Role != council.Builder) {
 		return nil
 	}
-	n := 0
-	for _, m := range r.Messages {
-		n += len(m.Content)
+	n, err := cm.tokens(ctx, r.Messages)
+	if err != nil {
+		chars := 0
+		for _, m := range r.Messages {
+			chars += len(m.Content)
+		}
+		n = chars / 2
 	}
-	size := min(roundUp(n/3+r.MaxTokens+512, 256), window)
+	size := min(roundUp(n+r.MaxTokens+512, 256), window)
 	return &llm.Placement{NumCtx: size, NumCtxMin: size}
 }

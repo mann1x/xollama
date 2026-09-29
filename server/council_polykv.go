@@ -991,7 +991,7 @@ func (t *councilTree) tokens(ctx context.Context, msgs []api.Message) (int, erro
 func (cm *councilMembers) place(ctx context.Context, r council.Request, req *api.ChatRequest) (*llm.Placement, string, func()) {
 	t := cm.tree
 	none := func() {}
-	if p := cm.ownWindow(r); p != nil && r.Model == "" {
+	if p := cm.ownWindow(ctx, r); p != nil && r.Model == "" {
 		t.roomFor(ctx, p.NumCtxMin)
 		return p, "", none
 	}

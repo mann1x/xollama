@@ -537,6 +537,10 @@ type councilMembers struct {
 	// reviewWindow bounds a background reviewer's window on opencoti
 	// (council_review.go); 0 states none.
 	reviewWindow int
+	// count is how many tokens a member's messages come to, for a member
+	// sized to its request (ownWindow); nil falls back to the tree's count,
+	// then to an estimate from their length.
+	count func(context.Context, []api.Message) (int, error)
 }
 
 func (cm *councilMembers) opened(id string) {

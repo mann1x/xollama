@@ -2344,6 +2344,27 @@ are replayed onto it (`replay` in `quote.go`; a whole write is the text
 itself), so the read stays current across them. Guard:
 `TestTheReadFollowsTheMembersOwnChanges`, which fails with the replay off.
 
+### 11.23 A member sized to its request is sized in tokens (built 2026-09-29)
+
+Hard on eleven2go (5ce5f7e7): four requests ran in a 12800-token engine
+window, and one, a critic's background review of 13196 tokens, was refused
+(`exceeds the available context size`), so that review was lost. These are
+the members that run on a session of their own with a window fitted to their
+request (`ownWindow`: a background reviewer, the builder); the researchers,
+critics and synthesizer worked in 196608-token windows on the pool tree (116
+requests). The fitted window counted a third of the request's characters as
+its tokens; code and JSON run near two characters a token (the refused review:
+about 1.9).
+
+Built (`ownWindow`, `server/council_review.go`): the request is counted as the
+member sends it (rendered and tokenized, `councilTree.tokens`, the count the
+unpooled path already used); the background reviewer's member set carries the
+tree's counter (`councilMembers.count`). Half the characters is the estimate
+only when counting fails. Guards: `TestAReviewersWindowHoldsItsRequestInTokens`
+(fails when the count is ignored) and `TestAReviewerStatesAWindowOfItsOwn`.
+Open: a reviewer still prefills its whole request on its own session, sharing
+nothing with the tree; attaching it to a pool layer is the efficiency step.
+
 ### 11.22 A change of approach has to show in the task list (built 2026-09-29)
 
 Hard on eleven2go (5ce5f7e7, 120 trips): plain fixed it in 24 trips by writing

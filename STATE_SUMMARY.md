@@ -5,6 +5,17 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — 11.23: the 12800-token windows were a reviewer sized by a character estimate.**
+> The small windows on hard were the members sized to their own request (a
+> background reviewer, the builder), not the council's working members (116
+> requests in 196608-token pool windows). `ownWindow` counted characters/3 as
+> tokens; a critic's 13196-token review was sized 12800 and refused, and that
+> review was lost. Now the request is rendered and tokenized as sent (the
+> tree's counter, handed to the background reviewer's member set); half the
+> characters only if counting fails. Tests (mutation-checked), server and
+> council suites under `-race`. Open: a reviewer shares no prefix with the
+> tree and prefills its whole request each time.
+
 > **2026-09-29 — 11.22: a stuck re-plan has to change the task list.**
 > From the hard analysis: the planner said it would replace the failing part
 > whole and kept every task open. Now, while the stuck note is in force, a
