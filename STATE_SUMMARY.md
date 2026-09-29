@@ -5,6 +5,16 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — Plan: the council for harnesses, and an integration guide.**
+> - The owner wants the council adaptive in a chat, and usable by agents and as an escalation path, with Cerebriline first. A harness should drive the builder and the council, and say how the council is built, to save trips and avoid mode switches.
+> - New plan `plans/council-harness.md` (PROPOSED):
+>   - Phase 1: instructions for the council and the builder, at model and request level.
+>   - Phase 2: the harness directive `council_directive_v1` (`mode` answer/escalate/deliberate/auto, a stated `build` that replaces the builder call, `evidence` as prior failed checks).
+>   - Phase 3: adaptive chat from the user's cues.
+>   - Phase 4: Cerebriline, built by the ollama session, with quality feedback.
+> - Phase 0 built: `docs/xollama/council-integration.mdx`, the integration guide for harness authors. It covers today's contract, the three use cases, and the planned parts marked as planned.
+> - Phases 1–4 wait for the consultants' answer to the follow-up, which is sent after medium run 2.
+
 > **2026-09-29 — Fork patch 24 merged: `up-modelfile-roundtrip` @ `c8e22c11` (manifest `23a43c77`, fork-only).**
 > - `show --modelfile` writes `TEMPLATE` only for a model that carries one. `create` refuses an unterminated `TEMPLATE`/`SYSTEM` quote that would have swallowed the directives after it.
 > - One conflict, in `server/images.go`: xollama's own `modelfile-roundtrip` hook carried the same condition. Resolved to the patch's side. The hook and its registry row are retired, since the fork now supplies the fix.

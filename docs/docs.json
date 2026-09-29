@@ -167,6 +167,7 @@
             "group": "Features",
             "pages": [
               "/xollama/council",
+              "/xollama/council-integration",
               "/xollama/think-budget",
               "/xollama/tokenize",
               "/xollama/gemma4-drafter"
