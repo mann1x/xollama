@@ -86,16 +86,24 @@ const frontJudge = " Judge whether the latest message continues that work or is 
 // client's system prompt as a direct answer reads it.
 func frontRequest(cfg Config, conv []api.Message) []api.Message {
 	s := frontMsg
-	if b := cfg.previousBuild(); b != nil {
-		s += " " + b.targetNote() + frontJudge
-	} else {
-		s += frontNoBuild
+	switch b := cfg.previousBuild(); {
+	case cfg.mode() == api.CouncilModeAnswer:
+		// The harness asked for the synthesizer alone: no hand-off exists.
+		s = answerMsg
+	case b != nil:
+		s += " " + frontCue + " " + b.targetNote() + frontJudge
+	default:
+		s += " " + frontCue + frontNoBuild
 	}
 	if cfg.System != "" {
 		s += "\n\n" + systemIntro + cfg.System
 	}
-	return append(clone(conv), user(sourcesNote+"\n\n"+s))
+	return append(clone(conv), user(cfg.withInstructions(sourcesNote+"\n\n"+s, Everyone, Synthesizer)))
 }
+
+// answerMsg is the front's instruction when the harness asked for an answer
+// alone (api.CouncilModeAnswer): a plain agent turn.
+const answerMsg = "COUNCIL: You are the council's synthesizer, and you answer the user's latest message above yourself, with the tools as you need them. The council is not convened for this request."
 
 // rebuilt answers a RebuildTool call with the setup it produced.
 func (cfg Config) rebuilt() string {
@@ -124,6 +132,8 @@ func front(ctx context.Context, tm ToolModel, cfg Config, d Draws, conv []api.Me
 	refusals, rebuilds, cuts := 0, 0, 0
 	for {
 		switch steps := toolSteps(turns); {
+		case cfg.mode() == api.CouncilModeAnswer:
+			// Nothing to hand off to: the client bounds the steps.
 		case steps >= frontSteps+2:
 			return "", turns, RouteCouncil, nil
 		case steps >= frontSteps && !noted(turns, frontBudgetNote):

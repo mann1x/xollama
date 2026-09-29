@@ -89,7 +89,14 @@ func (p Plan) clone() Plan {
 	return Plan{Plan: p.Plan, Briefs: append([]string(nil), p.Briefs...), Tasks: append([]Task(nil), p.Tasks...)}
 }
 
+// prompt is role r's instruction with the guidance added to it
+// (directive.go).
 func prompt(cfg Config, r Role) string {
+	return cfg.withInstructions(basePrompt(cfg, r), r)
+}
+
+// basePrompt is role r's own instruction: the user's, else the built-in.
+func basePrompt(cfg Config, r Role) string {
 	if p := cfg.Prompts[r]; p != "" {
 		return p
 	}
@@ -201,6 +208,9 @@ func direct(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Messag
 	if cfg.System != "" {
 		msgs = append(clone(conv), sourced(systemSource, directIntro+systemIntro+cfg.System))
 	}
+	if in := cfg.withInstructions("", Everyone, Planner); in != "" {
+		msgs = append(clone(msgs), user(in))
+	}
 	return callFrom(ctx, m, cfg, emit, Request{
 		Role: Planner, Messages: msgs, Seed: d.Direct.Seed,
 		Temperature: d.Direct.Temperature, MaxTokens: maxTok(cfg, Synthesizer), Think: cfg.Think[Planner],
@@ -227,6 +237,7 @@ func routeRequest(cfg Config) api.Message {
 	if cfg.canContinue() {
 		msg = routeMsgContinue
 	}
+	msg += " " + routeCue
 	if b := cfg.previousBuild(); b != nil {
 		msg += " " + b.targetNote() + " " + rebuildChoice
 	}

@@ -5,6 +5,16 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — The council for harnesses: instructions, the directive and the user's cues (plan Phases 1–3).**
+> - `ChatRequest.Council` (`council_directive_v1`) states the turn's `mode`, `instructions`, `build`, `evidence` and `check`.
+>   - `answer` is the synthesizer alone; `escalate` and `deliberate` start the council with no front turn or route decision.
+>   - A stated build replaces the builder, and its `max_tests`/`max_steps` stand within the builder's bounds.
+>   - The evidence is verbatim, and the agent's last check is the council's first comparison point.
+>   - A named check tool replaces the `lastCheck` guess. An unknown mode or slot is a 400.
+> - Instructions by slot, from the model (`council.instructions`, `council.<role>.instructions`) and the request. The council-wide ones sit in the charter's shared prefix.
+> - The route decision and the front read the user's cues about care. A stated mode skips them.
+> - Also: the medium council on `96ff1f5d` (11.20) is running on eleven2go. The upstream v0.35.0 sync is on `sync/upstream-v0.35.0`, paused at `up-think-budget`'s conflicts. All 24 rebased patches have the same diff as before (`git patch-id`), so HEAD's side is right; resolving them needs the owner's go-ahead.
+
 > **2026-09-29 — The consultants answered; a misquoted change is now answered in place (11.20).**
 > - `csl-2026-09-29-0846-320d` (34 min). Ranked: (1) a hidden-progress signal, (2) repairing edit quotes, (3) the harness directive, (4) batching by a runtime prompt, (5) runtime escalation, (6) Stream-and-Sift. Measure n = 5 per cell with seeds fixed and jitter 0 before the cloud tests.
 > - Built (2): `internal/council/quote.go`. When a writer's own last read of the same target shows a long start of the change's quote but not the rest, the call is answered in place with the read's own text where the match stops. No trip. At most 4 per member. Four tests, three of which fail with the guard off.

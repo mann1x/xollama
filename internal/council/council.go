@@ -177,6 +177,17 @@ type Config struct {
 	// ResultBudget is the characters of tool results a member carries whole
 	// in its own turns; past it the rest travel by ref. 0 is the default.
 	ResultBudget int
+	// Instructions is the guidance each slot adds (directive.go): Everyone
+	// after the charter, a role after its instruction, the builder before
+	// its build.
+	Instructions map[Role]Said
+	// Mode, Stated, Evidence and CheckTool are a harness's directive
+	// (directive.go): the turn's mode, its build, its agent's attempts and
+	// the tool whose result is the check.
+	Mode      string
+	Stated    *Build
+	Evidence  []api.CouncilEvidence
+	CheckTool string
 }
 
 // Built-in defaults: two researchers, which find more between them than one,
@@ -204,7 +215,7 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 		MaxRounds: 1, MaxTests: DefaultMaxTests, MaxSteps: DefaultMaxSteps, ShowDeliberation: true,
 		MaxTokens: map[Role]int{}, Prompts: map[Role]string{}, Models: map[Role]string{},
 		Hosts: map[Role]string{}, Think: map[Role]string{},
-		Charter: Charter(c),
+		Charter: Charter(c), Instructions: map[Role]Said{},
 	}
 	for r, n := range defaultMaxTokens {
 		cfg.MaxTokens[r] = n
@@ -223,6 +234,9 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 		cfg.ShowDeliberation = *c.ShowDeliberation
 	}
 	cfg.Broadcast = c.Broadcast != nil && *c.Broadcast
+	if c.Instructions != "" {
+		cfg.Instructions[Everyone] = Said{Owner: c.Instructions}
+	}
 	for _, r := range []Role{Planner, Researcher, Critic, Synthesizer, Builder} {
 		role := c.Role(string(r))
 		if role == nil {
@@ -241,6 +255,9 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 		}
 		if role.Prompt != "" {
 			cfg.Prompts[r] = role.Prompt
+		}
+		if role.Instructions != "" {
+			cfg.Instructions[r] = Said{Owner: role.Instructions}
 		}
 		if role.Model != "" {
 			cfg.Models[r] = role.Model

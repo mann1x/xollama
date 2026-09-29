@@ -31,6 +31,10 @@ const stuckNote = "The last %d checks returned the same output: the changes so f
 const (
 	movedNote = "Its check's output changed from the one before: progress, and the new output is the lead to follow."
 	sameNote  = "Its check returned the same output as the one before."
+	// The same, against the last check of the agent that worked on it
+	// before the council (directive.go).
+	movedAgentNote = "Its check's output changed from the one the agent before the council got: progress, and the new output is the lead to follow."
+	sameAgentNote  = "Its check returned the same output as the agent before the council got."
 )
 
 // testsBody is the failed checks as the next cycle reads them: each with
@@ -43,6 +47,14 @@ func (cfg Config) testsBody() string {
 			b.WriteString("\n\n")
 		}
 		fmt.Fprintf(&b, "TEST %d:\n%s", i+1, t)
+		if pc := cfg.priorCheck(); i == 0 && pc != "" && len(cfg.checks) > 0 && cfg.checks[0] != "" {
+			// The harness's agent checked before the council began.
+			if sameCheck(cfg.checks[0], pc) {
+				b.WriteString("\n" + sameAgentNote)
+			} else {
+				b.WriteString("\n" + movedAgentNote)
+			}
+		}
 		if i > 0 && i < len(cfg.checks) && cfg.checks[i] != "" && cfg.checks[i-1] != "" {
 			if sameCheck(cfg.checks[i], cfg.checks[i-1]) {
 				b.WriteString("\n" + sameNote)
@@ -65,6 +77,10 @@ func (cfg Config) stuck() int {
 		if checks[i] == "" || (n > 0 && !sameCheck(checks[i], checks[len(checks)-1])) {
 			break
 		}
+		n++
+	}
+	if pc := cfg.priorCheck(); n > 0 && n == len(checks) && pc != "" && sameCheck(pc, checks[0]) {
+		// The agent's last check returned it too.
 		n++
 	}
 	return n
@@ -91,6 +107,8 @@ func (cfg Config) lastCheck(key string, turns []api.Message) string {
 			case local(*c):
 			case !cfg.readOnly(*c):
 				wrote, check = true, nil
+			case cfg.CheckTool != "" && c.Function.Name != cfg.CheckTool:
+				// The harness named its check: other reads are not it.
 			default:
 				last = c
 				if wrote && check == nil {

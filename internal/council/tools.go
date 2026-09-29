@@ -207,8 +207,14 @@ const (
 	charterWithTools = "using the conversation, their own knowledge and the tools that only read"
 )
 
-// charter is the council's standing instruction for this turn.
+// charter is the council's standing instruction for this turn, followed by
+// the guidance every role reads (directive.go): in the shared prefix, so
+// PolyKV holds it once.
 func (cfg Config) charter() string {
+	return cfg.withInstructions(cfg.baseCharter(), Everyone)
+}
+
+func (cfg Config) baseCharter() string {
 	switch {
 	case len(cfg.Tools) == 0:
 		return cfg.Charter

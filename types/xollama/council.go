@@ -32,6 +32,11 @@ type Council struct {
 	// conversation, not once per member.
 	Charter string `json:"charter,omitempty"`
 
+	// Instructions is text every role reads, after the charter: the model's
+	// owner's standing guidance for this council (plans/council-harness.md,
+	// Phase 1). Unlike Charter it replaces nothing.
+	Instructions string `json:"instructions,omitempty"`
+
 	// The roles. Count applies to researchers and critics only: there is one
 	// planner and one synthesizer.
 	Planner     *CouncilRole `json:"planner,omitempty"`
@@ -108,6 +113,12 @@ type CouncilRole struct {
 
 	// Prompt replaces the role's built-in instruction.
 	Prompt string `json:"prompt,omitempty"`
+
+	// Instructions is added after the role's instruction, built-in or
+	// Prompt, and replaces nothing. The builder's is how this council should
+	// be built: it shapes the choices inside the builder's reply, never its
+	// format.
+	Instructions string `json:"instructions,omitempty"`
 
 	// MaxTokens caps one member's reply. Zero means the role's default.
 	MaxTokens int `json:"max_tokens,omitempty"`
