@@ -193,7 +193,8 @@ pool, kept between turns — and `llm/engine_council.go` is its client;
 `llm/engine_council_slots.go` launches a council with the engine's parallel ceiling live
 (never below its local width; cloud members are counted apart, `council.cloud_parallel`,
 `server/council_cloud.go`)
-(its `--kv-unified` is never repeated by `appendSlotArgs` in `llm/engine_launch.go`); a role with
+(its `--kv-unified` is never repeated by `appendSlotArgs` in `llm/engine_launch.go`);
+`server/council_room.go` has the owner give back cells a member booked beside it (the builder, a reviewer) needs; a role with
 `council.<role>.host` is sent to that server by `server/council_remote.go`, only
 when `XOLLAMA_COUNCIL_HOSTS` allows it; `server/council_compaction.go` folds the
 conversation before a turn and after its answer, Cerebriline's agentic compaction

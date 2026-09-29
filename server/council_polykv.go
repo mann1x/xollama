@@ -88,6 +88,8 @@ type councilTree struct {
 	canUnown bool
 	// reserve is the turn's room on top of the conversation (councilReserve).
 	reserve int
+	// roomMu makes one member at a time ask the owner for room (roomFor).
+	roomMu sync.Mutex
 	// numCtx is the conversation's num_ctx, the loaded context for num_ctx 0.
 	numCtx int
 	// clientPool is the pool the client named (client_placement_v1). The
@@ -990,6 +992,7 @@ func (cm *councilMembers) place(ctx context.Context, r council.Request, req *api
 	t := cm.tree
 	none := func() {}
 	if p := cm.ownWindow(r); p != nil && r.Model == "" {
+		t.roomFor(ctx, p.NumCtxMin)
 		return p, "", none
 	}
 	if t == nil || r.Model != "" {

@@ -2254,6 +2254,31 @@ Built (`internal/council/cut.go`, additive):
   without the retry, without the raised cap, and without reading
   `DoneReason`.
 
+### 11.18 The owner makes room for a member booked beside it (built 2026-09-29)
+
+The builder and the reviewers are booked on sessions of their own, beside the
+conversation's owner. The owner books the whole window by default and grows
+back to it before every turn (`begin`). On eleven2go, with the context cut to
+one slot's size by the placement fault, the builder was refused for its whole
+admission budget ("base 0/196608 free need 5632"), and the turn failed after
+2 minutes.
+
+Built (`server/council_room.go`, additive):
+- `roomFor`: before a member with its own window is booked, `/kv`'s
+  `largest_admissible` (now read, `KVStatus.LargestAdmissible`) is compared
+  with the member's window.
+- Short of it, the owner gives back the difference. It never goes below its
+  used cells plus the turn's reserve. The resize is applied at once where the
+  engine allows it, else deferred to the owner's next idle moment, and the
+  member's admission wait seats it.
+- A shrink already queued counts as room. One member at a time asks
+  (`roomMu`). The next turn's `begin` grows the owner back when nobody is
+  refused.
+- On an engine that does not report `largest_admissible`, nothing changes.
+- Tests: `TestTheOwnerMakesRoomForAMemberBookedBesideIt` (full, room already,
+  nothing to give, not reported) and `TestTheBuilderIsGivenRoomBesideAFullOwner`.
+  The latter was checked by removing the call.
+
 ### 11.11 Checks that stop moving change the approach (built 2026-09-28)
 The fifth simple run (b336b144) returned the same "missing ) after argument
 list" from every check for 60 trips. The plain arm fixed the task in 27 trips:

@@ -5,6 +5,12 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-29 — The owner makes room for the builder and the reviewers.**
+> - A member booked on its own session beside the conversation's owner could wait out its whole admission budget when the owner held the whole window. That was the builder's 2-minute refusal on 62c7d5ec.
+> - `roomFor` (plan 11.18, `server/council_room.go`) reads `/kv`'s `largest_admissible`. When it is short of the member's window, the owner shrinks by the difference, never below its used cells plus the turn's reserve. The shrink is applied at once, or deferred if the engine refuses. The next turn grows the owner back.
+> - Two tests; the call was checked by removal.
+> - Not yet deployed: the medium council run on 96edc4ae is still going on eleven2go.
+
 > **2026-09-29 — Medium council rerun on 62c7d5ec: stopped by the placement fix, now fixed again.**
 > - The first rerun without the CUDA pin ended after 5 trips. The engine refused the builder for 2 minutes ("no room"). Nothing to do with the cap fix:
 >   - `opencotiPlacement` (b22e5649) filtered the GPUs only where the model is placed;

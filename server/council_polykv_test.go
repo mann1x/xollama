@@ -52,6 +52,8 @@ type fakeKV struct {
 	// ownerGone answers owner: null for a pool asked for an owner, as the
 	// engine does when that session holds no live allocation.
 	ownerGone bool
+	// admissible is /kv's largest_admissible; nil leaves it out.
+	admissible *int
 }
 
 type fakePool struct {
@@ -117,7 +119,7 @@ func (f *fakeKV) KV(context.Context) (llm.KVStatus, error) {
 	if f.liveAfter > 0 && f.grant == 0 && len(f.e.roles) > 0 {
 		f.grant = f.liveAfter
 	}
-	k := llm.KVStatus{Pressure: f.pressure}
+	k := llm.KVStatus{Pressure: f.pressure, LargestAdmissible: f.admissible}
 	if f.recurrent {
 		k.RS = &llm.KVRecurrent{CellsCommitted: 4, CellsCap: 8}
 	}

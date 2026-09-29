@@ -104,6 +104,9 @@ func (p PoolInfo) OwnedBy(session string) bool {
 type KVStatus struct {
 	Allocations []KVAllocation `json:"allocations"`
 	Pressure    *KVPressure    `json:"pressure"`
+	// LargestAdmissible is the most one new booking could be granted now;
+	// nil on an engine that does not report it.
+	LargestAdmissible *int `json:"largest_admissible"`
 	// RS is the recurrent-state cache, on a model that keeps one per
 	// sequence (hybrids: Qwen3.5, Qwen3-Next, LFM2, Nemotron-H). Nil otherwise.
 	RS *KVRecurrent `json:"rs"`
