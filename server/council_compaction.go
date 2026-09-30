@@ -114,6 +114,9 @@ type councilCompactor struct {
 
 	mu      sync.Mutex
 	perChar float64 // tokens per character, from the last measure
+	// tokens is the conversation's size as the members send it, from the
+	// last compact: what the turn reports as its prompt (conversationTokens).
+	tokens int
 }
 
 func newCouncilCompactor(members *councilMembers, tree *councilTree, cc *xollama.CouncilContext, cfg council.Config, render func(context.Context, []api.Message) (string, error), tokenize func(context.Context, string) ([]int, error), numCtx, reserve int) *councilCompactor {
@@ -439,6 +442,7 @@ func (c *councilCompactor) compact(ctx context.Context, conv []api.Message, forc
 		why = c.trigger(z, idle, pressure)
 	}
 	if why == "" {
+		c.setTokens(z.tokens)
 		return applied
 	}
 	_, _, _ = councilCompacting.Do(c.key, func() (any, error) {
@@ -453,7 +457,28 @@ func (c *councilCompactor) compact(ctx context.Context, conv []api.Message, forc
 		return nil, nil
 	})
 	out, _ := c.apply(conv)
+	if z, err := c.measure(ctx, out); err == nil {
+		c.setTokens(z.tokens)
+	}
 	return out
+}
+
+func (c *councilCompactor) setTokens(n int) {
+	c.mu.Lock()
+	c.tokens = n
+	c.mu.Unlock()
+}
+
+// conversationTokens is the conversation's size in tokens as the last compact
+// measured it, or 0 when none has: what a plain model's prompt_eval_count
+// would be for the turn, and so what the done chunk reports.
+func (c *councilCompactor) conversationTokens() int {
+	if c == nil {
+		return 0
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.tokens
 }
 
 // trigger says why a conversation of sizes z compacts, or "" when it does not.

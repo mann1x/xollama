@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-01 — The done chunk reports the conversation's size, not a member's prompt.**
+> - 0418's done chunks once reported a 229k prompt: the synthesizer's, which holds the plan and the findings on top of the conversation. Cerebriline sizes its context from that number and compacts at about 159k, so the council's own deliberation could fold the client's conversation.
+> - The compactor now records what it measured on every pass (folded or not), and the done chunk reports that. Without a measurement it falls back to the front's or the planner's prompt; the synthesizer's is never taken as the conversation's.
+> - Guards: `TestTheReportedPromptIsTheConversations`, `TestCompactMeasuresTheConversation`, both verified by removal.
+
 > **2026-09-30 — Council members get Cerebriline's output budget.**
 > - Each member's reply cap is the least of three quarters of the council's window, the ceiling (`council.max_tokens`, default 16,384, settable 1,024-96,000) and the model's `num_predict`. It is the VS Code plugin's rule (#578), with a lower ceiling.
 > - The thinking now sits inside the cap instead of on top of it. A level is a share of the cap, and `on` means medium. Each member is told its cap and its thinking share (Cerebriline's Output Budget section).

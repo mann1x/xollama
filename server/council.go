@@ -244,6 +244,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	compactor := s.councilCompactorFor(ctx, m, req, members, tree, cfg, reserve)
 	if compactor != nil {
 		conv = compactor.compact(ctx, conv, "", false, pressure)
+		members.setConvTokens(compactor.conversationTokens())
 	}
 	conv = councilMembersView(conv)
 	if tree != nil {
@@ -254,6 +255,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 			before := councilCompactions.get(compactor.key)
 			if short := compactor.compact(ctx, full, "refused", false, pressure); councilCompactions.get(compactor.key) != before {
 				conv = councilMembersView(short)
+				members.setConvTokens(compactor.conversationTokens())
 				_ = tree.buildRoot(ctx, conv)
 			}
 		}
@@ -344,6 +346,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 			before := councilCompactions.get(compactor.key)
 			if short := compactor.compact(c.Request.Context(), hist, "refused", false, 0); councilCompactions.get(compactor.key) != before {
 				conv = councilMembersView(short)
+				members.setConvTokens(compactor.conversationTokens())
 				if rerr := tree.buildRoot(c.Request.Context(), conv); rerr != nil {
 					slog.Info("council: no root after the fold; members hold their own copies", "error", rerr)
 				}
@@ -636,6 +639,9 @@ type councilMembers struct {
 	// carries the conversation itself (the front, the planner, the
 	// synthesizer): what the done chunk reports as prompt_eval_count.
 	convPrompt, convCached int
+	// convTokens is the conversation's own size, measured by the compactor
+	// with the engine's tokenizer: reported ahead of any member's prompt.
+	convTokens int
 	// usage is what each role spent (council_usage.go).
 	usage usageBook
 	last  int // the HTTP status of the last member error
@@ -927,13 +933,24 @@ func (cm *councilMembers) memberSession(r council.Request) string {
 // sum (161,214 on native.sh run 0416, against a ~50k conversation) had
 // Cerebriline compact a conversation that did not need it, for 1,987 s. What
 // every role read is council_usage.
+func (cm *councilMembers) setConvTokens(n int) {
+	cm.mu.Lock()
+	cm.convTokens = n
+	cm.mu.Unlock()
+}
+
 func (cm *councilMembers) metrics(total time.Duration) api.Metrics {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	m := cm.m
 	m.TotalDuration = total
 	cached := cm.cached
-	if cm.convPrompt > 0 {
+	switch {
+	case cm.convTokens > 0:
+		// The conversation as measured: no member's prompt is it, since
+		// each adds its own part (a synthesizer's reached 229k on 0418).
+		m.PromptEvalCount, cached = cm.convTokens, min(cm.convCached, cm.convTokens)
+	case cm.convPrompt > 0:
 		m.PromptEvalCount, cached = cm.convPrompt, cm.convCached
 	}
 	if cached > 0 {
@@ -943,10 +960,10 @@ func (cm *councilMembers) metrics(total time.Duration) api.Metrics {
 }
 
 // carriesConversation reports whether role r's prompt is the conversation
-// itself, before any role's own part: the calls whose prompt size a client
-// may take for its context's.
+// and little else: the front's and the planner's. The synthesizer's adds the
+// plan and the findings, and can be far larger than the conversation.
 func carriesConversation(r council.Role) bool {
-	return r == council.Front || r == council.Planner || r == council.Synthesizer
+	return r == council.Front || r == council.Planner
 }
 
 func (cm *councilMembers) status(error) int {
