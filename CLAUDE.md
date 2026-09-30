@@ -221,8 +221,9 @@ keeps a turn's deliberation so the next message can `continue` the same council,
 `internal/council/continue.go`; `server/council_usage.go` adds up what each role
 spent, reported on the done chunk as `ChatResponse.CouncilUsage`, `council_usage_v1`), reached from one
 `councilServes` line in
-`ChatHandler` (`council` hook); a `format` bypasses it, and tools reach it only
-with `council_chat_state` (`internal/council/tools.go`: read-only tools for
+`ChatHandler` (`council` hook); a `format` bypasses it, and tools without
+`council_chat_state` are a generic harness's, the resume point held server side
+(`server/council_held.go`; read-only and check inferred, `internal/council/generic.go`) (`internal/council/tools.go`: read-only tools for
 researchers and critics, writes by the synthesizer; `internal/council/evidence.go`:
 the server-answered `council_evidence` tool that reads a large result back by ref;
 `internal/council/reads.go`: shared reads, a repeated read-only call answered in place;

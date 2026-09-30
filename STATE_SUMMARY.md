@@ -15,7 +15,13 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >   Both ran on the CLI's old budget (49,152 / 12,288: the gateway fallback, not the plugin's 96,000 / 24,000), and 0412 overlapped a rebuild of Cerebriline's core (#580). They will be rerun once the CLI matches the plugin.
 > - Runner-issued check: a directive's `check_call` (`council_check_call_v1`) is the turn's check, even through a shell tool. A synthesizer that changed something and ends without running it has the council make it. Needed because Cerebriline's `./run_game` goes through `run_commands`, which the council counted as a change (#581).
 > - `council_read_many` dropped: `read_files` already takes several files, and one step already carries several calls.
-> - Left in 11.29: Cerebriline sending the directive, then the council arms through the harness.
+> - **A generic harness now gets the council** (owner: the test is a council tag driven by a harness that does not know it is one).
+>   - 0411 showed why this was needed: tools without `council_chat_state` had been a plain chat. Now they are the council's, and the server keeps the resume point itself.
+>   - Read-only tools are inferred from their names.
+>   - The check is inferred as the call repeated unchanged across a change.
+>   - Resent thinking is not read by members.
+>   - From this build on, a council tag is no plain arm: plain runs need a plain tag.
+> - Left in 11.29: the council arm (`omni-council-think`) through native.sh.
 
 > **2026-09-30 — 11.29 started: step limits, a spot-checking critic, empty-reply retries.**
 > - Plain omni through Cerebriline's harness (`native.sh`, eleven2go lane): FIXED 23/23 in 1,125 s. The engine budget was 12,288; asked Cerebriline why (#577).

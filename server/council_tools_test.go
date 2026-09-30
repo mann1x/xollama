@@ -129,13 +129,44 @@ func TestACouncilSynthesizerWritesThroughTheClient(t *testing.T) {
 	}
 }
 
-// Tools from a client that carries no state stay a plain chat, as before 9.5.
-func TestToolsWithoutStateStayAPlainChat(t *testing.T) {
-	e := &councilEngine{route: `{"route":"council"}`}
+// A generic client -- tools, no council_chat_state -- is served by the
+// council all the same. The server keeps the resume point and sends none, and
+// the client's tool results bring the turn back where it stopped.
+func TestAGenericClientsToolTurnIsTheCouncilsAndResumes(t *testing.T) {
+	councilStateKeyIn(t, t.TempDir())
+	prev := councilHeld
+	councilHeld = &councilHeldStates{m: map[string]heldState{}}
+	t.Cleanup(func() { councilHeld = prev })
+	e := &councilEngine{route: `{"route":"council"}`, tools: map[string]string{"researcher": "read_files"}}
 	s := councilToolServer(t, e)
-	toolChat(t, s, api.ChatRequest{Model: "council", Tools: councilTestTools, Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}}})
-	if e.count("route") != 0 || e.count("chat") != 1 {
-		t.Fatalf("roles %v", e.roles)
+	q := api.Message{Role: "user", Content: "Why is the sky blue?"}
+	req := api.ChatRequest{Model: "council", Tools: councilTestTools, Messages: []api.Message{q}}
+	chunks := toolChat(t, s, req)
+	var calls []api.ToolCall
+	for _, c := range chunks {
+		calls = append(calls, c.Message.ToolCalls...)
+		if c.CouncilChatState != "" {
+			t.Fatal("a client that sent no state was sent one")
+		}
+	}
+	if e.count("planner") != 1 || len(calls) != 2 || !strings.HasPrefix(calls[0].ID, "r1:call_") {
+		t.Fatalf("roles %v, calls %+v: want the council, suspended on the researchers' reads", e.roles, calls)
+	}
+
+	e2 := &councilEngine{route: `{"route":"council"}`, tools: e.tools}
+	s2 := councilToolServer(t, e2)
+	req.Messages = []api.Message{
+		q,
+		{Role: "assistant", ToolCalls: calls},
+		{Role: "tool", ToolCallID: calls[0].ID, Content: "R1-RESULT"},
+		{Role: "tool", ToolCallID: calls[1].ID, Content: "R2-RESULT"},
+	}
+	_, content := joined(toolChat(t, s2, req))
+	if !strings.HasPrefix(content, "The sky is blue") {
+		t.Fatalf("resumed answer %q", content)
+	}
+	if e2.count("front") != 0 || e2.count("planner") != 0 || e2.count("researcher") != 2 {
+		t.Fatalf("not resumed from the held point: roles %v", e2.roles)
 	}
 }
 

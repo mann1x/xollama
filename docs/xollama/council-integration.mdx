@@ -47,8 +47,14 @@ and this page changes in the same commit as the code.
 - **Do not compact the history yourself** (`council_compaction_v1`). The
   council folds its own conversation, before a turn and after its answer.
 - **`format`** makes the turn a plain chat without the council: you are
-  steering the output yourself. So do tools sent without
-  `council_chat_state` (section 4).
+  steering the output yourself.
+- **A client that knows nothing of councils still gets one.** Tools with no
+  `council_chat_state` are served by the council: the server keeps the
+  turn's resume point for the conversation and sends none, tools you did not
+  mark `x_read_only` are judged read-only from their names, the check is the
+  call the synthesizer repeats unchanged after a change, and thinking you
+  send back is not read. Everything in this page makes it better; none of it
+  is required.
 - `think: false` asks for the answer only. The deliberation still happens; it
   is just not streamed.
 

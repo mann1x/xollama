@@ -73,8 +73,10 @@ paths:
   the capability checks. Registry row `council` in
   `docs/protocols/UPSTREAM-SYNC.md`.
 - `councilServes` is false for a model without an enabled council, a request
-  with no messages, tools without `council_chat_state` or a `format` (the
-  client is steering the output itself), and any member's own turn. Members
+  with no messages, a `format` (the client is steering the output itself),
+  and any member's own turn. Tools without `council_chat_state` are a
+  generic harness's and ARE the council's (owner, 2026-09-30: a council must
+  work driven by a harness that does not know it is one). Members
   are marked with the
   `councilMemberKey` gin context key — never a header, so no client can set it
   and no member can convene the council again.
@@ -373,9 +375,19 @@ paths:
   unreadable is a fresh start, never an error. Add a field with a new protobuf
   number; a changed meaning is a new feature name. The key is
   `<models>/council-state.key`, written through `fsowner`.
-- **Tools on council turns (9.5, `council_tools_v1`).** Tools reach the
-  council only with `council_chat_state`: a member that calls one is suspended
-  into the state, so a client without it keeps the plain-chat bypass. Every
+- **A generic client** (tools, no `council_chat_state`; `server/council_held.go`,
+  `internal/council/generic.go`): the server keeps the sealed resume point by
+  the conversation's session (`councilHeld`, 64 conversations, 2 h) and sends
+  none. Tools no client marked read-only are marked from their names
+  (`InferReadOnly`; a client that marks any is taken at its word). With no
+  stated check, the check is the non-reading call a member repeats unchanged
+  across a change (`inferredCheck`), and then runs as a stated one would.
+  Past assistant thinking is stripped from what members read
+  (`councilMembersView`), after the fold: the retrospective reads it. Guard:
+  `TestAGenericClientsToolTurnIsTheCouncilsAndResumes`, failing with the held
+  point off. Never gate the council on an xOllama field again.
+- **Tools on council turns (9.5, `council_tools_v1`).** A member that calls
+  one is suspended into the state, the client's or the held one. Every
   member request carries the client's tools (`councilMembers.tools`), and so
   does `councilRenderer`, or the PolyKV root stops being the members' prefix
   (`TestAToolTurnsRootHoldsTheTools`). The policy lives in

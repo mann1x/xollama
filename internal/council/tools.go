@@ -390,6 +390,11 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 	// has read it, so the nudged reply only adds the verdict to it, unseen.
 	unverdicted := ""
 	for {
+		if cfg.CheckCall == nil {
+			// No harness stated the check: the one this member repeats is it
+			// (generic.go), from the moment it repeats one.
+			cfg.CheckCall = cfg.inferredCheck(turns)
+		}
 		if n := cfg.unread(req.Role, key); n != nil {
 			// Into the member's own turns, so its prefix stays and a resume
 			// reads them where they were.

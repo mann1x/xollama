@@ -89,7 +89,9 @@ func councilServes(c *gin.Context, m *Model, req api.ChatRequest) bool {
 	if c.GetBool(councilMemberKey) {
 		return false
 	}
-	return len(req.Messages) > 0 && (len(req.Tools) == 0 || req.CouncilChatState != nil || req.Council != nil) && len(req.Format) == 0 && !req.DebugRenderOnly
+	// Tools with no council_chat_state are a generic client's: the server
+	// keeps its resume point (council_held.go).
+	return len(req.Messages) > 0 && len(req.Format) == 0 && !req.DebugRenderOnly
 }
 
 // councilChat answers one chat turn with the model's council.
@@ -127,7 +129,9 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 
 	// Tools (9.5): the members carry the client's and the council's own
 	// evidence lookup, one list for all, so the shared prefix holds it once.
-	req.Tools = council.WithReports(council.WithEvidence(req.Tools))
+	// A generic client marks no tool read-only: the council reads it from
+	// the names (council.InferReadOnly).
+	req.Tools = council.WithReports(council.WithEvidence(council.InferReadOnly(req.Tools)))
 	if cfg.Broadcast {
 		req.Tools = council.WithBroadcast(req.Tools) // 10.6, behind council.broadcast
 	}
@@ -149,6 +153,14 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		base:    req,
 		session: sessionIDForRequest(req.SessionID, m, conv, nil),
 		cloud:   councilCloud.slots(req.Model, councilCloudParallel(m)),
+	}
+
+	// A generic client: tools, no council_chat_state. The server holds the
+	// turn's resume point for it and sends it none (council_held.go).
+	held := req.CouncilChatState == nil && len(req.Tools) > 0
+	if held {
+		blob := councilHeld.get(members.session)
+		req.CouncilChatState = &blob
 	}
 
 	// PolyKV: the members share the conversation's KV through a pool tree
@@ -217,6 +229,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	if compactor != nil {
 		conv = compactor.compact(ctx, conv, "", false, pressure)
 	}
+	conv = councilMembersView(conv)
 	if tree != nil {
 		// The planner runs attached to the conversation's root, so the
 		// conversation is held once (guide §6.2, arm C). An engine that
@@ -224,7 +237,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		if err := tree.buildRoot(ctx, conv); errors.Is(err, llm.ErrSessionFull) && compactor != nil {
 			before := councilCompactions.get(compactor.key)
 			if short := compactor.compact(ctx, full, "refused", false, pressure); councilCompactions.get(compactor.key) != before {
-				conv = short
+				conv = councilMembersView(short)
 				_ = tree.buildRoot(ctx, conv)
 			}
 		}
@@ -272,6 +285,10 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 				return blob
 			}
 			checkpoint = func(p council.Progress) {
+				if held {
+					councilHeld.put(members.session, state(p))
+					return
+				}
 				if blob := state(p); blob != "" {
 					select {
 					case ch <- api.ChatResponse{Model: req.Model, CreatedAt: time.Now().UTC(), Message: api.Message{Role: "assistant"}, CouncilChatState: blob}:
@@ -310,7 +327,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 			tree.dropForCompaction(c.Request.Context())
 			before := councilCompactions.get(compactor.key)
 			if short := compactor.compact(c.Request.Context(), hist, "refused", false, 0); councilCompactions.get(compactor.key) != before {
-				conv = short
+				conv = councilMembersView(short)
 				if rerr := tree.buildRoot(c.Request.Context(), conv); rerr != nil {
 					slog.Info("council: no root after the fold; members hold their own copies", "error", rerr)
 				}
@@ -365,6 +382,10 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		final.Metrics = members.metrics(time.Since(start))
 		final.CouncilUsage = append(members.usage.take(), councilDesks.usage(members.session)...)
 		final.CouncilChatState = state(carry)
+		if held {
+			councilHeld.put(members.session, final.CouncilChatState)
+			final.CouncilChatState = ""
+		}
 		select {
 		case ch <- final:
 		case <-c.Request.Context().Done():
@@ -430,6 +451,25 @@ func councilConversation(m *Model, msgs []api.Message) ([]api.Message, string) {
 		turns = append(turns, msg)
 	}
 	return append([]api.Message{{Role: "system"}}, turns...), strings.TrimSpace(system)
+}
+
+// councilMembersView is the conversation as the members read it: the past
+// turns without their thinking. A council's thinking is its deliberation,
+// streamed to the client and never read back, and a generic client that
+// sends it again would hand every member the last turn's whole deliberation.
+// The compactor still reads it (its retrospective folds reasoning), so this
+// comes after the fold.
+func councilMembersView(conv []api.Message) []api.Message {
+	if !slices.ContainsFunc(conv, func(m api.Message) bool { return m.Role == "assistant" && m.Thinking != "" }) {
+		return conv
+	}
+	out := slices.Clone(conv)
+	for i := range out {
+		if out[i].Role == "assistant" {
+			out[i].Thinking = ""
+		}
+	}
+	return out
 }
 
 func councilSeeds(d council.Draws) []int64 {

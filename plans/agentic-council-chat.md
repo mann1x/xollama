@@ -2387,6 +2387,12 @@ itself), so the read stays current across them. Guard:
   - A directive's `check_call` (`{tool, arguments}`, `council_check_call_v1`) is the check, and the only call that is: `cfg.readOnly` answers true for it, so the check finder, the review queue and the loop guards take it as a check. The shared-read cache does not, so a check is never answered from an earlier run.
   - A synthesizer turn that ends after a change with no check since has the council make the call for it. The synthesizer goes on from the result.
   - Guards: `TestAWriteWithoutTheStatedCheckHasItMade` (fails with the issue removed), `TestOnlyTheStatedCheckCountsAsOne`, `TestACheckCallMustNameItsTool`.
+- [x] A generic harness drives the council (owner, 2026-09-30): the council measured through native.sh is a council tag served to a client that does not know it is one, with no xOllama fields.
+  - Tools with no `council_chat_state` are served by the council. The server holds the resume point by session (`server/council_held.go`).
+  - Read-only is inferred from tool names when the client marks none.
+  - The check is inferred as the non-reading call repeated unchanged across a change.
+  - A client's resent thinking is not read by members.
+  - `check_call` stays as an optional extra; no arm depends on it.
 - [~] `council_read_many`: dropped. Cerebriline's `read_files` already takes several files, and a step may carry several calls, which the tool notes ask for. A batch tool would duplicate both.
 - [x] Typed results (`internal/council/report.go`):
   - researchers end with `council_report` (summary, proposals `{path, old_text, new_text, why, check}`, claims with evidence, open);

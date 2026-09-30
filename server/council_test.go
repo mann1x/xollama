@@ -432,12 +432,13 @@ func TestANonStreamedCouncilTurnIsOneResponse(t *testing.T) {
 	}
 }
 
-// Tools and a format are the client steering the model's own output; the
-// model answers them as an ordinary chat.
-func TestToolsAndFormatBypassTheCouncil(t *testing.T) {
+// A format is the client steering the model's own output; the model answers
+// it as an ordinary chat. Tools do not: a generic client's are the council's
+// (council_held.go).
+func TestAFormatBypassesTheCouncil(t *testing.T) {
 	for _, req := range []api.ChatRequest{
 		{Format: json.RawMessage(`"json"`)},
-		{Tools: getTestTools()},
+		{Format: json.RawMessage(`"json"`), Tools: getTestTools()},
 	} {
 		e := &councilEngine{route: `{"route":"council"}`}
 		s := councilServer(t, e, councilOn())
