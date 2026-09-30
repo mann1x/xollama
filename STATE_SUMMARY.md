@@ -47,7 +47,10 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >   - First edit at 788 s. The checks went 20, then 21, then 23 passed between 2,493 s and 2,956 s. No harness compaction ran.
 >   - Left: the check was not run from 51 s to 1,989 s. The only earlier run was the front's, and inference needs two runs; a single run of a run-type tool could seed it.
 >   - One reported prompt still reached 229k. A member's prompt can exceed the client's conversation.
-> - Plain control for the council tag: `omni-plain-kv3-384k` on eleven2go, a copy of `omni-council-kv3-384k` with `council.enabled` off. Plain arms of the new series are running on it and on glm.
+> - Plain control for the council tag: `omni-plain-kv3-384k` on eleven2go, a copy of `omni-council-kv3-384k` with `council.enabled` off. Plain arms of the new series, one run each:
+>   - plain omni, 0419 (`omni-plain-kv3-384k`): FIXED 23/23 in 2,672 s;
+>   - plain glm, 0420: FIXED 23/23 in 419 s.
+>   - The council, 0418, took 3,333 s: 1.25x plain omni on the same weights.
 
 > **2026-09-30 — 11.29 started: step limits, a spot-checking critic, empty-reply retries.**
 > - Plain omni through Cerebriline's harness (`native.sh`, eleven2go lane): FIXED 23/23 in 1,125 s. The engine budget was 12,288; asked Cerebriline why (#577).
