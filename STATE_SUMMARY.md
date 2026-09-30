@@ -5,6 +5,19 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-30 — 11.26: a full owner compacts and the turn resumes.**
+> Council run 4 of hard (a0968aea, eleven2go) failed at trip 118. A 120k
+> root plus a 39k stage filled the 196608-cell owner, and the next worker's
+> 39662 cells did not fit. The engine said "compact the session"; xollama
+> waited two minutes and failed. The owner's choice: compact on the refusal
+> and retry the member. Built: owner-bound members are refused at once
+> (`llm.ErrOwnerFull`, 507). They wait only while a sibling may give cells
+> back. Otherwise the turn lets its pools go, folds the conversation, rebuilds
+> the root, and resumes from the last checkpoint.
+> `server/council_owner_full.go`, the `context-window` hook row extended.
+> Four tests, each piece mutation-checked; server, llm and council pass under
+> `-race`, lint clean. bug-186. Deploy after the batch.
+
 > **2026-09-30 — Hard on eleven2go with a0968aea: 5 of 6 fixed so far; a failed health dial lost council run 3.**
 > - Council: run 1 fixed in 81 trips (4,695 s), run 2 in 46 trips (2,278 s).
 >   Before this build the council had never fixed hard. Run 3 ended at trip 41:

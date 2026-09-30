@@ -127,6 +127,10 @@ type councilTree struct {
 	stashTurn string
 	stashed   *councilStash
 	adopted   []*councilLayer
+	// flying counts the owner-bound members in flight, landings those that
+	// finished; landed is closed as each lands (council_owner_full.go).
+	flying, landings int
+	landed           chan struct{}
 }
 
 type councilLayer struct {

@@ -208,6 +208,7 @@ pool, kept between turns — and `llm/engine_council.go` is its client;
 (its `--kv-unified` is never repeated by `appendSlotArgs` in `llm/engine_launch.go`);
 `server/council_layers_kept.go` keeps a turn's stage layers across its tool round trips;
 a worker's layer ends at its own instruction (`council.OwnPart`), and `server/council_layer_log.go` logs each layer's text;
+a member refused for a full owner is answered at once (`llm.ErrOwnerFull`), and the turn compacts and resumes (`server/council_owner_full.go`);
 `server/council_room.go` has the owner give back cells a member booked beside it (the builder, a reviewer) needs; a role with
 `council.<role>.host` is sent to that server by `server/council_remote.go`, only
 when `XOLLAMA_COUNCIL_HOSTS` allows it; `server/council_compaction.go` folds the

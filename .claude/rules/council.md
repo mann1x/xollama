@@ -581,6 +581,13 @@ paths:
   restricts `lastCheck` to that tool's calls.
 - **Cues (Phase 3)**: `routeCue` in `routeRequest`, `frontCue` in the auto
   front. Topic-agnostic; a stated mode skips both.
+- **A full owner compacts, never waits (11.26, `council_owner_full.go`)**:
+  an owner-bound member is marked `llm.WithCompactOnFull`. Its full-owner
+  refusal is `ErrOwnerFull` at once; it waits only for another owner-bound
+  member to land (its own landing is not one). With none in flight, the turn
+  calls `dropForCompaction`, folds `hist` (the pre-fold conversation; `apply`
+  needs the raw one), rebuilds the root, and resumes from the latest
+  checkpoint, once. Never mark reviewers, the builder or compaction calls.
 - **A worker's layer ends at its own instruction (11.25, `council.OwnPart`)**:
   the first `[COUNCIL · INSTRUCTIONS FOR YOU]` message after the last plan,
   never the last user message. Mates' notes, the user's system prompt and the

@@ -2344,6 +2344,42 @@ are replayed onto it (`replay` in `quote.go`; a whole write is the text
 itself), so the read stays current across them. Guard:
 `TestTheReadFollowsTheMembersOwnChanges`, which fails with the replay off.
 
+### 11.26 A full owner compacts, and the turn resumes (built 2026-09-30)
+
+Council run 4 of hard on eleven2go (a0968aea) failed at trip 118. The
+conversation's root had grown to about 120k tokens and the synthesizer's stage
+to 39k, inside a 196608-cell owner. The next worker needed 39662 cells with
+37121 free. The engine answered "session allocation full … compact the
+session", and xollama waited out admission for two minutes as it does for a
+busy server. Nothing ran that would give cells back, and the turn failed.
+Compaction had not fired: the owner stood at 81 %, under its 85 % trigger.
+
+Built (the owner's choice, "compact on the refusal and retry the member"):
+- **Refused at once.** `llm.WithCompactOnFull` marks a member that holds the
+  owner's cells (attached to an owner's pool, or running on the owner;
+  `ownerBound`). Its full-owner refusal comes back at once as
+  `llm.ErrOwnerFull`, mapped to 507, instead of being waited out. A request
+  over the whole window is still `ErrNeverFits`. Reviewers, the builder and
+  compaction calls are unmarked and wait as before.
+- **Wait for a sibling first.** The refused member asks again once another
+  owner-bound member finishes, since that gives cells back (`retryOwnerFull`;
+  in-flight count `takeoff`/`land` on the tree, at most 30 waits). Its own
+  landing does not count; a test caught that.
+- **Fold and resume.** When none is in flight, the error reaches the turn. The
+  turn lets every pool go, newest first (`dropForCompaction`), folds the
+  conversation (the forced `refused` fold of the conversation as the members
+  read it, before any earlier fold), rebuilds the root from the fold, and
+  resumes `RunFrom` from the last checkpoint. Settled members are not asked
+  again. This happens once per request; a fold that changes nothing leaves the
+  error as it was.
+- **Guards (mutation-checked):**
+  - `TestAFullOwnerIsAnsweredAtOnceForACouncilMember` (llm);
+  - `TestAFullOwnerCompactsAndTheTurnResumes`, which fails without the marker,
+    the fold, the pool release, or the resume from the checkpoint;
+  - `TestAFullOwnerWaitsForAMemberThatGivesCellsBack`;
+  - `TestOnlyOwnerBoundMembersAreRefusedAtOnce`.
+- Not measured live yet: deploy after the a0968aea batch ends.
+
 ### 11.25 A member's layer ends at its own instruction (built 2026-09-30)
 
 On solidPC's hard run (569747788), pools 13 and 14 were built 7 s apart on one

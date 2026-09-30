@@ -201,6 +201,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	// the member that made it, without its working notes (internal/council
 	// History).
 	conv = council.History(conv)
+	hist := conv // before any fold: what a fold of a full owner starts from
 	compactor := s.councilCompactorFor(ctx, m, req, members, tree, cfg, reserve)
 	if compactor != nil {
 		conv = compactor.compact(ctx, conv, "", false, pressure)
@@ -268,7 +269,18 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 				}
 			}
 		}
-		res, err := council.RunFrom(c.Request.Context(), cfg, members, conv, from, checkpoint, func(e council.Event) {
+		// The last point the turn settled, to resume from after a fold.
+		var latestMu sync.Mutex
+		latest := from
+		settled := func(p council.Progress) {
+			latestMu.Lock()
+			latest = p
+			latestMu.Unlock()
+			if checkpoint != nil {
+				checkpoint(p)
+			}
+		}
+		emit := func(e council.Event) {
 			if e.Kind == council.Content {
 				if e.Text != "" {
 					send(api.Message{Role: "assistant", Content: e.Text})
@@ -278,7 +290,28 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 			for _, seg := range th.add(e) {
 				sendTagged(api.Message{Role: "assistant", Thinking: seg.text}, &seg.tag)
 			}
-		})
+		}
+		res, err := council.RunFrom(c.Request.Context(), cfg, members, conv, from, settled, emit)
+		if errors.Is(err, llm.ErrOwnerFull) && tree != nil && compactor != nil {
+			// The owner is full and no member runs to give cells back: fold
+			// the conversation, rebuild the root from it and resume from the
+			// members that settled, once (council_owner_full.go).
+			tree.dropForCompaction(c.Request.Context())
+			before := councilCompactions.get(compactor.key)
+			if short := compactor.compact(c.Request.Context(), hist, "refused", false, 0); councilCompactions.get(compactor.key) != before {
+				conv = short
+				if rerr := tree.buildRoot(c.Request.Context(), conv); rerr != nil {
+					slog.Info("council: no root after the fold; members hold their own copies", "error", rerr)
+				}
+				latestMu.Lock()
+				resume := latest
+				latestMu.Unlock()
+				slog.Info("council: owner was full; compacted and resuming the turn", "session", members.session, "error", err)
+				res, err = council.RunFrom(c.Request.Context(), cfg, members, conv, resume, settled, emit)
+			} else {
+				slog.Info("council: owner full and the conversation did not fold", "session", members.session)
+			}
+		}
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				if c.Request.Context().Err() != nil {
@@ -579,7 +612,11 @@ func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken
 
 // StreamTools is Stream with the tools the member calls (council.ToolModel).
 func (cm *councilMembers) StreamTools(ctx context.Context, r council.Request, onToken func(string)) (council.Reply, error) {
-	out, calls, cut, err := cm.stream(ctx, r, onToken)
+	// A full owner is asked again while another member may give cells back
+	// (council_owner_full.go).
+	out, calls, cut, err := cm.retryOwnerFull(ctx, r, func() (string, []api.ToolCall, bool, error) {
+		return cm.stream(ctx, r, onToken)
+	})
 	return council.Reply{Content: out, Calls: calls, Cut: cut}, err
 }
 
@@ -645,6 +682,13 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 	req.Tools = cm.tools
 	placement, worker, done := cm.place(ctx, r, &req)
 	defer done()
+	if cm.ownerBound(r, req.SessionID, worker) {
+		// Refused at once when the owner is full, not waited out
+		// (council_owner_full.go).
+		ctx = llm.WithCompactOnFull(ctx)
+		cm.tree.takeoff()
+		defer cm.tree.land()
+	}
 	body, err := json.Marshal(req)
 	if err != nil {
 		return "", nil, false, err
@@ -703,7 +747,7 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 			cm.mu.Lock()
 			cm.last = w.status()
 			cm.mu.Unlock()
-			return out.String(), nil, false, fmt.Errorf("council %s: %s", r.Role, line.Error)
+			return out.String(), nil, false, memberError(r.Role, line.Error)
 		}
 		if t := line.Message.Content; t != "" {
 			out.WriteString(t)
