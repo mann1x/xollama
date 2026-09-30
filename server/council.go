@@ -89,10 +89,21 @@ func councilServes(c *gin.Context, m *Model, req api.ChatRequest) bool {
 	if c.GetBool(councilMemberKey) {
 		return false
 	}
+	// A reply cap no council answer fits in is a probe of the model itself
+	// (Cerebriline's template probe: num_predict 1, read for its
+	// prompt_eval_count): the model answers it alone.
+	if n, ok := optionAsInt(req.Options["num_predict"]); ok && n > 0 && n < councilMinReply {
+		return false
+	}
 	// Tools with no council_chat_state are a generic client's: the server
 	// keeps its resume point (council_held.go).
 	return len(req.Messages) > 0 && len(req.Format) == 0 && !req.DebugRenderOnly
 }
+
+// councilMinReply is the least reply cap a council turn is run for: below it
+// no deliberation's answer fits, and the request is the client probing the
+// model, not asking it.
+const councilMinReply = 64
 
 // councilChat answers one chat turn with the model's council.
 func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {

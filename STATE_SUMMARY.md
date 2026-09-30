@@ -25,6 +25,7 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >   - plain omni, 0413: FIXED 23/23 in 2,197 s;
 >   - plain glm, 0414: FIXED 23/23 in 1,189 s.
 > - First council arm, 0415 (`omni-council-think`, bb7434ce): the council engaged on the plain request (front turn, 4,096 think budget), then ABORTED at 692 s. A researcher's forced report carried `maxLength` 2,000, which the engine cannot turn into a grammar. The fix drops the bound from the schema and asks a refused format again once without it.
+> - A request whose `num_predict` is below 64 is a probe and is answered plainly. Cerebriline's fixed template probe sends two such requests (`num_predict` 1), and without this each would start a council.
 > - Left in 11.29: the council arm again, on the fix.
 
 > **2026-09-30 — 11.29 started: step limits, a spot-checking critic, empty-reply retries.**

@@ -432,13 +432,16 @@ func TestANonStreamedCouncilTurnIsOneResponse(t *testing.T) {
 	}
 }
 
-// A format is the client steering the model's own output; the model answers
-// it as an ordinary chat. Tools do not: a generic client's are the council's
+// A format is the client steering the model's own output, and a reply cap no
+// council answer fits in is the client probing the model; the model answers
+// both as an ordinary chat. Tools do not: a generic client's are the council's
 // (council_held.go).
 func TestAFormatBypassesTheCouncil(t *testing.T) {
 	for _, req := range []api.ChatRequest{
 		{Format: json.RawMessage(`"json"`)},
 		{Format: json.RawMessage(`"json"`), Tools: getTestTools()},
+		// Cerebriline's template probe: one token, read for its prompt size.
+		{Options: map[string]any{"num_predict": float64(1)}},
 	} {
 		e := &councilEngine{route: `{"route":"council"}`}
 		s := councilServer(t, e, councilOn())
