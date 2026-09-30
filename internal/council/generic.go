@@ -77,11 +77,19 @@ func nameWords(name string) []string {
 // each time; running the tests, the build or the program does not. Nil until
 // the member has repeated one.
 func (cfg Config) inferredCheck(turns []api.Message) *api.ToolCall {
+	return InferCheck(cfg.Tools, turns)
+}
+
+// InferCheck is inferredCheck over any turns: the server gives it the whole
+// turn's tool traffic, every member's calls in order, since no one member's
+// turns may hold both runs (native.sh 0417: the front ran the check, each
+// synthesizer cycle started afresh, and it was never inferred).
+func InferCheck(tools api.Tools, turns []api.Message) *api.ToolCall {
 	seen := map[string]int{} // readKey -> the change count when it was last made
 	changes := 0
 	for _, t := range turns {
 		for _, c := range t.ToolCalls {
-			if local(c) || readOnly(cfg.Tools, c) {
+			if local(c) || readOnly(tools, c) {
 				continue
 			}
 			k := readKey(c)

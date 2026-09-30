@@ -430,6 +430,11 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 			// told to report, and two steps later its report is taken as is.
 			steps, from := cfg.cycleSteps(key, turns)
 			switch {
+			case (steps >= cfg.MaxSteps+2 || toolSteps(turns) >= maxCycleSteps*cfg.MaxSteps) && cfg.uncheckedWrite(turns):
+				// Its steps are spent with changes unchecked: the cycle ends
+				// on the check's result, not on the member's account (0417:
+				// nine cycles of edits, one check).
+				return "", cfg.issueCheck(key, turns, Reply{}), nil
 			case steps >= cfg.MaxSteps+2 || toolSteps(turns) >= maxCycleSteps*cfg.MaxSteps:
 				cfg.recordCheck(key, turns)
 				out := replyText(turns, "") + "\n\n" + Retest + " The cycle's tool steps ran out before a check passed."

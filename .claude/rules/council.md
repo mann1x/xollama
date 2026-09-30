@@ -739,6 +739,12 @@ paths:
   step of the cycle: on 0416 that ended six cycles one fix after the check
   named the next error, each paying a full research round. Guard
   `TestACycleLastsWhileItsCheckMoves` (fails with the reset off).
+- **An inferred check is the turn's, not one member's**: the server infers
+  it from the whole turn's tool traffic (`council.InferCheck` over
+  `all[len(conv):]` in `councilChat`), and a synthesizer cycle whose steps
+  run out with changes unchecked has the check made before its RETEST
+  (0417: nine cycles, one check). Guards
+  `TestTheCheckIsInferredAcrossMembers`, `TestASpentCycleIsCheckedBeforeItEnds`.
 - **A harness's stated check is a call, not a tool name** (`check_call`,
   `internal/council/checkcall.go`, `council_check_call_v1`). `cfg.readOnly`
   answers true for exactly that call (`isCheck`, same `readKey`), so a check

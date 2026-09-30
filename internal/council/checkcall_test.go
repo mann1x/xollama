@@ -166,3 +166,58 @@ func TestACycleLastsWhileItsCheckMoves(t *testing.T) {
 		t.Errorf("a moving check ended the cycle after %d steps, want more than %d and at most %d", moving, 4+2, maxCycleSteps*4)
 	}
 }
+
+// The check is inferred from the whole turn's traffic: the front runs it,
+// a later synthesizer cycle edits and runs it again (native.sh 0417).
+func TestTheCheckIsInferredAcrossMembers(t *testing.T) {
+	tools := append(append(api.Tools{}, testTools...), shellTool)
+	traffic := []api.Message{
+		{Role: "assistant", ToolCalls: []api.ToolCall{{ID: "f:a", Function: checkRun().Function}}},
+		{Role: "tool", ToolCallID: "f:a", Content: "SyntaxError"},
+		{Role: "assistant", ToolCalls: []api.ToolCall{{ID: "s.2:b", Function: tcall("write_file", map[string]any{"content": "x"}).Function}}},
+		{Role: "tool", ToolCallID: "s.2:b", Content: "WROTE"},
+		{Role: "assistant", ToolCalls: []api.ToolCall{{ID: "s.2:c", Function: checkRun().Function}}},
+	}
+	if c := InferCheck(tools, traffic); c == nil || readKey(*c) != readKey(checkRun()) {
+		t.Fatalf("inferred %+v", c)
+	}
+}
+
+// A cycle whose steps are spent with changes unchecked ends on the check's
+// result: the council makes the check before the RETEST.
+func TestASpentCycleIsCheckedBeforeItEnds(t *testing.T) {
+	cfg := checkCfg(t)
+	cfg.MaxSteps = 2
+	edits := 0
+	s := &scriptStub{}
+	for range 8 {
+		edits++
+		s.replies = append(s.replies, Reply{Calls: []api.ToolCall{tcall("write_file", map[string]any{"content": fmt.Sprint(edits)})}})
+	}
+	req := Request{Role: Synthesizer, Messages: []api.Message{{Role: "user", Content: "go"}}}
+	key := MemberKey(req.Role, req.Index, req.Round)
+	var turns []api.Message
+	checked := false
+	for range 20 {
+		out, next, err := callTools(t.Context(), s, cfg, req, turns, func(string) {})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if next == nil {
+			if !checked || !strings.Contains(out, "ok: false") {
+				t.Fatalf("the cycle ended unchecked (checked %v): %q", checked, out)
+			}
+			return
+		}
+		for _, c := range next[len(next)-1].ToolCalls {
+			res := "WROTE"
+			if cfg.isCheck(c) {
+				checked, res = true, "ok: false, 3 tests fail"
+			}
+			next = append(next, api.Message{Role: "tool", ToolCallID: ForwardedID(key, c.ID), Content: res})
+			cfg.Results[ForwardedID(key, c.ID)] = res
+		}
+		turns = next
+	}
+	t.Fatal("the cycle never ended")
+}

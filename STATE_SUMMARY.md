@@ -38,7 +38,12 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >      - the synthesizer's step bound counts from its check's last change of output (`cycleSteps`), so it keeps its cycle while each fix moves the check;
 >      - a cycle is capped at 4× its steps;
 >      - a new research round starts only when the check stops moving, or when the synthesizer asks for one.
-> - Left in 11.29: the council arm again on the new series (Cerebriline d3c58e1a9).
+> - **Council arm 0417** (9d3a2d2f, Cerebriline d3c58e1a9, new series): TIMEOUT at 7,203 s, the game never loading.
+>   - The synthesizer spent nine cycles on edits built on a wrong theory ("trailing semicolons" on class methods), and restored the original file twice.
+>   - It ran the check twice in two hours. Every cycle ended at its step bound, never on a check result.
+>   - The council-issued check never fired. The check had not been inferred, because the front and each synthesizer cycle start their own turns, so no one member's turns held two runs of it. And a cycle ended by its steps skipped the end-of-turn issue.
+>   - Fixed: the check is inferred from the whole turn's tool traffic (`InferCheck`, server side), and a cycle whose steps are spent with changes unchecked has the check made before it ends.
+> - Left in 11.29: the council arm again.
 
 > **2026-09-30 — 11.29 started: step limits, a spot-checking critic, empty-reply retries.**
 > - Plain omni through Cerebriline's harness (`native.sh`, eleven2go lane): FIXED 23/23 in 1,125 s. The engine budget was 12,288; asked Cerebriline why (#577).

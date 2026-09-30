@@ -229,6 +229,11 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		all := conv
 		conv, cfg.Results = councilToolTurn(conv)
 		cfg.Reads = council.SharedReads(cfg.Tools, all[len(conv):])
+		if cfg.CheckCall == nil {
+			// The check is the turn's, whoever ran it: the front and each
+			// cycle of the synthesizer start their own turns (generic.go).
+			cfg.CheckCall = council.InferCheck(cfg.Tools, all[len(conv):])
+		}
 		full = conv
 	}
 	// The earlier turns as the members read them: each forwarded call under
