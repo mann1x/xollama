@@ -47,3 +47,37 @@ func (cfg Config) issueCheck(key string, turns []api.Message, rep Reply) []api.M
 	slog.Info("council: the synthesizer ended without checking its changes; the council runs the check", "member", key, "tool", cfg.CheckCall.Function.Name)
 	return withReasoning(turns, api.Message{Role: "assistant", Content: rep.Content, Thinking: rep.Thinking, ToolCalls: named([]api.ToolCall{*cfg.CheckCall}, len(turns))})
 }
+
+// maxCycleSteps bounds, in multiples of the cycle's steps, a cycle whose check
+// keeps moving: progress extends it, but not without end.
+const maxCycleSteps = 4
+
+// cycleSteps is the synthesizer's tool steps since its check last moved: the
+// steps after the latest run of the check whose output differed from the run
+// before it. While each fix changes what the check reports -- the next error,
+// fewer failures -- the synthesizer keeps its cycle, as a plain agent keeps
+// going; a full round of research starts only when the check stops moving or
+// it asks for one. Measured on native.sh run 0416: six cycles, each ended by
+// the step bound one fix after the check had named the next error plainly,
+// each then paying 3-5 minutes of planner, researchers and critics.
+//
+// from is where that window starts in turns.
+func (cfg Config) cycleSteps(key string, turns []api.Message) (steps, from int) {
+	prev := ""
+	for i, t := range turns {
+		for _, c := range t.ToolCalls {
+			if !cfg.isCheck(c) {
+				continue
+			}
+			res, _, ok := cfg.result(key, c)
+			if !ok {
+				continue
+			}
+			if prev != "" && !sameCheck(res, prev) {
+				from = i + 1
+			}
+			prev = res
+		}
+	}
+	return toolSteps(turns[from:]), from
+}

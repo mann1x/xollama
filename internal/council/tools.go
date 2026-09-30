@@ -428,12 +428,13 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 		if req.Role == Synthesizer && cfg.testing(req.Round) {
 			// D: a cycle's steps are bounded; past them the synthesizer is
 			// told to report, and two steps later its report is taken as is.
-			switch steps := toolSteps(turns); {
-			case steps >= cfg.MaxSteps+2:
+			steps, from := cfg.cycleSteps(key, turns)
+			switch {
+			case steps >= cfg.MaxSteps+2 || toolSteps(turns) >= maxCycleSteps*cfg.MaxSteps:
 				cfg.recordCheck(key, turns)
 				out := replyText(turns, "") + "\n\n" + Retest + " The cycle's tool steps ran out before a check passed."
 				return out + cfg.evidence(req.Role, key, turns), nil, nil
-			case steps >= cfg.MaxSteps && !noted(turns, budgetNote(cfg.MaxSteps)):
+			case steps >= cfg.MaxSteps && !noted(turns[from:], budgetNote(cfg.MaxSteps)):
 				turns = append(slices.Clone(turns), user(budgetNote(cfg.MaxSteps)))
 			}
 		}

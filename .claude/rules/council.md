@@ -732,6 +732,13 @@ paths:
   - The `Condenser` runs beside the owner (`ownWindow`) with no tools, never
     on the owner: that would evict the conversation's cache.
   Guards: `TestAMembersLastReasoningIsReplayed`, `TestCappedReasoningIsCondensed`.
+- **A synthesizer's cycle lasts while its check moves** (`cycleSteps`,
+  `internal/council/checkcall.go`): the step bound counts from the latest
+  check run whose output differed from the run before, capped at
+  `maxCycleSteps` (4) × the cycle's steps. Do not go back to counting every
+  step of the cycle: on 0416 that ended six cycles one fix after the check
+  named the next error, each paying a full research round. Guard
+  `TestACycleLastsWhileItsCheckMoves` (fails with the reset off).
 - **A harness's stated check is a call, not a tool name** (`check_call`,
   `internal/council/checkcall.go`, `council_check_call_v1`). `cfg.readOnly`
   answers true for exactly that call (`isCheck`, same `readKey`), so a check

@@ -1,6 +1,8 @@
 package council
 
 import (
+	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -99,5 +101,68 @@ func TestACheckCallMustNameItsTool(t *testing.T) {
 		if _, err := reportCfg().Direct(d); err == nil {
 			t.Errorf("%+v was accepted", d)
 		}
+	}
+}
+
+// cycleStub edits and runs the check, in turn, for ever.
+type cycleStub struct {
+	scriptStub
+	n int
+}
+
+func (s *cycleStub) StreamTools(_ context.Context, req Request, _ func(string)) (Reply, error) {
+	s.reqs = append(s.reqs, req)
+	s.n++
+	if s.n%2 == 1 {
+		return Reply{Calls: []api.ToolCall{tcall("write_file", map[string]any{"content": fmt.Sprint(s.n)})}}, nil
+	}
+	return Reply{Calls: []api.ToolCall{checkRun()}}, nil
+}
+
+// cycleSteps runs one synthesizer cycle, answering the check with out(i) on
+// its i-th run, and returns how many steps the cycle took.
+func cycleRun(t *testing.T, out func(i int) string) int {
+	t.Helper()
+	cfg := checkCfg(t)
+	cfg.MaxSteps = 4
+	s := &cycleStub{}
+	req := Request{Role: Synthesizer, Messages: []api.Message{{Role: "user", Content: "go"}}}
+	key := MemberKey(req.Role, req.Index, req.Round)
+	var turns []api.Message
+	runs := 0
+	for range 100 {
+		_, next, err := callTools(t.Context(), s, cfg, req, turns, func(string) {})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if next == nil {
+			return toolSteps(turns)
+		}
+		for _, c := range next[len(next)-1].ToolCalls {
+			res := "WROTE"
+			if cfg.isCheck(c) {
+				runs++
+				res = out(runs)
+			}
+			next = append(next, api.Message{Role: "tool", ToolCallID: ForwardedID(key, c.ID), Content: res})
+			cfg.Results[ForwardedID(key, c.ID)] = res
+		}
+		turns = next
+	}
+	t.Fatal("the cycle never ended")
+	return 0
+}
+
+// While each fix changes what the check reports, the synthesizer keeps its
+// cycle; a check that stops moving ends it at the step bound, and a moving one
+// at the ceiling (native.sh run 0416: six cycles, one error each).
+func TestACycleLastsWhileItsCheckMoves(t *testing.T) {
+	stuck := cycleRun(t, func(int) string { return "Error: x is not defined" })
+	moving := cycleRun(t, func(i int) string { return fmt.Sprintf("Error: fault %d", i) })
+	if stuck > 4+2 {
+		t.Errorf("a check that does not move kept the cycle for %d steps, want at most %d", stuck, 4+2)
+	}
+	if moving <= 4+2 || moving > maxCycleSteps*4 {
+		t.Errorf("a moving check ended the cycle after %d steps, want more than %d and at most %d", moving, 4+2, maxCycleSteps*4)
 	}
 }

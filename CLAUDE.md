@@ -197,7 +197,7 @@ shapes each role's instructions, think budget and check cycles for the work;
 `internal/council/cut.go`: a writer's cap on a tool turn has room for an edit, and a reply cut before its call is asked again;
 `internal/council/quote.go`: a change whose quote the member's last read does not bear out is answered in place with the read's text;
 `internal/council/directive.go`: the owner's and a client's instructions by slot, and a harness's directive (`ChatRequest.Council`: mode, stated build, evidence, check tool; `council_directive_v1`);
-`internal/council/checkcall.go`: a directive's `check_call` is the turn's check, made for a synthesizer that ends with a change unchecked (`council_check_call_v1`);
+`internal/council/checkcall.go`: a directive's `check_call` is the turn's check, made for a synthesizer that ends with a change unchecked (`council_check_call_v1`), and a synthesizer's cycle lasts while that check's output moves (`cycleSteps`);
 `internal/council/loops.go`: Cerebriline's loop guards, a no-op edit refused in place
 and a write repeated with the same result struck until the member's steps end) and `server/council.go` (members as in-process chat turns, each
 on its own engine session; on opencoti with PolyKV, `server/council_polykv.go`

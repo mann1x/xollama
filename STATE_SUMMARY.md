@@ -34,7 +34,10 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >      - a refutation stands until a change answers it, and DONE is refused meanwhile;
 >      - a review with no change since judges the last check;
 >      - the verdict wording counts any failure anywhere in the output.
->   3. **Slow to 18/23: 2,588 s, where plain took 309 s.** Six cycles, each fixing the one runtime error the last check named. Each cycle spent 3-5 min on planner, researchers and critics before the synthesizer's minute, and ended at the step bound with a RETEST. Not fixed yet: a proposal is pending with the owner.
+>   3. **Slow to 18/23: 2,588 s, where plain took 309 s.** Six cycles, each fixing the one runtime error the last check named. Each cycle spent 3-5 min on planner, researchers and critics before the synthesizer's minute, and ended at the step bound with a RETEST. Fixed (owner approved):
+>      - the synthesizer's step bound counts from its check's last change of output (`cycleSteps`), so it keeps its cycle while each fix moves the check;
+>      - a cycle is capped at 4× its steps;
+>      - a new research round starts only when the check stops moving, or when the synthesizer asks for one.
 > - Left in 11.29: the council arm again on the new series (Cerebriline d3c58e1a9).
 
 > **2026-09-30 — 11.29 started: step limits, a spot-checking critic, empty-reply retries.**
