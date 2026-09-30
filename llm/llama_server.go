@@ -1653,7 +1653,11 @@ func (s *llamaServerRunner) getServerStatusRetry(ctx context.Context) (ServerSta
 	for {
 		status, err := s.getServerStatus(ctx)
 		if err != nil {
-			return status, err
+			// xollama-hook: engine-health-retry — a dial that failed against a
+			// live opencoti is tried again (engine_health_retry.go).
+			if status, err = s.retryHealth(ctx, status, err); err != nil {
+				return status, err
+			}
 		}
 		if status == ServerStatusNoSlotsAvailable {
 			if retries >= 10 {

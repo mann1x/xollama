@@ -110,6 +110,9 @@ scheduling `server/sched.go`, model IO `server/images.go` `server/create.go`
 `XOLLAMA_ENGINE_ARGS` last on the engine command line. On opencoti,
 `llm/engine_fit_target.go` drops upstream's vision-projector padding from
 `LLAMA_ARG_FIT_TARGET` (`engine-fit` hook) — see `.claude/rules/engine-fit.md`.
+A `/health` dial that fails against a live opencoti is tried again with backoff
+(`retryHealth` in `llm/engine_health_retry.go`, `engine-health-retry` hook in
+`getServerStatusRetry`); stock llama.cpp keeps upstream's single failure.
 `llm/drafter.go` holds
 the drafter rules (built-in vs attached head, `--spec-type`) as pure functions
 shared by the launch and `show` (`server/drafter_show.go`), so the two cannot drift.

@@ -237,6 +237,17 @@ BUILD time, and ships inside the installation package beside `llama-server`.
 A model load must not be able to stall on a 650 MB fetch, and an installed
 package must work with no network at all.
 
+### A health check that could not reach the engine
+
+Upstream fails a request on the first failed dial to the engine's `/health`.
+On opencoti, while the engine process is still running, a check that could not
+reach it (a dial error, or refused) is tried up to four more times, with
+backoff from 0.25 to 2 s and a Warn each time (`engine-health-retry`,
+`llm/engine_health_retry.go`). Measured cause, on eleven2go with a0968aea: one
+loopback dial to a live engine timed out, the engine answered three seconds
+later, and a council turn was lost. Stock llama.cpp keeps upstream's single
+failure.
+
 ## Packaging
 
 `llm/engine/pin.txt` pins the artifact: `repo`/`rev`/`tag` plus one

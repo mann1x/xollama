@@ -5,6 +5,21 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-30 — Hard on eleven2go with a0968aea: 5 of 6 fixed so far; a failed health dial lost council run 3.**
+> - Council: run 1 fixed in 81 trips (4,695 s), run 2 in 46 trips (2,278 s).
+>   Before this build the council had never fixed hard. Run 3 ended at trip 41:
+>   a health check to the live engine failed on loopback (`connectex: A
+>   connection attempt failed…`), and the engine answered three seconds later.
+> - Plain: run 1 fixed in 59 trips (1,353 s), run 2 in 56 trips (499 s).
+> - Council run 1 kept its layers on 76 of 81 requests, and 30 builds prefilled
+>   261k tokens. The layer log shows no per-researcher split.
+> - Fix on dev, not deployed until the batch ends: `engine-health-retry`
+>   (`llm/engine_health_retry.go`, one hook line). On opencoti only, while the
+>   engine runs, a dial that failed is tried up to four more times with
+>   backoff; stock llama.cpp keeps upstream's single failure. Three tests
+>   (mutation-checked), `-race`, lint, 31 hooks registered. bug-185.
+> - The batch continues on a0968aea (pairs 3–5), so all ten runs share a build.
+
 > **2026-09-30 — 11.25: with broadcast on, researchers never shared their stage.**
 > The pools of the same length on solidPC's hard run (13 and 14, 6724) were
 > round 2's two researchers, one layer each. The member log shows their
