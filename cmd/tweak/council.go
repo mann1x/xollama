@@ -187,10 +187,12 @@ func roleFields(name, what string) []field {
 			},
 		},
 		{
-			name:    flag + "-max-tokens",
-			path:    "council." + name + ".max_tokens",
-			title:   "Council " + name + " reply cap",
-			help:    "The most tokens one " + name + " may write. Unset keeps the role's default.",
+			name:  flag + "-max-tokens",
+			path:  "council." + name + ".max_tokens",
+			title: "Council " + name + " reply cap",
+			help: "The most tokens one " + name + " may write. Unset: on the council's own\n" +
+				"model, that model's num_predict, else the role's built-in cap; on another\n" +
+				"model (council." + name + ".model), that model's own template decides.",
 			kind:    kindInt,
 			unit:    "tokens",
 			quiet:   true,
@@ -198,6 +200,22 @@ func roleFields(name, what string) []field {
 			get:     roleGet(name, func(r *xollama.CouncilRole) string { return showInt(r.MaxTokens) }),
 			set: func(c *xollama.Config, v string) error {
 				return setInt(v, &councilRole(c, name).MaxTokens)
+			},
+		},
+		{
+			name:  flag + "-num-ctx",
+			path:  "council." + name + ".num_ctx",
+			title: "Council " + name + " context window, on its own model",
+			help: "The num_ctx a " + name + " on another model (council." + name + ".model) runs\n" +
+				"with. Unset leaves it to that model's template. A role on the council's own\n" +
+				"model runs in the council's window and cannot set one.",
+			kind:    kindInt,
+			unit:    "tokens",
+			quiet:   true,
+			blocked: councilOff,
+			get:     roleGet(name, func(r *xollama.CouncilRole) string { return showInt(r.NumCtx) }),
+			set: func(c *xollama.Config, v string) error {
+				return setInt(v, &councilRole(c, name).NumCtx)
 			},
 		},
 		{

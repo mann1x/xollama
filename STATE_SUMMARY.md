@@ -5,6 +5,22 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-30 — Harness v3 (the logic oracle), the glm plain baseline, and 11.27 (a role's cap and window are its own model's).**
+> - **Harness v3** (`/srv/ml/xollama-phase2`, `manic/README.md`). `manic/bin/run_game` is a compiled, obfuscated build of `manic/work/run_game.logic.js` (root 0600). It prints the old verdict plus `game_logic`: 23 behavioural traps on the game's own rules. A run is fixed only when the page loads and the traps pass. The model sees which traps fail but cannot read them.
+> - **Re-score of every earlier run.** 12 of 28 old "fixed" runs keep the game's rules: omni council 2/12, omni plain 8/13, glm 2/3. Both of a0968aea's hard council fixes fail (empty `pop()`; falling through the floor). Table: `manic/work/logic-rescore-all-20260930.tsv`.
+> - **Fixed in the oracle:** a countdown-trap false positive, which jumped the clock without frames, found live. Rebuilt; sha f13e481f. Sent to the ollama session for Cerebriline (#569-#571).
+> - **Plain glm-5.3-flash:cloud, hard, thinking on, `num_predict` 131,072:**
+>
+>   | Run | Result | Trips | Wall | In | Out |
+>   |---|---|---|---|---|---|
+>   | 1 | fixed, 23/23 | 6 | 814 s | 80,463 | 69,755 |
+>   | 2 | fixed, 23/23 | 13 | 572 s | 367,051 | 57,588 |
+>   | 3 | fixed, 23/23 | 10 | 300 s | 144,875 | 28,985 |
+>
+>   Mean 562 s, 197k in, 52k out. The longest replies were 59k, 48k and 24k tokens, mostly thinking. The old 16,384 cap would have cut every run.
+> - **11.27.** The council's built-in caps (1024-3072 plus 2048) would have cut every glm role. Now a role's stated `max_tokens` holds on its own model. Unstated, a cloud or other-model role inherits its template, and a lead role takes the council model's `num_predict`, else the built-in cap. Only lead roles are booked in the owner (`councilReserve`). There is a new `council.<role>.num_ctx` (schema v5), and members on another model shed the client's `num_predict` and `num_ctx`.
+> - **Next.** Set glm roles to `max_tokens` 131,072 in the four glm councils; run all-glm, then critic, researcher and planner one at a time, with glm as the builder.
+
 > **2026-09-30 — Hard on eleven2go with a0968aea, stopped at 4 pairs (the owner's call): council 2/4, plain 3/4.**
 > | Pair | Council | Plain |
 > |---|---|---|

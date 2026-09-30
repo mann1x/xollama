@@ -120,8 +120,20 @@ type CouncilRole struct {
 	// format.
 	Instructions string `json:"instructions,omitempty"`
 
-	// MaxTokens caps one member's reply. Zero means the role's default.
+	// MaxTokens caps one member's reply. Zero leaves the cap to the role's
+	// model: a role on the council's own model takes that model's
+	// num_predict, else the role's built-in cap (the owner's window is booked
+	// for it); a role on another model, local or on another host, takes that
+	// model's own num_predict -- its Modelfile, or the remote endpoint's
+	// template -- and the council sends none.
 	MaxTokens int `json:"max_tokens,omitempty"`
+
+	// NumCtx is the context window of a role on another model (Model), sent
+	// as that model's num_ctx. Zero leaves it to that model's own template.
+	// A role on the council's own model runs in the council's window and
+	// cannot have one of its own: the window is the model's num_ctx, and on
+	// PolyKV the members' layers are carved from the owner's.
+	NumCtx int `json:"num_ctx,omitempty"`
 
 	// Think lets the role's members reason before they reply. Empty or "off"
 	// is the default: no reasoning. "on" is a budget of
@@ -298,6 +310,19 @@ func (c *Council) IsZero() bool {
 
 func (r *CouncilRole) isZero() bool { return r == nil || *r == (CouncilRole{}) }
 
+// setsRoleWindow reports a role with a num_ctx of its own (schema v5).
+func (c *Council) setsRoleWindow() bool {
+	if c == nil {
+		return false
+	}
+	for _, r := range []*CouncilRole{c.Planner, c.Researcher, c.Critic, c.Synthesizer, c.Builder} {
+		if r != nil && r.NumCtx > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 func (x *CouncilContext) isZero() bool { return x == nil || *x == (CouncilContext{}) }
 
 // validate checks the council against itself and against the engine the
@@ -323,8 +348,11 @@ func (c *Council) validate(engine string) error {
 		if r.role == nil {
 			continue
 		}
-		if r.role.Count < 0 || r.role.MaxTokens < 0 {
-			return fmt.Errorf("xollama config: council.%s: count and max_tokens must not be negative", r.name)
+		if r.role.Count < 0 || r.role.MaxTokens < 0 || r.role.NumCtx < 0 {
+			return fmt.Errorf("xollama config: council.%s: count, max_tokens and num_ctx must not be negative", r.name)
+		}
+		if r.role.NumCtx > 0 && r.role.Model == "" {
+			return fmt.Errorf("xollama config: council.%s.num_ctx needs council.%s.model: a role on the council's own model runs in the council's window", r.name, r.name)
 		}
 		if r.role.Count > 0 && (r.name == RolePlanner || r.name == RoleSynthesizer || r.name == RoleBuilder) {
 			return fmt.Errorf("xollama config: council.%s.count: there is one %s; count applies to researchers and critics", r.name, r.name)

@@ -154,7 +154,8 @@ func TestCouncilHostAllowed(t *testing.T) {
 
 // A token budget goes only where it is understood: this server's own models,
 // and a model another xollama serves itself. A cloud model and a stock ollama
-// get think true, with the budget as room in num_predict.
+// get think true, with the budget as room in num_predict on top of the role's
+// stated max_tokens.
 func TestAThinkingMemberGetsABudgetOnlyWhereOneIsUnderstood(t *testing.T) {
 	budget := float64(xollama.DefaultCouncilThinkBudget)
 	for _, tc := range []struct {
@@ -177,6 +178,7 @@ func TestAThinkingMemberGetsABudgetOnlyWhereOneIsUnderstood(t *testing.T) {
 			t.Setenv("XOLLAMA_COUNCIL_HOSTS", "127.0.0.1")
 			c := remoteResearchers(srv.URL)
 			c.Researcher.Think = "on"
+			c.Researcher.MaxTokens = 2048
 			if tc.model != "" {
 				c.Researcher.Model = tc.model
 			}
@@ -189,6 +191,43 @@ func TestAThinkingMemberGetsABudgetOnlyWhereOneIsUnderstood(t *testing.T) {
 				opts, _ := r["options"].(map[string]any)
 				if r["think"] != tc.want || opts["num_predict"] != float64(2048)+budget {
 					t.Errorf("think %v, num_predict %v; want %v and %v", r["think"], opts["num_predict"], tc.want, float64(2048)+budget)
+				}
+			}
+		})
+	}
+}
+
+// A role on another server with no max_tokens of its own is sent none, nor
+// the client's reply cap and window, which are the council's: that server's
+// template for the model decides. A stated num_ctx is sent as the role's.
+func TestARemoteRoleTakesItsOwnCapAndWindow(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		maxTok, numCtx  int
+		wantNP, wantCtx any
+	}{
+		{"unstated", 0, 0, nil, nil},
+		{"stated", 131072, 262144, float64(131072), float64(262144)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			councilProbes.reset()
+			remote := &remoteOllama{}
+			srv := remote.serve(t)
+			t.Setenv("XOLLAMA_COUNCIL_HOSTS", "127.0.0.1")
+			c := remoteResearchers(srv.URL)
+			c.Researcher.MaxTokens, c.Researcher.NumCtx = tc.maxTok, tc.numCtx
+			s := councilServer(t, &councilEngine{route: `{"route":"council"}`}, c)
+			chatChunks(t, s, api.ChatRequest{
+				Model: "council", Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}},
+				Options: map[string]any{"num_predict": 999, "num_ctx": 4096},
+			})
+			if len(remote.reqs) != 2 {
+				t.Fatalf("the remote served %d chats, want 2", len(remote.reqs))
+			}
+			for _, r := range remote.reqs {
+				opts, _ := r["options"].(map[string]any)
+				if opts["num_predict"] != tc.wantNP || opts["num_ctx"] != tc.wantCtx {
+					t.Errorf("num_predict %v, num_ctx %v; want %v and %v", opts["num_predict"], opts["num_ctx"], tc.wantNP, tc.wantCtx)
 				}
 			}
 		})

@@ -15,11 +15,13 @@ paths:
   `Config.Validate` and `prune` in `cmd/tweak/fields.go` in the same commit.
   `devices` is pruned through `IsZero`; the council has its own `Prune`.
   Missing one leaves an empty block on disk that reads as a stated setting.
-- **The version written is the lowest that is true.** `SchemaVersion` is 4 and
+- **The version written is the lowest that is true.** `SchemaVersion` is 5 and
   `requiredVersion` raises the floor only for a block an older build would
   misread silently: v2 for `kv.unified` / `kv.residency_mode`, v3 for a
-  `devices` pin, v4 for a `council`. Never stamp `SchemaVersion` unconditionally
-  — that makes every model this build touched unreadable to an older xollama.
+  `devices` pin, v4 for a `council`, v5 for a role's own `num_ctx`
+  (`council.<role>.num_ctx`, `setsRoleWindow`). Never stamp `SchemaVersion`
+  unconditionally — that makes every model this build touched unreadable to
+  an older xollama.
 - **Launch config versus request config.** A setting that changes how the model
   *loads* (engine, KV, slots, devices) belongs in the runner's config; one that
   changes how a *turn is answered* (the council) must not. `Config.LaunchConfig`

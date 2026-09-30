@@ -85,7 +85,22 @@ paths:
   A thinking role is sent an explicit **token** budget
   (`council.ThinkBudget(setting, cm.window)`), never a level: a level is a
   share of `num_predict`, which for a member is its reply cap. `num_predict`
-  becomes `max_tokens` + budget. On a tool turn a writer (`writes`) gets at
+  becomes `max_tokens` + budget.
+- **A reply cap belongs to the model the request runs on** (`maxTok(cfg,
+  role, model, host)`, `internal/council/steps.go`). A role's stated
+  `max_tokens` holds on its own model only; the front and the direct answer
+  run on the council's model and never borrow a cloud synthesizer's cap. On
+  the council's own model an unstated cap is its Modelfile `num_predict`
+  (`cfg.LeadMaxTokens`), else `defaultMaxTokens` -- always a number, because
+  the owner's window is booked for it. On another model it is 0: nothing is
+  sent and that model's template (its Modelfile, or the remote endpoint's)
+  decides. `councilReserve` counts only `cfg.OnLead` roles, so a cloud
+  role's 128k cap books nothing in the owner. A member on another model
+  sheds the client's `num_predict` and `num_ctx` (they are the council's) and
+  takes its role's `num_ctx` (`council.<role>.num_ctx`, needs `model`,
+  schema v5). Guards: `TestAReplyCapFollowsTheModelItRunsOn`,
+  `TestTheReserveCountsOnlyTheRolesOnTheCouncilsModel`,
+  `TestARemoteRoleTakesItsOwnCapAndWindow`. On a tool turn a writer (`writes`) gets at
   least `writeMaxTokens` (16384, `internal/council/cut.go`): an edit carries
   old + new text in one call, and a 3,072 cap cut the medium council's fix
   three times. `done_reason "length"` reaches it as `Reply.Cut`; a cut writer

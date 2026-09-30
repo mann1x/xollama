@@ -33,7 +33,7 @@ const MediaTypeImageJSON = "application/vnd.ollama.image.json"
 
 // SchemaVersion is the newest schema this build can read. It is NOT
 // necessarily what it writes: see requiredVersion.
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 // SchemaVersionBase is the version that expresses everything except the fields
 // added in v2 (kv.unified, kv.residency_mode), v3 (devices) and v4 (council).
@@ -476,6 +476,11 @@ func (c *Config) requiredVersion() int {
 	// An older build would read a council as an unknown field and serve the
 	// model as a plain chat: one model call where the publisher meant a
 	// council. Refusing is the honest answer here too.
+	// An older build would drop a role's num_ctx and run that role in the
+	// window its model's template gives, not the one the publisher set.
+	if c.Council.setsRoleWindow() {
+		return 5
+	}
 	if !c.Council.IsZero() {
 		return 4
 	}

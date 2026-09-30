@@ -103,11 +103,64 @@ func basePrompt(cfg Config, r Role) string {
 	return defaultPrompts[r]
 }
 
-func maxTok(cfg Config, r Role) int {
-	if n := cfg.MaxTokens[r]; n > 0 {
+// maxTok is the reply cap of a request for r that runs on model at host
+// ("" and "" for the council's own model). r's stated max_tokens holds on r's
+// own model. Otherwise, on the council's own model, it is that model's
+// num_predict or r's built-in cap: the owner's window is booked for it. On any
+// other model it is 0, and that model's own template -- its Modelfile, or the
+// remote endpoint's -- sets the cap.
+func maxTok(cfg Config, r Role, model, host string) int {
+	own, ownHost := cfg.roleOn(r)
+	if n := cfg.MaxTokens[r]; n > 0 && own == model && ownHost == host {
 		return n
 	}
+	if model != "" || host != "" {
+		return 0
+	}
+	if cfg.LeadMaxTokens > 0 {
+		return cfg.LeadMaxTokens
+	}
 	return defaultMaxTokens[r]
+}
+
+// roleOn is the model and host r's own members run on: "" and "" for the
+// council's own model. The builder falls back to the planner's, a reviewer is
+// a critic.
+func (cfg Config) roleOn(r Role) (model, host string) {
+	switch r {
+	case Builder:
+		model, host, _ = builderOn(cfg)
+		return model, host
+	case Reviewer:
+		r = Critic
+	}
+	return cfg.Models[r], cfg.Hosts[r]
+}
+
+// OnLead reports whether r's members run on the council's own model, the one
+// whose owner session -- and, on PolyKV, whose pool tree -- they share.
+func (cfg Config) OnLead(r Role) bool {
+	model, host := cfg.roleOn(r)
+	return model == "" && host == ""
+}
+
+// Cap is r's reply cap on its own model (maxTok); 0 leaves it to that model.
+func (cfg Config) Cap(r Role) int {
+	model, host := cfg.roleOn(r)
+	return maxTok(cfg, r, model, host)
+}
+
+// numCtx is r's window on its own model, or 0.
+func numCtx(cfg Config, r Role) int {
+	switch r {
+	case Builder:
+		if cfg.Models[Builder] == "" && cfg.Hosts[Builder] == "" {
+			r = Planner
+		}
+	case Reviewer:
+		r = Critic
+	}
+	return cfg.NumCtx[r]
 }
 
 // call makes one member's call, sending its tokens to emit as k -- unless it
@@ -213,7 +266,7 @@ func direct(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Messag
 	}
 	return callFrom(ctx, m, cfg, emit, Request{
 		Role: Planner, Messages: msgs, Seed: d.Direct.Seed,
-		Temperature: d.Direct.Temperature, MaxTokens: maxTok(cfg, Synthesizer), Think: cfg.Think[Planner],
+		Temperature: d.Direct.Temperature, MaxTokens: maxTok(cfg, Synthesizer, "", ""), Think: cfg.Think[Planner],
 	}, Content, turns)
 }
 
@@ -262,8 +315,8 @@ func planMsg(cfg Config) api.Message {
 // MakePlan writes the plan and one brief per researcher.
 func MakePlan(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, emit Emit) (Plan, error) {
 	out, err := call(ctx, m, cfg, emit, Request{
-		Role: Planner, Model: cfg.Models[Planner], Host: cfg.Hosts[Planner], Messages: append(append(clone(conv), tasksMsg(cfg.carried)...), planMsg(cfg)),
-		Seed: d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Planner), Think: cfg.Think[Planner],
+		Role: Planner, Model: cfg.Models[Planner], Host: cfg.Hosts[Planner], NumCtx: numCtx(cfg, Planner), Messages: append(append(clone(conv), tasksMsg(cfg.carried)...), planMsg(cfg)),
+		Seed: d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Planner, cfg.Models[Planner], cfg.Hosts[Planner]), Think: cfg.Think[Planner],
 		Format: planSchema(cfg.Researchers),
 	}, Thinking)
 	if err != nil {
@@ -323,8 +376,8 @@ func replanRequest(cfg Config, conv []api.Message) []api.Message {
 // checks in cfg.
 func Replan(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, emit Emit) (Plan, error) {
 	out, err := call(ctx, m, cfg, emit, Request{
-		Role: Planner, Round: len(cfg.tests), Model: cfg.Models[Planner], Host: cfg.Hosts[Planner], Messages: replanRequest(cfg, conv),
-		Seed: d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Planner), Think: cfg.Think[Planner],
+		Role: Planner, Round: len(cfg.tests), Model: cfg.Models[Planner], Host: cfg.Hosts[Planner], NumCtx: numCtx(cfg, Planner), Messages: replanRequest(cfg, conv),
+		Seed: d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Planner, cfg.Models[Planner], cfg.Hosts[Planner]), Think: cfg.Think[Planner],
 		Format: planSchema(cfg.Researchers),
 	}, Thinking)
 	if err != nil {
@@ -337,9 +390,9 @@ func Replan(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Messag
 // note, which says what the plan left undone.
 func ReplanAgain(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, first Plan, note string, emit Emit) (Plan, error) {
 	out, err := call(ctx, m, cfg, emit, Request{
-		Role: Planner, Round: len(cfg.tests), Model: cfg.Models[Planner], Host: cfg.Hosts[Planner],
+		Role: Planner, Round: len(cfg.tests), Model: cfg.Models[Planner], Host: cfg.Hosts[Planner], NumCtx: numCtx(cfg, Planner),
 		Messages: append(replanRequest(cfg, conv), planReply(first), user(note)),
-		Seed:     d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Planner), Think: cfg.Think[Planner],
+		Seed:     d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Planner, cfg.Models[Planner], cfg.Hosts[Planner]), Think: cfg.Think[Planner],
 		Format: planSchema(cfg.Researchers),
 	}, Thinking)
 	if err != nil {
@@ -459,8 +512,8 @@ func research(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Mess
 	msgs = append(msgs, user(fmt.Sprintf("ROLE: RESEARCHER %d. Your brief: %s\n%s%s", i+1, p.Briefs[i], prompt(cfg, Researcher), cfg.toolNote(Researcher))))
 	dr := d.Researchers[round][i]
 	return callFrom(ctx, m, cfg, emit, Request{
-		Role: Researcher, Index: i, Round: round, Model: cfg.Models[Researcher], Host: cfg.Hosts[Researcher], Messages: msgs,
-		Seed: dr.Seed, Temperature: dr.Temperature, MaxTokens: maxTok(cfg, Researcher), Think: cfg.Think[Researcher],
+		Role: Researcher, Index: i, Round: round, Model: cfg.Models[Researcher], Host: cfg.Hosts[Researcher], NumCtx: numCtx(cfg, Researcher), Messages: msgs,
+		Seed: dr.Seed, Temperature: dr.Temperature, MaxTokens: maxTok(cfg, Researcher, cfg.Models[Researcher], cfg.Hosts[Researcher]), Think: cfg.Think[Researcher],
 	}, Thinking, turns)
 }
 
@@ -482,8 +535,8 @@ func critique(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Mess
 		user(fmt.Sprintf("ROLE: CRITIC %d. %s", i+1, instr)))
 	dc := d.Critics[round][i]
 	return callFrom(ctx, m, cfg, emit, Request{
-		Role: Critic, Index: i, Round: round, Model: cfg.Models[Critic], Host: cfg.Hosts[Critic], Messages: msgs,
-		Seed: dc.Seed, Temperature: dc.Temperature, MaxTokens: maxTok(cfg, Critic), Think: cfg.Think[Critic],
+		Role: Critic, Index: i, Round: round, Model: cfg.Models[Critic], Host: cfg.Hosts[Critic], NumCtx: numCtx(cfg, Critic), Messages: msgs,
+		Seed: dc.Seed, Temperature: dc.Temperature, MaxTokens: maxTok(cfg, Critic, cfg.Models[Critic], cfg.Hosts[Critic]), Think: cfg.Think[Critic],
 	}, Thinking, turns)
 }
 
@@ -531,8 +584,8 @@ func synthesize(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Me
 		emit = holdBack(emit, Retest, Done)
 	}
 	return callFrom(ctx, m, cfg, emit, Request{
-		Role: Synthesizer, Round: cycle, Model: cfg.Models[Synthesizer], Host: cfg.Hosts[Synthesizer], Messages: msgs,
-		Seed: d.Synth.Seed, Temperature: d.Synth.Temperature, MaxTokens: maxTok(cfg, Synthesizer), Think: cfg.Think[Synthesizer],
+		Role: Synthesizer, Round: cycle, Model: cfg.Models[Synthesizer], Host: cfg.Hosts[Synthesizer], NumCtx: numCtx(cfg, Synthesizer), Messages: msgs,
+		Seed: d.Synth.Seed, Temperature: d.Synth.Temperature, MaxTokens: maxTok(cfg, Synthesizer, cfg.Models[Synthesizer], cfg.Hosts[Synthesizer]), Think: cfg.Think[Synthesizer],
 	}, Content, turns)
 }
 

@@ -2344,6 +2344,48 @@ are replayed onto it (`replay` in `quote.go`; a whole write is the text
 itself), so the read stays current across them. Guard:
 `TestTheReadFollowsTheMembersOwnChanges`, which fails with the replay off.
 
+### 11.27 A role's reply cap and window are its own model's (built 2026-09-30)
+
+**Why.** The first cloud councils put glm-5.3-flash:cloud on some roles. The
+plain arm measured what glm needs with thinking on (hard, harness v3, three
+runs, all fixed and passing the logic traps): its longest reply in each run was
+59,086, 47,512 and 24,484 tokens. A council role left without `max_tokens` took
+the built-in cap, 1024-3072 plus the 2048 think budget, and would have been cut
+before its answer, starving the council. A stated 128k cap, in turn, was added
+into `councilReserve`, the room booked in the owner's window, although a cloud
+role never runs there.
+
+**Owner's ruling (2026-09-30).** PolyKV sizing matters only for the roles on
+PolyKV, the lead model's. Every role needs its own `max_tokens`; unstated, it
+inherits its model's template, local or at the remote endpoint. glm is forced
+to 128k. Every role also needs a `num_ctx` override.
+
+**Built.**
+- `maxTok(cfg, role, model, host)` resolves a cap against the model the
+  request runs on. A stated cap holds on the role's own model. On the lead
+  model an unstated cap is the council model's Modelfile `num_predict`
+  (`cfg.LeadMaxTokens`), else the built-in one: always a number, since the
+  owner's window is booked for it. On another model it is 0, and nothing is
+  sent. The front and the direct answer run on the lead and never borrow a
+  cloud synthesizer's cap.
+- `cfg.OnLead`, `cfg.Cap`; `councilReserve` counts only lead roles. With every
+  role on glm the reserve is the 1024 for instructions.
+- `council.<role>.num_ctx` (`xollama.CouncilRole.NumCtx`,
+  `--council-<role>-num-ctx`): the window of a role on another model, sent as
+  its `num_ctx`. It needs `model`, since a lead role runs in the council's
+  window, and it raises the schema to v5.
+- A member on another model sheds the client's `num_predict` and `num_ctx`,
+  which were the council's.
+- Tests: `TestAReplyCapFollowsTheModelItRunsOn`,
+  `TestARoleIsOnTheLeadOnlyWithoutAModelOfItsOwn`,
+  `TestTheReserveCountsOnlyTheRolesOnTheCouncilsModel`,
+  `TestARemoteRoleTakesItsOwnCapAndWindow` (fails with the strip removed:
+  num_predict 999 reached the remote), `TestARoleWindowNeedsTheRolesOwnModel`,
+  `TestARoleWindowIsSchemaFive`. `TestAThinkingMemberGetsABudgetOnlyWhereOneIsUnderstood`
+  now states the 2048 cap it adds the budget to.
+- The local councils are unchanged: none of the omni council models sets
+  `num_predict`, so their roles keep the built-in caps.
+
 ### 11.26 A full owner compacts, and the turn resumes (built 2026-09-30)
 
 Council run 4 of hard on eleven2go (a0968aea) failed at trip 118. The

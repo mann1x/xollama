@@ -49,6 +49,9 @@ type Request struct {
 	Seed        int64
 	Temperature float64
 	MaxTokens   int
+	// NumCtx is the context window of a role on another model, or 0 for
+	// that model's own (xollama.CouncilRole.NumCtx).
+	NumCtx int
 	// Think is the role's think setting (xollama.CouncilRole.Think), or ""
 	// for none. ThinkBudget resolves it against the member's window.
 	Think string
@@ -111,8 +114,15 @@ type Config struct {
 	// (broadcast.go).
 	Broadcast bool
 	// board is the turn's notes, shared by the members of RunFrom.
-	board     *board
+	board *board
+	// MaxTokens is each role's stated reply cap; an unstated one is resolved
+	// by maxTok against the model the request runs on.
 	MaxTokens map[Role]int
+	// LeadMaxTokens is the council's own model's num_predict, or 0: the cap
+	// an unstated role on that model takes before its built-in one.
+	LeadMaxTokens int
+	// NumCtx is each role's window on its own model (xollama.CouncilRole.NumCtx).
+	NumCtx map[Role]int
 	// Prompts replace a role's built-in instruction; Models serve a role on
 	// another model.
 	Prompts map[Role]string
@@ -213,12 +223,9 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 		Researchers: DefaultResearchers, Critics: DefaultCritics,
 		Temperature: temperature, Jitter: DefaultJitter,
 		MaxRounds: 1, MaxTests: DefaultMaxTests, MaxSteps: DefaultMaxSteps, ShowDeliberation: true,
-		MaxTokens: map[Role]int{}, Prompts: map[Role]string{}, Models: map[Role]string{},
+		MaxTokens: map[Role]int{}, NumCtx: map[Role]int{}, Prompts: map[Role]string{}, Models: map[Role]string{},
 		Hosts: map[Role]string{}, Think: map[Role]string{},
 		Charter: Charter(c), Instructions: map[Role]Said{},
-	}
-	for r, n := range defaultMaxTokens {
-		cfg.MaxTokens[r] = n
 	}
 	if c == nil {
 		return cfg
@@ -252,6 +259,9 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 		}
 		if role.MaxTokens > 0 {
 			cfg.MaxTokens[r] = role.MaxTokens
+		}
+		if role.NumCtx > 0 {
+			cfg.NumCtx[r] = role.NumCtx
 		}
 		if role.Prompt != "" {
 			cfg.Prompts[r] = role.Prompt

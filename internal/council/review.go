@@ -268,8 +268,8 @@ func reviewRequest(cfg Config, j ReviewJob, i int) Request {
 		sourced(checkSource, fmt.Sprintf("What it says it changed: %s\n\nWhat its calls returned since the check it sent before:%s", j.Change, j.Evidence)),
 		user(sourcesNote+"\n\n"+fmt.Sprintf(reviewInstr, i+1)))
 	return Request{
-		Role: Reviewer, Index: i, Model: cfg.Models[Critic], Host: cfg.Hosts[Critic], Messages: msgs,
-		Seed: rand.Int64(), Temperature: cfg.Temperature, MaxTokens: maxTok(cfg, Critic), Think: cfg.Think[Critic],
+		Role: Reviewer, Index: i, Model: cfg.Models[Critic], Host: cfg.Hosts[Critic], NumCtx: numCtx(cfg, Reviewer), Messages: msgs,
+		Seed: rand.Int64(), Temperature: cfg.Temperature, MaxTokens: maxTok(cfg, Critic, cfg.Models[Critic], cfg.Hosts[Critic]), Think: cfg.Think[Critic],
 	}
 }
 

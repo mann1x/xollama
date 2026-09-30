@@ -153,9 +153,9 @@ func (cfg Config) architecture() string {
 func MakeBuild(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, emit Emit) (*Build, error) {
 	model, host, think := builderOn(cfg)
 	out, err := call(ctx, m, cfg, emit, Request{
-		Role: Builder, Model: model, Host: host,
+		Role: Builder, Model: model, Host: host, NumCtx: numCtx(cfg, Builder),
 		Messages: append(builderConversation(conv), user(cfg.withInstructions(sourcesNote+"\n\n"+fmt.Sprintf(builderPrompt, cfg.architecture()), Builder))),
-		Seed:     d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Builder), Think: think,
+		Seed:     d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Builder, model, host), Think: think,
 		Format: buildSchema,
 	}, Thinking)
 	if err != nil {

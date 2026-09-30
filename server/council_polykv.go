@@ -60,9 +60,18 @@ const (
 
 // councilReserve is the room a turn needs on top of the conversation, in
 // tokens, for the plan and the members' replies to live in the owner's window.
+// Only the roles on the council's own model live there: a role on another
+// model, local, cloud or remote, runs on its own and books nothing here.
 func councilReserve(cfg council.Config) int {
-	n := cfg.MaxTokens[council.Planner] + cfg.MaxTokens[council.Synthesizer]
-	n += cfg.Researchers*cfg.MaxTokens[council.Researcher] + cfg.Critics*cfg.MaxTokens[council.Critic]
+	n := 0
+	for _, r := range []struct {
+		role  council.Role
+		count int
+	}{{council.Planner, 1}, {council.Synthesizer, 1}, {council.Researcher, cfg.Researchers}, {council.Critic, cfg.Critics}} {
+		if cfg.OnLead(r.role) {
+			n += r.count * cfg.Cap(r.role)
+		}
+	}
 	return n + 1024 // the role instructions and the templates around them
 }
 

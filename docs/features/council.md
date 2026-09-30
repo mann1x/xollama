@@ -36,7 +36,10 @@ hunk in an upstream file.
 3. Every member is an ordinary chat turn through `ChatHandler`, in process,
    thinking off unless its role states `think` (then `think` is an explicit
    token budget from `council.ThinkBudget` against the member's window, and
-   `num_predict` = `max_tokens` + budget; only `Message.Content` is read, so
+   `num_predict` = `max_tokens` + budget, where `max_tokens` is the role's
+   own on its own model, the council model's `num_predict` or the built-in cap
+   on the council's model, and nothing -- the model's own template -- on
+   another model; only `Message.Content` is read, so
    the reasoning is dropped; the routing call never reasons), with its own seed; researchers and critics draw a temperature
    within `temperature_jitter`. The planner runs on the conversation's session;
    the others on `<session>~researcher-N`, `~critic-N`, `~synthesizer`.

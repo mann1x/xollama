@@ -141,7 +141,7 @@ func front(ctx context.Context, tm ToolModel, cfg Config, d Draws, conv []api.Me
 		}
 		rep, err := tm.StreamTools(ctx, Request{
 			Role: Front, Messages: append(clone(own), cfg.transcript(Front, key, turns)...),
-			Seed: d.Direct.Seed, Temperature: d.Direct.Temperature, MaxTokens: writeTok(Front, maxTok(cfg, Synthesizer)), Think: cfg.Think[Synthesizer],
+			Seed: d.Direct.Seed, Temperature: d.Direct.Temperature, MaxTokens: writeTok(Front, maxTok(cfg, Synthesizer, "", "")), Think: cfg.Think[Synthesizer],
 		}, onToken)
 		if err != nil {
 			return "", nil, "", err

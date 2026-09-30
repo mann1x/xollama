@@ -98,6 +98,11 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	cc := m.Xollama.Council
 
 	cfg := council.FromModel(cc, councilTemperature(m, req))
+	// An unstated reply cap on the council's own model is that model's
+	// num_predict first (council.maxTok).
+	if n, ok := optionAsInt(m.Options["num_predict"]); ok && n > 0 {
+		cfg.LeadMaxTokens = n
+	}
 	// A client that turned thinking off gets the answer alone.
 	if req.Think != nil && !req.Think.Bool() {
 		cfg.ShowDeliberation = false
@@ -630,6 +635,18 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 	}
 	opts["seed"] = r.Seed
 	opts["temperature"] = r.Temperature
+	// The client's reply cap and window are the council's, on the council's
+	// own model. A role on another model takes its own: the role's stated
+	// max_tokens and num_ctx, else that model's template -- its Modelfile, or
+	// the remote endpoint's.
+	onLead := r.Model == ""
+	if !onLead {
+		delete(opts, "num_predict")
+		delete(opts, "num_ctx")
+		if r.NumCtx > 0 {
+			opts["num_ctx"] = r.NumCtx
+		}
+	}
 	if r.MaxTokens > 0 {
 		opts["num_predict"] = r.MaxTokens
 	}
@@ -657,7 +674,11 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 	// on top of its reply cap: a level sent as is would be a share of
 	// num_predict, the reply cap, and bound nothing useful. The reasoning is
 	// read nowhere below; only the reply joins the deliberation.
-	if budget := council.ThinkBudget(r.Think, cm.window); budget > 0 {
+	window := cm.window
+	if !onLead && r.NumCtx > 0 {
+		window = r.NumCtx // a level is a share of the member's own window
+	}
+	if budget := council.ThinkBudget(r.Think, window); budget > 0 {
 		req.Think = &api.ThinkValue{Value: budget}
 		// A cloud model or a stock ollama takes no token budget: ollama.com
 		// refuses one ("think must be a boolean or string"). There the member
