@@ -780,3 +780,79 @@ func TestAVerdictInterruptsTheMateGenerating(t *testing.T) {
 		}
 	}
 }
+
+// readStub reads on every call: a critic that would research for ever.
+type readStub struct {
+	stub
+	n int
+}
+
+func (s *readStub) StreamTools(_ context.Context, _ Request, _ func(string)) (Reply, error) {
+	s.n++
+	a := api.NewToolCallFunctionArguments()
+	a.Set("path", fmt.Sprintf("f%d", s.n))
+	return Reply{Content: fmt.Sprintf("looking %d", s.n), Calls: []api.ToolCall{{Function: api.ToolCallFunction{Name: "read_files", Arguments: a}}}}, nil
+}
+
+// A critic's and a researcher's reads stop at their steps: past them the call
+// is not made, the member is told so, and a second try ends its turn with the
+// report it has. Measured before: one critic made 50 finds in 26 trips.
+func TestAMembersToolStepsAreBounded(t *testing.T) {
+	for _, r := range []Role{Critic, Researcher} {
+		s := &readStub{}
+		cfg := toolCfg()
+		req := Request{Role: r, Messages: []api.Message{{Role: "user", Content: "go"}}}
+		key := MemberKey(r, 0, 0)
+		var turns []api.Message
+		trips := 0
+		for {
+			out, next, err := callTools(t.Context(), s, cfg, req, turns, func(string) {})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if next == nil {
+				if !strings.Contains(out, "looking") {
+					t.Fatalf("%s: the report %q", r, out)
+				}
+				break
+			}
+			if trips++; trips > 20 {
+				t.Fatalf("%s: still reading after %d trips", r, trips)
+			}
+			for _, c := range next[len(next)-1].ToolCalls {
+				next = append(next, api.Message{Role: "tool", ToolCallID: ForwardedID(key, c.ID), Content: "data"})
+			}
+			turns = next
+		}
+		if want := cfg.stepLimit(r); trips != want {
+			t.Fatalf("%s: %d trips, want %d", r, trips, want)
+		}
+		if !noted(turns, stepsOutNote) && s.n != cfg.stepLimit(r)+2 {
+			t.Fatalf("%s: asked %d times", r, s.n)
+		}
+	}
+}
+
+// emptyStub reports nothing while it thinks, and something once it does not.
+type emptyStub struct {
+	stub
+	reqs []Request
+}
+
+func (s *emptyStub) StreamTools(_ context.Context, req Request, _ func(string)) (Reply, error) {
+	s.reqs = append(s.reqs, req)
+	if req.Think != "" {
+		return Reply{}, nil
+	}
+	return Reply{Content: "the report"}, nil
+}
+
+// A researcher's empty report is asked for again, once, without thinking.
+func TestAnEmptyReportIsAskedAgainWithoutThinking(t *testing.T) {
+	s := &emptyStub{}
+	req := Request{Role: Researcher, Think: "medium", Messages: []api.Message{{Role: "user", Content: "go"}}}
+	out, turns, err := callTools(t.Context(), s, toolCfg(), req, nil, func(string) {})
+	if err != nil || turns != nil || !strings.HasPrefix(out, "the report") || len(s.reqs) != 2 {
+		t.Fatalf("out %q turns %v err %v asked %d", out, turns, err, len(s.reqs))
+	}
+}

@@ -246,7 +246,9 @@ func (cfg Config) toolNote(r Role) string {
 	if len(ro) == 0 {
 		return " Do not call tools: they change things, and only the synthesizer calls them." + prose
 	}
-	note := fmt.Sprintf(" You may call these tools, which only read: %s. Call them first, for the facts you need, and write your report only once their results are in. The others change things, and only the synthesizer calls them.%s", strings.Join(ro, ", "), prose)
+	// A step is a round trip to the client, so reads go together (claude-hooks
+	// P2): the critic of 20260930-085958 made 50 finds, one per trip.
+	note := fmt.Sprintf(" You may call these tools, which only read: %s. You have %d tool steps and each one is a round trip, so put every read you need now into one step, then write your report when their results are in. The others change things, and only the synthesizer calls them.%s", strings.Join(ro, ", "), cfg.stepLimit(r), prose)
 	if r == Researcher && slices.ContainsFunc(cfg.Tools, func(t api.Tool) bool {
 		return !t.Function.ReadOnly && t.Function.Name != EvidenceTool && t.Function.Name != PostTool && t.Function.Name != ReviewTool && !routing(t.Function.Name)
 	}) {
@@ -264,8 +266,10 @@ func (cfg Config) toolNote(r Role) string {
 		note += " You cannot make or test a change: judge each proposal against the material and the evidence."
 	}
 	if r == Critic {
-		// Measured live: critics re-read every file the researchers had read.
-		note += " The findings carry the tool results the researchers read; call a tool only for what they lack."
+		// Measured live: critics re-read every file the researchers had read,
+		// and one on 20260930-085958 turned researcher: 50 finds in 26 trips.
+		// A check, not a survey (claude-hooks P3).
+		note += " The findings carry the tool results the researchers read. Check only the claims the answer depends on; if a claim cannot be checked from the findings, say so in your verdict instead of investigating it."
 	}
 	return note + cfg.lookupNote(r) + cfg.postNote(r)
 }
@@ -359,7 +363,7 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 	own := req.Messages
 	req.MaxTokens = writeTok(req.Role, req.MaxTokens)
 	refusals, lookups, preempts, cuts := 0, 0, 0, 0
-	nudged, gated := false, false
+	nudged, gated, emptied := false, false, false
 	// gatedReply is the DONE reply that waited for the critics' reviews
 	// (11.9): the user has read it.
 	gatedReply, stream := "", onToken
@@ -431,6 +435,15 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 			continue
 		}
 		cuts = 0
+		if len(rep.Calls) == 0 && !writes(req.Role) && !emptied && req.Think != "" && strings.TrimSpace(replyText(turns, rep.Content)) == "" {
+			// A report its reasoning took whole is asked for once more
+			// without thinking (claude-hooks P4): a researcher on
+			// 20260930-085958 spent 55.9k tokens and wrote nothing.
+			emptied = true
+			req.Think = ""
+			onToken("\n\n(an empty report: asked again without thinking)\n\n")
+			continue
+		}
 		// Researchers only: a critic names the tools the findings used, and
 		// answers from their evidence without calling any.
 		if len(rep.Calls) == 0 && len(turns) == 0 && !nudged && req.Role == Researcher && cfg.narrated(req.Role, rep.Content) {
@@ -497,6 +510,17 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 			return out, nil, nil
 		}
 		turns = append(slices.Clone(turns), api.Message{Role: "assistant", Content: rep.Content, ToolCalls: named(rep.Calls, len(turns))})
+		if lim := cfg.stepLimit(req.Role); lim > 0 && toolSteps(turns) > lim {
+			// Past its steps the call is not made: the member answers with
+			// what it has, and a second try ends its turn as it stands.
+			turns[len(turns)-1] = api.Message{Role: "assistant", Content: rep.Content}
+			if noted(turns, stepsOutNote) {
+				return replyText(turns, "") + cfg.evidence(req.Role, key, turns), nil, nil
+			}
+			turns = append(turns, user(stepsOutNote))
+			onToken("\n\n(tool steps spent: asked for the report)\n\n")
+			continue
+		}
 		cfg.post(req.Role, key, turns[len(turns)-1].ToolCalls)
 		cfg.sendForReview(req.Role, key, turns)
 		if len(cfg.forwarded(req.Role, key, turns)) > 0 {
@@ -543,6 +567,33 @@ func (cfg Config) streamPreemptible(ctx context.Context, tm ToolModel, req Reque
 	}
 	cfg.board.wasPreempted(key) // a verdict that came as it finished changes nothing
 	return rep, "", false, err
+}
+
+// A researcher's and a critic's tool steps in one call. Past them a call is
+// not made: the member is told its steps are spent, and answers with what it
+// has (claude-hooks caps a critic at 3 turns, council.py:1280-1283). A step is
+// a turn that called a tool the client runs (toolSteps), forwarded or answered
+// from the shared reads: the critic of 20260930-085958 made 50 finds, and no
+// counter saw one (claude-hooks P1). Evidence lookups cost no trip, and
+// maxLookups bounds them.
+const (
+	researcherSteps = 4
+	criticSteps     = 3
+)
+
+// stepsOutNote tells a member past its steps that the call was not made.
+const stepsOutNote = "Your tool steps for this report are spent, so that call was not made. Write your report now from what you have read, and name any fact you still lack instead of looking for it."
+
+// stepLimit is how many tool steps role r takes in one call, or 0 for no
+// bound here (the synthesizer's are MaxSteps, the front's its own).
+func (cfg Config) stepLimit(r Role) int {
+	switch r {
+	case Researcher:
+		return researcherSteps
+	case Critic:
+		return criticSteps
+	}
+	return 0
 }
 
 // toolSteps counts a member's turns that called a tool the client runs.

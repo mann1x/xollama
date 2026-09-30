@@ -326,15 +326,29 @@ func planMsg(cfg Config) api.Message {
 
 // MakePlan writes the plan and one brief per researcher.
 func MakePlan(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, emit Emit) (Plan, error) {
-	out, err := call(ctx, m, cfg, emit, Request{
+	req := Request{
 		Role: Planner, Model: cfg.Models[Planner], Host: cfg.Hosts[Planner], NumCtx: numCtx(cfg, Planner), Messages: append(append(clone(conv), tasksMsg(cfg.carried)...), planMsg(cfg)),
 		Seed: d.Plan.Seed, Temperature: d.Plan.Temperature, MaxTokens: maxTok(cfg, Planner, cfg.Models[Planner], cfg.Hosts[Planner]), Think: cfg.Think[Planner],
 		Format: planSchema(cfg.Researchers),
-	}, Thinking)
+	}
+	out, err := call(ctx, m, cfg, emit, req, Thinking)
+	if err == nil && !validPlan(out) && req.Think != "" {
+		// An empty or unreadable plan is asked for once more without
+		// thinking: on 20260930-085958 the planner's reasoning took the whole
+		// reply, and both researchers got the same fallback brief.
+		req.Think = ""
+		out, err = call(ctx, m, cfg, emit, req, Thinking)
+	}
 	if err != nil {
 		return Plan{}, err
 	}
 	return parsePlan(cfg, out), nil
+}
+
+// validPlan reports a reply that parses as a plan with its text.
+func validPlan(out string) bool {
+	var p Plan
+	return json.Unmarshal([]byte(strings.TrimSpace(out)), &p) == nil && p.Plan != ""
 }
 
 // parsePlan reads a planner's reply, filling any brief it left out.
@@ -343,8 +357,10 @@ func parsePlan(cfg Config, out string) Plan {
 	if json.Unmarshal([]byte(strings.TrimSpace(out)), &p) != nil || p.Plan == "" {
 		p = Plan{Plan: strings.TrimSpace(out)}
 	}
-	for len(p.Briefs) < cfg.Researchers {
-		p.Briefs = append(p.Briefs, "Investigate the question from a different angle than the other researchers.")
+	// A brief the planner left out is numbered, so no two researchers get
+	// the same one and repeat each other's work.
+	for n := cfg.Researchers; len(p.Briefs) < n; {
+		p.Briefs = append(p.Briefs, fmt.Sprintf("Investigate part %d of %d of the question: split it into %d parts in the order it is asked, take part %d, and leave the others to the other researchers.", len(p.Briefs)+1, n, n, len(p.Briefs)+1))
 	}
 	p.Briefs = p.Briefs[:cfg.Researchers]
 	return p

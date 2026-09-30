@@ -2344,6 +2344,54 @@ are replayed onto it (`replay` in `quote.go`; a whole write is the text
 itself), so the read stays current across them. Guard:
 `TestTheReadFollowsTheMembersOwnChanges`, which fails with the replay off.
 
+### 11.29 Cerebriline's budgets and structural enforcement (in progress, 2026-09-30)
+
+**Why.**
+- The all-glm council fixed hard at 13x plain's cost (10,866 s, 60 trips, 875k tokens out):
+  - one critic made 50 finds in 26 trips;
+  - researchers averaged 10.6k tokens per call;
+  - the synthesizer broke the file 3 times.
+- Plain omni, run through Cerebriline's harness, fixed it in 1,125 s (23/23).
+- Owner's ruling:
+  - adopt Cerebriline's output budget, with a low default ceiling;
+  - map think levels onto the output;
+  - replay and condense reasoning;
+  - compact in one step;
+  - replace prompt directives and hand-written guards with structural enforcement.
+  Routing stays: a coding task always goes to the council, and it has to solve it efficiently.
+- Inputs (in `/srv/ml/xollama-phase2/consult-council/`):
+  - Cerebriline mail #575;
+  - `claude-hooks-review-2026-09-30.md`;
+  - `langgraph-mapping.md` (Part 2: structural features);
+  - `research-scout.md`.
+
+**Scope, in build order** (each ticked when built and tested):
+- [x] Researcher and critic tool steps bounded (4 and 3).
+  - A step is a turn that called a client tool, forwarded or answered from the shared reads.
+  - Past the bound the call is not made, and a second try ends the member's turn (`TestAMembersToolStepsAreBounded`).
+  - The notes tell members to batch reads.
+- [x] The critic spot-checks rather than researches (claude-hooks P3).
+- [x] An empty or unreadable plan, and an empty researcher or critic report, are asked again once without thinking.
+  - Briefs the plan left out are numbered, never shared (`TestAnEmptyPlanIsAskedAgainWithoutThinking`, `TestAnEmptyReportIsAskedAgainWithoutThinking`).
+- [ ] One-step compaction: the writer's pass only (Cerebriline `councilEnabled: false`, `thinkingSummaryEnabled` off).
+- [ ] One model-call wrapper: retry, fallback and a run timeout for every role.
+- [ ] Runner-issued check after a synthesizer turn that wrote and ran none.
+- [ ] `council_read_many`: several client reads in one trip.
+- [ ] Forced answer by schema at the step bound.
+  - The grammar admits no call and the tool list stays in the prompt (the KV prefix is kept).
+  - Cloud and remote members get no tools.
+- [ ] Typed findings (proposals, claims, evidence refs) and verdicts as server-answered tools or schemas, with one validated re-ask.
+- [ ] Output budget per member: min(0.75 x window, ceiling, model max).
+  - Default ceiling 16,384; settable council-wide and per role.
+  - The think level is a share of it (medium = 1/4).
+  - The member is told its cap and think share (Cerebriline `buildOutputBudgetSection`).
+  - The reserve books it.
+  - Waits on Cerebriline's window rule (#577: its engine budget was 12,288, not 24,000).
+- [ ] Reasoning replay `last` across a member's own tool rounds.
+- [ ] Capped-thinking condensation (Cerebriline `capped-thinking.ts`).
+
+**Measure.** Through Cerebriline's `native.sh` on the eleven2go lane (hard, oracle v3, `ARM=manual`, THINKING=medium): plain omni, plain glm, then the council.
+
 ### 11.28 The reserve books thinking, and a budget goes with its message (built 2026-09-30)
 
 **Why.** The omni council runs' own logs (a0968aea, council runs 1-3) show

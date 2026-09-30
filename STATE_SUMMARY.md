@@ -5,6 +5,13 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-30 — 11.29 started: step limits, a spot-checking critic, empty-reply retries.**
+> - Plain omni through Cerebriline's harness (`native.sh`, eleven2go lane): FIXED 23/23 in 1,125 s. The engine budget was 12,288; asked Cerebriline why (#577).
+> - Researchers take 4 tool steps and critics 3. A step is any turn that called a client tool. Past the limit the call is not made, and the member reports.
+> - The critic checks only the claims the answer depends on.
+> - An empty plan or report is asked again once without thinking. No two researchers share a fallback brief.
+> - The scope of 11.29, with the owner's choices (16k default ceiling; all four structural changes), is in the plan.
+
 > **2026-09-30 — glm council fixed hard at 13x the plain cost. The council will be rebuilt on Cerebriline's budgets.**
 > - **All-glm council** (every role on glm-5.3-flash:cloud, max_tokens 131072):
 >   - Fixed hard, 23/23 traps.

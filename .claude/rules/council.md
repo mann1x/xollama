@@ -656,3 +656,18 @@ paths:
   (`councilBudgetMessage`). Cloud and stock ollama take neither. Guards:
   `TestTheReserveBooksTheThinkingToo`,
   `TestABudgetGoesWithTheModelsBudgetMessage`.
+- **A researcher's and a critic's tool steps are bounded** (`stepLimit` in
+  `internal/council/tools.go`: `researcherSteps` 4, `criticSteps` 3). A step
+  is a turn that called a client-run tool (`toolSteps`), forwarded or answered
+  from the shared reads; evidence lookups cost none. Past the bound the call
+  is not made: `stepsOutNote` asks for the report, and a second try ends the
+  turn as it stands. `toolNote` names the count and asks for every read in one
+  step; a critic checks only the claims the answer depends on (20260930-085958:
+  one critic made 50 finds in 26 trips).
+- **A reply its reasoning took whole is asked again once without thinking**:
+  a plan that does not parse (`validPlan` in `MakePlan`) and a reader's empty
+  report (`emptied` in `callTools`). A brief the planner left out is numbered
+  (`parsePlan`), so no two researchers get the same one. Guards:
+  `TestAMembersToolStepsAreBounded`,
+  `TestAnEmptyPlanIsAskedAgainWithoutThinking`,
+  `TestAnEmptyReportIsAskedAgainWithoutThinking`.
