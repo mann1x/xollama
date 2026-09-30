@@ -190,6 +190,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	// Tools (9.5): every member carries them; a resumed turn's own calls and
 	// results leave the conversation for the members that made them.
 	cfg.Tools, members.tools = req.Tools, req.Tools
+	cfg.BudgetMessage = members.budgetMessage
 	cfg.Turn = fmt.Sprintf("%x", turnHash)
 	if tree != nil {
 		tree.adopt(ctx, cfg.Turn) // the last round trip's layers (council_layers_kept.go)
@@ -626,14 +627,15 @@ func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken
 // Every member call goes through here, so this is where a failed or stalled
 // call is asked again (council_retry.go).
 func (cm *councilMembers) StreamTools(ctx context.Context, r council.Request, onToken func(string)) (council.Reply, error) {
+	var thinking string
 	out, calls, cut, err := cm.retrying(ctx, r, onToken, func(ctx context.Context) (string, []api.ToolCall, bool, error) {
 		// A full owner is asked again while another member may give cells
 		// back (council_owner_full.go).
 		return cm.retryOwnerFull(ctx, r, func() (string, []api.ToolCall, bool, error) {
-			return cm.stream(ctx, r, onToken)
+			return cm.stream(ctx, r, onToken, &thinking)
 		})
 	})
-	return council.Reply{Content: out, Calls: calls, Cut: cut}, err
+	return council.Reply{Content: out, Thinking: thinking, Calls: calls, Cut: cut}, err
 }
 
 // councilBudgetMessage is the message that closes a member's reasoning at its
@@ -647,7 +649,7 @@ func councilBudgetMessage(m *Model, req api.ChatRequest) string {
 	return ""
 }
 
-func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken func(string)) (string, []api.ToolCall, bool, error) {
+func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken func(string), thinking *string) (string, []api.ToolCall, bool, error) {
 	cm.calls.Add(1)
 	began := time.Now()
 	stream, off := true, api.ThinkValue{Value: false}
@@ -725,6 +727,9 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 	}
 	defer release()
 	req.Tools = cm.tools
+	if r.Role == council.Condenser {
+		req.Tools = nil // it writes a note; it calls nothing
+	}
 	placement, worker, done := cm.place(ctx, r, &req)
 	defer done()
 	if cm.ownerBound(r, req.SessionID, worker) {
@@ -779,7 +784,8 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 	idle := time.AfterFunc(councilIdleTimeout, func() { pr.CloseWithError(errMemberIdle) })
 	defer idle.Stop()
 
-	var out strings.Builder
+	var out, thought strings.Builder
+	defer func() { *thinking = thought.String() }()
 	var calls []api.ToolCall
 	cut := false
 	sc := bufio.NewScanner(pr)
@@ -803,6 +809,7 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 			out.WriteString(t)
 			onToken(t)
 		}
+		thought.WriteString(line.Message.Thinking)
 		calls = append(calls, line.Message.ToolCalls...)
 		if line.Done {
 			cut = line.DoneReason == "length"

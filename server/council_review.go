@@ -109,7 +109,7 @@ func (cm *councilMembers) ownWindow(ctx context.Context, r council.Request) *llm
 	if window <= 0 && cm.tree != nil {
 		window = cm.tree.window
 	}
-	if window <= 0 || (r.Role != council.Reviewer && r.Role != council.Builder) {
+	if window <= 0 || (r.Role != council.Reviewer && r.Role != council.Builder && r.Role != council.Condenser) {
 		return nil
 	}
 	n, err := cm.tokens(ctx, r.Messages)

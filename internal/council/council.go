@@ -198,6 +198,9 @@ type Config struct {
 	Stated    *Build
 	Evidence  []api.CouncilEvidence
 	CheckTool string
+	// BudgetMessage is the message that closes a member's reasoning at its
+	// budget, which marks reasoning to condense (replay.go); "" for none.
+	BudgetMessage string
 }
 
 // Built-in defaults: two researchers, which find more between them than one,

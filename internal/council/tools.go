@@ -28,7 +28,10 @@ import (
 // Reply is a member's whole reply: its text, and the tools it calls.
 type Reply struct {
 	Content string
-	Calls   []api.ToolCall
+	// Thinking is the reasoning the reply followed, replayed on the member's
+	// next step (replay.go).
+	Thinking string
+	Calls    []api.ToolCall
 	// Cut is a reply the reply cap ended (done_reason "length", cut.go).
 	Cut bool
 }
@@ -431,6 +434,7 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 			}
 			req.Format = resultSchema(req.Role)
 		}
+		turns = cfg.condense(ctx, tm, key, turns)
 		req.Messages = append(clone(own), cfg.transcript(req.Role, key, turns)...)
 		rep, partial, preempted, err := cfg.streamPreemptible(ctx, tm, req, key, onToken)
 		if preempted && preempts < maxPreempts {
@@ -548,7 +552,7 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 			}
 			return out, nil, nil
 		}
-		turns = append(slices.Clone(turns), api.Message{Role: "assistant", Content: rep.Content, ToolCalls: named(rep.Calls, len(turns))})
+		turns = withReasoning(turns, api.Message{Role: "assistant", Content: rep.Content, Thinking: rep.Thinking, ToolCalls: named(rep.Calls, len(turns))})
 		if lim := cfg.stepLimit(req.Role); lim > 0 && toolSteps(turns) > lim {
 			// Past its steps the call is not made: the member answers with
 			// what it has, and a second try ends its turn as it stands.

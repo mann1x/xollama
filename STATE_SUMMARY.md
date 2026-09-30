@@ -17,6 +17,7 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >   - critics call `council_verdict`;
 >   - a checking synthesizer calls `council_done` or `council_retest`.
 >   At the step limit the member's call carries its result's schema as the format.
+> - Each member step now replays the reasoning of the member's last step. Reasoning that hit its budget is replaced by a short note in the member's own voice (Cerebriline's condensation).
 > - A compaction fold is now one call, the writer's. The critics' review and the retrospective are opt-in (`council.context.review`, `.retrospective`).
 
 > **2026-09-30 — glm council fixed hard at 13x the plain cost. The council will be rebuilt on Cerebriline's budgets.**

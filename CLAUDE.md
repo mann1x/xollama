@@ -229,6 +229,7 @@ the server-answered `council_evidence` tool that reads a large result back by re
 `internal/council/review.go`: the synthesizer's `council_review` checks, queued for critics
 in the background, a per-conversation desk in `server/council_review.go`;
 `internal/council/report.go`: a member's result as a typed tool call (`council_report`, `council_verdict`, `council_done`, `council_retest`), added by `WithReports`;
+`internal/council/replay.go`: a member's last step replays its reasoning, and capped reasoning is condensed to a note by the `Condenser`;
 `server/council_tools.go`), and a one-shot
 `xollama run <council> "…"` goes through chat (`cmd/council_run.go`) — see
 `.claude/rules/model-config.md` and `.claude/rules/council.md`.

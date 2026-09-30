@@ -2401,8 +2401,15 @@ itself), so the read stays current across them. Guard:
   - The member is told its cap and think share (Cerebriline `buildOutputBudgetSection`).
   - The reserve books it.
   - Waits on Cerebriline's window rule (#577: its engine budget was 12,288, not 24,000).
-- [ ] Reasoning replay `last` across a member's own tool rounds.
-- [ ] Capped-thinking condensation (Cerebriline `capped-thinking.ts`).
+- [x] Reasoning replay `last` (`internal/council/replay.go`).
+  - A member's step carries the reasoning it followed (`Reply.Thinking`, read from the stream); its earlier steps carry none.
+  - Guard: `TestAMembersLastReasoningIsReplayed`.
+- [x] Capped-thinking condensation (Cerebriline `capped-thinking.ts`).
+  - A step's reasoning is condensed when it ends on the model's `think_budget_message`: the longest line, whitespace collapsed, in the last 400 characters.
+  - Once the step's results are in, the reasoning is replaced by a note from a `Condenser` call: thinking off, 2,000 tokens, Cerebriline's prompts, run on its own session beside the owner with no tools and no pool.
+  - The note opens with `condensedLeadIn`, so it is condensed only once.
+  - Guard: `TestCappedReasoningIsCondensed`.
+  - Not ported: the measured-token proximity test (0.9 x budget); the marker alone decides.
 
 **Measure.** Through Cerebriline's `native.sh` on the eleven2go lane (hard, oracle v3, `ARM=manual`, THINKING=medium): plain omni, plain glm, then the council.
 

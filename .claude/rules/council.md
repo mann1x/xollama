@@ -706,3 +706,12 @@ paths:
   - At `stepLimit` the call carries `resultSchema` as `Format`, so the
     grammar admits no call.
   Guards: `TestAResearchersReportIsTyped`, `TestTheForcedAnswerIsTheReportsFormat`.
+- **Reasoning between a member's steps** (11.29, `internal/council/replay.go`):
+  - `withReasoning` keeps `Thinking` on the latest step only (Cerebriline's
+    `last`).
+  - `condense` replaces reasoning that ended on `Config.BudgetMessage` (the
+    template's `think_budget_message`) with a `Condenser` note once the
+    step's results are in.
+  - The `Condenser` runs beside the owner (`ownWindow`) with no tools, never
+    on the owner: that would evict the conversation's cache.
+  Guards: `TestAMembersLastReasoningIsReplayed`, `TestCappedReasoningIsCondensed`.
