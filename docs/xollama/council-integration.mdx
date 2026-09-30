@@ -224,6 +224,19 @@ tools and a directive is served by the council even without
 - **`check`:** the name of your tool whose result is the check of a change.
   Without it, the council takes the first read-only call after the last
   change.
+- **`check_call`** (`council_check_call_v1`): the check itself, as the call
+  that runs it, when you can state it:
+
+  ```json
+  "check_call": {"tool": "run_commands", "arguments": {"commands": ["./run_tests"]}}
+  ```
+
+  Only this call, the same tool with the same arguments, is the check, even
+  when its tool also makes changes (a shell tool does). A synthesizer that
+  changed something and ends its turn without running it has the council
+  make it: you receive it as the synthesizer's call, and the synthesizer goes
+  on from your result. It names `check` as well; a `check` naming another
+  tool is a `400`.
 - **`build`:** in the builder's own reply format, as above. When it has a
   `target`, the builder is not called. It is held to the builder's bounds: no
   role, model or tool-permission changes; `max_tests` from 0 to 12;

@@ -98,6 +98,13 @@ func (cfg Config) Direct(d *api.CouncilDirective) (Config, error) {
 	}
 	cfg.Evidence = d.Evidence
 	cfg.CheckTool = d.Check
+	if c := d.CheckCall; c != nil {
+		if c.Tool == "" || (d.Check != "" && d.Check != c.Tool) {
+			return cfg, fmt.Errorf("council.check_call: want a tool, the one council.check names if it names one; have %q and %q", c.Tool, d.Check)
+		}
+		cfg.CheckTool = c.Tool
+		cfg.CheckCall = &api.ToolCall{Function: api.ToolCallFunction{Name: c.Tool, Arguments: c.Arguments}}
+	}
 	return cfg, nil
 }
 

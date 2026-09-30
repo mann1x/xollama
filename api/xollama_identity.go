@@ -46,6 +46,10 @@ const (
 	// states the turn's mode, instructions, build, evidence and check tool
 	// (plans/council-harness.md).
 	FeatureCouncilDirective = "council_directive_v1"
+	// FeatureCouncilCheckCall: a directive's check_call is the turn's check,
+	// and the council runs it after a synthesizer turn that changed something
+	// and ran no check.
+	FeatureCouncilCheckCall = "council_check_call_v1"
 	// FeatureCouncilTags: every thinking chunk of a council turn carries
 	// ChatResponse.Council, naming the one member it holds. Content chunks,
 	// the answer, carry none.

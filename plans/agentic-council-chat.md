@@ -2382,8 +2382,12 @@ itself), so the read stays current across them. Guard:
   - a full owner, a 4xx refusal and a host the operator has not allowed are not retried;
   - the council's own fallback (a researcher or critic elsewhere, answered by the council's model) follows after these tries;
   - guards: `TestAFailedOrStalledMemberIsAskedAgain` and `TestAMemberThatKeepsFailingIsAskedAgainOnlyTwice`, each failing with its part removed.
-- [ ] Runner-issued check after a synthesizer turn that wrote and ran none.
-- [ ] `council_read_many`: several client reads in one trip.
+- [x] Runner-issued check after a synthesizer turn that wrote and ran none (`internal/council/checkcall.go`).
+  - Cerebriline's check, `./run_game`, runs through `run_commands`, a shell tool, so the council counted it as a change and never saw a check (#581).
+  - A directive's `check_call` (`{tool, arguments}`, `council_check_call_v1`) is the check, and the only call that is: `cfg.readOnly` answers true for it, so the check finder, the review queue and the loop guards take it as a check. The shared-read cache does not, so a check is never answered from an earlier run.
+  - A synthesizer turn that ends after a change with no check since has the council make the call for it. The synthesizer goes on from the result.
+  - Guards: `TestAWriteWithoutTheStatedCheckHasItMade` (fails with the issue removed), `TestOnlyTheStatedCheckCountsAsOne`, `TestACheckCallMustNameItsTool`.
+- [~] `council_read_many`: dropped. Cerebriline's `read_files` already takes several files, and a step may carry several calls, which the tool notes ask for. A batch tool would duplicate both.
 - [x] Typed results (`internal/council/report.go`):
   - researchers end with `council_report` (summary, proposals `{path, old_text, new_text, why, check}`, claims with evidence, open);
   - critics end with `council_verdict` (ready, revise or confirmed + place);

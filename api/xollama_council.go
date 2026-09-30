@@ -78,6 +78,18 @@ type CouncilDirective struct {
 	// Without it, the check is the first read-only call after the last
 	// change.
 	Check string `json:"check,omitempty"`
+	// CheckCall is the check itself, when the harness can state it: a client
+	// tool and its arguments (council_check_call_v1). Only this call is the
+	// check, whether or not its tool only reads -- a shell tool that runs the
+	// check also makes changes -- and a synthesizer that changed something
+	// and ends its turn without it has it made for it. It names Check.
+	CheckCall *CouncilCheckCall `json:"check_call,omitempty"`
+}
+
+// CouncilCheckCall is a harness's check, as the tool call that runs it.
+type CouncilCheckCall struct {
+	Tool      string                    `json:"tool"`
+	Arguments ToolCallFunctionArguments `json:"arguments"`
 }
 
 // CouncilEvidence is one attempt of the harness's agent.

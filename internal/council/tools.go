@@ -483,6 +483,11 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 			onToken("\n\n(an empty report: asked again without thinking)\n\n")
 			continue
 		}
+		if len(rep.Calls) == 0 && req.Role == Synthesizer && cfg.uncheckedWrite(turns) {
+			// It changed something and ended without the stated check: the
+			// council makes it, and the synthesizer goes on from the result.
+			return "", cfg.issueCheck(key, turns, rep), nil
+		}
 		// Researchers only: a critic names the tools the findings used, and
 		// answers from their evidence without calling any.
 		if len(rep.Calls) == 0 && len(turns) == 0 && !nudged && req.Role == Researcher && cfg.narrated(req.Role, rep.Content) {

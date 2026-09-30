@@ -389,8 +389,13 @@ func (cfg Config) unsentCheck(turns []api.Message) (api.ToolCall, bool) {
 	return check, found
 }
 
-// readOnly reports whether c's tool only reads.
+// readOnly reports whether c's tool only reads. The harness's stated check
+// counts as a read whatever its tool (checkcall.go): it is how a change is
+// checked, not a change.
 func (cfg Config) readOnly(c api.ToolCall) bool {
+	if cfg.isCheck(c) {
+		return true
+	}
 	t, ok := cfg.tool(c.Function.Name)
 	return ok && t.Function.ReadOnly
 }

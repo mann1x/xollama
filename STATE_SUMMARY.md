@@ -13,7 +13,9 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >   - plain omni, 0411: FIXED 23/23 in 1,125 s;
 >   - plain glm, 0412: FIXED 23/23 in 2,532 s.
 >   Both ran on the CLI's old budget (49,152 / 12,288: the gateway fallback, not the plugin's 96,000 / 24,000), and 0412 overlapped a rebuild of Cerebriline's core (#580). They will be rerun once the CLI matches the plugin.
-> - Left in 11.29: the runner-issued check and `council_read_many` (waiting on #579), and the council arms through the harness.
+> - Runner-issued check: a directive's `check_call` (`council_check_call_v1`) is the turn's check, even through a shell tool. A synthesizer that changed something and ends without running it has the council make it. Needed because Cerebriline's `./run_game` goes through `run_commands`, which the council counted as a change (#581).
+> - `council_read_many` dropped: `read_files` already takes several files, and one step already carries several calls.
+> - Left in 11.29: Cerebriline sending the directive, then the council arms through the harness.
 
 > **2026-09-30 — 11.29 started: step limits, a spot-checking critic, empty-reply retries.**
 > - Plain omni through Cerebriline's harness (`native.sh`, eleven2go lane): FIXED 23/23 in 1,125 s. The engine budget was 12,288; asked Cerebriline why (#577).

@@ -718,3 +718,11 @@ paths:
   - The `Condenser` runs beside the owner (`ownWindow`) with no tools, never
     on the owner: that would evict the conversation's cache.
   Guards: `TestAMembersLastReasoningIsReplayed`, `TestCappedReasoningIsCondensed`.
+- **A harness's stated check is a call, not a tool name** (`check_call`,
+  `internal/council/checkcall.go`, `council_check_call_v1`). `cfg.readOnly`
+  answers true for exactly that call (`isCheck`, same `readKey`), so a check
+  through a shell tool is a check and every other shell call is still a
+  change. Never widen that to the package-level `readOnly(tools, c)`: the
+  shared reads would then answer a check from its earlier run. A synthesizer
+  that ends a turn with a change unchecked (`uncheckedWrite`) has the call
+  made for it (`issueCheck`); nothing is streamed to the answer for it.
