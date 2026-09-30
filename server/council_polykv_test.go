@@ -306,9 +306,13 @@ func TestPolyKVOffRunsTheMembersUnpooled(t *testing.T) {
 func TestTheOwnerWindowFollowsThePressure(t *testing.T) {
 	e := &councilEngine{route: `{"route":"direct"}`}
 	kv := &fakeKV{grant: 16384, used: 900, pressure: &llm.KVPressure{WindowS: 60, Refused60s: 2, LastRefusalAgeS: 3}}
+	// No member thinks, so the turn's reserve leaves the idle owner room to
+	// give back; the builder's thinking, booked, would take the whole window.
+	off := func() *xollama.CouncilRole { return &xollama.CouncilRole{Think: xollama.CouncilThinkOff} }
 	s := polykvCouncil(t, e, kv, &xollama.Council{
 		Enabled: councilOn().Enabled,
 		Context: &xollama.CouncilContext{Window: 16384, Floor: 4096},
+		Planner: off(), Researcher: off(), Critic: off(), Synthesizer: off(),
 	})
 	chatChunks(t, s, polykvReq)
 	kv.mu.Lock()
@@ -573,13 +577,13 @@ func TestThePlannerAttachesTheConversationRoot(t *testing.T) {
 	if p := kv.pools[1]; p.parent == nil || *p.parent != 0 {
 		t.Errorf("the researchers' layer forks %v, want the root", p.parent)
 	}
-	reserve := councilReserve(council.FromModel(councilOn(), 0.7))
+	reserve := councilReserve(council.FromModel(councilOn(), 0.7), 16384)
 	for i, r := range e.roles {
 		pl := e.placements[i]
 		if r != "route" && r != "planner" {
 			continue
 		}
-		if pl == nil || pl.PoolID == nil || *pl.PoolID != 0 || pl.NumCtx != 16384 || pl.NumCtxMin != max(4096, roundUp(reserve, 256)) {
+		if pl == nil || pl.PoolID == nil || *pl.PoolID != 0 || pl.NumCtx != 16384 || pl.NumCtxMin != min(16384, max(4096, roundUp(reserve, 256))) {
 			t.Errorf("%s: placement %+v, want the root, a 16384 window and its own part as the floor", r, pl)
 		}
 	}

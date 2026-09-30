@@ -61,15 +61,18 @@ const (
 // councilReserve is the room a turn needs on top of the conversation, in
 // tokens, for the plan and the members' replies to live in the owner's window.
 // Only the roles on the council's own model live there: a role on another
-// model, local, cloud or remote, runs on its own and books nothing here.
-func councilReserve(cfg council.Config) int {
+// model, local, cloud or remote, runs on its own and books nothing here. A
+// member may write its reply cap and think its budget (num_predict is the two
+// together), so both are booked; window is the member's, which a think level
+// is a share of.
+func councilReserve(cfg council.Config, window int) int {
 	n := 0
 	for _, r := range []struct {
 		role  council.Role
 		count int
 	}{{council.Planner, 1}, {council.Synthesizer, 1}, {council.Researcher, cfg.Researchers}, {council.Critic, cfg.Critics}} {
 		if cfg.OnLead(r.role) {
-			n += r.count * cfg.Cap(r.role)
+			n += r.count * (cfg.Cap(r.role) + cfg.ThinkRoom(r.role, window))
 		}
 	}
 	return n + 1024 // the role instructions and the templates around them

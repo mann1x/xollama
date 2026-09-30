@@ -300,3 +300,43 @@ func TestARemoteReplyThatStopsShortFallsBack(t *testing.T) {
 		t.Errorf("%d researchers answered here, want the 2 whose remote replies were cut", n)
 	}
 }
+
+// A budget sent as a token count carries the message that closes the
+// reasoning at it: the council model's own think_budget_message. A server that
+// takes no budget (stock ollama, a cloud model) is sent neither.
+func TestABudgetGoesWithTheModelsBudgetMessage(t *testing.T) {
+	const msg = "I have used my thinking budget."
+	for _, tc := range []struct {
+		name    string
+		xollama bool
+		want    any
+	}{
+		{"xollama", true, msg},
+		{"stock ollama", false, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			councilProbes.reset()
+			remote := &remoteOllama{xollama: tc.xollama}
+			srv := remote.serve(t)
+			t.Setenv("XOLLAMA_COUNCIL_HOSTS", "127.0.0.1")
+			c := remoteResearchers(srv.URL)
+			c.Researcher.Think = "on"
+			s := councilServer(t, &councilEngine{route: `{"route":"council"}`}, c)
+			no := false
+			w := createRequest(t, s.CreateHandler, api.CreateRequest{Model: "council-msg", From: "council", Parameters: map[string]any{"think_budget_message": msg}, Stream: &no})
+			if w.Code != http.StatusOK {
+				t.Fatalf("create: %d %s", w.Code, w.Body.String())
+			}
+			chatChunks(t, s, api.ChatRequest{Model: "council-msg", Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}}})
+			if len(remote.reqs) != 2 {
+				t.Fatalf("the remote served %d chats, want 2", len(remote.reqs))
+			}
+			for _, r := range remote.reqs {
+				opts, _ := r["options"].(map[string]any)
+				if opts["think_budget_message"] != tc.want {
+					t.Errorf("think %v, think_budget_message %v; want %v", r["think"], opts["think_budget_message"], tc.want)
+				}
+			}
+		})
+	}
+}

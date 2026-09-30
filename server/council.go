@@ -156,7 +156,8 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		return
 	}
 	members.window = councilMemberWindow(m, req, tree)
-	reserve := councilReserve(cfg)
+	members.budgetMessage = councilBudgetMessage(m, req)
+	reserve := councilReserve(cfg, members.window)
 	full := conv // the conversation as the client sent it
 	// answer is set by the turn and read once the response is written; a
 	// client that left may leave the turn still running, hence atomic.
@@ -585,6 +586,12 @@ type councilMembers struct {
 	// sized to its request (ownWindow); nil falls back to the tree's count,
 	// then to an estimate from their length.
 	count func(context.Context, []api.Message) (int, error)
+	// budgetMessage closes a member's reasoning at its token budget: the
+	// client's think_budget_message, else the council model's own. It goes
+	// with every budget sent as a token count -- this server's models and a
+	// model another xollama serves -- so the member stops the way the model
+	// was set up to.
+	budgetMessage string
 }
 
 func (cm *councilMembers) opened(id string) {
@@ -623,6 +630,17 @@ func (cm *councilMembers) StreamTools(ctx context.Context, r council.Request, on
 		return cm.stream(ctx, r, onToken)
 	})
 	return council.Reply{Content: out, Calls: calls, Cut: cut}, err
+}
+
+// councilBudgetMessage is the message that closes a member's reasoning at its
+// budget: the client's, else the one on the council model's template.
+func councilBudgetMessage(m *Model, req api.ChatRequest) string {
+	for _, opts := range []map[string]any{req.Options, m.Options} {
+		if s, ok := opts["think_budget_message"].(string); ok && s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken func(string)) (string, []api.ToolCall, bool, error) {
@@ -685,6 +703,8 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 		// thinks, and num_predict, the reply cap plus the budget, bounds it.
 		if !cm.councilTakesBudget(ctx, r) {
 			req.Think = &api.ThinkValue{Value: true}
+		} else if cm.budgetMessage != "" {
+			opts["think_budget_message"] = cm.budgetMessage
 		}
 		if r.MaxTokens > 0 {
 			opts["num_predict"] = r.MaxTokens + budget

@@ -78,6 +78,24 @@ func (b *Build) clone() *Build {
 // and the check cycles a number the loop can afford.
 var thinkLevels = map[string]int{"off": 0, "low": 1024, "medium": 2048, "high": 4096}
 
+// maxBuiltThink is the most a builder can give a role to think: "high".
+const maxBuiltThink = 4096
+
+// ThinkRoom is the most role r may think in one call on a window of window
+// tokens: its stated think setting, which stands; else the harness's stated
+// build; else the most the builder can give it. It is room to book, so an
+// unstated role counts the builder's ceiling even on a turn that gives it
+// less.
+func (cfg Config) ThinkRoom(r Role, window int) int {
+	if t := cfg.Think[r]; t != "" {
+		return ThinkBudget(t, window)
+	}
+	if cfg.Stated != nil {
+		return cfg.Stated.Think[r]
+	}
+	return maxBuiltThink
+}
+
 const maxBuildTests = 12
 
 // A synthesizer's steps in one cycle: the builder chooses within these, and

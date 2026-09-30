@@ -2344,6 +2344,34 @@ are replayed onto it (`replay` in `quote.go`; a whole write is the text
 itself), so the read stays current across them. Guard:
 `TestTheReadFollowsTheMembersOwnChanges`, which fails with the replay off.
 
+### 11.28 The reserve books thinking, and a budget goes with its message (built 2026-09-30)
+
+**Why.** The omni council runs' own logs (a0968aea, council runs 1-3) show
+the 2048 think budget exhausted on 22-29% of thinking calls, with the p90
+spent at the budget. A member is sent `num_predict` = cap + budget, but
+`councilReserve` booked only the cap, so it undercounted what a thinking
+member can write into the owner's window. Owner's ruling: count the budget,
+and pass the budget cap with the model template's budget message to local
+and xollama members.
+
+**Built.**
+- `Config.ThinkRoom(role, window)` (`internal/council/build.go`): a stated
+  think setting against the member's window, else the harness's stated
+  build, else `maxBuiltThink` (4096, the builder's "high").
+- `councilReserve(cfg, window)` adds it for every lead role.
+- `councilBudgetMessage`: the client's `think_budget_message`, else the
+  council model's. `stream` sends it with every budget sent as a token count.
+- Tests: `TestTheReserveBooksTheThinkingToo`,
+  `TestABudgetGoesWithTheModelsBudgetMessage`. Each fails with its line
+  removed (reserve 11264, want 25600; no message reached the remote).
+  `TestThePlannerAttachesTheConversationRoot` now expects the floor capped at
+  the window. `TestTheOwnerWindowFollowsThePressure` states `think: off`: with
+  the builder's thinking booked, its default council's reserve is the whole
+  16k window and there is nothing to give back.
+- Measure next: plain omni with thinking on (the council's roles have only
+  ever thought under a 1024-2048 budget), to set the limits the owner will
+  rule on.
+
 ### 11.27 A role's reply cap and window are its own model's (built 2026-09-30)
 
 **Why.** The first cloud councils put glm-5.3-flash:cloud on some roles. The

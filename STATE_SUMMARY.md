@@ -19,6 +19,10 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >
 >   Mean 562 s, 197k in, 52k out. The longest replies were 59k, 48k and 24k tokens, mostly thinking. The old 16,384 cap would have cut every run.
 > - **11.27.** The council's built-in caps (1024-3072 plus 2048) would have cut every glm role. Now a role's stated `max_tokens` holds on its own model. Unstated, a cloud or other-model role inherits its template, and a lead role takes the council model's `num_predict`, else the built-in cap. Only lead roles are booked in the owner (`councilReserve`). There is a new `council.<role>.num_ctx` (schema v5), and members on another model shed the client's `num_predict` and `num_ctx`.
+> - **11.28.**
+>   - The owner's reserve now books each lead member's think budget beside its reply cap: a stated `think`, else the builder's ceiling of 4096. It had counted only the cap, although a member is sent cap + budget.
+>   - A token budget is sent with the model template's `think_budget_message`, to local members and xollama endpoints alike.
+>   - Measured in the omni councils: 22-29% of thinking calls exhausted the 2048 budget.
 > - **Also fixed:** the route decision, the direct answer and the front turn ran on the lead whatever their role's model, as the first all-glm smoke run showed. They now run on the planner's and the synthesizer's model.
 > - **Next.** Set glm roles to `max_tokens` 131,072 in the four glm councils; run all-glm, then critic, researcher and planner one at a time, with glm as the builder.
 

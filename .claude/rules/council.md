@@ -98,11 +98,14 @@ paths:
   the owner's window is booked for it. On another model it is 0: nothing is
   sent and that model's template (its Modelfile, or the remote endpoint's)
   decides. `councilReserve` counts only `cfg.OnLead` roles, so a cloud
-  role's 128k cap books nothing in the owner. A member on another model
+  role's 128k cap books nothing in the owner; each books its cap plus
+  `cfg.ThinkRoom(role, window)` (`internal/council/build.go`: the stated
+  think, else the harness's build, else `maxBuiltThink`). A member on another model
   sheds the client's `num_predict` and `num_ctx` (they are the council's) and
   takes its role's `num_ctx` (`council.<role>.num_ctx`, needs `model`,
   schema v5). Guards: `TestAReplyCapFollowsTheModelItRunsOn`,
   `TestTheReserveCountsOnlyTheRolesOnTheCouncilsModel`,
+  `TestTheReserveBooksTheThinkingToo`,
   `TestARemoteRoleTakesItsOwnCapAndWindow`, `TestEveryCallRunsOnItsRolesModel`,
   `TestTheDirectAnswerTakesItsModelsCap`. On a tool turn a writer (`writes`) gets at
   least `writeMaxTokens` (16384, `internal/council/cut.go`): an edit carries
@@ -110,7 +113,9 @@ paths:
   three times. `done_reason "length"` reaches it as `Reply.Cut`; a cut writer
   with no call is asked again once (`maxCuts`), never more. `Stream` reads only `Message.Content`, so
   the reasoning is dropped. The route-only decision never carries `think`.
-  The cap message is the model's `think_budget_message`; never set one here. Each parallel member gets its own engine session
+  A token budget carries `think_budget_message` (`councilBudgetMessage`: the
+  client's, else the council model's), local or remote; never invent one.
+  Guard: `TestABudgetGoesWithTheModelsBudgetMessage`. Each parallel member gets its own engine session
   named under the conversation's (`<session>~researcher-1`); the planner keeps
   the conversation's session so a direct answer hits the same cache as a plain
   chat. Deliberation streams as thinking, the answer as content, through
@@ -640,3 +645,14 @@ paths:
   of the file just edited read as progress). Both made every check look
   moved, and the stuck note never fired. Count `same`/`moved` notes in a
   run's log before trusting the stuck path.
+- **The reserve books thinking too** (11.28). A lead member is sent
+  `num_predict` = cap + budget, so `councilReserve(cfg, window)` adds
+  `cfg.ThinkRoom(role, window)`. That is a stated `think` against the
+  member's window, else a harness's stated build, else the builder's
+  ceiling (`maxBuiltThink`, "high" = 4096), since an unstated role may be
+  given that. Wherever a budget is sent as a token count (this server's
+  models, or a model another xollama serves), the member also gets
+  `think_budget_message`: the client's, else the council model template's
+  (`councilBudgetMessage`). Cloud and stock ollama take neither. Guards:
+  `TestTheReserveBooksTheThinkingToo`,
+  `TestABudgetGoesWithTheModelsBudgetMessage`.
