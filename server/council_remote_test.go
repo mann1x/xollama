@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/internal/council"
@@ -281,6 +282,10 @@ func TestAPulledCloudTagIsCloudByItsManifest(t *testing.T) {
 // A remote member whose reply stops before its done line has failed: the
 // fragment must not stand in for its finding.
 func TestARemoteReplyThatStopsShortFallsBack(t *testing.T) {
+	// Asked again first (council_retry.go), without the wait.
+	backoff := councilRetryBackoff
+	councilRetryBackoff = time.Millisecond
+	t.Cleanup(func() { councilRetryBackoff = backoff })
 	remote := &remoteOllama{cut: true}
 	srv := remote.serve(t)
 	t.Setenv("XOLLAMA_COUNCIL_HOSTS", "127.0.0.1")

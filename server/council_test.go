@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -50,6 +51,10 @@ type councilEngine struct {
 	tools map[string]string
 	// cut ends the named role's first reply at its cap (done_reason length).
 	cut map[string]bool
+	// fail makes the named role's first n calls fail; stall makes its first
+	// call send nothing until it is ended (council_retry.go).
+	fail  map[string]int
+	stall map[string]bool
 }
 
 // compactionMarkers tell the compaction's members apart by their instruction.
@@ -124,6 +129,12 @@ func (e *councilEngine) complete(ctx context.Context, r llm.CompletionRequest, f
 	}
 	e.mu.Unlock()
 
+	if n := e.count(role); n <= e.fail[role] {
+		return errors.New("upstream connection reset")
+	} else if n == 1 && e.stall[role] {
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	reply := map[string]string{
 		"route":       e.route,
 		"planner":     `{"plan":"look it up","briefs":["physics","history"]}`,

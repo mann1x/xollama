@@ -623,11 +623,15 @@ func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken
 }
 
 // StreamTools is Stream with the tools the member calls (council.ToolModel).
+// Every member call goes through here, so this is where a failed or stalled
+// call is asked again (council_retry.go).
 func (cm *councilMembers) StreamTools(ctx context.Context, r council.Request, onToken func(string)) (council.Reply, error) {
-	// A full owner is asked again while another member may give cells back
-	// (council_owner_full.go).
-	out, calls, cut, err := cm.retryOwnerFull(ctx, r, func() (string, []api.ToolCall, bool, error) {
-		return cm.stream(ctx, r, onToken)
+	out, calls, cut, err := cm.retrying(ctx, r, onToken, func(ctx context.Context) (string, []api.ToolCall, bool, error) {
+		// A full owner is asked again while another member may give cells
+		// back (council_owner_full.go).
+		return cm.retryOwnerFull(ctx, r, func() (string, []api.ToolCall, bool, error) {
+			return cm.stream(ctx, r, onToken)
+		})
 	})
 	return council.Reply{Content: out, Calls: calls, Cut: cut}, err
 }
@@ -770,6 +774,10 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 	// on the conversation waits on that.
 	stop := context.AfterFunc(ctx, func() { pr.CloseWithError(ctx.Err()) })
 	defer stop()
+	// A member that sends nothing for councilIdleTimeout has stalled: its
+	// read ends, and the call is asked again (council_retry.go).
+	idle := time.AfterFunc(councilIdleTimeout, func() { pr.CloseWithError(errMemberIdle) })
+	defer idle.Stop()
 
 	var out strings.Builder
 	var calls []api.ToolCall
@@ -777,6 +785,7 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 	sc := bufio.NewScanner(pr)
 	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	for sc.Scan() {
+		idle.Reset(councilIdleTimeout)
 		var line struct {
 			api.ChatResponse
 			Error string `json:"error"`
@@ -788,7 +797,7 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 			cm.mu.Lock()
 			cm.last = w.status()
 			cm.mu.Unlock()
-			return out.String(), nil, false, memberError(r.Role, line.Error)
+			return out.String(), nil, false, memberStatus{memberError(r.Role, line.Error), w.status()}
 		}
 		if t := line.Message.Content; t != "" {
 			out.WriteString(t)

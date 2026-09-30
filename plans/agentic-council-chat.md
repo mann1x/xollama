@@ -2376,7 +2376,12 @@ itself), so the read stays current across them. Guard:
 - [x] One-step compaction: a fold is the writer's pass only (Cerebriline `councilEnabled: false`, `thinkingSummaryEnabled` off).
   - `council.context.review` and `.retrospective` now default to off; the review path stays opt-in.
   - `TestCompactionSettings` covers the default, review off and review on.
-- [ ] One model-call wrapper: retry, fallback and a run timeout for every role.
+- [x] One model-call wrapper for every role (`server/council_retry.go`, around `councilMembers.StreamTools`):
+  - a member that sends nothing for 5 min, or runs past 20 min, is ended;
+  - a failed call is asked again up to twice (2 s, then 4 s);
+  - a full owner, a 4xx refusal and a host the operator has not allowed are not retried;
+  - the council's own fallback (a researcher or critic elsewhere, answered by the council's model) follows after these tries;
+  - guards: `TestAFailedOrStalledMemberIsAskedAgain` and `TestAMemberThatKeepsFailingIsAskedAgainOnlyTwice`, each failing with its part removed.
 - [ ] Runner-issued check after a synthesizer turn that wrote and ran none.
 - [ ] `council_read_many`: several client reads in one trip.
 - [ ] Forced answer by schema at the step bound.

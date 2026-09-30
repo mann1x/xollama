@@ -675,3 +675,20 @@ paths:
   `TestAMembersToolStepsAreBounded`,
   `TestAnEmptyPlanIsAskedAgainWithoutThinking`,
   `TestAnEmptyReportIsAskedAgainWithoutThinking`.
+- **Every member call is retried in one place** (11.29,
+  `server/council_retry.go`, wrapped around `councilMembers.StreamTools`):
+  - a stream with no line for `councilIdleTimeout` (5 min) is closed with
+    `errMemberIdle`, and a call past `councilCallTimeout` (20 min) is ended;
+  - a failed call is asked again `councilRetries` (2) times, with backoff;
+  - not retried: `llm.ErrOwnerFull` (its own path), a 4xx other than 429
+    (`memberStatus` carries the call's own status; never read the shared
+    `cm.last`), and a host outside `XOLLAMA_COUNCIL_HOSTS`;
+  - the council's fallback to its own model (`fallsBack`) comes after these
+    tries.
+  Guards: `TestAFailedOrStalledMemberIsAskedAgain`,
+  `TestAMemberThatKeepsFailingIsAskedAgainOnlyTwice`.
+- **Researcher and critic steps are bounded** (11.29, `stepLimit`, 4 and 3):
+  a step is a turn that called a client tool (`toolSteps`), forwarded or
+  answered from the shared reads. Evidence lookups are `maxLookups`'. Past the
+  bound the call is not made and the member is told (`stepsOutNote`); a
+  second try ends its turn. Guard: `TestAMembersToolStepsAreBounded`.

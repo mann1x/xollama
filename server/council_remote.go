@@ -27,7 +27,8 @@ import (
 func (cm *councilMembers) remote(ctx context.Context, r council.Request, req api.ChatRequest, onToken func(string)) (string, error) {
 	u, err := councilHostAllowed(r.Host, envconfig.CouncilHosts())
 	if err != nil {
-		return "", fmt.Errorf("council %s: %w", r.Role, err)
+		// The operator's refusal stands however often it is asked.
+		return "", memberStatus{fmt.Errorf("council %s: %w", r.Role, err), http.StatusForbidden}
 	}
 	req.SessionID = ""
 	think := any(nil)
