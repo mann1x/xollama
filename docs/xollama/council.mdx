@@ -407,6 +407,33 @@ council is told to change approach instead of refining the same one. It then
 narrows down where the fault is, or replaces the failing part whole. A check
 whose output changed counts as progress.
 
+### Results are records, and reads have a limit
+
+On a turn with tools, each member ends with a call the council answers itself,
+not with a phrase it has to remember:
+
+| Member | Ends with | What it carries |
+|---|---|---|
+| Researcher | `council_report` | A summary, every change it proposes (the exact old text from what it read and the new text, why, how to check), what it established with the evidence, and the one open question |
+| Critic | `council_verdict` | `ready`, `revise` or `confirmed` (with the place), why, and any corrections |
+| Synthesizer, while checking | `council_done` or `council_retest` | What the check showed, or what it tried |
+
+A result counts only as a turn's one call: made beside reads, it waits for
+their results. The critics and the synthesizer read a researcher's report as
+fields, each proposal marked by whether the researcher's own reads show its old
+text, with the reads themselves by reference (`council_evidence`), not inline.
+The `VERDICT:` phrases above are still read from a member that writes them.
+
+A researcher has 4 tool steps and a critic 3, each step one round trip to your
+client, so members are told to put every read they need into one step. A step
+counts whether your client ran it or the council answered it from a read
+already made. At the limit the member's next call must be its result: it is
+sent with the result's schema as its format, so it cannot call a tool.
+
+An empty plan, or an empty report after thinking, is asked for once more
+without thinking. A member call that fails, or sends nothing for 5 minutes, is
+asked again, up to twice.
+
 Without tools there is nothing to check with, and the council answers once, as
 before. The cycles travel in `council_chat_state`, so a resumed turn starts at
 the cycle after the last failed check. A turn that continues the last

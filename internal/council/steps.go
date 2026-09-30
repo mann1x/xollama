@@ -447,7 +447,16 @@ func (cfg Config) testNote(cycle int) string {
 	if !cfg.testing(cycle) {
 		return ""
 	}
-	return checkNote + fmt.Sprintf(" Your part now is to apply the council's proposals and check them together: make every proposed change that does not conflict with another in one reply -- several tool calls at once -- and only then run the check, once, and read the whole output. When the check shows a new failure whose place and fix its output and the material already show, fix that too and check again; you do not investigate beyond that, and you do not pursue a theory the findings do not propose. %s End with exactly one verdict: %q when the checks pass; or, when a check fails and the proposals are used up, a brief status for the user (where things stand, and that the council is trying again), then %q followed by what you tried and what each check returned. The council plans again from that; the user does not see it. You have %d tool steps for this.", refusedEdit, Done, Retest, cfg.MaxSteps)
+	return checkNote + fmt.Sprintf(" Your part now is to apply the council's proposals and check them together: make every proposed change that does not conflict with another in one reply -- several tool calls at once -- and only then run the check, once, and read the whole output. When the check shows a new failure whose place and fix its output and the material already show, fix that too and check again; you do not investigate beyond that, and you do not pursue a theory the findings do not propose. %s End with exactly one verdict: %q when the checks pass; or, when a check fails and the proposals are used up, a brief status for the user (where things stand, and that the council is trying again), then %q followed by what you tried and what each check returned. The council plans again from that; the user does not see it. You have %d tool steps for this.", refusedEdit, Done, Retest, cfg.MaxSteps) + cfg.verdictToolsNote()
+}
+
+// verdictToolsNote tells the synthesizer its verdicts are calls, when the
+// turn carries them (report.go).
+func (cfg Config) verdictToolsNote() string {
+	if !cfg.canReport() {
+		return ""
+	}
+	return fmt.Sprintf(" Give the verdict by calling %s (the checks pass: after your answer) or %s (with what you tried), on its own.", DoneTool, RetestTool)
 }
 
 // Done is what the synthesizer ends with when its checks pass.
@@ -553,11 +562,15 @@ func Critique(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Mess
 
 func critique(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message, p Plan, findings []string, i, round int, emit Emit, turns []api.Message) (string, []api.Message, error) {
 	instr := prompt(cfg, Critic) + cfg.toolNote(Critic)
+	revise, confirm := fmt.Sprintf("end with %q", Revise), fmt.Sprintf("end with %q and the place (path:line)", Confirmed)
+	if cfg.canReport() {
+		revise, confirm = fmt.Sprintf("your verdict is revise (%s)", VerdictTool), fmt.Sprintf("your verdict is confirmed, with the place (path:line) (%s)", VerdictTool)
+	}
 	if round-cfg.cycleStart+1 < max(cfg.MaxRounds, 1) {
-		instr += fmt.Sprintf(" If the findings are not good enough to answer from, end with %q.", Revise)
+		instr += fmt.Sprintf(" If the findings are not good enough to answer from, %s.", revise)
 	}
 	if len(cfg.Tools) > 0 {
-		instr += fmt.Sprintf(" If a finding names the exact place of an error and you have checked it there, end with %q and the place (path:line), so the change starts at once.", Confirmed)
+		instr += fmt.Sprintf(" If a finding names the exact place of an error and you have checked it there, %s, so the change starts at once.", confirm)
 	}
 	msgs := append(base(cfg, conv, p), sourced(findingsSource, findingsIntro+joinNumbered("FINDINGS OF RESEARCHER", findings)),
 		user(fmt.Sprintf("ROLE: CRITIC %d. %s", i+1, instr)))

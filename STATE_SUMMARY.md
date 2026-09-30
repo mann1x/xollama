@@ -12,6 +12,11 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 > - An empty plan or report is asked again once without thinking. No two researchers share a fallback brief.
 > - The scope of 11.29, with the owner's choices (16k default ceiling; all four structural changes), is in the plan.
 > - Every member call is asked again when it fails or stalls (5 min with nothing sent, 20 min in all): up to twice, never for a refusal or a full owner.
+> - Members end with typed results the council answers itself, rendered into the flow's existing form:
+>   - researchers call `council_report`: proposals with their exact old text, claims, reads by ref;
+>   - critics call `council_verdict`;
+>   - a checking synthesizer calls `council_done` or `council_retest`.
+>   At the step limit the member's call carries its result's schema as the format.
 > - A compaction fold is now one call, the writer's. The critics' review and the retrospective are opt-in (`council.context.review`, `.retrospective`).
 
 > **2026-09-30 — glm council fixed hard at 13x the plain cost. The council will be rebuilt on Cerebriline's budgets.**

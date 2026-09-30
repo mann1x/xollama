@@ -692,3 +692,17 @@ paths:
   answered from the shared reads. Evidence lookups are `maxLookups`'. Past the
   bound the call is not made and the member is told (`stepsOutNote`); a
   second try ends its turn. Guard: `TestAMembersToolStepsAreBounded`.
+- **Results are records** (11.29, `internal/council/report.go`). The result
+  tools are `council_report` (researcher), `council_verdict` (critic),
+  `council_done` / `council_retest` (a checking synthesizer):
+  - `WithReports` adds them to every member's list, so the rendered tool
+    list, and with it the shared prefix, stays one. `may` restricts each to
+    its role.
+  - `takeResult` takes one only as the turn's one non-local call, and renders
+    it into the text and `VERDICT:` markers the flow already routes on.
+  - Keep that rendering: findings, critiques, the task list and
+    `council_chat_state` all read text.
+  - A typed report carries its reads by ref (`evidenceRefs`), not inline.
+  - At `stepLimit` the call carries `resultSchema` as `Format`, so the
+    grammar admits no call.
+  Guards: `TestAResearchersReportIsTyped`, `TestTheForcedAnswerIsTheReportsFormat`.

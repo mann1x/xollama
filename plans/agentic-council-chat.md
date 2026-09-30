@@ -2384,10 +2384,17 @@ itself), so the read stays current across them. Guard:
   - guards: `TestAFailedOrStalledMemberIsAskedAgain` and `TestAMemberThatKeepsFailingIsAskedAgainOnlyTwice`, each failing with its part removed.
 - [ ] Runner-issued check after a synthesizer turn that wrote and ran none.
 - [ ] `council_read_many`: several client reads in one trip.
-- [ ] Forced answer by schema at the step bound.
-  - The grammar admits no call and the tool list stays in the prompt (the KV prefix is kept).
-  - Cloud and remote members get no tools.
-- [ ] Typed findings (proposals, claims, evidence refs) and verdicts as server-answered tools or schemas, with one validated re-ask.
+- [x] Typed results (`internal/council/report.go`):
+  - researchers end with `council_report` (summary, proposals `{path, old_text, new_text, why, check}`, claims with evidence, open);
+  - critics end with `council_verdict` (ready, revise or confirmed + place);
+  - a checking synthesizer ends with `council_done` or `council_retest`.
+  - The council answers these itself, and renders them into the text and markers the flow already routes on. A result counts only as a turn's one call.
+  - A report marks each proposal by whether the researcher's own reads show its `old_text`, and carries its reads by ref only.
+  - The text markers are still accepted.
+  - Guards: `TestAResearchersReportIsTyped`, `TestACriticsVerdictIsTyped`, `TestAReportBesideAReadWaitsForIt`, `TestTheSynthesizersVerdictsAreTyped`. Four fail with `takeResult` off.
+- [x] Forced answer by schema at the step bound.
+  - The reader's call carries its result's schema as `Format`, so the grammar admits no call; the tool list, and the prefix, stay (`TestTheForcedAnswerIsTheReportsFormat`).
+  - To verify live: that the rendered prefix still matches with `Format` set.
 - [ ] Output budget per member: min(0.75 x window, ceiling, model max).
   - Default ceiling 16,384; settable council-wide and per role.
   - The think level is a share of it (medium = 1/4).

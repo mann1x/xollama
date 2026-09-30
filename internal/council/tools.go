@@ -102,6 +102,8 @@ func (cfg Config) may(r Role, c api.ToolCall) (bool, string) {
 		return false, fmt.Sprintf(refusedRouting, c.Function.Name)
 	case c.Function.Name == ReviewTool && r != Synthesizer:
 		return false, fmt.Sprintf(refusedRouting, c.Function.Name)
+	case resultTool(c.Function.Name) && resultRole(c.Function.Name) != r:
+		return false, fmt.Sprintf(refusedRouting, c.Function.Name)
 	case !t.Function.ReadOnly && !writes(r):
 		return false, fmt.Sprintf(refusedWrite, c.Function.Name)
 	case !t.Function.ReadOnly && noOp(c):
@@ -134,6 +136,10 @@ func (cfg Config) transcript(r Role, key string, turns []api.Message) []api.Mess
 				res = "Handed to the council."
 			} else if c.Function.Name == ReviewTool {
 				res = "Sent to the critics. Keep working: their review reaches you when it is done."
+			} else if resultTool(c.Function.Name) {
+				// Taken only as a turn's one call (takeResult): beside others
+				// it waits for their results.
+				res = resultLater
 			} else if local(c) {
 				res = cfg.lookup(c)
 				if folded[c.ID] {
@@ -265,6 +271,16 @@ func (cfg Config) toolNote(r Role) string {
 		// proposal, and were refused each time.
 		note += " You cannot make or test a change: judge each proposal against the material and the evidence."
 	}
+	if cfg.canReport() {
+		// The result is a record (report.go): fields the runner reads, not a
+		// marker the model has to remember.
+		switch r {
+		case Researcher:
+			note += fmt.Sprintf(" When your reads are done, call %s once, on its own, with your summary, every change you propose (the exact old text from what you read, and the new text) and what you established: that is your report.", ReportTool)
+		case Critic:
+			note += fmt.Sprintf(" End by calling %s once, on its own, with your verdict: ready, revise or confirmed.", VerdictTool)
+		}
+	}
 	if r == Critic {
 		// Measured live: critics re-read every file the researchers had read,
 		// and one on 20260930-085958 turned researcher: 50 finds in 26 trips.
@@ -363,7 +379,7 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 	own := req.Messages
 	req.MaxTokens = writeTok(req.Role, req.MaxTokens)
 	refusals, lookups, preempts, cuts := 0, 0, 0, 0
-	nudged, gated, emptied := false, false, false
+	nudged, gated, emptied, typed := false, false, false, false
 	// gatedReply is the DONE reply that waited for the critics' reviews
 	// (11.9): the user has read it.
 	gatedReply, stream := "", onToken
@@ -405,6 +421,16 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 				turns = append(slices.Clone(turns), user(budgetNote(cfg.MaxSteps)))
 			}
 		}
+		// At its step bound a reader's call carries its result's schema as the
+		// format: the grammar admits no tool call, and the tool list -- the
+		// shared prefix -- stays as it was.
+		req.Format = nil
+		if lim := cfg.stepLimit(req.Role); lim > 0 && toolSteps(turns) >= lim && cfg.canReport() {
+			if !noted(turns, stepsOutNote) {
+				turns = append(slices.Clone(turns), user(stepsOutNote))
+			}
+			req.Format = resultSchema(req.Role)
+		}
 		req.Messages = append(clone(own), cfg.transcript(req.Role, key, turns)...)
 		rep, partial, preempted, err := cfg.streamPreemptible(ctx, tm, req, key, onToken)
 		if preempted && preempts < maxPreempts {
@@ -435,6 +461,15 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 			continue
 		}
 		cuts = 0
+		if req.Format != nil && len(rep.Calls) == 0 {
+			// The forced answer: its record, or its text as it stands.
+			if out, ok := cfg.formatted(req.Role, key, turns, rep.Content); ok {
+				return out, nil, nil
+			}
+		}
+		if cfg.takeResult(req.Role, req.Round, key, turns, &rep) {
+			typed = true
+		}
 		if len(rep.Calls) == 0 && !writes(req.Role) && !emptied && req.Think != "" && strings.TrimSpace(replyText(turns, rep.Content)) == "" {
 			// A report its reasoning took whole is asked for once more
 			// without thinking (claude-hooks P4): a researcher on
@@ -504,7 +539,11 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 			out := replyText(turns, rep.Content)
 			// A failed check goes back to the researchers with what the
 			// synthesizer's calls returned, as a finding carries its reads.
-			if !writes(req.Role) || (req.Role == Synthesizer && cfg.retested(out, req.Round)) {
+			switch {
+			case typed && !writes(req.Role):
+				// A typed report quotes what it proposes; the reads go by ref.
+				out += cfg.evidenceRefs(req.Role, key, turns)
+			case !writes(req.Role) || (req.Role == Synthesizer && cfg.retested(out, req.Round)):
 				out += cfg.evidence(req.Role, key, turns)
 			}
 			return out, nil, nil
@@ -582,7 +621,7 @@ const (
 )
 
 // stepsOutNote tells a member past its steps that the call was not made.
-const stepsOutNote = "Your tool steps for this report are spent, so that call was not made. Write your report now from what you have read, and name any fact you still lack instead of looking for it."
+const stepsOutNote = "Your tool steps for this report are spent: make no more calls. Write your report now from what you have read, and name any fact you still lack instead of looking for it."
 
 // stepLimit is how many tool steps role r takes in one call, or 0 for no
 // bound here (the synthesizer's are MaxSteps, the front's its own).
