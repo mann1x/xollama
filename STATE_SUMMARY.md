@@ -5,6 +5,25 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-30 — glm council fixed hard at 13x the plain cost. The council will be rebuilt on Cerebriline's budgets.**
+> - **All-glm council** (every role on glm-5.3-flash:cloud, max_tokens 131072):
+>   - Fixed hard, 23/23 traps.
+>   - It took 10,866 s, 60 trips, 3.44M tokens in and 875k out. Plain glm took 300-814 s and 29k-70k out.
+>   - The first edit came only after 62 min.
+>   - One critic made 50 `find_text` calls in a row. The critics used 1.94M input tokens, about 44k per call.
+>   - Researchers wrote a median of 10.6k tokens per call.
+>   - The synthesizer broke the file 3 times before the fix.
+>   - The owner stopped the rest of the batch (glm on one role at a time).
+> - **Plain omni, thinking on** (`think_budget "medium"`, num_predict 131072):
+>   - Failed, with the original SyntaxError, after 1,815 s and 21 trips.
+>   - "medium" is a quarter of the reply room, so the engine budget was 32,768 (`common_reaso: activated, budget=32768`). The engine also forgives spent tokens on a reset sequence (up to 13,435 in this run).
+>   - One turn ran 1,062 s with no tool call.
+> - **Owner's direction:**
+>   - Thinking stays on.
+>   - The manic harness here is not reliable enough to decide anything; measure plain and council through Cerebriline's harness (eleven2go lane, oracle v3).
+>   - Port Cerebriline's approach into the council: the automatic output budget; a customisable ceiling, low by default; mapping thinking levels and tokens onto the output; reasoning replay; reasoning condensation; and one-step agentic replay compaction instead of the 5-member fold.
+>   - Asked Cerebriline for source pointers and the harness commands (mail #573).
+
 > **2026-09-30 — solidPC's service (11434) moved to `0.35.0-dev.562eea98`.**
 > - The owner asked for it. The payload was assembled with `scripts/docker-assemble.sh` from the pins: runtime b11081 (the inputs digest matches), upstream GPU backends, and opencoti b208. No native code was rebuilt.
 > - It was swapped by `/srv/ml/xollama-phase2/solidpc-swap-0.35.0.sh`. The old binary and `lib/ollama` are kept as `.bak-20260930-103348`. The unit's drop-ins (11434, debug, parallel 1) are unchanged.
