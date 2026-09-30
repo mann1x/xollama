@@ -685,3 +685,20 @@ func TestARenderIsWhatTheEngineGets(t *testing.T) {
 		}
 	}
 }
+
+// The done chunk's prompt_eval_count is the conversation's, as a plain model
+// reports it, not the members' sum: a client sizes its context from it, and
+// the sum (161,214 on native.sh run 0416) had a harness compact a conversation
+// a third that size. Every member's output still counts.
+func TestTheDoneChunkReportsTheConversationsPrompt(t *testing.T) {
+	e := &councilEngine{route: `{"route":"council"}`}
+	s := councilServer(t, e, councilOn())
+	chunks := chatChunks(t, s, api.ChatRequest{Model: "council", Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}}})
+	done := chunks[len(chunks)-1]
+	e.mu.Lock()
+	calls := len(e.roles)
+	e.mu.Unlock()
+	if calls < 4 || done.PromptEvalCount != 10 || done.EvalCount != 5*calls {
+		t.Errorf("%d calls: prompt_eval_count %d (want one call's 10), eval_count %d (want %d)", calls, done.PromptEvalCount, done.EvalCount, 5*calls)
+	}
+}

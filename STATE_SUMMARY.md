@@ -28,7 +28,14 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 > - A request whose `num_predict` is below 64 is a probe and is answered plainly. Cerebriline's fixed template probe sends two such requests (`num_predict` 1), and without this each would start a council.
 > - Council arm 0416 (`omni-council-think`, 55d4baf7, generic wire, PROVIDER=ollama) ended **broken**: the game loads, but only 18/23 checks pass (friction, run, wall, left_edge and hud fail), after 4,815 s. The plain arms fixed it in 1,189-2,197 s.
 > - The lane is paused (owner) while Cerebriline lands its `/chat` template-probe fix (#586/#587); eleven2go is on 19fd62cc. Runs after that fix are a new series, since past thinking may then be replayed.
-> - Left in 11.29: find why 0416 stopped short, then the council arm again on the new series.
+> - **Why 0416 lost** (log in `/srv/ml/xollama-phase2/as-ollama/e2g-0416/`):
+>   1. **Compaction, 1,987 s (41% of the run).** The done chunk's `prompt_eval_count` was the sum over all members, 161,214. The harness took that for its context size and ran its 5-step compaction on a ~50k conversation, each step a council turn. Fixed: the done chunk now reports the prompt of the last call on the conversation.
+>   2. **Stopped at 18/23.** The synthesizer called the failures "minor" and said DONE. A reviewer refuted that. The synthesizer then re-sent the same unchanged result, and the second reviewer, fed only a file read, confirmed it. Fixed:
+>      - a refutation stands until a change answers it, and DONE is refused meanwhile;
+>      - a review with no change since judges the last check;
+>      - the verdict wording counts any failure anywhere in the output.
+>   3. **Slow to 18/23: 2,588 s, where plain took 309 s.** Six cycles, each fixing the one runtime error the last check named. Each cycle spent 3-5 min on planner, researchers and critics before the synthesizer's minute, and ended at the step bound with a RETEST. Not fixed yet: a proposal is pending with the owner.
+> - Left in 11.29: the council arm again on the new series (Cerebriline d3c58e1a9).
 
 > **2026-09-30 — 11.29 started: step limits, a spot-checking critic, empty-reply retries.**
 > - Plain omni through Cerebriline's harness (`native.sh`, eleven2go lane): FIXED 23/23 in 1,125 s. The engine budget was 12,288; asked Cerebriline why (#577).

@@ -627,6 +627,10 @@ type councilMembers struct {
 	mu     sync.Mutex
 	m      api.Metrics
 	cached int // prompt tokens served from cache or a pool, over all members
+	// convPrompt and convCached are the prompt of the turn's last call that
+	// carries the conversation itself (the front, the planner, the
+	// synthesizer): what the done chunk reports as prompt_eval_count.
+	convPrompt, convCached int
 	// usage is what each role spent (council_usage.go).
 	usage usageBook
 	last  int // the HTTP status of the last member error
@@ -878,6 +882,9 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 			cm.m.EvalCount += line.EvalCount
 			cm.m.EvalDuration += line.EvalDuration
 			cm.m.LoadDuration += line.LoadDuration
+			if carriesConversation(r.Role) {
+				cm.convPrompt, cm.convCached = line.PromptEvalCount, cached
+			}
 			cm.mu.Unlock()
 		}
 	}
@@ -909,16 +916,32 @@ func (cm *councilMembers) memberSession(r council.Request) string {
 	return id
 }
 
+// metrics is the done chunk's: durations and output over all members, but
+// the prompt of the last call on the conversation, as a plain model reports
+// its own. A client sizes its context from prompt_eval_count: the members'
+// sum (161,214 on native.sh run 0416, against a ~50k conversation) had
+// Cerebriline compact a conversation that did not need it, for 1,987 s. What
+// every role read is council_usage.
 func (cm *councilMembers) metrics(total time.Duration) api.Metrics {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 	m := cm.m
 	m.TotalDuration = total
-	if cm.cached > 0 {
-		cached := cm.cached
+	cached := cm.cached
+	if cm.convPrompt > 0 {
+		m.PromptEvalCount, cached = cm.convPrompt, cm.convCached
+	}
+	if cached > 0 {
 		m.PromptEvalCachedCount = &cached
 	}
 	return m
+}
+
+// carriesConversation reports whether role r's prompt is the conversation
+// itself, before any role's own part: the calls whose prompt size a client
+// may take for its context's.
+func carriesConversation(r council.Role) bool {
+	return r == council.Front || r == council.Planner || r == council.Synthesizer
 }
 
 func (cm *councilMembers) status(error) int {

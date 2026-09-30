@@ -71,6 +71,10 @@ func MemberKey(r Role, index, round int) string {
 // writes reports whether a role answers the user, and so may change things.
 func writes(r Role) bool { return r == Synthesizer || r == Planner || r == Front }
 
+// maxStanding bounds how often a DONE is refused for a refutation that
+// stands; after that the member's verdict is taken.
+const maxStanding = 2
+
 // maxRefusals bounds how often a member that calls only tools it may not is
 // asked again; after that its text stands.
 const maxRefusals = 2
@@ -382,7 +386,7 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 	key := MemberKey(req.Role, req.Index, req.Round)
 	own := req.Messages
 	req.MaxTokens = writeTok(req.Role, req.MaxTokens)
-	refusals, lookups, preempts, cuts := 0, 0, 0, 0
+	refusals, lookups, preempts, cuts, standing := 0, 0, 0, 0, 0
 	nudged, gated, emptied, typed, unformatted := false, false, false, false, false
 	// gatedReply is the DONE reply that waited for the critics' reviews
 	// (11.9): the user has read it.
@@ -390,6 +394,9 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 	// unverdicted is the reply that ended without a verdict (C): the user
 	// has read it, so the nudged reply only adds the verdict to it, unseen.
 	unverdicted := ""
+	// held is the DONE reply the user read when a standing refutation sent
+	// the member back: its answer, unless it goes back to work.
+	held := ""
 	for {
 		if cfg.CheckCall == nil {
 			// No harness stated the check: the one this member repeats is it
@@ -540,6 +547,25 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 				rep.Content = gatedReply
 			}
 			gatedReply = ""
+		}
+		if len(rep.Calls) == 0 && cfg.canReview(req.Role) && strings.Contains(rep.Content, Done) && !strings.Contains(rep.Content, Retest) && standing < maxStanding && cfg.refutedUnchanged(turns) {
+			// A refutation stands until a change answers it: DONE on the
+			// same result is refused, and the member goes back to work.
+			standing++
+			if held == "" {
+				held = rep.Content
+			}
+			turns = append(slices.Clone(turns), api.Message{Role: "assistant", Content: rep.Content}, user(refutedNote))
+			onToken = func(string) {}
+			continue
+		}
+		if held != "" {
+			if len(rep.Calls) > 0 {
+				// Back to work: what it says next is streamed again.
+				held, onToken = "", stream
+			} else if strings.Contains(rep.Content, Done) && !strings.Contains(rep.Content, Retest) {
+				rep.Content = held
+			}
 		}
 		if len(rep.Calls) == 0 && cfg.canReview(req.Role) && cfg.testing(req.Round) && !gated && strings.Contains(rep.Content, Done) {
 			// 11.9: DONE stands once the reviews still out are in, and the

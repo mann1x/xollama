@@ -219,7 +219,8 @@ ported, prompts in `server/council_compaction_prompts.go`; `server/council_state
 seals the `council_chat_state` resume point a client sends back; `server/council_continue.go`
 keeps a turn's deliberation so the next message can `continue` the same council,
 `internal/council/continue.go`; `server/council_usage.go` adds up what each role
-spent, reported on the done chunk as `ChatResponse.CouncilUsage`, `council_usage_v1`), reached from one
+spent, reported on the done chunk as `ChatResponse.CouncilUsage`, `council_usage_v1`; the done chunk's
+`prompt_eval_count` is the last conversation call's, `carriesConversation`, never the members' sum), reached from one
 `councilServes` line in
 `ChatHandler` (`council` hook); a `format` bypasses it, and tools without
 `council_chat_state` are a generic harness's, the resume point held server side
@@ -229,7 +230,8 @@ the server-answered `council_evidence` tool that reads a large result back by re
 `internal/council/reads.go`: shared reads, a repeated read-only call answered in place;
 `internal/council/broadcast.go`: the opt-in `council_post` notes between same-role members;
 `internal/council/review.go`: the synthesizer's `council_review` checks, queued for critics
-in the background, a per-conversation desk in `server/council_review.go`;
+in the background, a per-conversation desk in `server/council_review.go`; a refutation stands
+until a change answers it (`refutedUnchanged`, DONE refused up to `maxStanding`);
 `internal/council/report.go`: a member's result as a typed tool call (`council_report`, `council_verdict`, `council_done`, `council_retest`), added by `WithReports`;
 `internal/council/replay.go`: a member's last step replays its reasoning, and capped reasoning is condensed to a note by the `Condenser`;
 `server/council_tools.go`), and a one-shot

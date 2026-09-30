@@ -241,7 +241,7 @@ var reviewInstr = "ROLE: CRITIC %d, REVIEWING A CHECK. The synthesizer is making
 
 // reviewStructure is the form every review takes; a review without its
 // verdict is sent back with it (a critic judges, always: the owner).
-var reviewStructure = fmt.Sprintf("CHANGE: <what the change did, from the calls' results>\nCHECK: <what the check's output shows, quoted where it matters>\nThen, as the last line, exactly one of:\n%s (the check shows it works)\n%s (it does not, or the change broke something)\n%s (the output cannot tell)", ReviewConfirmed, ReviewRefuted, ReviewUnclear)
+var reviewStructure = fmt.Sprintf("CHANGE: <what the change did, from the calls' results>\nCHECK: <what the check's output shows, quoted where it matters>\nThen, as the last line, exactly one of:\n%s (the check shows it works: no part of its output reports a failure)\n%s (it does not: any failed test, error or false result anywhere in the output counts, even beside parts that pass; or the change broke something)\n%s (the output cannot tell)", ReviewConfirmed, ReviewRefuted, ReviewUnclear)
 
 // reviewFormatNudge sends back a review that ended without its verdict.
 var reviewFormatNudge = "Your review did not end with its verdict, so it cannot be used. Write it again in this structure, and nothing else:\n" + reviewStructure
@@ -292,6 +292,26 @@ func (cfg Config) reviewNote(cycle int) string {
 	return fmt.Sprintf(" After each check, call %s with what you changed: the critics review it while you keep working, and their reviews reach you as they finish. A %s verdict stands only once the reviews still out are in.", ReviewTool, Done)
 }
 
+// refutedNote refuses a DONE that a refutation still stands against.
+var refutedNote = fmt.Sprintf("A critic refuted your check, and nothing has changed since: another review of the same result does not overturn it. Fix what the refutation names, run the check again, and reply with %q only when no part of its output reports a failure.", Done)
+
+// refutedUnchanged reports whether the latest review the synthesizer read
+// refuted its check with no change made after it. A later confirmation of
+// the same, unchanged result does not lift it.
+func (cfg Config) refutedUnchanged(turns []api.Message) bool {
+	refuted := false
+	for _, t := range turns {
+		if t.Role == "user" && strings.HasPrefix(t.Content, header(reviewSource)) && strings.Contains(t.Content, ReviewRefuted) {
+			refuted = true
+			continue
+		}
+		if slices.ContainsFunc(t.ToolCalls, func(c api.ToolCall) bool { return !local(c) && !cfg.readOnly(c) }) {
+			refuted = false
+		}
+	}
+	return refuted
+}
+
 // reviewedNudge follows the reviews a DONE verdict waited for.
 var reviewedNudge = fmt.Sprintf("The critics' reviews of your checks are above. If one shows a check does not prove the change works, keep working. Otherwise reply with %q alone.", Done)
 
@@ -311,9 +331,21 @@ func (cfg Config) reviewJob(key string, turns []api.Message, c api.ToolCall, n i
 	if change == "" {
 		change = "It did not say: it declared the work done after this check."
 	}
+	evidence := cfg.checkEvidence(key, turns[since:])
+	if !slices.ContainsFunc(turns[since:], func(t api.Message) bool {
+		return slices.ContainsFunc(t.ToolCalls, func(c api.ToolCall) bool { return !local(c) && !cfg.readOnly(c) })
+	}) {
+		// Nothing changed since the last review: the reviewer judges the
+		// check of the last change, never the synthesizer's account of it
+		// nor a read made since (0416: a second review of an unchanged
+		// file, fed one read, confirmed what the first had refuted).
+		if last := cfg.lastCheck(key, turns); last != "" {
+			evidence += "\n- (no check since the last review) the last check returned:\n" + last
+		}
+	}
 	return ReviewJob{
 		ID: cfg.Turn + "/" + ForwardedID(key, c.ID), Turn: cfg.Turn, N: n, Request: cfg.request,
-		Change: change, Evidence: cfg.checkEvidence(key, turns[since:]),
+		Change: change, Evidence: evidence,
 	}
 }
 

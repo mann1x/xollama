@@ -123,6 +123,11 @@ func TestTheCriticsReviewAChecksWhileTheSynthesizerWorks(t *testing.T) {
 	if res.Answer != "fixed it" || content.String() != "fixed it " {
 		t.Errorf("answer %q, content %q: want the answer the user read, once", res.Answer, content.String())
 	}
+	// It insisted on DONE with nothing changed: the refutation stood, and the
+	// verdict was refused before it was taken.
+	if !strings.Contains(all(last), "another review of the same result does not overturn it") {
+		t.Error("a DONE against a refutation that stands was not refused")
+	}
 }
 
 // A DONE after a check it never sent sends that check itself, and waits.
@@ -267,5 +272,50 @@ func TestACheckIsReviewedOnce(t *testing.T) {
 	drive(t, cfg, s)
 	if len(s.reviews) != 1 {
 		t.Errorf("%d reviews of one check", len(s.reviews))
+	}
+}
+
+// A refutation stands until a change answers it: a later confirmation of the
+// same, unchanged result does not lift it (native.sh run 0416).
+func TestARefutationStandsUntilAChange(t *testing.T) {
+	cfg := toolCfg()
+	refuted := reviewsMsg([]Review{{N: 1, Text: "CHECK: 5 tests fail\n" + ReviewRefuted}})
+	confirmed := reviewsMsg([]Review{{N: 2, Text: "CHECK: ok\n" + ReviewConfirmed}})
+	read := api.Message{Role: "assistant", ToolCalls: []api.ToolCall{tcall("read_files", map[string]any{"path": "a"})}}
+	write := api.Message{Role: "assistant", ToolCalls: []api.ToolCall{tcall("write_file", map[string]any{"path": "a"})}}
+	for _, tc := range []struct {
+		name  string
+		turns []api.Message
+		want  bool
+	}{
+		{"refuted", []api.Message{write, refuted}, true},
+		{"refuted, a read, then confirmed", []api.Message{write, refuted, read, confirmed}, true},
+		{"refuted, then a change", []api.Message{write, refuted, write}, false},
+		{"only confirmed", []api.Message{write, confirmed}, false},
+	} {
+		if got := cfg.refutedUnchanged(tc.turns); got != tc.want {
+			t.Errorf("%s: standing %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// A review sent with nothing checked since the last one judges the last
+// check there is, not the synthesizer's account.
+func TestAReviewWithNoNewCheckJudgesTheLastOne(t *testing.T) {
+	cfg := toolCfg()
+	cfg.Results = map[string]string{}
+	key := MemberKey(Synthesizer, 0, 0)
+	turns := []api.Message{
+		{Role: "assistant", ToolCalls: []api.ToolCall{{ID: "a", Function: tcall("write_file", map[string]any{"path": "x"}).Function}}},
+		{Role: "assistant", ToolCalls: []api.ToolCall{{ID: "b", Function: tcall("read_files", map[string]any{"path": "x"}).Function}}},
+		{Role: "assistant", ToolCalls: []api.ToolCall{{ID: "r1", Function: tcall(ReviewTool, map[string]any{"change": "c"}).Function}}},
+		{Role: "assistant", ToolCalls: []api.ToolCall{{ID: "c", Function: tcall("read_files", map[string]any{"path": "y"}).Function}}},
+	}
+	cfg.Results[ForwardedID(key, "a")] = "WROTE"
+	cfg.Results[ForwardedID(key, "b")] = "5 TESTS FAIL"
+	cfg.Results[ForwardedID(key, "c")] = "a file"
+	j := cfg.reviewJob(key, turns, api.ToolCall{ID: "r2", Function: tcall(ReviewTool, map[string]any{"change": "it works"}).Function}, 2)
+	if !strings.Contains(j.Evidence, "5 TESTS FAIL") {
+		t.Errorf("the review judges no check: %q", j.Evidence)
 	}
 }
