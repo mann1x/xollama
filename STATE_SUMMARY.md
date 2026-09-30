@@ -26,7 +26,9 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >   - plain glm, 0414: FIXED 23/23 in 1,189 s.
 > - First council arm, 0415 (`omni-council-think`, bb7434ce): the council engaged on the plain request (front turn, 4,096 think budget), then ABORTED at 692 s. A researcher's forced report carried `maxLength` 2,000, which the engine cannot turn into a grammar. The fix drops the bound from the schema and asks a refused format again once without it.
 > - A request whose `num_predict` is below 64 is a probe and is answered plainly. Cerebriline's fixed template probe sends two such requests (`num_predict` 1), and without this each would start a council.
-> - Left in 11.29: the council arm again, on the fix.
+> - Council arm 0416 (`omni-council-think`, 55d4baf7, generic wire, PROVIDER=ollama) ended **broken**: the game loads, but only 18/23 checks pass (friction, run, wall, left_edge and hud fail), after 4,815 s. The plain arms fixed it in 1,189-2,197 s.
+> - The lane is paused (owner) while Cerebriline lands its `/chat` template-probe fix (#586/#587); eleven2go is on 19fd62cc. Runs after that fix are a new series, since past thinking may then be replayed.
+> - Left in 11.29: find why 0416 stopped short, then the council arm again on the new series.
 
 > **2026-09-30 — 11.29 started: step limits, a spot-checking critic, empty-reply retries.**
 > - Plain omni through Cerebriline's harness (`native.sh`, eleven2go lane): FIXED 23/23 in 1,125 s. The engine budget was 12,288; asked Cerebriline why (#577).
