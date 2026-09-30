@@ -5,6 +5,19 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-30 — Hard on eleven2go with a0968aea, stopped at 4 pairs (the owner's call): council 2/4, plain 3/4.**
+> | Pair | Council | Plain |
+> |---|---|---|
+> | 1 | fixed, 81 trips, 4,695 s | fixed, 59 trips, 1,353 s |
+> | 2 | fixed, 46 trips, 2,278 s | fixed, 56 trips, 499 s |
+> | 3 | lost at trip 41: a health dial failed (fixed on dev, `engine-health-retry`) | not fixed, 120 trips, 1,298 s |
+> | 4 | lost at trip 118: owner full, waited out (fixed on dev, 11.26) | fixed, 64 trips, 590 s |
+>
+> The council's first fixes of hard. Neither council loss was a reasoning
+> failure; both are fixed on dev and not yet measured live. Council run 5 was
+> stopped at about 10 minutes, with its run directory marked `-STOPPED`. Next,
+> the owner's direction: test with the cloud model.
+
 > **2026-09-30 — 11.26: a full owner compacts and the turn resumes.**
 > Council run 4 of hard (a0968aea, eleven2go) failed at trip 118. A 120k
 > root plus a 39k stage filled the 196608-cell owner, and the next worker's
