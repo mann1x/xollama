@@ -489,10 +489,10 @@ func councilFields() []field {
 			name:  "council-compaction",
 			path:  "council.context.compaction",
 			title: "Compaction — how a long conversation is shortened",
-			help: "agentic (unset) is Cerebriline's council compaction: the model replays the\n" +
-				"older turns in its own voice, two critics rewrite the replay's halves against\n" +
-				"the conversation, and a synthesizer joins them. basic makes no model call: it\n" +
-				"keeps your requests word for word and the newest answers that fit.",
+			help: "agentic (unset) is Cerebriline's agentic compaction: the model replays the\n" +
+				"older turns in its own voice, in one pass (turn the review on for two critics\n" +
+				"and a synthesizer). basic makes no model call: it keeps your requests word for\n" +
+				"word and the newest answers that fit.",
 			kind:    kindChoice,
 			choices: func(*xollama.Config) []string { return xollama.ValidCouncilCompaction() },
 			quiet:   true,
@@ -514,8 +514,8 @@ func councilFields() []field {
 			path:  "council.context.review",
 			title: "Compaction review — critics check the replay",
 			help: "Two critics each rewrite one half of the replay against the conversation, and\n" +
-				"a synthesizer joins the halves. Off ships the writer's replay unreviewed,\n" +
-				"which is faster. Unset is on.",
+				"a synthesizer joins the halves: three more calls per fold. Unset is off: the\n" +
+				"writer's replay ships as it is.",
 			kind:    kindTri,
 			quiet:   true,
 			blocked: councilOff,
@@ -530,7 +530,8 @@ func councilFields() []field {
 			title: "Compaction retrospective — a judgement kept beside the replay",
 			help: "Where the conversation carries the model's reasoning, a short assessment of\n" +
 				"it (what worked, what did not) is kept at the top of the compacted\n" +
-				"conversation and carried into the next compaction. Unset is on.",
+				"conversation and carried into the next compaction. One more call per fold.\n" +
+				"Unset is off.",
 			kind:    kindTri,
 			quiet:   true,
 			blocked: councilOff,

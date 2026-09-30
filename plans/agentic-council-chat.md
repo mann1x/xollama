@@ -2373,7 +2373,9 @@ itself), so the read stays current across them. Guard:
 - [x] The critic spot-checks rather than researches (claude-hooks P3).
 - [x] An empty or unreadable plan, and an empty researcher or critic report, are asked again once without thinking.
   - Briefs the plan left out are numbered, never shared (`TestAnEmptyPlanIsAskedAgainWithoutThinking`, `TestAnEmptyReportIsAskedAgainWithoutThinking`).
-- [ ] One-step compaction: the writer's pass only (Cerebriline `councilEnabled: false`, `thinkingSummaryEnabled` off).
+- [x] One-step compaction: a fold is the writer's pass only (Cerebriline `councilEnabled: false`, `thinkingSummaryEnabled` off).
+  - `council.context.review` and `.retrospective` now default to off; the review path stays opt-in.
+  - `TestCompactionSettings` covers the default, review off and review on.
 - [ ] One model-call wrapper: retry, fallback and a run timeout for every role.
 - [ ] Runner-issued check after a synthesizer turn that wrote and ran none.
 - [ ] `council_read_many`: several client reads in one trip.

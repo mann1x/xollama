@@ -93,7 +93,7 @@ Every setting is optional; `xollama tweak model <name> --council` walks them.
 | `council.context.window`, `.floor`, `.compact_at` | `--council-window`, `--council-floor`, `--council-compact-at` | the model's context, all or nothing, 0.85 | The conversation's window on opencoti, the least it accepts, and the context pressure at which a turn compacts. |
 | `council.context.idle_compact_at` | `--council-idle-compact-at` | 0.75 | The pressure at which the council compacts while it waits for your next message, so that message starts sooner. Not above `compact_at`. |
 | `council.context.compaction` | `--council-compaction` | `agentic` | How the older turns are folded: `agentic` has the model write it (below), `basic` keeps your requests and the answers that fit, with no model call. |
-| `council.context.review`, `.retrospective` | `--council-compaction-review`, `--council-compaction-retrospective` | on, on | Two critics and a synthesizer check the model's summary; a retrospective carries its reasoning forward. Off makes compaction cheaper. |
+| `council.context.review`, `.retrospective` | `--council-compaction-review`, `--council-compaction-retrospective` | off, off | On, two critics and a synthesizer check the model's summary, and a retrospective carries its reasoning forward. Off (the default) makes a fold one call. |
 
 `<role>` is `planner`, `researcher`, `critic` or `synthesizer`, and `builder`
 for everything but `prompt` and `count` (the builder's reply is JSON the council
@@ -562,10 +562,11 @@ an agent's context:
   grows. What the older turns become is one message in front of them:
   every request you made, quoted word for word, then the summary.
 - **Who writes it.** The model itself, continuing the conversation: it
-  retells its own part so far. Two critics each check one half of that
-  against the conversation, and a synthesizer joins the halves. A
-  retrospective, when your client sent the model's thinking back, carries
-  what worked and what did not.
+  retells its own part so far, in one call. With `council.context.review`
+  on, two critics each check one half of that against the conversation and
+  a synthesizer joins the halves. With `council.context.retrospective` on,
+  and when your client sent the model's thinking back, a retrospective
+  carries what worked and what did not.
 - **Once.** The server remembers the fold for as long as your client resends
   the same history, and each later fold summarises only what came after the
   last. Edit or cut the history and the council starts again from what you

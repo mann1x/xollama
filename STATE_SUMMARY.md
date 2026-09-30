@@ -11,6 +11,7 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 > - The critic checks only the claims the answer depends on.
 > - An empty plan or report is asked again once without thinking. No two researchers share a fallback brief.
 > - The scope of 11.29, with the owner's choices (16k default ceiling; all four structural changes), is in the plan.
+> - A compaction fold is now one call, the writer's. The critics' review and the retrospective are opt-in (`council.context.review`, `.retrospective`).
 
 > **2026-09-30 — glm council fixed hard at 13x the plain cost. The council will be rebuilt on Cerebriline's budgets.**
 > - **All-glm council** (every role on glm-5.3-flash:cloud, max_tokens 131072):

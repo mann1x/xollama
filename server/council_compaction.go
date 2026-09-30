@@ -122,7 +122,10 @@ func newCouncilCompactor(members *councilMembers, tree *councilTree, cc *xollama
 		members: members, tree: tree, render: render, tokenize: tokenize,
 		numCtx: numCtx, reserve: reserve, key: members.session,
 		compactAt: compactAt, idleCompactAt: councilIdleCompactAt(cc, compactAt),
-		review: true, retrospective: true,
+		// One pass by default (owner, 2026-09-30): the writer alone, as
+		// Cerebriline's agentic compaction with councilEnabled false and the
+		// thinking summary off. The review and the retrospective are opt-in.
+		review: false, retrospective: false,
 		think: cfg.Think[council.Planner], temperature: cfg.Temperature,
 		perChar: 0.3,
 	}

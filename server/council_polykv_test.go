@@ -454,7 +454,7 @@ func TestAnIdleCouncilSummarisesForTheNextMessage(t *testing.T) {
 		t.Errorf("the next message began with %s, want the council's own decision", r)
 	}
 	p := e.prompts[idleRoles]
-	if !strings.Contains(p, compactionSummaryHeading) || !strings.Contains(p, fakeMerged) {
+	if !strings.Contains(p, compactionSummaryHeading) || !strings.Contains(p, fakeReplaySecond) {
 		t.Error("the next message did not start from the idle summary")
 	}
 }

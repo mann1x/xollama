@@ -183,11 +183,11 @@ type CouncilContext struct {
 	Compaction string `json:"compaction,omitempty"`
 
 	// Review has two critics rewrite the replay's halves and a synthesizer
-	// join them. Nil means on.
+	// join them. Nil means off: a fold is the writer's one pass.
 	Review *bool `json:"review,omitempty"`
 
 	// Retrospective writes a short judgement of the folded turns' reasoning
-	// beside the replay. Nil means on.
+	// beside the replay. Nil means off.
 	Retrospective *bool `json:"retrospective,omitempty"`
 }
 

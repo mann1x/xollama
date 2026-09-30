@@ -184,6 +184,10 @@ paths:
   cited in the constants; change one only against a measurement. The
   prompts (`council_compaction_prompts.go`) are its texts adapted to chat —
   keep the structure. Rules that tests hold:
+  - a fold is the writer's one pass by default (owner, 2026-09-30):
+    `council.context.review` and `.retrospective` are off when unset (nil
+    means off in `types/xollama/council.go`, `review: false,
+    retrospective: false` in `newCouncilCompactor`); each is opt-in;
   - the system message is never changed: the summary is a user message
     after it, so the root's system part survives a fold;
   - a record per conversation, applied every turn and dropped on a hash
