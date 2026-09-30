@@ -232,7 +232,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		if cfg.CheckCall == nil {
 			// The check is the turn's, whoever ran it: the front and each
 			// cycle of the synthesizer start their own turns (generic.go).
-			cfg.CheckCall = council.InferCheck(cfg.Tools, all[len(conv):])
+			cfg.CheckCall = council.InferTurnCheck(cfg.Tools, all[len(conv):])
 		}
 		full = conv
 	}

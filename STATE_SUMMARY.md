@@ -5,10 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
-> **2026-10-01 — The done chunk reports the conversation's size, not a member's prompt.**
+> **2026-10-01 — The done chunk reports the conversation's size; a turn's first run is its check.**
 > - 0418's done chunks once reported a 229k prompt: the synthesizer's, which holds the plan and the findings on top of the conversation. Cerebriline sizes its context from that number and compacts at about 159k, so the council's own deliberation could fold the client's conversation.
 > - The compactor now records what it measured on every pass (folded or not), and the done chunk reports that. Without a measurement it falls back to the front's or the planner's prompt; the synthesizer's is never taken as the conversation's.
 > - Guards: `TestTheReportedPromptIsTheConversations`, `TestCompactMeasuresTheConversation`, both verified by removal.
+> - A turn's check can now be inferred from one run. 0418 ran the program once at 51 s, before any change, and nothing ran it again until 1,989 s, because the check was inferred only from a call repeated across a change. Now, with no repeat, the turn's first non-reading call is the check when its tool runs something (run, exec, command, shell, bash, test). An edit tool's call is never taken, and a member's own inference still waits for a repeat. Guard: `TestATurnsFirstRunIsItsCheck`, verified by removal.
 
 > **2026-09-30 — Council members get Cerebriline's output budget.**
 > - Each member's reply cap is the least of three quarters of the council's window, the ceiling (`council.max_tokens`, default 16,384, settable 1,024-96,000) and the model's `num_predict`. It is the VS Code plugin's rule (#578), with a lower ceiling.

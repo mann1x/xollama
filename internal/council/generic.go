@@ -16,7 +16,9 @@ import (
 // Words that make a tool a reader, and words that make it a writer whatever
 // else its name says ("read_and_write", "run_search").
 var (
-	readWords  = []string{"read", "list", "ls", "grep", "search", "find", "glob", "get", "fetch", "view", "show", "cat", "stat", "lookup", "query", "inspect", "describe", "extract", "lsp"}
+	readWords = []string{"read", "list", "ls", "grep", "search", "find", "glob", "get", "fetch", "view", "show", "cat", "stat", "lookup", "query", "inspect", "describe", "extract", "lsp"}
+	// runWords name a tool that runs something rather than changes a file.
+	runWords   = []string{"run", "exec", "execute", "command", "commands", "shell", "bash", "test", "tests"}
 	writeWords = []string{"write", "edit", "create", "delete", "remove", "rm", "run", "exec", "execute", "command", "commands", "shell", "bash", "apply", "patch", "update", "set", "move", "mv", "rename", "replace", "insert", "commit", "push", "install", "save", "put", "post", "send", "kill", "browser", "click"}
 )
 
@@ -102,4 +104,34 @@ func InferCheck(tools api.Tools, turns []api.Message) *api.ToolCall {
 		}
 	}
 	return nil
+}
+
+// InferTurnCheck is InferCheck for the server's whole turn, which may hold a
+// check run only once: the front ran it, and no member ran it again before
+// the synthesizer's cycles (native.sh 0418: nothing checked 51-1,989 s). With
+// no call repeated across a change, the check is the turn's first call that
+// is not a read, when that call's tool runs something: made before any
+// change, it observed the work rather than changed it. An edit tool's call is
+// never taken, whatever it comes first.
+func InferTurnCheck(tools api.Tools, turns []api.Message) *api.ToolCall {
+	if c := InferCheck(tools, turns); c != nil {
+		return c
+	}
+	for _, t := range turns {
+		for _, c := range t.ToolCalls {
+			if local(c) || readOnly(tools, c) {
+				continue
+			}
+			if !runsByName(c.Function.Name) {
+				return nil
+			}
+			found := api.ToolCall{Function: api.ToolCallFunction{Name: c.Function.Name, Arguments: c.Function.Arguments}}
+			return &found
+		}
+	}
+	return nil
+}
+
+func runsByName(name string) bool {
+	return slices.ContainsFunc(nameWords(name), func(w string) bool { return slices.Contains(runWords, w) })
 }

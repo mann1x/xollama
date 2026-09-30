@@ -221,3 +221,30 @@ func TestASpentCycleIsCheckedBeforeItEnds(t *testing.T) {
 	}
 	t.Fatal("the cycle never ended")
 }
+
+// With no call repeated, the turn's check is its first non-reading call when
+// that call's tool runs something; an edit is never replayed as a check, and
+// a member's own inference still waits for a repeat (native.sh 0418).
+func TestATurnsFirstRunIsItsCheck(t *testing.T) {
+	tools := append(append(api.Tools{}, testTools...), shellTool)
+	read := api.Message{Role: "assistant", ToolCalls: []api.ToolCall{tcall("read_files", map[string]any{"path": "a"})}}
+	run := api.Message{Role: "assistant", ToolCalls: []api.ToolCall{checkRun()}}
+	edit := api.Message{Role: "assistant", ToolCalls: []api.ToolCall{tcall("write_file", map[string]any{"content": "x"})}}
+	if c := InferTurnCheck(tools, []api.Message{read, run, edit}); c == nil || readKey(*c) != readKey(checkRun()) {
+		t.Errorf("the turn's first run: inferred %+v", c)
+	}
+	if c := InferTurnCheck(tools, []api.Message{read, edit, run}); c != nil {
+		t.Errorf("a run after an edit, made once, is not yet a check: %+v", c)
+	}
+	if c := InferTurnCheck(tools, []api.Message{edit}); c != nil {
+		t.Errorf("an edit was taken for the check: %+v", c)
+	}
+	if c := InferCheck(tools, []api.Message{read, run, edit}); c != nil {
+		t.Errorf("a member's inference took a single run: %+v", c)
+	}
+	for name, want := range map[string]bool{"run_commands": true, "execute_command": true, "bash": true, "runTests": true, "write_file": false, "apply_patch": false, "browser": false} {
+		if runsByName(name) != want {
+			t.Errorf("%s: runs %v, want %v", name, !want, want)
+		}
+	}
+}

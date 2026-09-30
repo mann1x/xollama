@@ -752,6 +752,13 @@ paths:
   run out with changes unchecked has the check made before its RETEST
   (0417: nine cycles, one check). Guards
   `TestTheCheckIsInferredAcrossMembers`, `TestASpentCycleIsCheckedBeforeItEnds`.
+- **A turn's check can be a single run** (`council.InferTurnCheck`, server
+  only): with no call repeated across a change, the turn's first non-reading
+  call is the check when its tool's name runs something (`runWords`: run,
+  exec, command, shell, bash, test…) — made before any change, it observed.
+  An edit tool's call is never taken, and a member's own inference
+  (`inferredCheck`) still waits for a repeat. 0418 ran its check at 51 s and
+  not again until 1,989 s. Guard `TestATurnsFirstRunIsItsCheck`.
 - **A harness's stated check is a call, not a tool name** (`check_call`,
   `internal/council/checkcall.go`, `council_check_call_v1`). `cfg.readOnly`
   answers true for exactly that call (`isCheck`, same `readKey`), so a check
