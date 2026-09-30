@@ -2404,7 +2404,7 @@ itself), so the read stays current across them. Guard:
   - Guards: `TestAResearchersReportIsTyped`, `TestACriticsVerdictIsTyped`, `TestAReportBesideAReadWaitsForIt`, `TestTheSynthesizersVerdictsAreTyped`. Four fail with `takeResult` off.
 - [x] Forced answer by schema at the step bound.
   - The reader's call carries its result's schema as `Format`, so the grammar admits no call; the tool list, and the prefix, stay (`TestTheForcedAnswerIsTheReportsFormat`).
-  - To verify live: that the rendered prefix still matches with `Format` set.
+  - Live, run 0415: the report schema's `maxLength` 2000 made the engine refuse the format ("failed to parse grammar"), ending the turn at 692 s. The text bound is now applied at rendering, and a refused format is asked again once without it (`TestNoResultSchemaBoundsItsText`, `TestARefusedFormatIsAskedAgainWithout`).
 - [x] Output budget per member: min(0.75 x window, ceiling, model num_predict) (`Config.OutputBudget`).
   - The rule is the VS Code plugin's (#578). The CLI's 49,152 / 12,288 was its gateway fallback, ¼ of the window, now aligned with the plugin.
   - The ceiling defaults to 16,384 (owner's choice). It is set council-wide by `council.max_tokens` [1024, 96000]; a role's own `max_tokens` replaces it.

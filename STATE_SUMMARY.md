@@ -21,7 +21,11 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >   - The check is inferred as the call repeated unchanged across a change.
 >   - Resent thinking is not read by members.
 >   - From this build on, a council tag is no plain arm: plain runs need a plain tag.
-> - Left in 11.29: the council arm (`omni-council-think`) through native.sh.
+> - Plain arms on the parity build (96,000 / 24,000):
+>   - plain omni, 0413: FIXED 23/23 in 2,197 s;
+>   - plain glm, 0414: FIXED 23/23 in 1,189 s.
+> - First council arm, 0415 (`omni-council-think`, bb7434ce): the council engaged on the plain request (front turn, 4,096 think budget), then ABORTED at 692 s. A researcher's forced report carried `maxLength` 2,000, which the engine cannot turn into a grammar. The fix drops the bound from the schema and asks a refused format again once without it.
+> - Left in 11.29: the council arm again, on the fix.
 
 > **2026-09-30 — 11.29 started: step limits, a spot-checking critic, empty-reply retries.**
 > - Plain omni through Cerebriline's harness (`native.sh`, eleven2go lane): FIXED 23/23 in 1,125 s. The engine budget was 12,288; asked Cerebriline why (#577).

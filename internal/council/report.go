@@ -31,9 +31,11 @@ const (
 	RetestTool  = "council_retest"
 )
 
-// Bounds on a report, as its schema states them: what the critics read of a
-// researcher is these, not its transcript (a critic of 20260930-085958 read
-// 44k tokens a call).
+// Bounds on a report: what the critics read of a researcher is these, not its
+// transcript (a critic of 20260930-085958 read 44k tokens a call). The schema
+// states the item counts; the text bound is kept at rendering, never as a
+// maxLength: the engine expands one into a grammar repetition it cannot parse
+// ("failed to parse grammar" at 2000, measured live on eleven2go, 0415).
 const (
 	maxProposals  = 8
 	maxClaims     = 8
@@ -83,10 +85,10 @@ var proposalSchema = `{"type":"object","properties":{"path":{"type":"string"},"o
 // reportSchema is ReportTool's arguments, and the format of a researcher's
 // forced answer.
 var reportSchema = json.RawMessage(fmt.Sprintf(`{"type":"object","properties":{`+
-	`"summary":{"type":"string","maxLength":%d},`+
+	`"summary":{"type":"string"},`+
 	`"proposals":{"type":"array","maxItems":%d,"items":%s},`+
 	`"claims":{"type":"array","maxItems":%d,"items":{"type":"object","properties":{"claim":{"type":"string"},"evidence":{"type":"string"}},"required":["claim","evidence"]}},`+
-	`"open":{"type":"string"}},"required":["summary","proposals","claims"]}`, maxReportText, maxProposals, proposalSchema, maxClaims))
+	`"open":{"type":"string"}},"required":["summary","proposals","claims"]}`, maxProposals, proposalSchema, maxClaims))
 
 // verdictSchema is VerdictTool's arguments, and a critic's forced answer.
 var verdictSchema = json.RawMessage(`{"type":"object","properties":{` +
@@ -177,7 +179,7 @@ func argsJSON(c api.ToolCall) string { return c.Function.Arguments.String() }
 // source, claude-hooks P5).
 func (cfg Config) renderReport(key string, turns []api.Message, rp Report) string {
 	var b strings.Builder
-	b.WriteString(strings.TrimSpace(rp.Summary))
+	b.WriteString(truncate(strings.TrimSpace(rp.Summary), maxReportText))
 	if len(rp.Proposals) > 0 {
 		b.WriteString("\n\nProposals:")
 		for i, p := range rp.Proposals[:min(len(rp.Proposals), maxProposals)] {

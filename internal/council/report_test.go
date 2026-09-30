@@ -2,6 +2,7 @@ package council
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -144,5 +145,46 @@ func TestTheSynthesizersVerdictsAreTyped(t *testing.T) {
 	out := resume(t, s, cfg, Request{Role: Synthesizer, Messages: []api.Message{{Role: "user", Content: "go"}}}, "")
 	if !cfg.retested(out, 0) || !strings.Contains(out, "closed the block") {
 		t.Fatalf("the reply: %q", out)
+	}
+}
+
+// refusingStub refuses every request carrying a format, as an engine does
+// that cannot parse its grammar, and answers the rest from its script.
+type refusingStub struct{ scriptStub }
+
+func (s *refusingStub) StreamTools(ctx context.Context, req Request, onToken func(string)) (Reply, error) {
+	if req.Format != nil {
+		s.reqs = append(s.reqs, req)
+		return Reply{}, errors.New(`{"error":{"code":400,"message":"Failed to initialize samplers: failed to parse grammar"}}`)
+	}
+	return s.scriptStub.StreamTools(ctx, req, onToken)
+}
+
+// A result's schema carries no text bound: the engine expands maxLength into
+// a grammar repetition it cannot parse (live on eleven2go, run 0415).
+func TestNoResultSchemaBoundsItsText(t *testing.T) {
+	for _, r := range []Role{Researcher, Critic} {
+		if s := string(resultSchema(r)); strings.Contains(s, "maxLength") || strings.Contains(s, "minLength") {
+			t.Errorf("%s's schema bounds its text: %s", r, s)
+		}
+	}
+}
+
+// An engine that refuses the forced answer's format does not end the member:
+// it is asked once more without it, and its report stands.
+func TestARefusedFormatIsAskedAgainWithout(t *testing.T) {
+	cfg := reportCfg()
+	var steps []Reply
+	for range researcherSteps {
+		steps = append(steps, Reply{Calls: []api.ToolCall{tcall("read_files", map[string]any{"path": "game.js"})}})
+	}
+	s := &refusingStub{scriptStub{replies: append(steps, Reply{Content: "The brace on line 2 is unclosed."})}}
+	out := resume(t, s, cfg, Request{Role: Researcher, Messages: []api.Message{{Role: "user", Content: "go"}}}, "file")
+	if !strings.Contains(out, "The brace on line 2 is unclosed.") {
+		t.Fatalf("the member's report: %q", out)
+	}
+	last := s.reqs[len(s.reqs)-1]
+	if last.Format != nil {
+		t.Error("the member was asked with the refused format again")
 	}
 }

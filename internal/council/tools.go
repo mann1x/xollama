@@ -19,6 +19,7 @@ package council
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 
@@ -382,7 +383,7 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 	own := req.Messages
 	req.MaxTokens = writeTok(req.Role, req.MaxTokens)
 	refusals, lookups, preempts, cuts := 0, 0, 0, 0
-	nudged, gated, emptied, typed := false, false, false, false
+	nudged, gated, emptied, typed, unformatted := false, false, false, false, false
 	// gatedReply is the DONE reply that waited for the critics' reviews
 	// (11.9): the user has read it.
 	gatedReply, stream := "", onToken
@@ -433,7 +434,7 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 		// format: the grammar admits no tool call, and the tool list -- the
 		// shared prefix -- stays as it was.
 		req.Format = nil
-		if lim := cfg.stepLimit(req.Role); lim > 0 && toolSteps(turns) >= lim && cfg.canReport() {
+		if lim := cfg.stepLimit(req.Role); lim > 0 && toolSteps(turns) >= lim && cfg.canReport() && !unformatted {
 			if !noted(turns, stepsOutNote) {
 				turns = append(slices.Clone(turns), user(stepsOutNote))
 			}
@@ -450,6 +451,14 @@ func callTools(ctx context.Context, tm ToolModel, cfg Config, req Request, turns
 				turns = append(slices.Clone(turns), api.Message{Role: "assistant", Content: partial})
 			}
 			onToken("\n\n(interrupted: a mate's checked result)\n\n")
+			continue
+		}
+		if err != nil && req.Format != nil && !unformatted && ctx.Err() == nil {
+			// An engine that refuses the result's format (live, 0415: a
+			// grammar it could not parse) must not end the member: it is
+			// asked once more without it, the note still in its turns.
+			unformatted = true
+			slog.Info("council: the forced answer's format was refused; asking without it", "member", key, "error", err)
 			continue
 		}
 		if err != nil && fallsBack(ctx, req) {
