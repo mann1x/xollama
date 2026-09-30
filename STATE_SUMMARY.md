@@ -5,6 +5,12 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-30 — solidPC's service (11434) moved to `0.35.0-dev.562eea98`.**
+> - The owner asked for it. The payload was assembled with `scripts/docker-assemble.sh` from the pins: runtime b11081 (the inputs digest matches), upstream GPU backends, and opencoti b208. No native code was rebuilt.
+> - It was swapped by `/srv/ml/xollama-phase2/solidpc-swap-0.35.0.sh`. The old binary and `lib/ollama` are kept as `.bak-20260930-103348`. The unit's drop-ins (11434, debug, parallel 1) are unchanged.
+> - Checks: `/api/xollama` lists 11 features (council included); CUDA0 is on opencoti and the Vulkan iGPU on llamacpp; `qwen3.5:2b` ran on the opencoti engine at 130 tok/s.
+> - The service now serves council models, which the 05c16dfa build refused.
+
 > **2026-09-30 — Harness v3 (the logic oracle), the glm plain baseline, and 11.27 (a role's cap and window are its own model's).**
 > - **Harness v3** (`/srv/ml/xollama-phase2`, `manic/README.md`). `manic/bin/run_game` is a compiled, obfuscated build of `manic/work/run_game.logic.js` (root 0600). It prints the old verdict plus `game_logic`: 23 behavioural traps on the game's own rules. A run is fixed only when the page loads and the traps pass. The model sees which traps fail but cannot read them.
 > - **Re-score of every earlier run.** 12 of 28 old "fixed" runs keep the game's rules: omni council 2/12, omni plain 8/13, glm 2/3. Both of a0968aea's hard council fixes fail (empty `pop()`; falling through the floor). Table: `manic/work/logic-rescore-all-20260930.tsv`.
