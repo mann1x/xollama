@@ -123,6 +123,16 @@ func maxTok(cfg Config, r Role, model, host string) int {
 	return defaultMaxTokens[r]
 }
 
+// directTok is the cap of the planner's direct answer: the synthesizer's on
+// the council's own model, where the answer has always been the
+// synthesizer's size; the planner's own on another model.
+func directTok(cfg Config) int {
+	if cfg.OnLead(Planner) {
+		return maxTok(cfg, Synthesizer, "", "")
+	}
+	return cfg.Cap(Planner)
+}
+
 // roleOn is the model and host r's own members run on: "" and "" for the
 // council's own model. The builder falls back to the planner's, a reviewer is
 // a critic.
@@ -227,8 +237,9 @@ func memberWhere(req Request) string {
 func Decide(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Message) (string, error) {
 	schema := cfg.routeSchema()
 	out, err := m.Stream(ctx, Request{
-		Role: Planner, Messages: append(clone(conv), routeRequest(cfg)),
-		Seed: d.Decide.Seed, Temperature: d.Decide.Temperature, MaxTokens: 16, Format: schema,
+		Role: Planner, Model: cfg.Models[Planner], Host: cfg.Hosts[Planner], NumCtx: numCtx(cfg, Planner),
+		Messages: append(clone(conv), routeRequest(cfg)),
+		Seed:     d.Decide.Seed, Temperature: d.Decide.Temperature, MaxTokens: 16, Format: schema,
 	}, func(string) {})
 	if err != nil {
 		return "", err
@@ -265,8 +276,9 @@ func direct(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Messag
 		msgs = append(clone(msgs), user(in))
 	}
 	return callFrom(ctx, m, cfg, emit, Request{
-		Role: Planner, Messages: msgs, Seed: d.Direct.Seed,
-		Temperature: d.Direct.Temperature, MaxTokens: maxTok(cfg, Synthesizer, "", ""), Think: cfg.Think[Planner],
+		Role: Planner, Model: cfg.Models[Planner], Host: cfg.Hosts[Planner], NumCtx: numCtx(cfg, Planner),
+		Messages: msgs, Seed: d.Direct.Seed,
+		Temperature: d.Direct.Temperature, MaxTokens: directTok(cfg), Think: cfg.Think[Planner],
 	}, Content, turns)
 }
 

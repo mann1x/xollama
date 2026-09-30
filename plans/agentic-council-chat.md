@@ -2385,6 +2385,14 @@ to 128k. Every role also needs a `num_ctx` override.
   now states the 2048 cap it adds the budget to.
 - The local councils are unchanged: none of the omni council models sets
   `num_predict`, so their roles keep the built-in caps.
+- **Found by the first all-glm smoke run:** its two trips were both the
+  front's, and both ran on omni. The route decision, the direct answer and
+  the front (11.5) never named their role's model, so a council with every
+  role on glm still routed and took every tool turn on the lead. Now the route
+  and the direct answer run on the planner's model, and the front on the
+  synthesizer's, with their host, window and cap. With the planner on the
+  lead, the direct answer keeps the synthesizer's cap, as before. Guard:
+  `TestEveryCallRunsOnItsRolesModel`, which fails with either model dropped.
 
 ### 11.26 A full owner compacts, and the turn resumes (built 2026-09-30)
 
