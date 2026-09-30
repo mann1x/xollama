@@ -5,6 +5,16 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-09-30 — Council members get Cerebriline's output budget.**
+> - Each member's reply cap is the least of three quarters of the council's window, the ceiling (`council.max_tokens`, default 16,384, settable 1,024-96,000) and the model's `num_predict`. It is the VS Code plugin's rule (#578), with a lower ceiling.
+> - The thinking now sits inside the cap instead of on top of it. A level is a share of the cap, and `on` means medium. Each member is told its cap and its thinking share (Cerebriline's Output Budget section).
+> - The reserve books the caps alone.
+> - The Cerebriline harness now works for both plain arms:
+>   - plain omni, 0411: FIXED 23/23 in 1,125 s;
+>   - plain glm, 0412: FIXED 23/23 in 2,532 s.
+>   Both ran on the CLI's old budget (49,152 / 12,288: the gateway fallback, not the plugin's 96,000 / 24,000), and 0412 overlapped a rebuild of Cerebriline's core (#580). They will be rerun once the CLI matches the plugin.
+> - Left in 11.29: the runner-issued check and `council_read_many` (waiting on #579), and the council arms through the harness.
+
 > **2026-09-30 — 11.29 started: step limits, a spot-checking critic, empty-reply retries.**
 > - Plain omni through Cerebriline's harness (`native.sh`, eleven2go lane): FIXED 23/23 in 1,125 s. The engine budget was 12,288; asked Cerebriline why (#577).
 > - Researchers take 4 tool steps and critics 3. A step is any turn that called a client tool. Past the limit the call is not made, and the member reports.

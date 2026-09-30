@@ -118,9 +118,14 @@ type Config struct {
 	// MaxTokens is each role's stated reply cap; an unstated one is resolved
 	// by maxTok against the model the request runs on.
 	MaxTokens map[Role]int
-	// LeadMaxTokens is the council's own model's num_predict, or 0: the cap
-	// an unstated role on that model takes before its built-in one.
+	// LeadMaxTokens is the council's own model's num_predict, or 0: it bounds
+	// the output budget of an unstated role on that model (OutputBudget).
 	LeadMaxTokens int
+	// Ceiling is the council's output ceiling (xollama.Council.MaxTokens),
+	// and Window the council's window, the owner's: with LeadMaxTokens they
+	// make OutputBudget. The server sets Window once it knows it.
+	Ceiling int
+	Window  int
 	// NumCtx is each role's window on its own model (xollama.CouncilRole.NumCtx).
 	NumCtx map[Role]int
 	// Prompts replace a role's built-in instruction; Models serve a role on
@@ -214,11 +219,6 @@ const (
 	DefaultMaxTests    = 6
 )
 
-// The caps are room, not a target: the prompts ask for terse replies. A
-// researcher capped at 384 tokens could not carry its findings and their
-// evidence (owner's ruling 2026-09-28: "the council should not be starved").
-var defaultMaxTokens = map[Role]int{Planner: 2048, Researcher: 2048, Critic: 1024, Synthesizer: 2048, Builder: 3072}
-
 // FromModel resolves a model's council section against the defaults.
 // temperature is the model's own, after request and Modelfile options.
 func FromModel(c *xollama.Council, temperature float64) Config {
@@ -228,10 +228,13 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 		MaxRounds: 1, MaxTests: DefaultMaxTests, MaxSteps: DefaultMaxSteps, ShowDeliberation: true,
 		MaxTokens: map[Role]int{}, NumCtx: map[Role]int{}, Prompts: map[Role]string{}, Models: map[Role]string{},
 		Hosts: map[Role]string{}, Think: map[Role]string{},
-		Charter: Charter(c), Instructions: map[Role]Said{},
+		Charter: Charter(c), Instructions: map[Role]Said{}, Ceiling: xollama.DefaultCouncilMaxTokens,
 	}
 	if c == nil {
 		return cfg
+	}
+	if c.MaxTokens > 0 {
+		cfg.Ceiling = c.MaxTokens
 	}
 	if c.TemperatureJitter != nil {
 		cfg.Jitter = *c.TemperatureJitter
@@ -368,20 +371,52 @@ func (c Config) Validate() error {
 	return nil
 }
 
+// OutputBudget is the reply cap of a member on the council's own model whose
+// role states none, thinking included: Cerebriline's output budget, the least
+// of three quarters of the window, the ceiling and the model's num_predict.
+// The caps are room, not a target: the prompts ask for terse replies, and a
+// member starved of room cannot carry its findings and their evidence
+// (owner's ruling 2026-09-28: "the council should not be starved").
+func (cfg Config) OutputBudget() int {
+	n := cfg.Ceiling
+	if n <= 0 {
+		n = xollama.DefaultCouncilMaxTokens
+	}
+	if cfg.Window > 0 {
+		n = min(n, cfg.Window*3/4)
+	}
+	if cfg.LeadMaxTokens > 0 {
+		n = min(n, cfg.LeadMaxTokens)
+	}
+	return n
+}
+
 // ThinkBudget resolves a role's think setting to the tokens a member may spend
-// reasoning, or 0 for none. "on" is xollama.DefaultCouncilThinkBudget; a
-// level is its share of window,
-// the member's context, by the same table a chat request's think level uses;
-// a positive integer is a budget as it stands.
-func ThinkBudget(setting string, window int) int {
+// reasoning, or 0 for none. capTokens is the member's reply cap, which the
+// reasoning is part of, and window its context. With a cap, a level is its
+// share of the cap (as Cerebriline maps a level onto its output budget, by
+// the table a chat request's level uses), "on" is medium, and a token budget
+// is held to four fifths of the cap so the reply keeps room. With none --
+// the member's own model sets it -- a level is a share of window and "on" is
+// xollama.DefaultCouncilThinkBudget.
+func ThinkBudget(setting string, capTokens, window int) int {
 	switch setting {
 	case "", xollama.CouncilThinkOff:
 		return 0
 	case xollama.CouncilThinkOn:
-		return xollama.DefaultCouncilThinkBudget
+		if capTokens <= 0 {
+			return xollama.DefaultCouncilThinkBudget
+		}
+		setting = "medium"
 	}
 	if n, err := strconv.Atoi(setting); err == nil {
+		if capTokens > 0 {
+			n = min(n, capTokens*4/5)
+		}
 		return max(n, 0)
+	}
+	if capTokens > 0 {
+		window = capTokens
 	}
 	return (&api.ThinkValue{Value: setting}).BudgetTokens(window)
 }

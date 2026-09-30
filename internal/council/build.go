@@ -74,26 +74,27 @@ func (b *Build) clone() *Build {
 	return out
 }
 
-// The builder's choices are bounded: a think level is one of four budgets,
-// and the check cycles a number the loop can afford.
+// The builder's choices are bounded: a think level is a share of the role's
+// reply cap, which includes it, by Cerebriline's table (low an eighth, medium
+// a quarter, high a half), and the check cycles a number the loop can afford.
+// A role whose cap its own model sets takes the level's budget as it stood.
+var thinkShares = map[string]int{"off": 0, "low": 8, "medium": 4, "high": 2}
+
 var thinkLevels = map[string]int{"off": 0, "low": 1024, "medium": 2048, "high": 4096}
 
-// maxBuiltThink is the most a builder can give a role to think: "high".
-const maxBuiltThink = 4096
-
-// ThinkRoom is the most role r may think in one call on a window of window
-// tokens: its stated think setting, which stands; else the harness's stated
-// build; else the most the builder can give it. It is room to book, so an
-// unstated role counts the builder's ceiling even on a turn that gives it
-// less.
-func (cfg Config) ThinkRoom(r Role, window int) int {
-	if t := cfg.Think[r]; t != "" {
-		return ThinkBudget(t, window)
+// builtThink is the budget of level l for role r, in tokens.
+func (cfg Config) builtThink(r Role, l string) (int, bool) {
+	d, ok := thinkShares[l]
+	if !ok {
+		return 0, false
 	}
-	if cfg.Stated != nil {
-		return cfg.Stated.Think[r]
+	if d == 0 {
+		return 0, true
 	}
-	return maxBuiltThink
+	if c := cfg.Cap(r); c > 0 {
+		return c / d, true
+	}
+	return thinkLevels[l], true
 }
 
 const maxBuildTests = 12
@@ -179,10 +180,10 @@ func MakeBuild(ctx context.Context, m Model, cfg Config, d Draws, conv []api.Mes
 	if err != nil {
 		return nil, err
 	}
-	return parseBuild(out), nil
+	return parseBuild(out, cfg), nil
 }
 
-func parseBuild(out string) *Build {
+func parseBuild(out string, cfg Config) *Build {
 	var v struct {
 		Target, Planner, Researcher, Critic, Synthesizer string
 		Think                                            map[string]string
@@ -201,7 +202,7 @@ func parseBuild(out string) *Build {
 		}
 	}
 	for r, l := range v.Think {
-		if n, ok := thinkLevels[l]; ok {
+		if n, ok := cfg.builtThink(Role(r), l); ok {
 			b.Think[Role(r)] = n
 		}
 	}

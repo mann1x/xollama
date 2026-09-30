@@ -80,12 +80,16 @@ paths:
   and no member can convene the council again.
 - Every member is an ordinary chat turn served in process through
   `ChatHandler`, thinking off unless its role states `council.<role>.think`.
-  `on` is `xollama.DefaultCouncilThinkBudget` (2048) tokens, never a level:
-  `medium` at 131k let a member loop past 29k tokens live.
   A thinking role is sent an explicit **token** budget
-  (`council.ThinkBudget(setting, cm.window)`), never a level: a level is a
-  share of `num_predict`, which for a member is its reply cap. `num_predict`
-  becomes `max_tokens` + budget.
+  (`council.ThinkBudget(setting, r.MaxTokens, window)`), never a level. The
+  budget is **inside** the reply cap: `num_predict` is the cap, never
+  cap + budget (Cerebriline's output budget, 11.29). With a cap, a level is
+  its share of the cap, `on` is medium, and a token count is held to 4/5 of
+  the cap. Only a member whose own model sets its cap (cap 0) takes a level
+  as a share of its window and `on` as `DefaultCouncilThinkBudget` (2048):
+  `medium` at 131k of window let a member loop past 29k tokens live.
+  Every member's instruction ends with the Output Budget section
+  (`budgetNote`, `internal/council/steps.go`); keep its wording Cerebriline's.
 - **A reply cap belongs to the model the request runs on** (`maxTok(cfg,
   role, model, host)`, `internal/council/steps.go`). A role's stated
   `max_tokens` holds on its own model only. Every call runs on its role's
@@ -93,19 +97,21 @@ paths:
   decision and the direct answer on the planner's; the direct answer's cap is
   `directTok` (the synthesizer's on the council's model, else the planner's
   own). On
-  the council's own model an unstated cap is its Modelfile `num_predict`
-  (`cfg.LeadMaxTokens`), else `defaultMaxTokens` -- always a number, because
-  the owner's window is booked for it. On another model it is 0: nothing is
+  the council's own model an unstated cap is `cfg.OutputBudget()`: the least
+  of 3/4 of `cfg.Window`, `cfg.Ceiling` (`council.max_tokens`, default
+  16384) and the Modelfile `num_predict` (`cfg.LeadMaxTokens`) -- always a
+  number, because the owner's window is booked for it. The server sets
+  `cfg.Window` before `Direct` (from num_ctx) and again from the tree. On another model it is 0: nothing is
   sent and that model's template (its Modelfile, or the remote endpoint's)
   decides. `councilReserve` counts only `cfg.OnLead` roles, so a cloud
-  role's 128k cap books nothing in the owner; each books its cap plus
-  `cfg.ThinkRoom(role, window)` (`internal/council/build.go`: the stated
-  think, else the harness's build, else `maxBuiltThink`). A member on another model
+  role's 128k cap books nothing in the owner; each books its cap, which
+  holds its thinking. The builder's levels are shares of the role's cap
+  (`builtThink`, `internal/council/build.go`). A member on another model
   sheds the client's `num_predict` and `num_ctx` (they are the council's) and
   takes its role's `num_ctx` (`council.<role>.num_ctx`, needs `model`,
   schema v5). Guards: `TestAReplyCapFollowsTheModelItRunsOn`,
   `TestTheReserveCountsOnlyTheRolesOnTheCouncilsModel`,
-  `TestTheReserveBooksTheThinkingToo`,
+  `TestTheReserveBooksTheCapsWithTheThinkingInside`,
   `TestARemoteRoleTakesItsOwnCapAndWindow`, `TestEveryCallRunsOnItsRolesModel`,
   `TestTheDirectAnswerTakesItsModelsCap`. On a tool turn a writer (`writes`) gets at
   least `writeMaxTokens` (16384, `internal/council/cut.go`): an edit carries
@@ -649,16 +655,13 @@ paths:
   of the file just edited read as progress). Both made every check look
   moved, and the stuck note never fired. Count `same`/`moved` notes in a
   run's log before trusting the stuck path.
-- **The reserve books thinking too** (11.28). A lead member is sent
-  `num_predict` = cap + budget, so `councilReserve(cfg, window)` adds
-  `cfg.ThinkRoom(role, window)`. That is a stated `think` against the
-  member's window, else a harness's stated build, else the builder's
-  ceiling (`maxBuiltThink`, "high" = 4096), since an unstated role may be
-  given that. Wherever a budget is sent as a token count (this server's
+- **The reserve books the caps alone** (11.29). A lead member is sent
+  `num_predict` = its cap, with the thinking inside it, so
+  `councilReserve(cfg, window)` adds no think room. Wherever a budget is sent as a token count (this server's
   models, or a model another xollama serves), the member also gets
   `think_budget_message`: the client's, else the council model template's
   (`councilBudgetMessage`). Cloud and stock ollama take neither. Guards:
-  `TestTheReserveBooksTheThinkingToo`,
+  `TestTheReserveBooksTheCapsWithTheThinkingInside`,
   `TestABudgetGoesWithTheModelsBudgetMessage`.
 - **A researcher's and a critic's tool steps are bounded** (`stepLimit` in
   `internal/council/tools.go`: `researcherSteps` 4, `criticSteps` 3). A step

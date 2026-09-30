@@ -59,6 +59,16 @@ type Council struct {
 	// derived from it. Nil draws a fresh random seed per member per request.
 	Seed *int64 `json:"seed,omitempty"`
 
+	// MaxTokens is the council's output ceiling: the most one reply of a
+	// member on the council's own model may take, thinking included, when
+	// its role states no max_tokens. A member's reply cap is the least of
+	// three quarters of the council's window, this ceiling and the model's
+	// num_predict, Cerebriline's output budget with a lower ceiling (its
+	// 96,000 is a whole agent's reply; a member writes one part). Zero is
+	// DefaultCouncilMaxTokens. It needs no newer schema: a build that ignores
+	// it serves the council with that build's own caps.
+	MaxTokens int `json:"max_tokens,omitempty"`
+
 	// MaxRounds bounds the critic→researcher loop: a critic may send the
 	// research back this many times minus one. Zero means 1, no loop.
 	MaxRounds int `json:"max_rounds,omitempty"`
@@ -120,10 +130,10 @@ type CouncilRole struct {
 	// format.
 	Instructions string `json:"instructions,omitempty"`
 
-	// MaxTokens caps one member's reply. Zero leaves the cap to the role's
-	// model: a role on the council's own model takes that model's
-	// num_predict, else the role's built-in cap (the owner's window is booked
-	// for it); a role on another model, local or on another host, takes that
+	// MaxTokens caps one member's reply, thinking included. Zero leaves the
+	// cap to the role's model: a role on the council's own model takes the
+	// council's output budget (Council.MaxTokens; the owner's window is
+	// booked for it); a role on another model, local or on another host, takes that
 	// model's own num_predict -- its Modelfile, or the remote endpoint's
 	// template -- and the council sends none.
 	MaxTokens int `json:"max_tokens,omitempty"`
@@ -136,12 +146,13 @@ type CouncilRole struct {
 	NumCtx int `json:"num_ctx,omitempty"`
 
 	// Think lets the role's members reason before they reply. Empty or "off"
-	// is the default: no reasoning. "on" is a budget of
-	// DefaultCouncilThinkBudget tokens. A level (minimal, low, medium, high,
-	// max) caps the reasoning at that share of the member's context window, as
-	// a think level does for a chat request; a positive integer is a token
-	// budget. The cap is added to max_tokens, so
-	// the reply keeps its own room. The reasoning is never shown: only the
+	// is the default: no reasoning. A level (minimal, low, medium, high,
+	// max) caps the reasoning at that share of the member's reply cap, which
+	// includes it, as Cerebriline maps a level onto its output budget; "on"
+	// is medium. A positive integer is a token budget, held to four fifths of
+	// the cap so the reply keeps room. A member whose cap its own model sets
+	// takes a level as a share of its window, and "on" as
+	// DefaultCouncilThinkBudget tokens. The reasoning is never shown: only the
 	// reply joins the deliberation. The planner's routing call never reasons.
 	// When the cap is reached, the model's own think_budget_message closes
 	// the reasoning.
@@ -235,9 +246,10 @@ const (
 	DefaultCouncilIdleCompactAt = 0.75
 )
 
-// DefaultCouncilThinkBudget is what `think: on` gives a member. A level would
-// be a share of the council's context, and at 131k "medium" is 32,768 tokens
-// per member: measured live, a researcher looped past 29k of them.
+// DefaultCouncilThinkBudget is what `think: on` gives a member whose reply cap
+// the council does not know (its own model sets it). A level there is a share
+// of the window, and at 131k "medium" is 32,768 tokens per member: measured
+// live, a researcher looped past 29k of them.
 const DefaultCouncilThinkBudget = 2048
 
 var validCouncilThink = []string{CouncilThinkOff, CouncilThinkOn, "minimal", "low", "medium", "high", "max"}
@@ -269,6 +281,13 @@ const (
 	// when council.cloud_parallel is unset; MaxCouncilCloudParallel bounds it.
 	DefaultCouncilCloudParallel = 3
 	MaxCouncilCloudParallel     = 16
+	// DefaultCouncilMaxTokens is the output ceiling when council.max_tokens
+	// is unset (the owner's choice, 2026-09-30: 16k per member, kept low).
+	// MinCouncilMaxTokens leaves a thinking member room to answer;
+	// MaxCouncilMaxTokens is Cerebriline's own ceiling.
+	DefaultCouncilMaxTokens = 16384
+	MinCouncilMaxTokens     = 1024
+	MaxCouncilMaxTokens     = 96000
 	// MaxCouncilJitter keeps the spread a spread: past half the temperature
 	// the members are no longer the same model at slightly different heat.
 	MaxCouncilJitter = 0.5
@@ -304,7 +323,7 @@ func (c *Council) IsZero() bool {
 	}
 	return c.Enabled == nil && c.Charter == "" &&
 		c.Planner.isZero() && c.Researcher.isZero() && c.Critic.isZero() && c.Synthesizer.isZero() && c.Builder.isZero() &&
-		c.TemperatureJitter == nil && c.Seed == nil && c.MaxRounds == 0 &&
+		c.TemperatureJitter == nil && c.Seed == nil && c.MaxRounds == 0 && c.MaxTokens == 0 &&
 		c.ShowDeliberation == nil && c.Broadcast == nil && c.PolyKV == "" && c.Context.isZero() && c.CloudParallel == 0
 }
 
@@ -388,6 +407,9 @@ func (c *Council) validate(engine string) error {
 	}
 	if c.CloudParallel < 0 || c.CloudParallel > MaxCouncilCloudParallel {
 		return fmt.Errorf("xollama config: council.cloud_parallel %d must be in [0, %d]", c.CloudParallel, MaxCouncilCloudParallel)
+	}
+	if c.MaxTokens != 0 && (c.MaxTokens < MinCouncilMaxTokens || c.MaxTokens > MaxCouncilMaxTokens) {
+		return fmt.Errorf("xollama config: council.max_tokens %d must be 0 or in [%d, %d]", c.MaxTokens, MinCouncilMaxTokens, MaxCouncilMaxTokens)
 	}
 	if c.MaxRounds < 0 || c.MaxRounds > MaxCouncilRounds {
 		return fmt.Errorf("xollama config: council.max_rounds %d must be in [0, %d]", c.MaxRounds, MaxCouncilRounds)

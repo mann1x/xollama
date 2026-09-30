@@ -28,8 +28,8 @@ func TestAReplyCapFollowsTheModelItRunsOn(t *testing.T) {
 		{"a stated cap on the role's own model", Planner, "", "", 4096},
 		{"a stated cap on another model", Critic, glm, "", 131072},
 		{"an unstated cap on another model", Researcher, glm, "", 0},
-		{"the front on the council's model borrows no cloud cap", Synthesizer, "", "", defaultMaxTokens[Synthesizer]},
-		{"an unstated builder on the planner's model", Builder, "", "", defaultMaxTokens[Builder]},
+		{"the front on the council's model borrows no cloud cap", Synthesizer, "", "", xollama.DefaultCouncilMaxTokens},
+		{"an unstated builder on the planner's model", Builder, "", "", xollama.DefaultCouncilMaxTokens},
 	} {
 		if got := maxTok(cfg, tc.role, tc.model, tc.host); got != tc.want {
 			t.Errorf("%s: %d, want %d", tc.name, got, tc.want)
@@ -60,10 +60,10 @@ func TestARoleIsOnTheLeadOnlyWithoutAModelOfItsOwn(t *testing.T) {
 	}{
 		{Planner, false, 131072, 262144},
 		{Builder, false, 0, 262144}, // on the planner's model, with no cap of its own
-		{Researcher, true, defaultMaxTokens[Researcher], 0},
+		{Researcher, true, xollama.DefaultCouncilMaxTokens, 0},
 		{Critic, false, 0, 0},
 		{Reviewer, false, 0, 0},
-		{Synthesizer, true, defaultMaxTokens[Synthesizer], 0},
+		{Synthesizer, true, xollama.DefaultCouncilMaxTokens, 0},
 	} {
 		if got := cfg.OnLead(tc.role); got != tc.lead {
 			t.Errorf("%s: on the lead %v, want %v", tc.role, got, tc.lead)

@@ -2395,12 +2395,15 @@ itself), so the read stays current across them. Guard:
 - [x] Forced answer by schema at the step bound.
   - The reader's call carries its result's schema as `Format`, so the grammar admits no call; the tool list, and the prefix, stay (`TestTheForcedAnswerIsTheReportsFormat`).
   - To verify live: that the rendered prefix still matches with `Format` set.
-- [ ] Output budget per member: min(0.75 x window, ceiling, model max).
-  - Default ceiling 16,384; settable council-wide and per role.
-  - The think level is a share of it (medium = 1/4).
-  - The member is told its cap and think share (Cerebriline `buildOutputBudgetSection`).
-  - The reserve books it.
-  - Waits on Cerebriline's window rule (#577: its engine budget was 12,288, not 24,000).
+- [x] Output budget per member: min(0.75 x window, ceiling, model num_predict) (`Config.OutputBudget`).
+  - The rule is the VS Code plugin's (#578). The CLI's 49,152 / 12,288 was its gateway fallback, ¼ of the window, now aligned with the plugin.
+  - The ceiling defaults to 16,384 (owner's choice). It is set council-wide by `council.max_tokens` [1024, 96000]; a role's own `max_tokens` replaces it.
+  - The thinking is inside the cap: `num_predict` is the cap, no longer cap + budget.
+  - A level is its share of the cap (minimal 1/16, low 1/8, medium 1/4, high 1/2, max 4/5); `on` is medium. A token budget is held to 4/5 of the cap. The builder's levels are the same shares.
+  - A role whose model sets its cap keeps the old window share, and `on` = 2048.
+  - Each member's instruction ends with Cerebriline's Output Budget section: its cap and its thinking share (`budgetNote`).
+  - The reserve books each lead member's cap only. At the default that is 5 × 16,384 + 1,024 on the 384k omni council.
+  - Guards: `TestTheOutputBudgetIsTheLeastOfWindowCeilingAndNumPredict`, `TestThinkBudgetResolvesARoleSetting`, `TestAMemberIsToldItsOutputBudget`, `TestTheReserveBooksTheCapsWithTheThinkingInside`, `TestAThinkingRoleReasonsWithinItsBudgetAndHidesIt`.
 - [x] Reasoning replay `last` (`internal/council/replay.go`).
   - A member's step carries the reasoning it followed (`Reply.Thinking`, read from the stream); its earlier steps carry none.
   - Guard: `TestAMembersLastReasoningIsReplayed`.

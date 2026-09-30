@@ -103,6 +103,9 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	if n, ok := optionAsInt(m.Options["num_predict"]); ok && n > 0 {
 		cfg.LeadMaxTokens = n
 	}
+	// The window a member's output budget is sized against: num_ctx for now,
+	// the tree's once it is made (below).
+	cfg.Window = councilMemberWindow(m, req, nil)
 	// A client that turned thinking off gets the answer alone.
 	if req.Think != nil && !req.Think.Bool() {
 		cfg.ShowDeliberation = false
@@ -156,8 +159,9 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		return
 	}
 	members.window = councilMemberWindow(m, req, tree)
+	cfg.Window = members.window
 	members.budgetMessage = councilBudgetMessage(m, req)
-	reserve := councilReserve(cfg, members.window)
+	reserve := councilReserve(cfg)
 	full := conv // the conversation as the client sent it
 	// answer is set by the turn and read once the response is written; a
 	// client that left may leave the turn still running, hence atomic.
@@ -694,26 +698,24 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 		// in 384 tokens. False is accepted by a model that cannot think.
 		req.Model = r.Model
 	}
-	// A role that reasons gets its budget as a token count, and room for it
-	// on top of its reply cap: a level sent as is would be a share of
-	// num_predict, the reply cap, and bound nothing useful. The reasoning is
-	// read nowhere below; only the reply joins the deliberation.
+	// A role that reasons gets its budget as a token count, inside its reply
+	// cap: num_predict is the whole reply, thinking included, and the budget
+	// its share (council.ThinkBudget), Cerebriline's output budget. The
+	// reasoning is read nowhere below except to condense it (replay.go); only
+	// the reply joins the deliberation.
 	window := cm.window
 	if !onLead && r.NumCtx > 0 {
 		window = r.NumCtx // a level is a share of the member's own window
 	}
-	if budget := council.ThinkBudget(r.Think, window); budget > 0 {
+	if budget := council.ThinkBudget(r.Think, r.MaxTokens, window); budget > 0 {
 		req.Think = &api.ThinkValue{Value: budget}
 		// A cloud model or a stock ollama takes no token budget: ollama.com
 		// refuses one ("think must be a boolean or string"). There the member
-		// thinks, and num_predict, the reply cap plus the budget, bounds it.
+		// thinks, and num_predict, the reply cap, bounds it.
 		if !cm.councilTakesBudget(ctx, r) {
 			req.Think = &api.ThinkValue{Value: true}
 		} else if cm.budgetMessage != "" {
 			opts["think_budget_message"] = cm.budgetMessage
-		}
-		if r.MaxTokens > 0 {
-			opts["num_predict"] = r.MaxTokens + budget
 		}
 	}
 	if r.Host != "" {

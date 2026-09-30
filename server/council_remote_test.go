@@ -155,10 +155,10 @@ func TestCouncilHostAllowed(t *testing.T) {
 
 // A token budget goes only where it is understood: this server's own models,
 // and a model another xollama serves itself. A cloud model and a stock ollama
-// get think true, with the budget as room in num_predict on top of the role's
-// stated max_tokens.
+// get think true, bounded by num_predict: the role's stated max_tokens, the
+// thinking inside it ("on" is medium, a quarter of it).
 func TestAThinkingMemberGetsABudgetOnlyWhereOneIsUnderstood(t *testing.T) {
-	budget := float64(xollama.DefaultCouncilThinkBudget)
+	budget := float64(2048 / 4)
 	for _, tc := range []struct {
 		name           string
 		xollama, cloud bool
@@ -190,8 +190,8 @@ func TestAThinkingMemberGetsABudgetOnlyWhereOneIsUnderstood(t *testing.T) {
 			}
 			for _, r := range remote.reqs {
 				opts, _ := r["options"].(map[string]any)
-				if r["think"] != tc.want || opts["num_predict"] != float64(2048)+budget {
-					t.Errorf("think %v, num_predict %v; want %v and %v", r["think"], opts["num_predict"], tc.want, float64(2048)+budget)
+				if r["think"] != tc.want || opts["num_predict"] != float64(2048) {
+					t.Errorf("think %v, num_predict %v; want %v and 2048", r["think"], opts["num_predict"], tc.want)
 				}
 			}
 		})

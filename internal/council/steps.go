@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/ollama/ollama/api"
+	"github.com/ollama/ollama/types/xollama"
 )
 
 // DefaultCharter is the council's standing instruction. Phase 0 measured it as
@@ -90,9 +92,37 @@ func (p Plan) clone() Plan {
 }
 
 // prompt is role r's instruction with the guidance added to it
-// (directive.go).
+// (directive.go), and the reply budget it works in.
 func prompt(cfg Config, r Role) string {
-	return cfg.withInstructions(basePrompt(cfg, r), r)
+	return cfg.withInstructions(basePrompt(cfg, r), r) + cfg.budgetNote(r)
+}
+
+// budgetNote tells a member the cap its reply is cut at and the share of it
+// it may think, Cerebriline's Output Budget section (output-budget.ts,
+// buildOutputBudgetSection), so it plans a reply that fits instead of being
+// cut mid-call. It says nothing of a cap the member's own model sets.
+func (cfg Config) budgetNote(r Role) string {
+	n := cfg.Cap(r)
+	if n <= 0 {
+		return ""
+	}
+	if len(cfg.Tools) > 0 {
+		n = writeTok(r, n)
+	}
+	s := fmt.Sprintf("\n\n# Output Budget\n\nEach reply you produce is capped at %d tokens, thinking included. Anything past the cap is cut off mid-sentence and the turn is wasted.", n)
+	if t := ThinkBudget(cfg.Think[r], n, cfg.Window); t > 0 {
+		effort := ""
+		if l := cfg.Think[r]; l == xollama.CouncilThinkOn {
+			effort = " (effort medium)"
+		} else if _, err := strconv.Atoi(l); err != nil {
+			effort = " (effort " + l + ")"
+		}
+		s += fmt.Sprintf(" Of that, at most %d tokens may be spent thinking%s; reasoning past that point is cut short, so reach a decision inside it and write the answer with what is left.", t, effort)
+	}
+	if len(cfg.Tools) > 0 && writes(r) {
+		s += " Prefer several focused tool calls over one oversized reply: if the remaining work does not fit, do the part that fits, call the tools it needs, and continue in the next turn."
+	}
+	return s
 }
 
 // basePrompt is role r's own instruction: the user's, else the built-in.
@@ -104,11 +134,11 @@ func basePrompt(cfg Config, r Role) string {
 }
 
 // maxTok is the reply cap of a request for r that runs on model at host
-// ("" and "" for the council's own model). r's stated max_tokens holds on r's
-// own model. Otherwise, on the council's own model, it is that model's
-// num_predict or r's built-in cap: the owner's window is booked for it. On any
-// other model it is 0, and that model's own template -- its Modelfile, or the
-// remote endpoint's -- sets the cap.
+// ("" and "" for the council's own model), thinking included. r's stated
+// max_tokens holds on r's own model. Otherwise, on the council's own model, it
+// is the council's output budget (OutputBudget): the owner's window is booked
+// for it. On any other model it is 0, and that model's own template -- its
+// Modelfile, or the remote endpoint's -- sets the cap.
 func maxTok(cfg Config, r Role, model, host string) int {
 	own, ownHost := cfg.roleOn(r)
 	if n := cfg.MaxTokens[r]; n > 0 && own == model && ownHost == host {
@@ -117,10 +147,7 @@ func maxTok(cfg Config, r Role, model, host string) int {
 	if model != "" || host != "" {
 		return 0
 	}
-	if cfg.LeadMaxTokens > 0 {
-		return cfg.LeadMaxTokens
-	}
-	return defaultMaxTokens[r]
+	return cfg.OutputBudget()
 }
 
 // directTok is the cap of the planner's direct answer: the synthesizer's on

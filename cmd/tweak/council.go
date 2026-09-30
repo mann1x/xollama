@@ -190,9 +190,9 @@ func roleFields(name, what string) []field {
 			name:  flag + "-max-tokens",
 			path:  "council." + name + ".max_tokens",
 			title: "Council " + name + " reply cap",
-			help: "The most tokens one " + name + " may write. Unset: on the council's own\n" +
-				"model, that model's num_predict, else the role's built-in cap; on another\n" +
-				"model (council." + name + ".model), that model's own template decides.",
+			help: "The most tokens one " + name + " reply may take, thinking included. Unset: on\n" +
+				"the council's own model, the council's output budget (council.max_tokens);\n" +
+				"on another model (council." + name + ".model), that model's own template decides.",
 			kind:    kindInt,
 			unit:    "tokens",
 			quiet:   true,
@@ -222,10 +222,10 @@ func roleFields(name, what string) []field {
 			name:  flag + "-think",
 			path:  "council." + name + ".think",
 			title: "Council " + name + " thinking — let it reason before it replies",
-			help: "Unset or off: no reasoning, the tested default. on is a 2048-token\n" +
-				"budget. A level (minimal, low, medium, high, max) caps the reasoning at\n" +
-				"that share of the council's context; a number is a token budget. The cap\n" +
-				"comes on top of the reply cap, the reasoning is never shown, and the\n" +
+			help: "Unset or off: no reasoning, the tested default. A level (minimal, low,\n" +
+				"medium, high, max) caps the reasoning at that share of the reply cap,\n" +
+				"which includes it; on is medium, a quarter. A number is a token budget,\n" +
+				"held to four fifths of the cap. The reasoning is never shown, and the\n" +
 				"model's own think_budget_message closes it at the cap. Every member\n" +
 				"takes longer.",
 			kind:    kindText,
@@ -350,6 +350,23 @@ func councilFields() []field {
 				return councilGet(c, func(k *xollama.Council) string { return showInt(k.MaxRounds) })
 			},
 			set: func(c *xollama.Config, v string) error { return setInt(v, &council(c).MaxRounds) },
+		},
+		{
+			name:  "council-max-tokens",
+			path:  "council.max_tokens",
+			title: "Output ceiling — the most one member reply may take",
+			help: fmt.Sprintf("A member on the council's own model replies in at most three quarters of\n"+
+				"the council's window, this ceiling and the model's num_predict, thinking\n"+
+				"included; a role's own max_tokens replaces it. %d (unset) by default,\n"+
+				"between %d and %d.", xollama.DefaultCouncilMaxTokens, xollama.MinCouncilMaxTokens, xollama.MaxCouncilMaxTokens),
+			kind:    kindInt,
+			unit:    "tokens",
+			quiet:   true,
+			blocked: councilOff,
+			get: func(c *xollama.Config) string {
+				return councilGet(c, func(k *xollama.Council) string { return showInt(k.MaxTokens) })
+			},
+			set: func(c *xollama.Config, v string) error { return setInt(v, &council(c).MaxTokens) },
 		},
 		{
 			name:    "council-cloud-parallel",

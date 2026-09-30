@@ -306,9 +306,12 @@ func TestPolyKVOffRunsTheMembersUnpooled(t *testing.T) {
 func TestTheOwnerWindowFollowsThePressure(t *testing.T) {
 	e := &councilEngine{route: `{"route":"direct"}`}
 	kv := &fakeKV{grant: 16384, used: 900, pressure: &llm.KVPressure{WindowS: 60, Refused60s: 2, LastRefusalAgeS: 3}}
-	// No member thinks, so the turn's reserve leaves the idle owner room to
-	// give back; the builder's thinking, booked, would take the whole window.
-	off := func() *xollama.CouncilRole { return &xollama.CouncilRole{Think: xollama.CouncilThinkOff} }
+	// Small stated caps, so the turn's reserve leaves the idle owner room to
+	// give back; the output budget, three quarters of the window per member,
+	// booked, would take the whole window.
+	off := func() *xollama.CouncilRole {
+		return &xollama.CouncilRole{Think: xollama.CouncilThinkOff, MaxTokens: 1024}
+	}
 	s := polykvCouncil(t, e, kv, &xollama.Council{
 		Enabled: councilOn().Enabled,
 		Context: &xollama.CouncilContext{Window: 16384, Floor: 4096},
@@ -577,7 +580,9 @@ func TestThePlannerAttachesTheConversationRoot(t *testing.T) {
 	if p := kv.pools[1]; p.parent == nil || *p.parent != 0 {
 		t.Errorf("the researchers' layer forks %v, want the root", p.parent)
 	}
-	reserve := councilReserve(council.FromModel(councilOn(), 0.7), 16384)
+	cfgR := council.FromModel(councilOn(), 0.7)
+	cfgR.Window = 16384
+	reserve := councilReserve(cfgR)
 	for i, r := range e.roles {
 		pl := e.placements[i]
 		if r != "route" && r != "planner" {

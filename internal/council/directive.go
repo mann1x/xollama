@@ -92,7 +92,7 @@ func (cfg Config) Direct(d *api.CouncilDirective) (Config, error) {
 		cfg.Instructions = in
 	}
 	if len(d.Build) > 0 {
-		if b := parseBuild(string(d.Build)); b.Target != "" {
+		if b := parseBuild(string(d.Build), cfg); b.Target != "" {
 			cfg.Stated = b
 		}
 	}

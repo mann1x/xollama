@@ -279,18 +279,79 @@ func TestACanceledTurnReturnsPromptly(t *testing.T) {
 	}
 }
 
+// With a reply cap a level is a share of it, "on" is medium and a token
+// budget leaves the reply a fifth; without one (the member's own model sets
+// it) a level is a share of the window and "on" a fixed budget.
 func TestThinkBudgetResolvesARoleSetting(t *testing.T) {
-	for setting, want := range map[string]int{
-		"": 0, "off": 0,
-		"on":     2048, // DefaultCouncilThinkBudget, whatever the window
-		"medium": 4096,
-		"high":   8192,
-		"low":    2048,
-		"2048":   2048,
+	for _, tc := range []struct {
+		setting     string
+		cap, window int
+		want        int
+	}{
+		{"", 16384, 131072, 0},
+		{"off", 16384, 131072, 0},
+		{"on", 16384, 131072, 4096},
+		{"medium", 16384, 131072, 4096},
+		{"high", 16384, 131072, 8192},
+		{"low", 16384, 131072, 2048},
+		{"max", 16384, 131072, 13107},
+		{"2048", 16384, 131072, 2048},
+		{"65536", 16384, 131072, 13107},
+		{"on", 0, 131072, xollama.DefaultCouncilThinkBudget},
+		{"medium", 0, 16384, 4096},
+		{"65536", 0, 16384, 65536},
 	} {
-		if got := ThinkBudget(setting, 16384); got != want {
-			t.Errorf("ThinkBudget(%q, 16384) = %d, want %d", setting, got, want)
+		if got := ThinkBudget(tc.setting, tc.cap, tc.window); got != tc.want {
+			t.Errorf("ThinkBudget(%q, cap %d, window %d) = %d, want %d", tc.setting, tc.cap, tc.window, got, tc.want)
 		}
+	}
+}
+
+// A member's output budget is Cerebriline's: the least of three quarters of
+// the window, the council's ceiling and the model's num_predict.
+func TestTheOutputBudgetIsTheLeastOfWindowCeilingAndNumPredict(t *testing.T) {
+	for _, tc := range []struct {
+		name                   string
+		ceiling, window, numPr int
+		want                   int
+	}{
+		{"the default ceiling on a large window", 0, 393216, 0, xollama.DefaultCouncilMaxTokens},
+		{"three quarters of a small window", 0, 8192, 0, 6144},
+		{"a stated ceiling", 32768, 393216, 0, 32768},
+		{"the model's num_predict", 32768, 393216, 12000, 12000},
+		{"no window known", 0, 0, 0, xollama.DefaultCouncilMaxTokens},
+	} {
+		c := &xollama.Council{MaxTokens: tc.ceiling}
+		cfg := FromModel(c, 0.7)
+		cfg.Window, cfg.LeadMaxTokens = tc.window, tc.numPr
+		if got := cfg.OutputBudget(); got != tc.want {
+			t.Errorf("%s: %d, want %d", tc.name, got, tc.want)
+		}
+		if got := cfg.Cap(Researcher); got != tc.want {
+			t.Errorf("%s: a researcher's cap %d, want the budget %d", tc.name, got, tc.want)
+		}
+	}
+}
+
+// Each member reads the cap its reply is cut at, and its thinking share of it.
+func TestAMemberIsToldItsOutputBudget(t *testing.T) {
+	c := &xollama.Council{
+		Researcher: &xollama.CouncilRole{Think: "medium"},
+		Critic:     &xollama.CouncilRole{Model: "other"},
+	}
+	cfg := FromModel(c, 0.7)
+	cfg.Window = 393216
+	got := prompt(cfg, Researcher)
+	for _, want := range []string{"# Output Budget", "capped at 16384 tokens, thinking included", "at most 4096 tokens may be spent thinking (effort medium)"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the researcher's instruction lacks %q:\n%s", want, got)
+		}
+	}
+	if got := prompt(cfg, Synthesizer); !strings.Contains(got, "capped at 16384 tokens") || strings.Contains(got, "spent thinking") {
+		t.Errorf("a synthesizer that does not think is told its cap alone:\n%s", got)
+	}
+	if got := prompt(cfg, Critic); strings.Contains(got, "# Output Budget") {
+		t.Errorf("a critic on another model, whose cap that model sets, was told one:\n%s", got)
 	}
 }
 

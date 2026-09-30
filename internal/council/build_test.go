@@ -34,7 +34,7 @@ func TestTheBuilderShapesTheCouncilTheUserDefined(t *testing.T) {
 				t.Errorf("the builder was not given the council as defined: %q", last)
 			}
 		case Researcher:
-			if !strings.Contains(last, defaultPrompts[Researcher]+" For this work: read before concluding") || c.Think != "4096" {
+			if !strings.Contains(last, defaultPrompts[Researcher]+" For this work: read before concluding") || c.Think != "8192" { // high: half the 16384 cap
 				t.Errorf("researcher: think %q, instruction %q", c.Think, last)
 			}
 		case Critic:
@@ -75,7 +75,7 @@ func TestTheBuilderShapesTheCouncilTheUserDefined(t *testing.T) {
 // A builder that does not answer in the JSON asked for shapes nothing, and is
 // recorded so a resumed turn does not ask again.
 func TestABuilderThatSaysNothingShapesNothing(t *testing.T) {
-	b := parseBuild("I think this is about code.")
+	b := parseBuild("I think this is about code.", Config{})
 	if b == nil || b.Target != "" || len(b.Instructions) != 0 || b.MaxTests != DefaultMaxTests {
 		t.Fatalf("build %+v", b)
 	}

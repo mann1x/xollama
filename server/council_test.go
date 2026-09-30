@@ -552,16 +552,17 @@ func TestAThinkingRoleReasonsWithinItsBudgetAndHidesIt(t *testing.T) {
 		t.Errorf("the researchers' replies are missing from the deliberation: %q", thinking)
 	}
 
-	// on is 2048 tokens, medium a quarter of the 16k window; the budget comes
-	// on top of the role's reply cap; the routing call and the critics never
+	// Every member's reply cap is three quarters of the 16k window, its
+	// thinking inside it: on and medium are a quarter of the cap, the builder
+	// thinks as the planner does, and the routing call and the critics never
 	// reason.
 	want := map[string][2]int{
 		"route":       {0, 16},
-		"planner":     {2048, 2048 + 2048},
-		"builder":     {2048, 3072 + 2048},
-		"researcher":  {4096, 2048 + 4096},
-		"critic":      {0, 1024},
-		"synthesizer": {2048, 2048 + 2048},
+		"planner":     {3072, 12288},
+		"builder":     {3072, 12288},
+		"researcher":  {3072, 12288},
+		"critic":      {0, 12288},
+		"synthesizer": {2048, 12288},
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
