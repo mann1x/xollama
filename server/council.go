@@ -166,6 +166,12 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		cloud:   councilCloud.slots(req.Model, councilCloudParallel(m)),
 	}
 
+	// A new task starts clean, though its derived session may be a past
+	// run's (council_fresh.go). A session the client names is its own.
+	if req.SessionID == "" && councilFreshTask(req.Messages) {
+		councilForget(members.session)
+	}
+
 	// A generic client: tools, no council_chat_state. The server holds the
 	// turn's resume point for it and sends it none (council_held.go).
 	held := req.CouncilChatState == nil && len(req.Tools) > 0

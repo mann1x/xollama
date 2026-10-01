@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-01 — A task sent again starts clean.**
+> - A request with no assistant turn, on a session the server derived, drops what was kept for that session: the kept deliberation, the review desk, the held resume point and the compaction record. The derived id comes from the conversation's opening, so every run of the harness's task landed on the last run's session (0422, 0424 and 0426 all ran on `xo-efd33195b0dfad24`). The test showed this was worse than a stale note: without the reset, a re-sent task resumed the past run's council mid-turn from its held point, with no planner. A session the client names is never reset.
+> - Guards: `TestATaskSentAgainStartsClean` (verified by removal) and `TestOnlyAConversationWithNoAnswerYetIsANewTask`.
+> - opencoti fixed the overnight abort (#593 → #594): b32 `2610010811001`, patch 0489. The refusal is now an HTTP 400 `exceed_context_size_error`. It is a dev snapshot; eleven2go stays on b208 until the owner says otherwise.
+
 > **2026-10-01 — Series 3 on eleven2go (2fa24de0): council 0 of 3 fixed, plain omni 1 of 2. A council's reported size is now the request's whole.**
 > - Runs (cline 1bd850f60, generic wire, `PROVIDER=ollama`, `THINKING=medium`, 7,200 s cap):
 >

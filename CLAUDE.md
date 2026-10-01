@@ -224,7 +224,7 @@ spent, reported on the done chunk as `ChatResponse.CouncilUsage`, `council_usage
 `councilServes` line in
 `ChatHandler` (`council` hook); a `format` bypasses it, and tools without
 `council_chat_state` are a generic harness's, the resume point held server side
-(`server/council_held.go`; read-only and check inferred, `internal/council/generic.go`) (`internal/council/tools.go`: read-only tools for
+(`server/council_held.go`; read-only and check inferred, `internal/council/generic.go`; a new task on a derived session starts clean, `server/council_fresh.go`) (`internal/council/tools.go`: read-only tools for
 researchers and critics, writes by the synthesizer; `internal/council/evidence.go`:
 the server-answered `council_evidence` tool that reads a large result back by ref;
 `internal/council/reads.go`: shared reads, a repeated read-only call answered in place;

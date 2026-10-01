@@ -45,6 +45,13 @@ func (h *councilHeldStates) get(session string) string {
 	return s.blob
 }
 
+// drop forgets the conversation's resume point.
+func (h *councilHeldStates) drop(session string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.m, session)
+}
+
 // put keeps blob as the conversation's resume point, dropping the oldest
 // when the store is full.
 func (h *councilHeldStates) put(session, blob string) {

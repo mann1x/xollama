@@ -548,6 +548,15 @@ paths:
   cloud model bills. The manic harness records it per trip and per role.
   Guards: `TestACouncilTurnReportsWhatEachRoleSpent`,
   `TestAUsageBookCountsTheCachedPromptAsSent`.
+- **A new task starts clean** (`server/council_fresh.go`): a request with no
+  assistant turn on a *derived* session (no `SessionID`) drops what the server
+  kept for that session (`councilForget`: kept deliberation, review desk, held
+  resume point, compaction record). The derived id comes from the opening, so
+  a harness re-sending its task lands on the last run's session: 0422/0424/0426
+  shared `xo-efd33195b0dfad24`. Without the reset, a re-sent task resumed the
+  past run's held council mid-turn, with no planner. A client-named session
+  is never reset. Guard `TestATaskSentAgainStartsClean` (fails with the call
+  removed).
 - **The done chunk's `prompt_eval_count` is the conversation's**, never a
   member's: the whole request the client sent, this turn's tool round trips
   included, the compaction record applied, rendered with its tools and
