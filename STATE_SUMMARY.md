@@ -5,6 +5,22 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-01 — A Q4_K_M council fits the 3090 at the same window, on kvarn2.**
+> - Owner: IQ2_M costs about 3.6x the steps of Q4_K_M (v6 arms), and every council role pays it. New tags on eleven2go: `omni-council-q4km-kv2` (omnimerge-v4 Q4_K_M MTP, `kv: kvarn2`, `num_ctx` 196,608, 2 live slots, the council settings of `omni-council-think`) and its plain twin `omni-plain-q4km-kv2` (same, council off). A plain arm uses its council's KV type even where it would not need it (owner).
+> - Measured on b208, 393,216 cells (196,608 x 2), all fully resident on the GPU:
+>
+>   | | IQ2_M + kvarn3 | Q4_K_M + kvarn2 |
+>   |---|---|---|
+>   | weights | 9,238 MiB | 15,339 MiB |
+>   | KV cache | 5,672 MiB | 4,136 MiB |
+>   | GPU in use | 19,202 MiB | 23,760 MiB (of 24,576) |
+>   | one council turn | 282 s, 17,770 tokens, 50.7 tok/s | 221 s, 10,519 tokens, 47.4 tok/s |
+>
+>   The turn is one sample, not a measurement. About 800 MiB is left free, so 196,608 per slot is the ceiling for Q4_K_M on this card.
+> - Also: `omni-plain-v4-iq2m-128k` (IQ2_M, 128k, default KV): `omnimerge-v4-mtp_tb:27b-iq2m-128k` with its `think_budget_message` fixed (it was a lone `"`).
+> - Why plain omni went from ~300 s (0129) to ~2,000 s (0425): the oracle. Re-scored with v3, none of eight old fast fixes passes (0129: 16/23). The work grew about 4x (16 to 59 requests, 15.6k to 62k output tokens, 87-94% of it thinking), generation slowed from 60 to 46 tok/s (Q4_K_M MTP on stock to IQ2_M kvarn3 on opencoti), and prefill grew from 32 s to 613 s (contexts 28k to 98k). The 0129 setup reruns on Q4_K_M with the v3 oracle and medium thinking after series 4.
+> - Council run 0427 (da40325d, first on the session fix): TIMEOUT in 7,204 s, the page does not parse. No engine abort; its conversation reached 161k.
+
 > **2026-10-01 — A task sent again starts clean.**
 > - A request with no assistant turn, on a session the server derived, drops what was kept for that session: the kept deliberation, the review desk, the held resume point and the compaction record. The derived id comes from the conversation's opening, so every run of the harness's task landed on the last run's session (0422, 0424 and 0426 all ran on `xo-efd33195b0dfad24`). The test showed this was worse than a stale note: without the reset, a re-sent task resumed the past run's council mid-turn from its held point, with no planner. A session the client names is never reset.
 > - Guards: `TestATaskSentAgainStartsClean` (verified by removal) and `TestOnlyAConversationWithNoAnswerYetIsANewTask`.
