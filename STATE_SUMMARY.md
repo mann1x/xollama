@@ -5,6 +5,23 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-01 — Series 3 on eleven2go (2fa24de0): council 0 of 3 fixed, plain omni 1 of 2. A council's reported size is now the request's whole.**
+> - Runs (cline 1bd850f60, generic wire, `PROVIDER=ollama`, `THINKING=medium`, 7,200 s cap):
+>
+>   | Run | Arm | Result | Time |
+>   |---|---|---|---|
+>   | 0422 | council | TIMEOUT, does not load | 7,203 s |
+>   | 0423 | plain omni | broken, does not load | 2,874 s |
+>   | 0424 | council | TIMEOUT, 18/23 (friction, run, jump, wall, left_edge) | 7,204 s |
+>   | 0425 | plain omni | FIXED 23/23 | 2,012 s |
+>   | 0426 | council | TIMEOUT, 22/23 (hud) | 7,203 s |
+>
+> - The check now runs through the turn: 0426 ran the program at 55, 587, 1,092, 1,469 and 1,861 s (0418: 51 s, then nothing until 1,989 s).
+> - Where the council's time went:
+>   - **The reported size was still a sum on resumed research rounds** (143k-393k on 0426; the window is 196,608). The compactor measured only the history before the turn's tool traffic. A generic harness's task is one message, so that history was too short to measure, and a turn with no front or planner call fell back to the members' sum. Cerebriline then compacted its conversation (0426: two compactions, about 1,500 s with the crash below). Fixed: the done chunk now reports the whole request the client sent, tool round trips included, rendered with its tools and tokenized (`sentTokens`). Guards: `TestTheSentConversationIsMeasuredWhole` and `TestTheDoneChunkReportsTheConversationsPrompt`, the latter verified by removal.
+>   - **The engine aborted five times** (opencoti b208, `server-context.cpp:6852: GGML_ASSERT(n_ctx > 0 && n_prompt_tokens > 0)`, exit 6). Each abort came beside a "session allocation full … compact the session" refusal, while a compaction writer and the front ran together. Each cost about 10 minutes: a retry that waited 5 minutes on a closed pipe, then a 5-minute GPU discovery watchdog before the reload. Reported to opencoti.
+>   - Every council run used the same xollama session (`xo-efd33195b0dfad24`), because the session id comes from the conversation's first message and the harness sends the same task each time. What a session keeps (the held resume point, the compaction record, the review desk, the kept deliberation, the root pool) may therefore cross runs. Not yet measured.
+
 > **2026-10-01 — The done chunk reports the conversation's size; a turn's first run is its check.**
 > - 0418's done chunks once reported a 229k prompt: the synthesizer's, which holds the plan and the findings on top of the conversation. Cerebriline sizes its context from that number and compacts at about 159k, so the council's own deliberation could fold the client's conversation.
 > - The compactor now records what it measured on every pass (folded or not), and the done chunk reports that. Without a measurement it falls back to the front's or the planner's prompt; the synthesizer's is never taken as the conversation's.

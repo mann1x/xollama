@@ -186,6 +186,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	members.budgetMessage = councilBudgetMessage(m, req)
 	reserve := councilReserve(cfg)
 	full := conv // the conversation as the client sent it
+	sent := conv // and kept so, for the size the done chunk reports
 	// answer is set by the turn and read once the response is written; a
 	// client that left may leave the turn still running, hence atomic.
 	var answer atomic.Pointer[string]
@@ -244,7 +245,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	compactor := s.councilCompactorFor(ctx, m, req, members, tree, cfg, reserve)
 	if compactor != nil {
 		conv = compactor.compact(ctx, conv, "", false, pressure)
-		members.setConvTokens(compactor.conversationTokens())
+		members.setConvTokens(compactor.sentTokens(ctx, sent))
 	}
 	conv = councilMembersView(conv)
 	if tree != nil {
@@ -255,7 +256,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 			before := councilCompactions.get(compactor.key)
 			if short := compactor.compact(ctx, full, "refused", false, pressure); councilCompactions.get(compactor.key) != before {
 				conv = councilMembersView(short)
-				members.setConvTokens(compactor.conversationTokens())
+				members.setConvTokens(compactor.sentTokens(ctx, sent))
 				_ = tree.buildRoot(ctx, conv)
 			}
 		}
@@ -346,7 +347,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 			before := councilCompactions.get(compactor.key)
 			if short := compactor.compact(c.Request.Context(), hist, "refused", false, 0); councilCompactions.get(compactor.key) != before {
 				conv = councilMembersView(short)
-				members.setConvTokens(compactor.conversationTokens())
+				members.setConvTokens(compactor.sentTokens(c.Request.Context(), sent))
 				if rerr := tree.buildRoot(c.Request.Context(), conv); rerr != nil {
 					slog.Info("council: no root after the fold; members hold their own copies", "error", rerr)
 				}

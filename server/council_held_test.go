@@ -54,16 +54,27 @@ func TestTheReportedPromptIsTheConversations(t *testing.T) {
 	}
 }
 
-// compact records the conversation's measured size, whether or not it folds.
-func TestCompactMeasuresTheConversation(t *testing.T) {
+// The reported size is the whole request the client sent, its tool round
+// trips included, however short the history before them: a generic harness's
+// one-message task left compact nothing to measure, and a research round
+// reported the members' sum (native.sh 0426: 393k).
+func TestTheSentConversationIsMeasuredWhole(t *testing.T) {
 	c := &councilCompactor{
 		numCtx: 131072, compactAt: 0.85,
 		render:   func(_ context.Context, ms []api.Message) (string, error) { return strings.Repeat("x", 4*len(ms)), nil },
 		tokenize: func(_ context.Context, s string) ([]int, error) { return make([]int, len(s)), nil },
 	}
-	conv := []api.Message{{Role: "system"}, {Role: "user", Content: "q"}, {Role: "assistant", Content: "a"}, {Role: "user", Content: "q2"}}
-	c.compact(t.Context(), conv, "", false, 0)
-	if got := c.conversationTokens(); got != 16 {
-		t.Errorf("measured %d tokens, want 16", got)
+	sent := []api.Message{
+		{Role: "system"},
+		{Role: "user", Content: "fix it"},
+		{Role: "assistant", ToolCalls: []api.ToolCall{{ID: "f:a", Function: api.ToolCallFunction{Name: "run_commands"}}}},
+		{Role: "tool", ToolCallID: "f:a", Content: "Error"},
+	}
+	if got := c.sentTokens(t.Context(), sent); got != 16 {
+		t.Errorf("measured %d tokens, want 16: the tool round trip is part of what was sent", got)
+	}
+	var none *councilCompactor
+	if got := none.sentTokens(t.Context(), sent); got != 0 {
+		t.Errorf("no compactor measured %d", got)
 	}
 }

@@ -549,12 +549,18 @@ paths:
   Guards: `TestACouncilTurnReportsWhatEachRoleSpent`,
   `TestAUsageBookCountsTheCachedPromptAsSent`.
 - **The done chunk's `prompt_eval_count` is the conversation's**, never a
-  member's: the compactor's measured size (`councilCompactor.tokens`, set on
-  every `compact`, handed over by `setConvTokens`), else the front's or the
-  planner's prompt (`carriesConversation`; the synthesizer's holds the plan and
-  findings too: 229k on 0418), else the sum. A client sizes its context from
-  it. Guards: `TestTheReportedPromptIsTheConversations`,
-  `TestCompactMeasuresTheConversation`.
+  member's: the whole request the client sent, this turn's tool round trips
+  included, the compaction record applied, rendered with its tools and
+  tokenized (`councilCompactor.sentTokens`, handed over by `setConvTokens`
+  after each compact). Else the front's or the planner's prompt
+  (`carriesConversation`; the synthesizer's holds the plan and findings too:
+  229k on 0418), else the sum. Do not measure the history `compact` folds
+  instead: a generic harness's task is one message, so that history is too
+  short to measure, and a resumed research round reported the members' 393k
+  (0426), which made Cerebriline compact. Guards:
+  `TestTheReportedPromptIsTheConversations`,
+  `TestTheSentConversationIsMeasuredWhole`,
+  `TestTheDoneChunkReportsTheConversationsPrompt`.
 - **The task list (11.10, `internal/council/tasks.go`)**: the planner's plan
   JSON carries `"tasks"`; `mergeTasks` enforces the rules (no deletion, an
   outcome to close, a real researcher to assign, refuted stays refuted, new

@@ -220,7 +220,7 @@ seals the `council_chat_state` resume point a client sends back; `server/council
 keeps a turn's deliberation so the next message can `continue` the same council,
 `internal/council/continue.go`; `server/council_usage.go` adds up what each role
 spent, reported on the done chunk as `ChatResponse.CouncilUsage`, `council_usage_v1`; the done chunk's
-`prompt_eval_count` is the conversation's as the compactor measured it (`conversationTokens`), else the front's or planner's prompt (`carriesConversation`), never the members' sum), reached from one
+`prompt_eval_count` is the whole conversation the client sent, measured (`sentTokens`), else the front's or planner's prompt (`carriesConversation`), never the members' sum), reached from one
 `councilServes` line in
 `ChatHandler` (`council` hook); a `format` bypasses it, and tools without
 `council_chat_state` are a generic harness's, the resume point held server side
