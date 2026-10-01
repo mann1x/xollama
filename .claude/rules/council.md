@@ -381,7 +381,11 @@ paths:
   `internal/council/generic.go`): the server keeps the sealed resume point by
   the conversation's session (`councilHeld`, 64 conversations, 2 h) and sends
   none. Tools no client marked read-only are marked from their names
-  (`InferReadOnly`; a client that marks any is taken at its word). With no
+  (`InferReadOnly`; a client that marks any is taken at its word). Check
+  words (`check`, `lint`, `validate`, `verify`, `diagnose`) read: a parse
+  check is how members find a syntax error's line, and 0428 had no member
+  able to call `check_file` (guard `TestReadOnlyIsInferredOnlyWhenTheClientMarksNone`).
+  A write still wins (`run_check` is a change). With no
   stated check, the check is the non-reading call a member repeats unchanged
   across a change (`inferredCheck`), and then runs as a stated one would.
   Past assistant thinking is stripped from what members read
@@ -559,9 +563,11 @@ paths:
   removed).
 - **The done chunk's `prompt_eval_count` is the conversation's**, never a
   member's: the whole request the client sent, this turn's tool round trips
-  included, the compaction record applied, rendered with its tools and
-  tokenized (`councilCompactor.sentTokens`, handed over by `setConvTokens`
-  after each compact). Else the front's or the planner's prompt
+  included, as the client sent it, rendered with its tools and tokenized
+  (`councilCompactor.sentTokens`, handed over by `setConvTokens` after each
+  compact). **Never through `apply`**: apply drops a record that does not
+  match, the raw messages never match the members' view, and that dropped all
+  eight folds of 0427/0428 the moment each was made. Else the front's or the planner's prompt
   (`carriesConversation`; the synthesizer's holds the plan and findings too:
   229k on 0418), else the sum. Do not measure the history `compact` folds
   instead: a generic harness's task is one message, so that history is too
@@ -570,6 +576,13 @@ paths:
   `TestTheReportedPromptIsTheConversations`,
   `TestTheSentConversationIsMeasuredWhole`,
   `TestTheDoneChunkReportsTheConversationsPrompt`.
+- **Every fold and every apply use the members' view** (`hist`, after
+  `council.History`): the first compact, the refused-root fold and the idle
+  fold after the answer. A record's hash covers role and content, and History
+  rewrites forwarded calls, so a fold of the client's raw messages is dropped
+  by the next apply and the root is refused again (0428: three six-minute
+  folds in its last twenty minutes). Guard
+  `TestARefusedRootsFoldIsOfTheMembersView` (both sites fail it alone).
 - **The task list (11.10, `internal/council/tasks.go`)**: the planner's plan
   JSON carries `"tasks"`; `mergeTasks` enforces the rules (no deletion, an
   outcome to close, a real researcher to assign, refuted stays refuted, new

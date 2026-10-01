@@ -16,7 +16,11 @@ import (
 // Words that make a tool a reader, and words that make it a writer whatever
 // else its name says ("read_and_write", "run_search").
 var (
-	readWords = []string{"read", "list", "ls", "grep", "search", "find", "glob", "get", "fetch", "view", "show", "cat", "stat", "lookup", "query", "inspect", "describe", "extract", "lsp"}
+	// check, lint, validate, verify and diagnose report on a file without
+	// changing it: a parse check is how a member finds the line a syntax error
+	// is on (native.sh 0428: no member could call check_file, and the
+	// synthesizer guessed at five lines in 93 minutes).
+	readWords = []string{"read", "list", "ls", "grep", "search", "find", "glob", "get", "fetch", "view", "show", "cat", "stat", "lookup", "query", "inspect", "describe", "extract", "lsp", "check", "lint", "validate", "verify", "diagnose", "diagnostics"}
 	// runWords name a tool that runs something rather than changes a file.
 	runWords   = []string{"run", "exec", "execute", "command", "commands", "shell", "bash", "test", "tests"}
 	writeWords = []string{"write", "edit", "create", "delete", "remove", "rm", "run", "exec", "execute", "command", "commands", "shell", "bash", "apply", "patch", "update", "set", "move", "mv", "rename", "replace", "insert", "commit", "push", "install", "save", "put", "post", "send", "kill", "browser", "click"}

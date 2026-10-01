@@ -17,8 +17,8 @@ func namedTools(names ...string) api.Tools {
 // A client that marks no tool read-only has the readers told apart by name;
 // one that marks any is taken at its word.
 func TestReadOnlyIsInferredOnlyWhenTheClientMarksNone(t *testing.T) {
-	got := InferReadOnly(namedTools("read_files", "listFiles", "grep", "search_codebase", "fetch_web_content", "run_commands", "editor", "write_file", "read_and_write", "check_file", "browser"))
-	want := map[string]bool{"read_files": true, "listFiles": true, "grep": true, "search_codebase": true, "fetch_web_content": true}
+	got := InferReadOnly(namedTools("read_files", "listFiles", "grep", "search_codebase", "fetch_web_content", "run_commands", "editor", "write_file", "read_and_write", "check_file", "lint", "run_check", "browser"))
+	want := map[string]bool{"read_files": true, "listFiles": true, "grep": true, "search_codebase": true, "fetch_web_content": true, "check_file": true, "lint": true}
 	for _, tl := range got {
 		if tl.Function.ReadOnly != want[tl.Function.Name] {
 			t.Errorf("%s: read-only %v, want %v", tl.Function.Name, tl.Function.ReadOnly, want[tl.Function.Name])
