@@ -75,8 +75,11 @@ paths:
 - `councilServes` is false for a model without an enabled council, a request
   with no messages, a `format` (the client is steering the output itself),
   a `num_predict` below `councilMinReply` (64: a probe of the model, such as
-  Cerebriline's one-token template probe read for `prompt_eval_count`), and
-  any member's own turn. Tools without `council_chat_state` are a
+  Cerebriline's one-token template probe read for `prompt_eval_count`), a
+  request without tools and without `council_chat_state` whose messages
+  already hold tool calls (a generic client's housekeeping: Cerebriline's
+  compaction took 13.5 minutes through the council on 0427; guard
+  `TestAToolTasksHousekeepingIsAnsweredPlainly`), and any member's own turn. Tools without `council_chat_state` are a
   generic harness's and ARE the council's (owner, 2026-09-30: a council must
   work driven by a harness that does not know it is one). Members
   are marked with the

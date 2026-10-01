@@ -774,9 +774,11 @@ func refusedRootFold(t *testing.T, suspended bool) {
 	kv := &fakeKV{grant: 16384, used: 900, session: "conv-1", full: 1}
 	s := polykvCouncil(t, e, kv, councilOn())
 	req := longCouncilReq("conv-1", "Why is the sky blue?")
+	// The client's tools ride every request of a task: one without them, in a
+	// conversation tools worked in, is housekeeping and answered plainly.
+	req.Tools = councilTestTools
 	if suspended {
 		e.tools = map[string]string{"researcher": "read_files"}
-		req.Tools = councilTestTools
 	}
 	// An earlier turn's forwarded calls: History files them under their member.
 	req.Messages = append(req.Messages[:2:2], append([]api.Message{

@@ -48,6 +48,14 @@ and this page changes in the same commit as the code.
   council folds its own conversation, before a turn and after its answer.
 - **`format`** makes the turn a plain chat without the council: you are
   steering the output yourself.
+- **A request without tools, in a conversation your tools have worked in,**
+  is answered by the model alone, with no council and no server-side fold:
+  it is your own housekeeping (a compaction summary, a title), not a step of
+  the task. Keep sending your tools on every step of a task. A client that
+  sends `council_chat_state` is taken at its word and keeps the council. The
+  same rule applies to a chat that used tools and then stops sending them,
+  such as the desktop app with web search switched off: its later turns are
+  answered by the model alone.
 - **A client that knows nothing of councils still gets one.** Tools with no
   `council_chat_state` are served by the council: the server keeps the
   turn's resume point for the conversation and sends none, tools you did not

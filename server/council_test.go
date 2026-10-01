@@ -454,6 +454,38 @@ func TestAFormatBypassesTheCouncil(t *testing.T) {
 	}
 }
 
+// A generic client's request without tools, in a conversation its tools
+// worked in, is its own housekeeping (Cerebriline's compaction summary): the
+// model answers it alone. With the council's state, or with no tool traffic
+// before it, it is the council's.
+func TestAToolTasksHousekeepingIsAnsweredPlainly(t *testing.T) {
+	worked := []api.Message{
+		{Role: "user", Content: "Fix the game."},
+		{Role: "assistant", ToolCalls: []api.ToolCall{{ID: "s:call_a", Function: api.ToolCallFunction{Name: "read_files"}}}},
+		{Role: "tool", ToolCallID: "s:call_a", Content: "the file"},
+		{Role: "user", Content: "Summarize the conversation so far."},
+	}
+	state := ""
+	for _, tc := range []struct {
+		name    string
+		req     api.ChatRequest
+		council bool
+	}{
+		{"housekeeping", api.ChatRequest{Messages: worked}, false},
+		{"a plain chat", api.ChatRequest{Messages: []api.Message{{Role: "user", Content: "Why?"}}}, true},
+		{"a council-aware client", api.ChatRequest{Messages: worked, CouncilChatState: &state}, true},
+	} {
+		councilStateKeyIn(t, t.TempDir())
+		e := &councilEngine{route: `{"route":"council"}`}
+		s := councilServer(t, e, councilOn())
+		tc.req.Model = "council"
+		chatChunks(t, s, tc.req)
+		if plain := slices.Equal(e.roles, []string{"chat"}); plain == tc.council {
+			t.Errorf("%s: calls %v, want the council %v", tc.name, e.roles, tc.council)
+		}
+	}
+}
+
 func TestAModelWithoutACouncilIsUntouched(t *testing.T) {
 	no := false
 	for _, c := range []*xollama.Council{nil, {Enabled: &no}} {

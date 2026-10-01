@@ -95,6 +95,14 @@ func councilServes(c *gin.Context, m *Model, req api.ChatRequest) bool {
 	if n, ok := optionAsInt(req.Options["num_predict"]); ok && n > 0 && n < councilMinReply {
 		return false
 	}
+	// A request without tools, in a conversation tools have worked in, is a
+	// generic client's own housekeeping -- its compaction summary, a title --
+	// not a step of the task: the model answers it alone. Through the council
+	// each of Cerebriline's compactions took 13.5 minutes (native.sh 0427).
+	// A client that keeps the council's state is taken at its word.
+	if len(req.Tools) == 0 && req.CouncilChatState == nil && slices.ContainsFunc(req.Messages, func(m api.Message) bool { return len(m.ToolCalls) > 0 }) {
+		return false
+	}
 	// Tools with no council_chat_state are a generic client's: the server
 	// keeps its resume point (council_held.go).
 	return len(req.Messages) > 0 && len(req.Format) == 0 && !req.DebugRenderOnly
