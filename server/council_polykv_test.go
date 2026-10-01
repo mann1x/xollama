@@ -753,6 +753,49 @@ func TestARefusedRootCompactsAndRetries(t *testing.T) {
 	}
 }
 
+// The fold made after a refused root is of the conversation the members
+// read (council.History), the same view every later request is applied to.
+// One made of the client's raw messages never matched: the next apply dropped
+// it, the root was refused again and the council folded again (native.sh
+// 0428: three six-minute folds in its last twenty minutes, each dropped).
+func TestARefusedRootsFoldIsOfTheMembersView(t *testing.T) {
+	// suspended: the turn stops on the researchers' calls, so no idle fold
+	// follows the answer and the record is the refused fold's own.
+	for _, suspended := range []bool{false, true} {
+		t.Run(fmt.Sprint("suspended=", suspended), func(t *testing.T) { refusedRootFold(t, suspended) })
+	}
+}
+
+func refusedRootFold(t *testing.T, suspended bool) {
+	councilRoots.reset()
+	councilCompactions.reset()
+	councilStateKeyIn(t, t.TempDir())
+	e := &councilEngine{route: `{"route":"council"}`}
+	kv := &fakeKV{grant: 16384, used: 900, session: "conv-1", full: 1}
+	s := polykvCouncil(t, e, kv, councilOn())
+	req := longCouncilReq("conv-1", "Why is the sky blue?")
+	if suspended {
+		e.tools = map[string]string{"researcher": "read_files"}
+		req.Tools = councilTestTools
+	}
+	// An earlier turn's forwarded calls: History files them under their member.
+	req.Messages = append(req.Messages[:2:2], append([]api.Message{
+		{Role: "assistant", ToolCalls: []api.ToolCall{{ID: "r1:call_a", Function: api.ToolCallFunction{Name: "read_files"}}}},
+		{Role: "tool", ToolCallID: "r1:call_a", Content: "notes " + words(300, "t1")},
+		{Role: "assistant", Content: "So it is the wavelength. " + words(300, "a1b")},
+	}, req.Messages[2:]...)...)
+	chatChunks(t, s, req)
+	councilIdle.Wait()
+	rec := councilCompactions.get("conv-1")
+	if rec == nil {
+		t.Fatal("no compaction record after the refused root")
+	}
+	view := council.History(append([]api.Message{{Role: "system"}}, req.Messages...))
+	if len(view)-1 < rec.n || compactionHash(view[1:1+rec.n]) != rec.hash {
+		t.Errorf("the record (n=%d) does not apply to the members' view of the conversation", rec.n)
+	}
+}
+
 // A refusal that no fold can relieve is not retried: the planner runs on its
 // own copy, as without pools.
 func TestARefusedRootThatCannotFoldIsNotRetried(t *testing.T) {

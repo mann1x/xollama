@@ -191,7 +191,6 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	cfg.Window = members.window
 	members.budgetMessage = councilBudgetMessage(m, req)
 	reserve := councilReserve(cfg)
-	full := conv // the conversation as the client sent it
 	sent := conv // and kept so, for the size the done chunk reports
 	// answer is set by the turn and read once the response is written; a
 	// client that left may leave the turn still running, hence atomic.
@@ -241,7 +240,6 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 			// cycle of the synthesizer start their own turns (generic.go).
 			cfg.CheckCall = council.InferTurnCheck(cfg.Tools, all[len(conv):])
 		}
-		full = conv
 	}
 	// The earlier turns as the members read them: each forwarded call under
 	// the member that made it, without its working notes (internal/council
@@ -260,7 +258,10 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		// answers "compact the session" gets exactly that, once.
 		if err := tree.buildRoot(ctx, conv); errors.Is(err, llm.ErrSessionFull) && compactor != nil {
 			before := councilCompactions.get(compactor.key)
-			if short := compactor.compact(ctx, full, "refused", false, pressure); councilCompactions.get(compactor.key) != before {
+			// The members' view (hist), as the fold above and every later
+			// request's apply: a record of the raw messages never matches it,
+			// and was dropped by the next request (native.sh 0428).
+			if short := compactor.compact(ctx, hist, "refused", false, pressure); councilCompactions.get(compactor.key) != before {
 				conv = councilMembersView(short)
 				members.setConvTokens(compactor.sentTokens(ctx, sent))
 				_ = tree.buildRoot(ctx, conv)
@@ -282,7 +283,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 				cancel()
 			}
 			if a != nil && compactor != nil {
-				s.councilIdleCompact(compactor, full, *a)
+				s.councilIdleCompact(compactor, hist, *a) // the members' view, as every apply
 			}
 		}()
 	}()

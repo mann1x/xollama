@@ -456,18 +456,22 @@ func (c *councilCompactor) compact(ctx context.Context, conv []api.Message, forc
 	return out
 }
 
-// sentTokens is the size in tokens of the conversation the client sent, the
-// record applied, tools rendered: what a plain model's prompt_eval_count would
-// be, and so what the done chunk reports. It is the whole request, this
-// turn's tool round trips included -- not the history compact sizes, which a
-// generic harness's one-message task leaves too short to measure (native.sh
-// 0426: a research round reported the members' 393k). 0 when unmeasured.
+// sentTokens is the size in tokens of the conversation the client sent, tools
+// rendered: what a plain model's prompt_eval_count would be, and so what the
+// done chunk reports. It is the whole request, this turn's tool round trips
+// included -- not the history compact sizes, which a generic harness's
+// one-message task leaves too short to measure (native.sh 0426: a research
+// round reported the members' 393k). 0 when unmeasured.
+//
+// It never goes through apply: the client's raw messages are not the members'
+// view a record is made of, and apply drops a record that does not match --
+// which dropped every fold the moment it was made (native.sh 0427 and 0428:
+// eight folds of about six minutes each, all eight dropped).
 func (c *councilCompactor) sentTokens(ctx context.Context, sent []api.Message) int {
 	if c == nil {
 		return 0
 	}
-	applied, _ := c.apply(sent)
-	z, err := c.measure(ctx, applied)
+	z, err := c.measure(ctx, sent)
 	if err != nil {
 		return 0
 	}

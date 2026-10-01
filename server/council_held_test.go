@@ -77,4 +77,14 @@ func TestTheSentConversationIsMeasuredWhole(t *testing.T) {
 	if got := none.sentTokens(t.Context(), sent); got != 0 {
 		t.Errorf("no compactor measured %d", got)
 	}
+
+	// Measuring never touches the fold: a record of the members' view does
+	// not match the client's raw messages, and must survive being measured.
+	c.key = "sent-measure"
+	councilCompactions.put(c.key, &compactionRecord{n: 1, hash: "of-the-members-view"})
+	t.Cleanup(func() { councilCompactions.drop(c.key) })
+	c.sentTokens(t.Context(), sent)
+	if councilCompactions.get(c.key) == nil {
+		t.Error("measuring the sent conversation dropped the compaction record")
+	}
 }

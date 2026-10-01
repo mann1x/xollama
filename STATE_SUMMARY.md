@@ -5,6 +5,13 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-01 — Fixes for 0427/0428's lost time: check tools read, folds stick, housekeeping is plain.**
+> - `check_file`, and any tool whose name says check, lint, validate, verify or diagnose, now counts as read-only (5f29e671b). Researchers and critics get it, and the synthesizer's calls no longer count as changes. A write word still wins.
+> - **Every fold now sticks.** Two causes, both found while testing the refused-root fold:
+>   - `sentTokens` (194c9cab6, this morning) measured the client's raw messages through `apply`. `apply` drops a record that doesn't match, and the raw messages never match the members' view, so every fold was dropped the moment it was made. All 8 server folds of series 4 were dropped; series 3 had none. Now it measures the raw messages directly and the record is never touched.
+>   - The refused-root fold and the idle fold folded the client's raw messages (`full`). They now fold the members' view (`hist`), as every apply does.
+>   - Guards: `TestARefusedRootsFoldIsOfTheMembersView` (each site fails it alone) and `TestTheSentConversationIsMeasuredWhole` (fails with `apply` back in).
+
 > **2026-10-01 — Why council runs 0427 and 0428 lost time (analysis; no code change yet).**
 > - Neither run ever got the game to parse. Every oracle run in both was a SyntaxError: the original one-bracket error on a long minified line (`dDec`) became "Unexpected token '{'" on the next method and stayed that way. 0427 ended as a TIMEOUT at 7,204 s. 0428 was stopped at 12:38 by the owner, with about 10 minutes of its cap left.
 > - **The members could not locate the error.** Read-only tools are inferred from their names, and `check_file` has neither a read word nor a run word. So researchers and critics never get it, and for the synthesizer it counts as a change. 0428 called `check_file` 0 times (0427: 1), against 47 reads and 11 edits. The synthesizer edited a different long line almost every time, twice resending one unchanged. Plain 0425 called it 6 times, with 16 reads and 21 edits.
