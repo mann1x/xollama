@@ -5,6 +5,14 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-01 — Why council runs 0427 and 0428 lost time (analysis; no code change yet).**
+> - Neither run ever got the game to parse. Every oracle run in both was a SyntaxError: the original one-bracket error on a long minified line (`dDec`) became "Unexpected token '{'" on the next method and stayed that way. 0427 ended as a TIMEOUT at 7,204 s. 0428 was stopped at 12:38 by the owner, with about 10 minutes of its cap left.
+> - **The members could not locate the error.** Read-only tools are inferred from their names, and `check_file` has neither a read word nor a run word. So researchers and critics never get it, and for the synthesizer it counts as a change. 0428 called `check_file` 0 times (0427: 1), against 47 reads and 11 edits. The synthesizer edited a different long line almost every time, twice resending one unchanged. Plain 0425 called it 6 times, with 16 reads and 21 edits.
+> - **Researchers and critics took most of the time.** 0428: 30 round trips with researchers or critics took 4,419 s (79% of the time in requests), against 31 synthesizer steps (1,079 s), over 5 synthesizer cycles. 0427: 3,070 s against 1,973 s.
+> - **Server-side compaction is thrown away.** The refused-root fold in `councilChat` folds `full`, the client's raw conversation, while every other fold and apply uses `hist` (after `council.History`, which rewrites tool-call messages). The record's hash never matches, so each fold (about 6 minutes) is dropped by the next apply, the root is refused again, and another fold follows. 0428's last 20 minutes were three folds, each dropped.
+> - **A client compaction runs through the whole council.** Each of Cerebriline's compaction requests in 0427 (route=direct, no tools) took 13.5 minutes: a server fold of the same conversation (6 min 16 s), a refused fold (5 min 39 s), then the summary the client asked for. Two of them, plus a 426 s round at 161k, account for most of 0427's last 2,000 s.
+> - Analysis files: `/srv/ml/xollama-phase2/as-ollama/e2g-s4/` (`server-1.log`, `losttime-*.txt`).
+
 > **2026-10-01 — A Q4_K_M council fits the 3090 at the same window, on kvarn2.**
 > - Owner: IQ2_M costs about 3.6x the steps of Q4_K_M (v6 arms), and every council role pays it. New tags on eleven2go: `omni-council-q4km-kv2` (omnimerge-v4 Q4_K_M MTP, `kv: kvarn2`, `num_ctx` 196,608, 2 live slots, the council settings of `omni-council-think`) and its plain twin `omni-plain-q4km-kv2` (same, council off). A plain arm uses its council's KV type even where it would not need it (owner).
 > - Measured on b208, 393,216 cells (196,608 x 2), all fully resident on the GPU:
