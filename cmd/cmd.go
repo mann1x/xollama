@@ -2777,6 +2777,9 @@ func NewCLI() *cobra.Command {
 		// xollama-hook: model-config — `tweak` edits the fork's own model
 		// settings; everything it does lives in cmd/tweak.
 		tweakCmd,
+		// xollama-hook: media — the media catalog, Hugging Face discovery and
+		// templates; cmd/tweak/mediacmd.go.
+		tweak.MediaCommand(tweak.Options{Heartbeat: checkServerHeartbeat}),
 	)
 
 	return rootCmd

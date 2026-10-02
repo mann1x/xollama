@@ -230,7 +230,7 @@ func (s *Server) CreateHandler(c *gin.Context) {
 				send(gin.H{"error": err.Error()})
 				return
 			}
-		} else {
+		} else if !mediaTemplateCreate(r) { // xollama-hook: media — a media-only template has no weights to name
 			send(gin.H{"error": errNeitherFromOrFiles.Error(), "status": http.StatusBadRequest})
 			return
 		}

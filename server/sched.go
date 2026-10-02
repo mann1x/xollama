@@ -573,7 +573,11 @@ func (s *Scheduler) load(req *LlmRequest, systemInfo ml.SystemInfo, gpus []ml.De
 
 	if llama == nil {
 		var err error
-		if !req.model.IsMLX() {
+		// xollama-hook: media — a model's media runs in an engine process of
+		// its own, with no GGUF to estimate (server/media.go).
+		if isMediaKey(req.model.ModelPath) {
+			llama, err = newMediaRunnerFn(req.model)
+		} else if !req.model.IsMLX() {
 			var loadErr error
 			f, loadErr = llm.LoadModel(req.model.ModelPath, 1024, req.model.ModelShardPaths...)
 			if loadErr != nil {

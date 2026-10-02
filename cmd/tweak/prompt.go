@@ -165,7 +165,7 @@ func (a *asker) render(cfg *xollama.Config, f field, current string) []string {
 		a.printf("   type it, `@path` to read it from a file, or `unset`\n")
 		return nil
 	case kindBlob:
-		a.printf("   a file path, a sha256 digest, or `unset`\n")
+		a.printf("   a file path, an hf.co/<owner>/<repo>/<file> reference, a sha256 digest, or `unset`\n")
 		return nil
 	}
 

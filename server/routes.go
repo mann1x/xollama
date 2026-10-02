@@ -1860,6 +1860,11 @@ func GetModelInfo(req api.ShowRequest) (*api.ShowResponse, error) {
 		return resp, nil
 	}
 
+	// xollama-hook: media — a media-only template has no weights to read.
+	if m.ModelPath == "" && modelMedia(m) != nil {
+		return resp, nil
+	}
+
 	kvData, tensors, err := getModelData(m.modelPaths(), req.Verbose)
 	if err != nil {
 		return nil, err
@@ -2172,6 +2177,7 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	// xollama-hook: system-settings — see plans/system-settings.md
 	r.POST(api.XollamaSettingsPath, s.SettingsHandler)
 	r.POST(api.XollamaLinkProbePath, s.LinkProbeHandler)
+	r.POST(api.XollamaMediaPullPath, s.MediaPullHandler) // xollama-hook: media
 	r.GET("/api/status", s.StatusHandler)
 	// Codex uses this existing Ollama listener for both native and Ollama
 	// models. The proxy selects the upstream per request.

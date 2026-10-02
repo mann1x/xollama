@@ -658,3 +658,35 @@ func (m *Media) Prune() *Media {
 	}
 	return m
 }
+
+// MapComponents replaces every component reference with f's answer, in
+// place: a catalog template's hf.co references become digests this way.
+func (m *Media) MapComponents(f func(string) string) {
+	if m.IsZero() {
+		return
+	}
+	set := func(p *string) {
+		if *p != "" {
+			*p = f(*p)
+		}
+	}
+	if i := m.Image; i != nil {
+		set(&i.Model)
+		set(&i.VAE)
+		set(&i.LLM)
+		set(&i.LLMVision)
+	}
+	if s := m.STT; s != nil {
+		set(&s.Model)
+	}
+	if t := m.TTS; t != nil {
+		set(&t.Model)
+		set(&t.Vocoder)
+		set(&t.Voices)
+	}
+	if v := m.Video; v != nil {
+		set(&v.Model)
+		set(&v.VAE)
+		set(&v.TextEncoder)
+	}
+}

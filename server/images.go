@@ -171,6 +171,7 @@ const (
 // Capabilities returns the capabilities that the model supports
 func (m *Model) Capabilities() []model.Capability {
 	capabilities := m.capabilitiesForTemplate(templateCapabilitySelected)
+	capabilities = append(capabilities, mediaCapabilities(m)...) // xollama-hook: media
 	if len(capabilities) == 0 {
 		slog.Warn("unknown capabilities for model", "model", m.Name)
 	}

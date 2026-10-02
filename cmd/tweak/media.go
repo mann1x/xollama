@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -12,9 +13,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/format"
+	"github.com/ollama/ollama/internal/mediahub"
 	"github.com/ollama/ollama/types/xollama"
 )
 
@@ -27,9 +30,19 @@ import (
 // where it is typed and uploaded by write, so the config only ever holds
 // digests and --dry-run sends nothing.
 
-// mediaFiles maps a digest to the local file it was hashed from, for write to
-// upload. One tweak run per process, so a package variable is enough.
-var mediaFiles = map[string]string{}
+// mediaFiles maps a digest to the local file it was hashed from, and
+// mediaSources a digest to the Hugging Face file it was resolved from, for
+// write to send or have the server fetch. One run per process, so package
+// variables are enough.
+var (
+	mediaFiles   = map[string]string{}
+	mediaSources = map[string]string{}
+)
+
+// hubResolve names a Hugging Face file's digest; tests swap it.
+var hubResolve = func(ctx context.Context, r mediahub.Ref) (mediahub.File, error) {
+	return mediahub.Resolve(ctx, &http.Client{Timeout: 30 * time.Second}, r)
+}
 
 var digestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
@@ -50,7 +63,17 @@ func setBlob(v string, dst *string) error {
 		return nil
 	}
 	if strings.HasPrefix(s, "hf.co/") || strings.Contains(s, "huggingface.co/") {
-		return fmt.Errorf("a Hugging Face reference is not fetched yet; download the file and give its path")
+		ref, err := mediahub.ParseRef(s)
+		if err != nil {
+			return err
+		}
+		f, err := hubResolve(context.Background(), ref)
+		if err != nil {
+			return err
+		}
+		mediaSources[f.Digest] = ref.String()
+		*dst = f.Digest
+		return nil
 	}
 	if rest, ok := strings.CutPrefix(s, "~/"); ok {
 		home, err := os.UserHomeDir()
@@ -88,13 +111,15 @@ func hashFile(path string) (string, error) {
 	return fmt.Sprintf("sha256:%x", h.Sum(nil)), nil
 }
 
-// uploadMedia sends the server every component that was given as a local
-// file and that it does not have yet. A digest typed as such is the
-// operator's word that the server has it; create refuses it otherwise.
+// uploadMedia gets the server every component it does not have yet: a local
+// file is uploaded, a Hugging Face file is fetched by the server itself. A
+// digest typed as such is the operator's word that the server has it; create
+// refuses it otherwise.
 func uploadMedia(ctx context.Context, client *api.Client, cfg *xollama.Config, out io.Writer) error {
 	for _, c := range cfg.Media.Components() {
-		path, ok := mediaFiles[c.Digest]
-		if !ok {
+		path, local := mediaFiles[c.Digest]
+		source, remote := mediaSources[c.Digest]
+		if !local && !remote {
 			continue
 		}
 		have, err := client.HeadBlob(ctx, c.Digest)
@@ -103,6 +128,12 @@ func uploadMedia(ctx context.Context, client *api.Client, cfg *xollama.Config, o
 		}
 		if have {
 			fmt.Fprintf(out, "   %s is already on the server\n", c.Name)
+			continue
+		}
+		if !local {
+			if err := pullMedia(ctx, client, c.Name, source, c.Digest, out); err != nil {
+				return err
+			}
 			continue
 		}
 		f, err := os.Open(path)
@@ -120,6 +151,26 @@ func uploadMedia(ctx context.Context, client *api.Client, cfg *xollama.Config, o
 		if err != nil {
 			return fmt.Errorf("upload %s: %w", c.Name, err)
 		}
+	}
+	return nil
+}
+
+// pullMedia has the server fetch one Hugging Face file, reporting progress
+// every quarter.
+func pullMedia(ctx context.Context, client *api.Client, name, source, digest string, out io.Writer) error {
+	fmt.Fprintf(out, "   fetching %s from %s\n", name, source)
+	next := int64(25)
+	err := client.MediaPull(ctx, &api.MediaPullRequest{Source: source, Digest: digest}, func(p api.ProgressResponse) error {
+		if p.Total > 0 && p.Completed*100/p.Total >= next {
+			fmt.Fprintf(out, "   %s %d%% of %s\n", name, p.Completed*100/p.Total, format.HumanBytes(p.Total))
+			for next <= p.Completed*100/p.Total {
+				next += 25
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("fetch %s: %w", name, err)
 	}
 	return nil
 }
@@ -312,6 +363,10 @@ var videoKind = mediaKind[xollama.VideoMedia]{
 	model:  func(t *xollama.VideoMedia) string { return t.Model },
 }
 
+// blobHelp closes every component question.
+const blobHelp = "\nA file path is uploaded on write; an hf.co/<owner>/<repo>/<file> reference is fetched\n" +
+	"by the server from Hugging Face; a sha256 digest names a blob the server has."
+
 // head is a kind's model row: its switch, and the flag that scopes the walk
 // to the kind. It is asked on every walk, and Enter leaves it unset.
 func head[T any](k mediaKind[T], title, help string, at func(*T) *string, group []field) field {
@@ -321,7 +376,7 @@ func head[T any](k mediaKind[T], title, help string, at func(*T) *string, group 
 	}
 	return field{
 		name: k.name, path: "media." + k.name + ".model",
-		title: title, help: help + "\nA file path is uploaded on write; a sha256 digest names a blob the server has.",
+		title: title, help: help + blobHelp,
 		kind: kindBlob, head: true, group: names,
 		get: func(c *xollama.Config) string {
 			if t := k.get(c); t != nil {
@@ -334,7 +389,7 @@ func head[T any](k mediaKind[T], title, help string, at func(*T) *string, group 
 }
 
 func blobRow[T any](k mediaKind[T], name, path, title, help string, at func(*T) *string) field {
-	return k.row(name, path, title, help+"\nA file path is uploaded on write; a sha256 digest names a blob the server has.",
+	return k.row(name, path, title, help+blobHelp,
 		kindBlob, nil,
 		func(t *T) string { return *at(t) },
 		func(t *T, v string) error { return setBlob(v, at(t)) })

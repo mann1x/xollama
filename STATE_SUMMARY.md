@@ -5,6 +5,21 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-02 — Media endpoints, Phase 2: the media runner, `hf.co` sourcing and `xollama media`.**
+> - **Runner:** a model's media runs in its own media-only opencoti process (`llm/engine_media.go`), scheduled under `media:<manifest digest>` through one hook in `Scheduler.load` (`server/media.go`).
+>   - Reserves go to the GPU with the most free memory.
+>   - An engine missing a configured feature is refused at start.
+> - **Capabilities:** `image_generation`, `image_edit`, `speech`, `transcription` and `video` show in `/api/show`.
+> - **Media-only templates:** `create` and `show` now handle a model with no GGUF.
+> - **Sourcing:** `hf.co/<repo>@<rev>:<path>` resolves by HEAD (`internal/mediahub`), and the server fetches it with upstream's `downloadBlob` (`/api/xollama/media/pull`).
+> - **Discovery:** a catalog (Klein, Z-Image, Whisper, OuteTTS, Kokoro, Supertonic, KittenTTS, Wan 2.1/2.2, `media-kit`) and `xollama media list|search|files|create`.
+> - **Live on solidPC (dev engine c7):** OuteTTS speech → Whisper transcription round-tripped; `media create` fetched Whisper (874 MB in 37 s) and attached OuteTTS to Qwen3-4B. 12 mutations, all killed.
+> - **opencoti:**
+>   - #623: mp3 encoding, Klein `ref` edit, combined-boot gate and `/v1/videos` are in M7;
+>   - #624: audio.cpp TTS and mp4/h264 are in M7, and the provisional `--video-*` flag names were sent.
+>   - xollama never encodes audio.
+> - Next: Phase 3, the OpenAI routes, with image generation first for Cerebriline. Phase 0 waits on b97 and the M7 build.
+
 > **2026-10-02 — Media endpoints, Phase 1: schema v7 `media`.**
 > - **Schema:** `xollama.json` gains `media.image`, `media.stt`, `media.tts` and `media.video` (`types/xollama/media.go`).
 >   - Components are named by digest. `create` writes each one as an `application/vnd.xollama.media` layer named `media/<kind>.<role>` (`create/xollama_media.go`, inside the `model-config` hook).

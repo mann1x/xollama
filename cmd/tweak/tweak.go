@@ -126,7 +126,7 @@ func flagUsage(f field) string {
 	case kindText:
 		values = "TEXT|@file|unset"
 	case kindBlob:
-		values = "PATH|sha256:DIGEST|unset"
+		values = "PATH|hf.co/OWNER/REPO/FILE|sha256:DIGEST|unset"
 	}
 	return fmt.Sprintf("%s (%s); bare asks", f.path, values)
 }

@@ -194,7 +194,9 @@ xollama tweak model qwen3:8b \
 ```
 
 - **Components** (`--image`, `--image-vae`, `--image-llm`, `--tts`,
-  `--tts-vocoder`, `--stt`, `--video`, ...) take a file path or a sha256 digest.
+  `--tts-vocoder`, `--stt`, `--video`, ...) take a file path, a sha256 digest,
+  or a Hugging Face file as `hf.co/<owner>/<repo>[@rev]:<path>`. The server
+  fetches a Hugging Face file itself.
   A path is hashed when you give it and uploaded when the model is written,
   only if the server does not already have it; `--dry-run` sends nothing.
   The model then carries each one as a layer, so `push`, `pull` and `rm` handle
@@ -210,8 +212,31 @@ xollama tweak model qwen3:8b \
   `tweak server` does not offer media: it belongs to one model, not to every
   model.
 
-`xollama show` lists them under `media.*`. The routes that serve them
-(`/v1/images/*`, `/v1/audio/*`) come with the next phase of
+`xollama show` lists them under `media.*`, and the model's capabilities gain
+`image_generation`, `image_edit`, `speech`, `transcription` or `video`. The
+engines run in an opencoti process of their own, started on the first media
+request and unloaded like any model.
+
+### Ready-made media models
+
+`xollama media` finds and installs media models without assembling the files
+by hand:
+
+```shell
+xollama media list                         # the catalog, --kind image|stt|tts|video
+xollama media search tts kokoro            # GGUF repos on Hugging Face
+xollama media files cstr/kokoro-82m-GGUF   # the files in one repo
+xollama media create whisper-large-v3-turbo whisper:turbo
+xollama media create flux2-klein-4b --to qwen3:8b   # add to an existing model
+```
+
+`create` makes a media-only model, or with `--to` adds the entry's engine to a
+model you already have, keeping its other settings. `--dry-run` prints the
+config without fetching anything. Catalog entries marked `opencoti M7` need an
+engine build that is not out yet.
+
+The routes that serve them (`/v1/images/*`, `/v1/audio/*`) come with the next
+phase of
 [the media plan](https://github.com/mann1x/xollama/blob/dev/plans/media-integration.md).
 
 ## Pinning a drafter's driver

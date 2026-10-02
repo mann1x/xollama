@@ -1,6 +1,6 @@
 # Media endpoints: images, speech, transcription (video later)
 
-**Status:** ACTIVE. Phase 1 (schema v7) closed 2026-10-02. Phase 0 engine measurements wait on the b97 handoff. Phase 2 next.
+**Status:** ACTIVE. Phase 1 (schema v7) and Phase 2 (media-only runner, `hf.co` sourcing, catalog, `xollama media`) closed 2026-10-02. Phase 0 engine measurements wait on the b97 handoff and the M7 build. Phase 3 (routes) next.
 **Owner:** xollama; engine work by opencoti.
 
 ## 1. What the owner asked for (2026-10-02, condensed)
@@ -246,14 +246,30 @@ All voice models are downloaded to `/srv/ml/media/` for the tests.
   **schema v7 `media`** (components, `defaults`, `fixed`) with validation, `tweak model` Media part,
   `xollama show`, `tweak show model`, sourcing components from a path or
   `hf.co`, and the layers. Unit and mutation tests.
-- **Phase 2: launch and scheduler.**
-  - Media runs in **its own media-only engine process** (no `-m`) until opencoti's M7 gate covers a combined boot beside PolyKV, elastic slots and the rolling window (#622).
-  - Flags, media-only boot, refusal on
-  stock, reserves in the estimate, capabilities, the per-engine queue.
+- **Phase 2 — CLOSED 2026-10-02.** Built:
+  - **Runner:** `llm/engine_media.go`. A model's media runs in its own media-only opencoti process (no `-m`) until M7 gates a combined boot (#622/#623).
+    - The scheduler key is `media:<manifest digest>` (`mediaTwin`, `server/media.go`). Loading goes through one hook in `Scheduler.load`.
+    - `MediaArgs` maps the config to flags. `MediaEstimate` adds each engine's reserve (image 3072, STT 512, TTS 256, video 3072 MiB) to the GPU with the most free memory.
+    - `WaitUntilRunning` refuses an engine whose `/health` `features` lack a configured kind. `--tts-engine` is never sent for OuteTTS.
+    - Video flags (`--video-*`) are provisional and were sent to opencoti in the #624 ack.
+  - **Capabilities:** `image_generation`, `image_edit`, `speech`, `transcription` and `video` in `/api/show` (`images.go` hook). Never upstream's `image`, because generate and chat refuse any model carrying it.
+  - **Media-only templates:** `create` with no FROM and only `media` (`create.go` hook); `show` skips the GGUF read for them (`GetModelInfo` hook).
+  - **`hf.co` sourcing, pulled forward from Phase 4.** The owner asked to re-use ollama's existing Hugging Face fetch.
+    - `internal/mediahub` resolves a file with a HEAD that doesn't follow the redirect: `X-Linked-Etag` is the sha256, `X-Linked-Size` the size, `X-Repo-Commit` the revision.
+    - `/api/xollama/media/pull` (`server/media_pull.go`) fetches the blob through upstream's `downloadBlob` from `hf.co/v2/<repo>/blobs/sha256:<oid>`. That endpoint serves any LFS file: gguf, safetensors and .bin were all verified.
+  - **Catalog and discovery:** `internal/mediahub/catalog.go` and `xollama media list | search KIND [QUERY] | files REPO | create ID [NAME] [--to MODEL]` (`cmd/tweak/mediacmd.go`). Entries that need engine support missing today are marked `opencoti M7`: audio.cpp TTS, Klein `ref` edit, mp4 video.
+  - **Live on solidPC, dev engine `0.10.5-c7-2610020719001`:**
+    - an OuteTTS + Whisper media-only process was ready in 1.5 s;
+    - speech then transcription round-tripped "The quick brown fox jumps over the lazy dog.";
+    - `media create whisper-large-v3-turbo` fetched 874 MB from HF in 37 s;
+    - `media create outetts-0.3-500m --to qwen3-4b:media` fetched the vocoder and added `speech` to the model's capabilities.
+  - **Tests:** unit tests, a live test gated by `XOLLAMA_MEDIA_LIVE_DIR`, and an HF resolve test gated by `XOLLAMA_HF_LIVE` (23 refs). 12 mutations, all killed.
+  - **Not built (moved to Phase 3, with the routes):** the per-engine request queue and the refusal on stock at request time. A media runner never starts on stock, because it always launches opencoti.
+- **Phase 2 as planned:** media-only engine process, flags, refusal on stock, reserves in the estimate, capabilities, the per-engine queue.
 - **Phase 3: routes.** Image generation first, which is **Cerebriline's
   need**. Then edit, speech, transcription, and the `/v1/models`
   modalities. Live tests against b97 and against Cerebriline's image tool.
-- **Phase 4: templates.** `flux2-klein:4b`, `whisper:turbo`, `outetts:0.3`,
+- **Phase 4: templates.** The `hf.co` sourcing and the catalog are built (Phase 2); what is left is publishing, per Phase 0: `flux2-klein:4b`, `whisper:turbo`, `outetts:0.3`,
   later `kokoro`, `supertonic`, `kittentts`, and a mixed `media-kit`. Pushed
   or published as `hf.co` references, per Phase 0.
 - **Phase 5: SurfSense.**
@@ -271,7 +287,9 @@ All voice models are downloaded to `/srv/ml/media/` for the tests.
 | Registry push test | **Push one test template under `mannix`.** Claude cannot delete it from ollama.com. The owner deletes it, and Claude says when the test is done and the template can go. |
 | SurfSense | **Docs first, provider entry later.** `docs/xollama/surfsense.mdx` covers what works through `ollama_chat` and `openai_compatible`. A first-class entry is decided after it has been tested. |
 | Media settings | **The template owns them.** Its `media.<kind>.defaults` go to the engine at launch and fill every field a request leaves out. A client value wins unless the field is `fixed` (§4.1). |
-| MP3 | **Asked of opencoti (#620).** xollama passes through what the engine encodes, with no new Go dependency. Until then, Phase 0 tests whether SurfSense accepts WAV. |
+| MP3 | **opencoti encodes it (M7, #623).** xollama never encodes audio; it passes through what the engine returns. mp3 becomes the speech default in M7. |
+| Model sourcing | **Re-use ollama's `hf.co` fetch** (owner, 2026-10-02), plus a model catalog and discovery (`xollama media`). |
+| M7 scope | **Built on the assumption** that M7 brings audio.cpp (`--tts-engine audiocpp`) and mp4/h264 video. Confirmed by opencoti in #624. |
 
 ## 7. Asked of opencoti (mails #620 and #621, 2026-10-02); answered in #622
 

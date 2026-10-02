@@ -190,3 +190,19 @@ func TestMediaPruneDropsWhatStatesNothing(t *testing.T) {
 		t.Fatalf("Prune = %+v, want the model kept and the empty defaults dropped", got)
 	}
 }
+
+func TestMapComponentsReachesEveryComponent(t *testing.T) {
+	m := kitchen().Media
+	m.Video = &VideoMedia{Model: digest('f'), VAE: digest('g'), TextEncoder: digest('h')}
+	m.TTS.Vocoder, m.TTS.Voices, m.Image.LLMVision = digest('i'), digest('j'), digest('k')
+	n := 0
+	m.MapComponents(func(s string) string { n++; return "x" + s })
+	if n != len(m.Components()) || n != 11 {
+		t.Fatalf("mapped %d of %d components", n, len(m.Components()))
+	}
+	for _, c := range m.Components() {
+		if !strings.HasPrefix(c.Digest, "x") {
+			t.Fatalf("%s not mapped", c.Name)
+		}
+	}
+}

@@ -2,6 +2,7 @@ package tweak
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/ollama/ollama/api"
+	"github.com/ollama/ollama/internal/mediahub"
 	"github.com/ollama/ollama/types/xollama"
 )
 
@@ -33,19 +35,21 @@ type mediaServer struct {
 	mu      sync.Mutex
 	calls   []string
 	blobs   map[string][]byte
+	pulled  []string
+	show    *xollama.Config
 	created api.CreateRequest
 }
 
 func newMediaServer(t *testing.T, have ...string) *mediaServer {
 	t.Helper()
-	ms := &mediaServer{blobs: map[string][]byte{}}
+	ms := &mediaServer{blobs: map[string][]byte{}, show: &xollama.Config{}}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ms.mu.Lock()
 		defer ms.mu.Unlock()
 		ms.calls = append(ms.calls, r.Method+" "+r.URL.Path)
 		switch {
 		case r.URL.Path == "/api/show":
-			json.NewEncoder(w).Encode(api.ShowResponse{})
+			json.NewEncoder(w).Encode(api.ShowResponse{Xollama: ms.show})
 		case strings.HasPrefix(r.URL.Path, "/api/blobs/"):
 			d := strings.TrimPrefix(r.URL.Path, "/api/blobs/")
 			if r.Method == http.MethodHead {
@@ -59,6 +63,11 @@ func newMediaServer(t *testing.T, have ...string) *mediaServer {
 			}
 			ms.blobs[d], _ = io.ReadAll(r.Body)
 			w.WriteHeader(http.StatusCreated)
+		case r.URL.Path == "/api/xollama/media/pull":
+			var req api.MediaPullRequest
+			json.NewDecoder(r.Body).Decode(&req)
+			ms.pulled = append(ms.pulled, req.Source+" "+req.Digest)
+			json.NewEncoder(w).Encode(api.ProgressResponse{Status: "success", Digest: req.Digest})
 		case r.URL.Path == "/api/create":
 			json.NewDecoder(r.Body).Decode(&ms.created)
 			json.NewEncoder(w).Encode(api.ProgressResponse{Status: "success"})
@@ -160,7 +169,7 @@ func TestSetBlob(t *testing.T) {
 	}
 	for in, want := range map[string]string{
 		"sha256:abc":                   "not a sha256 digest",
-		"hf.co/leejet/FLUX.2-klein-4B": "Hugging Face",
+		"hf.co/leejet/FLUX.2-klein-4B": "want hf.co/<owner>/<repo>/<file>",
 		t.TempDir():                    "is a directory",
 		"/no/such/file.gguf":           "no such file",
 	} {
@@ -211,5 +220,119 @@ func TestEditingMediaLeavesTheConfigItWasReadFromAlone(t *testing.T) {
 	}
 	if cfg.Media.Image.Defaults.Steps != 8 || current.Media.Image.Defaults.Steps != 4 {
 		t.Fatalf("new steps = %d, current steps = %d; want 8 and 4", cfg.Media.Image.Defaults.Steps, current.Media.Image.Defaults.Steps)
+	}
+}
+
+func TestAHuggingFaceComponentIsFetchedByTheServer(t *testing.T) {
+	want := "sha256:" + strings.Repeat("5", 64)
+	old := hubResolve
+	t.Cleanup(func() { hubResolve = old })
+	hubResolve = func(_ context.Context, r mediahub.Ref) (mediahub.File, error) {
+		return mediahub.File{Ref: r, Digest: want}, nil
+	}
+	ms := newMediaServer(t)
+
+	execute(t, "m:test", "--tts=hf.co/audio-cpp/audio.cpp-gguf/Kokoro-82M-GGUF/kokoro-82m-q8_0.gguf", "--tts-engine=audiocpp", "--yes")
+
+	if len(ms.blobs) != 0 {
+		t.Fatal("the CLI uploaded what the server should fetch")
+	}
+	if len(ms.pulled) != 1 || ms.pulled[0] != "hf.co/audio-cpp/audio.cpp-gguf/Kokoro-82M-GGUF/kokoro-82m-q8_0.gguf "+want {
+		t.Fatalf("pulled = %v", ms.pulled)
+	}
+	if ms.created.Xollama.Media.TTS.Model != want {
+		t.Fatalf("model = %q, want the hub's digest", ms.created.Xollama.Media.TTS.Model)
+	}
+}
+
+func fakeHub(t *testing.T) {
+	t.Helper()
+	old := hubResolve
+	t.Cleanup(func() { hubResolve = old })
+	hubResolve = func(_ context.Context, r mediahub.Ref) (mediahub.File, error) {
+		sum := sha256.Sum256([]byte(r.String()))
+		return mediahub.File{Ref: r, Digest: fmt.Sprintf("sha256:%x", sum), Size: 1 << 20}, nil
+	}
+}
+
+func mediaCreate(t *testing.T, args ...string) string {
+	t.Helper()
+	cmd := MediaCommand(Options{})
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs(append([]string{"create"}, args...))
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("%v\n%s", err, out.String())
+	}
+	return out.String()
+}
+
+func TestMediaCreateMakesATemplateWithNoWeights(t *testing.T) {
+	fakeHub(t)
+	ms := newMediaServer(t)
+
+	mediaCreate(t, "media-kit", "kit:latest")
+
+	if ms.created.Model != "kit:latest" || ms.created.From != "" {
+		t.Fatalf("create = model %q from %q", ms.created.Model, ms.created.From)
+	}
+	m := ms.created.Xollama.Media
+	if m.Image == nil || m.STT == nil || m.TTS == nil || !strings.HasPrefix(m.Image.Model, "sha256:") {
+		t.Fatalf("media = %+v", m)
+	}
+	if m.Image.Defaults.Steps != 4 || m.TTS.VoiceMap["alloy"] != "af_alloy" {
+		t.Fatal("the catalog's template settings did not reach the model")
+	}
+	// Five components, every one fetched by the server, none twice.
+	if len(ms.pulled) != 5 {
+		t.Fatalf("pulled %d: %v", len(ms.pulled), ms.pulled)
+	}
+}
+
+func TestMediaCreateToAModelKeepsItsOtherSettings(t *testing.T) {
+	fakeHub(t)
+	ms := newMediaServer(t)
+	ms.show = &xollama.Config{Version: 7, FlashAttention: "on", Media: &xollama.Media{
+		STT: &xollama.STTMedia{Model: "sha256:" + strings.Repeat("1", 64)},
+		TTS: &xollama.TTSMedia{Model: "sha256:" + strings.Repeat("2", 64), Vocoder: "sha256:" + strings.Repeat("3", 64)},
+	}}
+
+	mediaCreate(t, "kokoro-82m", "--to", "qwen3:8b")
+
+	c := ms.created
+	if c.Model != "qwen3:8b" || c.From != "qwen3:8b" {
+		t.Fatalf("create = model %q from %q", c.Model, c.From)
+	}
+	if c.Xollama.FlashAttention != "on" || c.Xollama.Media.STT == nil {
+		t.Fatalf("the model's other settings were lost: %+v", c.Xollama)
+	}
+	if c.Xollama.Media.TTS.Engine != "audiocpp" || c.Xollama.Media.TTS.Vocoder != "" {
+		t.Fatalf("tts = %+v, want the catalog's replacing the old one whole", c.Xollama.Media.TTS)
+	}
+}
+
+func TestMediaCreateDryRunFetchesNothing(t *testing.T) {
+	fakeHub(t)
+	ms := newMediaServer(t)
+	out := mediaCreate(t, "flux2-klein-4b", "--dry-run")
+	if len(ms.pulled) != 0 || ms.created.Model != "" {
+		t.Fatalf("a dry run fetched %v or created %q", ms.pulled, ms.created.Model)
+	}
+	if !strings.Contains(out, `"version":7`) {
+		t.Fatalf("dry run did not print the config:\n%s", out)
+	}
+}
+
+func TestMediaListFiltersByKind(t *testing.T) {
+	var out bytes.Buffer
+	if err := printCatalog(&out, "tts"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "kokoro-82m") || strings.Contains(out.String(), "flux2-klein-4b") {
+		t.Fatalf("list --kind tts:\n%s", out.String())
+	}
+	if err := printCatalog(&out, "music"); err == nil {
+		t.Fatal("an unknown kind listed something")
 	}
 }
