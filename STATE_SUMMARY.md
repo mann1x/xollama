@@ -5,6 +5,22 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-02 — Server settings, Phase 1: `tweak envs` and `tweak show`.**
+> - The server's `~/.ollama/xollama-settings.json` now overrides the environment.
+>   - `envconfig.Var` and `XollamaOnly` read its `envs` section first.
+>   - Engines get it through `envconfig.Environ()`.
+>   - It is written only through `/api/xollama/settings`: from the server's own machine, never through a proxy, and with the key while one is set.
+> - New commands:
+>   - `xollama tweak envs NAME=VALUE`, `--unset NAME`, or no arguments to be asked;
+>   - `xollama tweak show envs` (`--all` too), `show server` and `show model NAME`.
+> - What each change does:
+>   - Load-time variables apply at once; the command offers to unload the running models.
+>   - Variables read when the server starts say a restart is needed.
+>   - The API key and unknown names are refused.
+> - With no settings file nothing changes. The Registry has a new `system-settings` row.
+> - Verified: mutation (removing the `Var` hook fails two tests), the race detector, lint, and a live smoke test on a scratch server.
+> - Next: Phase 2, server defaults for the `tweak model` settings.
+
 > **2026-10-02 — Plan: server settings without environment variables.**
 > - Owner: `tweak server` sets only the API key, but every server-wide setting should be real configuration. Asked for: `tweak server` (defaults for every pertinent `tweak model` setting), `tweak server gpu` (which GPUs, their priority, the backend, the PCIe link, split), `tweak envs` (environment overrides) and `tweak show server|envs|model NAME`.
 > - Decided with the owner:

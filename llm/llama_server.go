@@ -645,7 +645,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 // subprocess so discovery and real model runners use the same library search
 // paths and GPU backend selection.
 func SetupLlamaServerCommandEnv(cmd *exec.Cmd, exe string, gpuLibs []string, extraEnvs map[string]string) {
-	cmd.Env = os.Environ()
+	cmd.Env = envconfig.Environ() // xollama-hook: system-settings — the tweak file's envs reach the engine
 
 	envUpdates := make(map[string]string, len(extraEnvs)+2)
 	for k, v := range extraEnvs {
@@ -941,7 +941,7 @@ func (launch llamaServerLaunchConfig) extraEnvsForStart() map[string]string {
 		return envs
 	}
 
-	if _, ok := os.LookupEnv(llamaArgFitTargetEnv); ok {
+	if _, ok := envconfig.LookupEnv(llamaArgFitTargetEnv); ok { // xollama-hook: system-settings
 		// Preserve an inherited user override. SetupLlamaServerCommandEnv
 		// will pass it through unless extraEnvs overrides it.
 		return launch.extraEnvs

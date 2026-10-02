@@ -1,7 +1,7 @@
 # Server settings without environment variables
 
-**Status:** ACTIVE, Phase 0 (specification settled 2026-10-02; engine answers
-pending, opencoti mail #608). **Owner:** xollama.
+**Status:** ACTIVE. Phase 0 is waiting on opencoti's answers to #608; Phase 1
+was built 2026-10-02. **Owner:** xollama.
 
 ## 1. What the owner asked for (2026-10-02, condensed)
 
@@ -146,3 +146,16 @@ An empty `envs` map adds nothing.
 
 - 2026-10-02: specification settled with the owner; questions to opencoti
   sent as #608.
+- 2026-10-02, Phase 1 built:
+  - the settings file and the `envconfig` overlay (`Var`, `XollamaOnly`,
+    `Environ`, `LookupEnv`);
+  - `/api/xollama/settings`, loopback only and never through a proxy;
+  - `tweak envs`, and `tweak show server|envs|model`.
+  - With no settings file, the environment applies exactly as before.
+  - Verified: mutation (the `Var` hook removed fails two tests), the race
+    detector, lint, and a live smoke test on a scratch server. The override
+    applied at once, the API key and unknown names were refused, the file was
+    mode 0600 and was removed once empty, and only `XOLLAMA_HOST` asked for a
+    restart.
+  - Phase 2 (server defaults) is next. It does not depend on #608 except for
+    the auto-policy list.

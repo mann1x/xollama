@@ -35,7 +35,7 @@ var opencotiListDevices = func(ctx context.Context, artifact string, b engine.Ba
 	name, args := engine.EnumerateCommand(artifact, b, runtime.GOOS)
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.WaitDelay = llamaServerDiscoveryWaitDelay
-	cmd.Env = os.Environ()
+	cmd.Env = envconfig.Environ()
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

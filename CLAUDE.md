@@ -146,6 +146,12 @@ stock ollama found on the 11434 fallback rather than driving it.
 `api/xollama_apikey_client.go` and sets it with `xollama tweak server --api-key`
 (`cmd/tweak/server.go`); the desktop UI via `app/ui/apikey.go` — see
 `.claude/rules/api-key.md` and `docs/xollama/api-key.mdx`.
+**Server settings** (`system-settings` hook, plan `plans/system-settings.md`): the
+server's `~/.ollama/xollama-settings.json` overrides the environment — `Var`
+reads its `envs` first (`envconfig/xollama_settings.go`), engines get it via
+`envconfig.Environ()`; written only by `/api/xollama/settings`
+(`server/xollama_settings.go`, loopback); CLI `xollama tweak envs` and
+`xollama tweak show server|envs|model` (`cmd/tweak/envs.go`, `cmd/tweak/show.go`).
 **Discovery** `discover/` · **Transfers** `transfer/` · **GGUF** `fs/gguf/`,
 `fs/safetensors/` · **Types** `types/model/`.
 **CLI support packages**: Modelfile parsing in `parser/` (`parser.go`,

@@ -344,3 +344,50 @@ the running model was actually given.
 `xollama tweak server` sets what belongs to the server rather than to a model.
 Today that is the [local API key](/xollama/api-key):
 `--api-key=generate|set|remove|status`, or no flag to be asked.
+
+## Environment variables, without the environment
+
+Upstream configures a server through environment variables. Changing one means
+editing the global environment or a systemd override, looking up the name, and
+restarting. `xollama tweak envs` sets the same variables in the server's own
+settings file instead (`~/.ollama/xollama-settings.json` in the server's home):
+
+```shell
+xollama tweak envs OLLAMA_KV_CACHE_TYPE=q8_0 XOLLAMA_MAX_PARALLEL=4
+xollama tweak envs --unset OLLAMA_KV_CACHE_TYPE
+xollama tweak envs        # ask, one variable at a time
+```
+
+- **The settings file wins.** A value set here beats the same variable in the
+  environment, under either spelling (`OLLAMA_` or `XOLLAMA_`). `xollama tweak
+  show envs` names any environment value an override replaces, so nothing is
+  hidden. Remove the override, and the environment applies again.
+- **Most changes apply at once.** A variable read at load time, such as the
+  KV cache type or the slot settings, applies at the next model load. The
+  command offers to unload the running models (`-y` unloads without asking).
+  A few variables are read only when the server starts: the listen address,
+  the models directory, origins, GPU visibility and the proxies. For those the
+  command says that a restart is needed.
+- **Variables for the engines are passed on.** `LLAMA_ARG_*`, `OPENCOTI_*`,
+  `CUDA_VISIBLE_DEVICES` and the other GPU-runtime variables reach every engine
+  the server starts, as if they were in its environment.
+- **Not the API key.** `XOLLAMA_API_KEY` is refused: `tweak server --api-key`
+  keeps only the key's digest on disk.
+- **Only from the server's own machine.** Changes are accepted from the
+  server's own machine only, never through a proxy, and with the key while
+  one is set.
+
+## What is set, and where it comes from
+
+```shell
+xollama tweak show envs            # the variables with a value, and their source
+xollama tweak show envs --all      # every variable, at its default too
+xollama tweak show server          # the API key and the variables
+xollama tweak show model qwen3:8b  # the settings the model itself states
+```
+
+<Note>
+Server-wide defaults for a model's settings (KV cache, slots, PolyKV, the
+engine's auto policies) and `xollama tweak server gpu` are next in this plan.
+Until then, set them as variables here.
+</Note>

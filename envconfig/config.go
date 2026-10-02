@@ -619,6 +619,10 @@ func XollamaKey(key string) string {
 // OLLAMA_HOST does not, and with neither set it is DefaultPort on loopback.
 func XollamaOnly(key string) string {
 	if x := XollamaKey(key); x != "" {
+		// xollama-hook: system-settings — the tweak file's value wins
+		if v, ok := overrideOnly(x); ok && v != "" {
+			return v
+		}
 		return trimVar(os.Getenv(x))
 	}
 	return ""
@@ -635,6 +639,11 @@ func XollamaOnly(key string) string {
 // So XOLLAMA_FLASH_ATTENTION="" does not mask OLLAMA_FLASH_ATTENTION=1; unset
 // the latter instead.
 func Var(key string) string {
+	// xollama-hook: system-settings — the tweak file's value wins over the
+	// environment (plans/system-settings.md)
+	if v, ok := override(key); ok && v != "" {
+		return v
+	}
 	if x := XollamaKey(key); x != "" {
 		if v := trimVar(os.Getenv(x)); v != "" {
 			return v

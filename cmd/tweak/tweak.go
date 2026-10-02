@@ -55,7 +55,7 @@ sets and which settings need which others.`,
 			return cmd.Help()
 		},
 	}
-	tweakCmd.AddCommand(modelCommand(opts), serverCommand(opts))
+	tweakCmd.AddCommand(modelCommand(opts), serverCommand(opts), envsCommand(opts), showCommand(opts))
 	return tweakCmd
 }
 
