@@ -5,6 +5,21 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-02 — Media endpoints: plan written (`plans/media-integration.md`).**
+> - opencoti closed row M (#619, b97 `2610021340001`): image generation and edit, STT and TTS behind the OpenAI routes.
+> - The plan attaches them to a model, or to a media-only template, through a `media` section in `xollama.json` (schema v7). Components are `application/vnd.xollama.media` layers named by role.
+> - Routes: `/v1/images/*`, `/v1/audio/speech`, and `/v1/audio/transcriptions` when the model has STT (otherwise upstream's shim). `/v1/models` gains modalities.
+> - SurfSense was read from source (666bbb07). Chat and embeddings already work; images, TTS and STT go through `openai_compatible` and LiteLLM's routes.
+> - Engine gaps were mailed to opencoti: the Klein reference edit, audio.cpp for Kokoro, Supertonic and KittenTTS (GGUF in `audio-cpp/audio.cpp-gguf`), mp3, and video.
+> - Owner decisions:
+>   - push a registry test under `mannix` (the owner deletes it);
+>   - SurfSense gets docs first;
+>   - mp3 is asked of opencoti;
+>   - the model template owns the media engine's settings: launch defaults plus a per-request fill-in, with a client value winning unless the field is `fixed`.
+> - Video and SurfSense's other engine needs were sent to opencoti (#621).
+> - Phase 0 test models are downloading to `/srv/ml/media`.
+> - Next: Phase 1 (schema v7). The Phase 0 engine runs wait on the b97 handoff.
+
 > **2026-10-02 — A forced link speed is now per GPU.**
 > - opencoti #611 shipped patch 0512 (dev build 2610020826001), which accepts `OPENCOTI_LINK_GBPS=<pci>=<GB/s>,...`.
 > - `tweak server gpu` now sends one entry per GPU of the load that has a forced link; a GPU without one is probed. The engine still plans each KV cache with the slowest of its GPUs.
