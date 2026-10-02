@@ -341,9 +341,39 @@ the running model was actually given.
 
 ## The server's own settings
 
-`xollama tweak server` sets what belongs to the server rather than to a model.
-Today that is the [local API key](/xollama/api-key):
-`--api-key=generate|set|remove|status`, or no flag to be asked.
+`xollama tweak server` sets what belongs to the server rather than to a model:
+defaults for every model's settings, and the
+[local API key](/xollama/api-key) (`--api-key=generate|set|remove|status`, or
+`--api-key` to be asked). With no flag it asks which part to change.
+
+### Defaults for every model
+
+Every `tweak model` setting that is not a model's own can be given a
+server-wide default: engine, flash attention, KV cache types, unified KV, the
+residency tactic, slots, session pooling, and the drafter's speculative type.
+The flags are those of `tweak model`, and the walk and the consistency pass are
+the same:
+
+```shell
+xollama tweak server --kv-k=q8_0 --kv-v=q8_0 --slots=on --slots-max=4
+xollama tweak server --slots          # walk only the slot settings
+xollama tweak server --clear          # remove every default
+```
+
+- **The model wins.** A model that states a setting keeps it; the server's
+  default fills only what the model leaves unset. Then come the environment and
+  the built-in default. Within the KV section a model's cache pair stays a pair:
+  a model that states `kv.k` does not get the server's `kv.v`.
+- **A default a model cannot use is left out.** A KVarN cache for a model
+  pinned to stock llama.cpp, for example. The server leaves that section out
+  for that model and logs it, rather than refusing to load the model.
+- **Not the model's own settings.** DCA, the device pin and the council
+  describe a model. They are not offered as server defaults.
+- A default applies at a model's next load. The command offers to unload the
+  running models (`-y` unloads them without asking).
+
+`xollama tweak show model NAME` lists the settings a model runs with and marks
+each one `model` or `server`, so you can see which ones come from the server.
 
 ## Environment variables, without the environment
 
@@ -382,12 +412,12 @@ xollama tweak envs        # ask, one variable at a time
 ```shell
 xollama tweak show envs            # the variables with a value, and their source
 xollama tweak show envs --all      # every variable, at its default too
-xollama tweak show server          # the API key and the variables
-xollama tweak show model qwen3:8b  # the settings the model itself states
+xollama tweak show server          # the API key, the defaults and the variables
+xollama tweak show model qwen3:8b  # what the model runs with, model or server
 ```
 
 <Note>
-Server-wide defaults for a model's settings (KV cache, slots, PolyKV, the
-engine's auto policies) and `xollama tweak server gpu` are next in this plan.
-Until then, set them as variables here.
+`xollama tweak server gpu` (which GPUs, their priority, the backend, the PCIe
+link, split) and the engine's auto policies are the next part of this work.
+Until then, set them as variables with `tweak envs`.
 </Note>

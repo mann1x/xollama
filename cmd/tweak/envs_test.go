@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/ollama/ollama/api"
+	"github.com/ollama/ollama/types/xollama"
 )
 
 func TestEnvArgumentsSetAndUnset(t *testing.T) {
@@ -53,5 +54,29 @@ func TestTheEnvTableShowsWhatAnOverrideReplaces(t *testing.T) {
 	printEnvTable(&b, envs, true)
 	if !strings.Contains(b.String(), "OLLAMA_DEBUG") || !strings.Contains(b.String(), "default") {
 		t.Fatalf("--all leaves out the defaults:\n%s", b.String())
+	}
+}
+
+func TestAModelsSettingsNameTheirSource(t *testing.T) {
+	two := 2
+	on := true
+	own := &xollama.Config{Slots: &xollama.Slots{Max: two}, Engine: xollama.EngineLlamaCpp}
+	def := &xollama.Config{FlashAttention: "on", Slots: &xollama.Slots{Dynamic: &on}, KV: &xollama.KV{ResidencyMode: xollama.ResidencyHead}}
+	got := map[string]string{}
+	notApplied := false
+	for _, r := range modelSourceRows(own, def)[1:] {
+		got[r[0]] = r[2]
+		if r[2] == "not applied" {
+			notApplied = true
+		}
+	}
+	if got["slots.max"] != "model" || got["engine"] != "model" {
+		t.Fatalf("the model's own settings are not marked model: %v", got)
+	}
+	if got["flash_attention"] != "server" || got["slots.dynamic"] != "server" {
+		t.Fatalf("defaults are not marked server: %v", got)
+	}
+	if !notApplied {
+		t.Fatal("a default this model cannot act on is not reported")
 	}
 }

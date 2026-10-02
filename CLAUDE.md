@@ -152,6 +152,10 @@ reads its `envs` first (`envconfig/xollama_settings.go`), engines get it via
 `envconfig.Environ()`; written only by `/api/xollama/settings`
 (`server/xollama_settings.go`, loopback); CLI `xollama tweak envs` and
 `xollama tweak show server|envs|model` (`cmd/tweak/envs.go`, `cmd/tweak/show.go`).
+Its `defaults` section is the server's default for every `tweak model` setting
+in `xollama.DefaultSections()`, merged under the model's own by
+`WithDefaults` (`types/xollama/defaults.go`) in `launchXollama`; set with
+`xollama tweak server` (`serverFields`, `cmd/tweak/server.go`).
 **Discovery** `discover/` · **Transfers** `transfer/` · **GGUF** `fs/gguf/`,
 `fs/safetensors/` · **Types** `types/model/`.
 **CLI support packages**: Modelfile parsing in `parser/` (`parser.go`,

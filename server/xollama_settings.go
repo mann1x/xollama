@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -14,7 +15,12 @@ import (
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/envconfig"
 	"github.com/ollama/ollama/internal/fsowner"
+	"github.com/ollama/ollama/types/xollama"
 )
+
+// settingsDefaults is the settings file's section holding the server's
+// defaults for the models' settings.
+const settingsDefaults = "defaults"
 
 // settingsWrite serialises writers of the settings file: two tweak commands
 // at once must not lose each other's change.
@@ -43,8 +49,15 @@ func (s *Server) SettingsHandler(c *gin.Context) {
 		}
 	}
 
+	if req.Defaults != nil {
+		if err := req.Defaults.ValidateDefaults(); err != nil {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
 	var restart []string
-	if len(req.Envs) > 0 {
+	if len(req.Envs) > 0 || req.Defaults != nil {
 		var err error
 		if restart, err = applySettings(req); err != nil {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -53,7 +66,7 @@ func (s *Server) SettingsHandler(c *gin.Context) {
 	}
 
 	p, _ := envconfig.SettingsPath()
-	c.JSON(http.StatusOK, api.SettingsResponse{Path: p, Envs: settingsEnvs(), Restart: restart})
+	c.JSON(http.StatusOK, api.SettingsResponse{Path: p, Envs: settingsEnvs(), Defaults: serverDefaults(), Restart: restart})
 }
 
 // applySettings writes req's changes over the file as it is now, and
@@ -87,6 +100,20 @@ func applySettings(req api.SettingsRequest) ([]string, error) {
 		}
 	}
 	sort.Strings(restart)
+	if req.Defaults != nil {
+		if req.Defaults.IsZero() {
+			delete(cur.Rest, settingsDefaults)
+		} else {
+			data, err := req.Defaults.Marshal()
+			if err != nil {
+				return nil, err
+			}
+			if cur.Rest == nil {
+				cur.Rest = map[string]json.RawMessage{}
+			}
+			cur.Rest[settingsDefaults] = data
+		}
+	}
 	if err := writeSettings(cur); err != nil {
 		return nil, err
 	}
@@ -172,4 +199,35 @@ func settingsEnvs() []api.SettingsEnv {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
+}
+
+// serverDefaults are the server's defaults for the models' settings, nil
+// when it has none. Defaults that no longer validate -- a file edited by
+// hand, or written by a newer build -- apply nothing, and say so.
+func serverDefaults() *xollama.Config {
+	raw := envconfig.SettingsSection(settingsDefaults)
+	if len(raw) == 0 {
+		return nil
+	}
+	d, err := xollama.Parse(raw)
+	if err == nil {
+		err = d.ValidateDefaults()
+	}
+	if err != nil {
+		slog.Warn("the server's default settings are ignored", "error", err)
+		return nil
+	}
+	return d
+}
+
+// launchXollama is the config a model runs with: its own settings, and the
+// server's defaults for those it does not state. A default this model cannot
+// act on is left out and logged, never a reason to refuse the model.
+func launchXollama(m *Model) *xollama.Config {
+	own := m.Xollama
+	cfg, skipped := own.WithDefaults(serverDefaults())
+	for _, s := range skipped {
+		slog.Info("server default not applied to this model", "model", m.ShortName, "default", s)
+	}
+	return cfg
 }

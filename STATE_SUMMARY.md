@@ -5,6 +5,18 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-02 — Server settings, Phase 2: defaults for every model's settings.**
+> - `xollama tweak server` now sets server-wide defaults for every `tweak model` setting a server may default: engine, flash attention, KV types, unified KV, residency, slots, session pooling and the speculative type.
+>   - It uses the same flags, walk and consistency pass as `tweak model`.
+>   - A bare run asks whether to change the defaults or the API key.
+> - The defaults are merged under the model's own settings at launch (`WithDefaults`).
+>   - The model wins, and a cache pair stays a pair.
+>   - A default the model cannot act on is left out and logged.
+>   - DCA, devices and council are a model's own settings and are not offered as defaults.
+> - `tweak show model NAME` marks each setting `model` or `server`.
+> - Verified: mutation, race tests, lint, and a live smoke test.
+> - Next: Phase 3, `tweak server gpu`. Still waiting on opencoti #608: the auto policies, and residency mode vs the rolling window.
+
 > **2026-10-02 — Server settings, Phase 1: `tweak envs` and `tweak show`.**
 > - The server's `~/.ollama/xollama-settings.json` now overrides the environment.
 >   - `envconfig.Var` and `XollamaOnly` read its `envs` section first.

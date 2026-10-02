@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"net/http"
+
+	"github.com/ollama/ollama/types/xollama"
 )
 
 // XollamaSettingsPath reads and changes the server's own settings
@@ -16,8 +18,12 @@ const XollamaSettingsPath = "/api/xollama/settings"
 // override; a nil value removes the override, so the environment applies
 // again. A variable not named is left as it is. A request with no changes
 // only reads.
+//
+// Defaults, when set, replaces the server's defaults for the models'
+// settings whole; an empty config clears them. nil leaves them as they are.
 type SettingsRequest struct {
-	Envs map[string]*string `json:"envs,omitempty"`
+	Envs     map[string]*string `json:"envs,omitempty"`
+	Defaults *xollama.Config    `json:"defaults,omitempty"`
 }
 
 // SettingsEnv is one variable as the server sees it.
@@ -40,10 +46,14 @@ type SettingsEnv struct {
 // SettingsResponse is every variable the server knows, plus any the tweak
 // file sets for the engines, sorted by name. Restart names the variables
 // this request changed that wait for the server to start again.
+//
+// Defaults are the server's defaults for every model that does not state a
+// setting itself (plans/system-settings.md), nil when there are none.
 type SettingsResponse struct {
-	Path    string        `json:"path"`
-	Envs    []SettingsEnv `json:"envs"`
-	Restart []string      `json:"restart,omitempty"`
+	Path     string          `json:"path"`
+	Envs     []SettingsEnv   `json:"envs"`
+	Defaults *xollama.Config `json:"defaults,omitempty"`
+	Restart  []string        `json:"restart,omitempty"`
 }
 
 // Settings sends req to the server's XollamaSettingsPath.

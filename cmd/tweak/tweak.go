@@ -181,7 +181,10 @@ func showConfig(ctx context.Context, client *api.Client, name string) (*xollama.
 
 // build turns the flags and, where they ask for it, the operator's answers into
 // the config to write. It returns errQuit when the operator stops.
-func build(cmd *cobra.Command, name string, current *xollama.Config, a *asker) (*xollama.Config, error) {
+//
+// only limits the full walk to those fields; none walks them all. The server's
+// defaults are built here too, over the fields a server may default.
+func build(cmd *cobra.Command, name string, current *xollama.Config, a *asker, only ...string) (*xollama.Config, error) {
 	out := a.out
 
 	clearAll, _ := cmd.Flags().GetBool("clear")
@@ -215,7 +218,7 @@ func build(cmd *cobra.Command, name string, current *xollama.Config, a *asker) (
 		// Fully non-interactive. Nothing to ask.
 	default:
 		var err error
-		cfg, err = walkAll(a, cfg, current, name)
+		cfg, err = walkAll(a, cfg, current, name, only)
 		if err != nil {
 			return nil, err
 		}
@@ -227,7 +230,7 @@ func build(cmd *cobra.Command, name string, current *xollama.Config, a *asker) (
 		return nil, err
 	}
 	if before == len(statedFields(cfg)) {
-		fmt.Fprintf(out, "   nothing dropped; every setting is one this model can act on.\n")
+		fmt.Fprintf(out, "   %s\n", nothingDropped(name))
 	}
 
 	a.review(cfg, out)
@@ -292,13 +295,13 @@ func settle(a *asker, cfg *xollama.Config) error {
 // walkAll is the no-flags path: it offers what to do with an existing config
 // before asking anything, because "start from scratch" and "modify" are
 // different runs and asking twenty questions to find that out is worse.
-func walkAll(a *asker, cfg, current *xollama.Config, name string) (*xollama.Config, error) {
+func walkAll(a *asker, cfg, current *xollama.Config, name string, only []string) (*xollama.Config, error) {
 	if !current.IsZero() {
 		a.printf("\n%s states:\n", name)
 		for _, s := range statedFields(current) {
 			a.printf("   %-24s %s\n", s[0], s[1])
 		}
-		choice, err := a.menu("start", "This model already has an xollama config", [][2]string{
+		choice, err := a.menu("start", fmt.Sprintf("%s already has an xollama config", name), [][2]string{
 			{"modify", "modify it -- every question starts from what is there"},
 			{"scratch", "start from scratch -- every question starts unset"},
 			{"clear", "clear it -- remove the config entirely and write nothing else"},
@@ -317,9 +320,12 @@ func walkAll(a *asker, cfg, current *xollama.Config, name string) (*xollama.Conf
 		}
 	}
 
-	all := make([]string, 0, len(fields))
-	for _, f := range fields {
-		all = append(all, f.name)
+	all := only
+	if len(all) == 0 {
+		all = make([]string, 0, len(fields))
+		for _, f := range fields {
+			all = append(all, f.name)
+		}
 	}
 	if err := walk(a, cfg, all, true); err != nil {
 		return nil, err
@@ -451,3 +457,15 @@ func marshalForDisplay(cfg *xollama.Config) ([]byte, error) {
 	}
 	return json.MarshalIndent(pretty, "", "  ")
 }
+
+// nothingDropped is the consistency line when nothing was dropped. A server
+// default is checked against each model when it loads, not here.
+func nothingDropped(name string) string {
+	if name == serverDefaultsName {
+		return "nothing dropped; a model that cannot act on a default leaves it out when it loads."
+	}
+	return "nothing dropped; every setting is one this model can act on."
+}
+
+// serverDefaultsName is what the walk calls the server's defaults.
+const serverDefaultsName = "the server's defaults"

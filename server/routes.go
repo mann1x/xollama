@@ -2855,7 +2855,8 @@ func llamaServerConfigForModel(m *Model) llm.LlamaServerConfig {
 		// xollama-hook: model-config -- the launch part only: a council changes
 		// how a turn is answered, not how the model loads, and must not give a
 		// council tag its own runner (types/xollama LaunchConfig).
-		Xollama: m.Xollama.LaunchConfig(),
+		// xollama-hook: system-settings -- the server's defaults under it.
+		Xollama: launchXollama(m).LaunchConfig(),
 		// xollama-hook: launch-config
 		SingleSequenceOnly:      singleSequenceOnly(m),
 		SingleSequenceStockOnly: parallelUnsafeArchitecture(m),

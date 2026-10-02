@@ -108,12 +108,24 @@ func ReadSettings() (Settings, error) {
 
 // envOverrides is the envs section, read once and again on ReloadSettings.
 // A file that cannot be read or parsed overrides nothing: the server must
-// still start on its environment, and says why.
+// still start on its environment, and says why (cachedSettings).
 func envOverrides() map[string]string {
+	return cachedSettings().Envs
+}
+
+// SettingsSection is a section of the settings file other than envs, as
+// last read, or nil when the file has none.
+func SettingsSection(name string) json.RawMessage {
+	return cachedSettings().Rest[name]
+}
+
+// cachedSettings is the file as last read; it is read again after
+// ReloadSettings.
+func cachedSettings() Settings {
 	settingsMu.RLock()
 	if settingsLoaded {
 		defer settingsMu.RUnlock()
-		return settings.Envs
+		return settings
 	}
 	settingsMu.RUnlock()
 
@@ -127,7 +139,7 @@ func envOverrides() map[string]string {
 	if !settingsLoaded {
 		settings, settingsLoaded = s, true
 	}
-	return settings.Envs
+	return settings
 }
 
 // ReloadSettings makes the next read see the file as it is now. The server

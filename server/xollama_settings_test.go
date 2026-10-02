@@ -11,6 +11,7 @@ import (
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/envconfig"
+	"github.com/ollama/ollama/types/xollama"
 )
 
 func settingsCall(t *testing.T, h http.Handler, remote string, req api.SettingsRequest, hdr map[string]string) (*httptest.ResponseRecorder, api.SettingsResponse) {
@@ -134,5 +135,46 @@ func TestAKeyedServerAsksForTheKeyOnTheSettingsRoute(t *testing.T) {
 	}
 	if w, _ := settingsCall(t, h, "127.0.0.1:4000", api.SettingsRequest{}, map[string]string{"Authorization": "Bearer " + testKey}); w.Code != http.StatusOK {
 		t.Fatalf("with the key: status = %d, want 200", w.Code)
+	}
+}
+
+func TestTheServersDefaultsReachTheLaunchUnderTheModelsOwn(t *testing.T) {
+	settingsHome(t)
+	h := keyRoutes(t)
+	on := true
+	def := &xollama.Config{FlashAttention: "on", Slots: &xollama.Slots{Dynamic: &on, Max: 8}}
+	w, resp := settingsCall(t, h, "127.0.0.1:4000", api.SettingsRequest{Defaults: def}, nil)
+	if w.Code != http.StatusOK || resp.Defaults == nil || resp.Defaults.FlashAttention != "on" {
+		t.Fatalf("set defaults: %d %s", w.Code, w.Body)
+	}
+
+	plain := &Model{ShortName: "plain"}
+	if got := llamaServerConfigForModel(plain).Xollama; got == nil || got.FlashAttention != "on" || got.Slots.Max != 8 {
+		t.Fatalf("a model stating nothing does not get the defaults: %+v", got)
+	}
+	own := &Model{ShortName: "own", Xollama: &xollama.Config{Slots: &xollama.Slots{Max: 2}}}
+	got := llamaServerConfigForModel(own).Xollama
+	if got.Slots.Max != 2 || got.Slots.Dynamic == nil {
+		t.Fatalf("the model's own slots.max must win, the rest default: %+v", got.Slots)
+	}
+
+	if w, _ := settingsCall(t, h, "127.0.0.1:4000", api.SettingsRequest{Defaults: &xollama.Config{}}, nil); w.Code != http.StatusOK {
+		t.Fatalf("clear defaults: %d", w.Code)
+	}
+	if got := llamaServerConfigForModel(plain).Xollama; got != nil {
+		t.Fatalf("cleared defaults still apply: %+v", got)
+	}
+}
+
+func TestAModelsOwnSettingIsRefusedAsAServerDefault(t *testing.T) {
+	p := settingsHome(t)
+	h := keyRoutes(t)
+	on := true
+	w, _ := settingsCall(t, h, "127.0.0.1:4000", api.SettingsRequest{Defaults: &xollama.Config{DCA: &xollama.DCA{Enabled: &on}}}, nil)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Fatal("a refused default was written")
 	}
 }

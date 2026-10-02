@@ -1,7 +1,7 @@
 # Server settings without environment variables
 
-**Status:** ACTIVE. Phase 0 is waiting on opencoti's answers to #608; Phase 1
-was built 2026-10-02. **Owner:** xollama.
+**Status:** ACTIVE. Phase 0 is waiting on opencoti's answers to #608; Phases
+1 and 2 were built 2026-10-02. **Owner:** xollama.
 
 ## 1. What the owner asked for (2026-10-02, condensed)
 
@@ -159,3 +159,25 @@ An empty `envs` map adds nothing.
     restart.
   - Phase 2 (server defaults) is next. It does not depend on #608 except for
     the auto-policy list.
+- 2026-10-02, Phase 2 built:
+  - The settings file has a `defaults` section: a `xollama.Config` limited to
+    `DefaultSections()` (engine, flash_attention, kv, slots, session, draft).
+    DCA, devices and council are refused as defaults.
+  - `WithDefaults` merges the defaults under the model's own settings, key by
+    key. The model wins. A model that states one half of a cache pair keeps
+    its own pair. A section the merge would make invalid for that model is
+    left out and logged, and the rest still applies.
+  - Applied in `llamaServerConfigForModel` and in the live-slot count.
+  - `tweak server` takes every server-pertinent `tweak model` flag (taken
+    from the same table), with the same walk and consistency pass. A bare run
+    asks whether to change the defaults or the API key.
+  - `tweak show server` lists the defaults. `tweak show model` marks each
+    setting `model` or `server`, and lists the defaults it did not apply.
+  - Verified:
+    - mutation: `m.Xollama` in place of `launchXollama(m)` fails the launch test;
+    - race tests and lint;
+    - a live smoke test: flags set, show, clear, and DCA refused.
+  - Still open:
+    - the auto policies (fit and the rest) and the KV rolling window, waiting
+      on #608;
+    - `tweak server gpu` (Phase 3).

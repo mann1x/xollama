@@ -6,22 +6,55 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/envconfig"
+	"github.com/ollama/ollama/types/xollama"
 )
 
+// serverFields are the tweak model settings a server may default: every
+// field whose config path lies in a section xollama.DefaultSections allows.
+// Taken from the one table, so `tweak server` and `tweak model` cannot drift.
+func serverFields() []string {
+	var names []string
+	for _, f := range fields {
+		section, _, _ := strings.Cut(f.path, ".")
+		if slices.Contains(xollama.DefaultSections(), section) {
+			names = append(names, f.name)
+		}
+	}
+	return names
+}
+
 // serverCommand is `xollama tweak server`: the server's own settings, as
-// opposed to a model's. Today that is the local API key
-// (docs/xollama/api-key.mdx).
+// opposed to a model's -- its defaults for the models' settings, and the
+// local API key (docs/xollama/api-key.mdx).
 func serverCommand(opts Options) *cobra.Command {
 	serverCmd := &cobra.Command{
 		Use:   "server",
-		Short: "Set the server's own settings: the local API key",
+		Short: "Set the server's own settings: defaults for every model, and the local API key",
 		Long: `Set the server's own settings.
+
+Defaults for the models' settings. Every setting of ` + "`xollama tweak model`" + ` that is
+not a model's own -- engine, flash attention, KV cache types, unified KV, the
+residency tactic, slots, session pooling, the drafter's speculative type -- can
+be given a server-wide default here. A model that states a setting keeps its
+own; one that does not gets the server's; with neither, the environment and
+then the built-in default apply.
+
+    xollama tweak server                      ask what to change
+    xollama tweak server --kv-k=q8_0 --kv-v=q8_0 --slots=on --slots-max=4
+    xollama tweak server --slots              walk only the slot settings
+    xollama tweak server --clear              remove every default
+
+A default a given model cannot act on -- a KVarN cache for a model pinned to
+stock llama.cpp -- is left out for that model and logged, never a reason to
+refuse it. Models already loaded keep what they were loaded with; the command
+offers to unload them.
 
 --api-key manages the key every client must send to this server's endpoints
 (Authorization: Bearer <key>, or x-api-key). It is a local key for incoming
@@ -31,16 +64,17 @@ connections only: pulls, pushes and cloud models keep their ollama.com sign-in.
     xollama tweak server --api-key=set        read a key from stdin
     xollama tweak server --api-key=remove     no key: the server is open again
     xollama tweak server --api-key=status     say whether a key is required
-    xollama tweak server                      ask
+    xollama tweak server --api-key            ask
 
 The key is not typed on the command line, so it stays out of shell history.
 After generate or set this user's copy is saved to ~/.ollama/xollama-api-key
 (mode 0600), which the CLI sends from then on; other machines need
 XOLLAMA_API_KEY or that file.
 
-Only a client on the server's own machine can change the key, never through a
-proxy, and while a key is set only with the current key. Plain HTTP carries the
-key in clear text: across a network, put the server behind TLS.`,
+Only a client on the server's own machine can change the server's settings or
+its key, never through a proxy, and while a key is set only with the current
+key. Plain HTTP carries the key in clear text: across a network, put the
+server behind TLS.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runServer(cmd, opts)
@@ -48,6 +82,15 @@ key in clear text: across a network, put the server behind TLS.`,
 	}
 	serverCmd.Flags().String("api-key", "", "generate|set|remove|status; bare asks")
 	serverCmd.Flags().Lookup("api-key").NoOptDefVal = askSentinel
+	for _, name := range serverFields() {
+		f, _ := fieldByName(name)
+		serverCmd.Flags().String(f.name, "", "default for "+flagUsage(f))
+		serverCmd.Flags().Lookup(f.name).NoOptDefVal = askSentinel
+	}
+	serverCmd.Flags().Bool("clear", false, "Remove every default for the models' settings")
+	serverCmd.Flags().Bool("dry-run", false, "Show the resulting defaults without writing them")
+	serverCmd.Flags().Bool("json", false, "Print the resulting defaults as JSON")
+	serverCmd.Flags().BoolP("yes", "y", false, "Do not ask for confirmation, and unload running models when a change needs it")
 	return serverCmd
 }
 
@@ -64,6 +107,76 @@ func runServer(cmd *cobra.Command, opts Options) error {
 	out := cmd.OutOrStdout()
 	a := newAsker(cmd.InOrStdin(), out)
 
+	keyFlag := cmd.Flags().Lookup("api-key").Changed
+	settingFlags := cmd.Flags().NFlag() > countBoolFlags(cmd) && !keyFlag
+	if !keyFlag && !settingFlags && !cmd.Flags().Changed("clear") {
+		part, err := a.menu("part", "the server's settings", [][2]string{
+			{"defaults", "defaults for every model's settings (KV cache, slots, engine, pooling...)"},
+			{"api-key", "the local API key"},
+		}, 0)
+		if err != nil {
+			if errors.Is(err, errQuit) {
+				fmt.Fprintf(out, "\nnothing changed.\n")
+				return nil
+			}
+			return err
+		}
+		keyFlag = part == "api-key"
+	}
+	if !keyFlag {
+		return runServerDefaults(cmd, client, a)
+	}
+	return runAPIKey(cmd, client, a)
+}
+
+// runServerDefaults builds the server's defaults with the same walk, flags
+// and consistency pass as a model's settings, and writes them to the server.
+func runServerDefaults(cmd *cobra.Command, client *api.Client, a *asker) error {
+	out := a.out
+	ctx := cmd.Context()
+	cur, err := client.Settings(ctx, nil)
+	if err != nil {
+		return err
+	}
+	current := cur.Defaults
+	if current == nil {
+		current = &xollama.Config{}
+	}
+	cfg, err := build(cmd, serverDefaultsName, current, a, serverFields()...)
+	if err != nil {
+		if errors.Is(err, errQuit) {
+			fmt.Fprintf(out, "\nnothing written.\n")
+			return nil
+		}
+		return err
+	}
+	if show, _ := cmd.Flags().GetBool("json"); show {
+		data, err := marshalForDisplay(cfg)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "\n%s\n", data)
+	}
+	if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
+		fmt.Fprintf(out, "\n--dry-run: the server's defaults not changed.\n")
+		return nil
+	}
+	resp, err := client.Settings(ctx, &api.SettingsRequest{Defaults: cfg})
+	if err != nil {
+		return err
+	}
+	if cfg.IsZero() {
+		fmt.Fprintf(out, "\nthe server has no defaults: every model runs on its own settings and the environment.\n")
+	} else {
+		fmt.Fprintf(out, "\nwritten to %s. `xollama tweak show server` reports it.\n", resp.Path)
+	}
+	yes, _ := cmd.Flags().GetBool("yes")
+	return offerUnload(ctx, client, a, out, map[string]*string{"defaults": nil}, nil, yes)
+}
+
+// runAPIKey is --api-key: the server's local key.
+func runAPIKey(cmd *cobra.Command, client *api.Client, a *asker) error {
+	out := a.out
 	status, err := client.APIKey(cmd.Context(), &api.APIKeyRequest{Action: "status"})
 	if err != nil {
 		return err
