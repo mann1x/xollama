@@ -159,7 +159,7 @@ in `xollama.DefaultSections()`, merged under the model's own by
 `xollama tweak server` (`serverFields`, `cmd/tweak/server.go`).
 Its `gpu` section (`types/xollama/gpu.go`) is `xollama tweak server gpu`
 (`cmd/tweak/gpu.go`): allowed GPUs, priority (fill order), backend per GPU,
-forced link (`OPENCOTI_LINK_GBPS`, slowest of a load's GPUs), split
+forced link (`OPENCOTI_LINK_GBPS=<pci>=<GB/s>,...`, one entry per forced GPU), split
 auto/spread/single and split mode, applied in `server/xollama_gpu.go` via
 `server/sched.go` hooks and `llm.DeviceEnvs`. Its menu shows each GPU's link as
 the engine measures it: `/api/xollama/link-probe` (`api/xollama_linkprobe.go`,

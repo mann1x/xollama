@@ -106,17 +106,21 @@ func TestSingleNeverSplitsAndSpreadAlwaysDoes(t *testing.T) {
 	}
 }
 
-func TestAForcedLinkIsTheSlowestOfTheLoadsGPUs(t *testing.T) {
+func TestEachGPUOfALoadGetsItsOwnForcedLink(t *testing.T) {
 	setGPUPolicy(t, &xollama.GPUSettings{Devices: []xollama.GPUDevice{
 		{ID: "0000:01:00.0", LinkGBps: 25.6},
-		{ID: "0000:02:00.0", LinkGBps: 12.8},
+		{ID: "02:00.0", LinkGBps: 12.8},
 	}})
 	a, b := gpu("CUDA", "0", "0000:01:00.0", 24), gpu("CUDA", "1", "0000:02:00.0", 24)
-	if env := gpuPolicyEnvs([]ml.DeviceInfo{a}); env["OPENCOTI_LINK_GBPS"] != "25.6" {
+	probed := gpu("CUDA", "2", "0000:03:00.0", 24)
+	if env := gpuPolicyEnvs([]ml.DeviceInfo{a}); env["OPENCOTI_LINK_GBPS"] != "0000:01:00.0=25.6" {
 		t.Fatalf("one GPU: %v", env)
 	}
-	if env := gpuPolicyEnvs([]ml.DeviceInfo{a, b}); env["OPENCOTI_LINK_GBPS"] != "12.8" {
-		t.Fatalf("two GPUs: %v", env)
+	if env := gpuPolicyEnvs([]ml.DeviceInfo{a, b, probed}); env["OPENCOTI_LINK_GBPS"] != "0000:01:00.0=25.6,0000:02:00.0=12.8" {
+		t.Fatalf("three GPUs, two forced: %v", env)
+	}
+	if env := gpuPolicyEnvs([]ml.DeviceInfo{probed}); env != nil {
+		t.Fatalf("a GPU without a forced link got one: %v", env)
 	}
 }
 

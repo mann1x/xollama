@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/ollama/ollama/envconfig"
 	"github.com/ollama/ollama/llm"
@@ -126,11 +127,14 @@ func priorityOrder(a, b ml.DeviceInfo) int {
 }
 
 // gpuPolicyEnvs are the engine variables the policy sets for a launch on
-// gpus: the split mode, and a forced link speed.
+// gpus: the split mode, and the forced link speeds.
 //
-// OPENCOTI_LINK_GBPS is one figure for the whole engine, so a load spanning
-// several GPUs gets the slowest forced one: planning with a faster link than
-// the slowest one in use would under-size the rolling window's copies.
+// OPENCOTI_LINK_GBPS carries one entry per GPU of the load that has a forced
+// speed, keyed by PCI ID ("0000:01:00.0=25.6,0000:02:00.0=12.8", opencoti
+// patch 0512). A GPU without one is left out, so the engine probes it. The
+// engine plans each KV cache with the slowest of the GPUs holding its
+// layers, so a forced speed never makes it plan faster than a slower GPU it
+// uses.
 func gpuPolicyEnvs(gpus []ml.DeviceInfo) map[string]string {
 	g := serverGPU()
 	if g.IsZero() {
@@ -140,14 +144,23 @@ func gpuPolicyEnvs(gpus []ml.DeviceInfo) map[string]string {
 	if g.SplitMode != "" && len(gpus) > 1 {
 		env["LLAMA_ARG_SPLIT_MODE"] = g.SplitMode
 	}
-	var link float64
+	var links []string
 	for _, d := range gpus {
-		if s, ok := g.Device(d.PCIID); ok && s.LinkGBps > 0 && (link == 0 || s.LinkGBps < link) {
-			link = s.LinkGBps
+		pci, ok := xollama.CanonicalPCIID(d.PCIID)
+		if !ok {
+			continue
+		}
+		s, ok := g.Device(pci)
+		if !ok || s.LinkGBps <= 0 {
+			continue
+		}
+		entry := pci + "=" + strconv.FormatFloat(s.LinkGBps, 'f', -1, 64)
+		if !slices.Contains(links, entry) {
+			links = append(links, entry)
 		}
 	}
-	if link > 0 {
-		env["OPENCOTI_LINK_GBPS"] = strconv.FormatFloat(link, 'f', -1, 64)
+	if len(links) > 0 {
+		env["OPENCOTI_LINK_GBPS"] = strings.Join(links, ",")
 	}
 	if len(env) == 0 {
 		return nil

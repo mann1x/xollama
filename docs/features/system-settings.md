@@ -43,9 +43,10 @@ environment (2026-10-02).
   the server.
 - **A model's own device pin wins over the GPU policy**, a disabled GPU
   included.
-- **One link figure per engine process**, until opencoti's per-device form
-  lands: a load spread over several GPUs gets the slowest forced figure among
-  them.
+- **A forced link is per GPU**: `OPENCOTI_LINK_GBPS=<pci>=<GB/s>,...`
+  (opencoti patch 0512) lists each GPU of the load with a forced speed, and a
+  GPU without one is probed. The engine plans each KV cache with the slowest
+  of the GPUs holding its layers.
 - **The link probe** is not run on a backend with a model generating on it,
   because the reading would come out low. An idle loaded model does not
   matter (opencoti #609).

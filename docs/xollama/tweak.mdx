@@ -440,9 +440,9 @@ xollama tweak server gpu --split single                  # never split a model
   speed, which it probes when a model loads. A host that is busy at that moment
   gets a wrong reading for the whole session, and a forced figure skips the
   probe. Set it as GB/s, as a PCIe generation and lane count (`4x16`, or the
-  generation and lanes wizard), or as `auto`. The engine takes one figure per
-  process, so a load spread over several GPUs uses the slowest forced figure
-  among them.
+  generation and lanes wizard), or as `auto`. Each GPU keeps its own figure.
+  The engine plans a KV cache spread over several GPUs with the slowest of
+  them.
 - **Split** is `auto` (split only a model too large for one GPU, or follow
   `OLLAMA_SCHED_SPREAD`), `spread` (always split) or `single` (never: what
   does not fit stays on the CPU).

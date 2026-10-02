@@ -5,6 +5,12 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-02 — A forced link speed is now per GPU.**
+> - opencoti #611 shipped patch 0512 (dev build 2610020826001), which accepts `OPENCOTI_LINK_GBPS=<pci>=<GB/s>,...`.
+> - `tweak server gpu` now sends one entry per GPU of the load that has a forced link; a GPU without one is probed. The engine still plans each KV cache with the slowest of its GPUs.
+> - Not gated on the engine build. Owner: there has been no first release, and every build is a dev build.
+> - Also from #611: the link profile no longer reads a GPU's idle gen1 state, and `--link-probe` lists integrated GPUs.
+
 > **2026-10-02 — Server settings, Phase 5: the engine's auto policies (schema v6).**
 > - New settings, on `tweak model` and as `tweak server` defaults:
 >   - `kv.rolling_window` (`--kv-rolling-window`: on, off or MiB);

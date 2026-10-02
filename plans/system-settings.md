@@ -1,8 +1,8 @@
 # Server settings without environment variables
 
-**Status:** ACTIVE. Phases 0–6 closed 2026-10-02. Open: the per-device link
-form, waiting on opencoti; a live opencoti run, waiting on eleven2go; the
-desktop app restarting its server for a restart-needed setting. **Owner:** xollama.
+**Status:** ACTIVE. Phases 0–6 closed 2026-10-02, and the per-device link
+form is wired. Open: a live opencoti run, waiting on eleven2go; the desktop
+app restarting its server for a restart-needed setting. **Owner:** xollama.
 
 ## 1. What the owner asked for (2026-10-02, condensed)
 
@@ -280,3 +280,12 @@ An empty `envs` map adds nothing.
   - user docs in `docs/xollama/tweak.mdx`.
   - The desktop app's own restart is left open. Quitting and reopening the
     app applies a restart-needed setting.
+- 2026-10-02, per-device link (opencoti #611, patch 0512, dev build
+  2610020826001):
+  - `gpuPolicyEnvs` sends `OPENCOTI_LINK_GBPS=<pci>=<GB/s>,...`, one entry
+    per GPU of the load with a forced link. A GPU without one is probed.
+  - Not gated on the engine build: the owner ruled that there has been no
+    first release, and every build is a dev build.
+  - Also in #611: the profile now reads the maximum generation × the current
+    lane count (#610 item 2), and `--link-probe` lists integrated GPUs
+    (item 3).
