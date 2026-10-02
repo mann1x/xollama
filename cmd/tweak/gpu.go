@@ -136,7 +136,7 @@ func runGPU(cmd *cobra.Command, args []string, opts Options) error {
 		if err := gpuFromFlags(cmd, args, policy); err != nil {
 			return err
 		}
-	} else if err := askGPU(a, policy, gpus); err != nil {
+	} else if err := askGPU(a, policy, gpus, probeLinks(ctx, client, out)); err != nil {
 		if errors.Is(err, errQuit) {
 			fmt.Fprintf(out, "\nnothing changed.\n")
 			return nil
@@ -152,7 +152,7 @@ func runGPU(cmd *cobra.Command, args []string, opts Options) error {
 		return err
 	}
 	fmt.Fprintln(out)
-	printGPUTable(out, resp.GPU, gpus)
+	printGPUTable(out, resp.GPU, gpus, nil)
 	yes, _ := cmd.Flags().GetBool("yes")
 	return offerUnload(ctx, client, a, out, map[string]*string{"gpu": nil}, nil, yes)
 }
@@ -293,10 +293,10 @@ func parseLink(v string) (float64, error) {
 }
 
 // askGPU walks the operator through the policy until done.
-func askGPU(a *asker, g *xollama.GPUSettings, gpus []gpuEntry) error {
+func askGPU(a *asker, g *xollama.GPUSettings, gpus []gpuEntry, links linkInfo) error {
 	for {
 		a.printf("\n")
-		printGPUTable(a.out, g, gpus)
+		printGPUTable(a.out, g, gpus, links)
 		options := [][2]string{{"done", "done: write it"}}
 		for _, e := range gpus {
 			options = append(options, [2]string{e.PCI, fmt.Sprintf("%s %s", e.PCI, e.Name)})
@@ -342,7 +342,7 @@ func askGPU(a *asker, g *xollama.GPUSettings, gpus []gpuEntry) error {
 			g.SplitMode = v
 		default:
 			i := slices.IndexFunc(gpus, func(e gpuEntry) bool { return e.PCI == choice })
-			if err := askDevice(a, g, gpus[i]); err != nil {
+			if err := askDevice(a, g, gpus[i], links[gpus[i].PCI]); err != nil {
 				return err
 			}
 		}
@@ -367,7 +367,7 @@ func (a *asker) pick(name, title, current string, options [][2]string) (string, 
 }
 
 // askDevice asks about one GPU.
-func askDevice(a *asker, g *xollama.GPUSettings, e gpuEntry) error {
+func askDevice(a *asker, g *xollama.GPUSettings, e gpuEntry, link *api.LinkProbeDevice) error {
 	d := device(g, e.PCI)
 	use, err := a.pick("use", fmt.Sprintf("%s %s: may models use it?", e.PCI, e.Name), map[bool]string{false: "yes", true: "no"}[d.Disabled], [][2]string{
 		{"yes", "yes"},
@@ -408,14 +408,26 @@ func askDevice(a *asker, g *xollama.GPUSettings, e gpuEntry) error {
 		d.Backend = b
 	}
 
-	return askLink(a, d)
+	return askLink(a, d, link)
 }
 
 // askLink is the link wizard: PCIe generation, then lanes, or a figure.
-func askLink(a *asker, d *xollama.GPUDevice) error {
+func askLink(a *asker, d *xollama.GPUDevice, link *api.LinkProbeDevice) error {
 	now := "auto (the engine probes it)"
 	if d.LinkGBps > 0 {
 		now = fmt.Sprintf("forced to %g GB/s", d.LinkGBps)
+	}
+	genDef, lanesDef := 1, 4 // PCIe 4.0 x16 when nothing was detected
+	if link != nil {
+		a.printf("\n   %s\n", describeLink(link))
+		if link.Link.Detected {
+			if i := slices.Index([]int{3, 4, 5, 6}, link.Link.Gen); i >= 0 {
+				genDef = i
+			}
+			if i := slices.Index(pcieLanes, link.Link.Width); i >= 0 {
+				lanesDef = i
+			}
+		}
 	}
 	how, err := a.menu("link", "link speed the engine plans the KV rolling window with: "+now, [][2]string{
 		{"keep", "keep it"},
@@ -431,11 +443,11 @@ func askLink(a *asker, d *xollama.GPUDevice) error {
 		d.LinkGBps = 0
 	case "pcie":
 		// Word keys (gen4, x8): a bare number answers a menu by position.
-		gen, err := a.menu("pcie-gen", "PCIe generation", [][2]string{{"gen3", "3.0"}, {"gen4", "4.0"}, {"gen5", "5.0"}, {"gen6", "6.0"}}, 1)
+		gen, err := a.menu("pcie-gen", "PCIe generation", [][2]string{{"gen3", "3.0"}, {"gen4", "4.0"}, {"gen5", "5.0"}, {"gen6", "6.0"}}, genDef)
 		if err != nil {
 			return err
 		}
-		lanes, err := a.menu("pcie-lanes", "PCIe lanes", [][2]string{{"x1", "x1"}, {"x2", "x2"}, {"x4", "x4"}, {"x8", "x8"}, {"x16", "x16"}}, 4)
+		lanes, err := a.menu("pcie-lanes", "PCIe lanes", [][2]string{{"x1", "x1"}, {"x2", "x2"}, {"x4", "x4"}, {"x8", "x8"}, {"x16", "x16"}}, lanesDef)
 		if err != nil {
 			return err
 		}
@@ -463,8 +475,12 @@ func askLink(a *asker, d *xollama.GPUDevice) error {
 }
 
 // printGPUTable lists the GPUs with their policy, and the split.
-func printGPUTable(out io.Writer, g *xollama.GPUSettings, gpus []gpuEntry) {
-	rows := [][]string{{"PCI ID", "GPU", "MEMORY", "BACKENDS", "USE", "PRIORITY", "BACKEND", "LINK"}}
+func printGPUTable(out io.Writer, g *xollama.GPUSettings, gpus []gpuEntry, links linkInfo) {
+	header := []string{"PCI ID", "GPU", "MEMORY", "BACKENDS", "USE", "PRIORITY", "BACKEND", "LINK"}
+	if links != nil {
+		header = append(header, "DETECTED", "MEASURED H2D")
+	}
+	rows := [][]string{header}
 	listed := map[string]bool{}
 	row := func(pci, name, mem, backends string) {
 		listed[pci] = true
@@ -480,7 +496,20 @@ func printGPUTable(out io.Writer, g *xollama.GPUSettings, gpus []gpuEntry) {
 		if d.LinkGBps > 0 {
 			link = fmt.Sprintf("%g GB/s", d.LinkGBps)
 		}
-		rows = append(rows, []string{pci, name, mem, backends, use, strconv.Itoa(d.Priority), backend, link})
+		r := []string{pci, name, mem, backends, use, strconv.Itoa(d.Priority), backend, link}
+		if links != nil {
+			detected, measured := "-", "-"
+			if p := links[pci]; p != nil {
+				if p.Link.Detected {
+					detected = fmt.Sprintf("PCIe %d.0 x%d", p.Link.Gen, p.Link.Width)
+				}
+				if p.Measured.Available {
+					measured = fmt.Sprintf("%.1f GB/s", p.Measured.H2DGBps)
+				}
+			}
+			r = append(r, detected, measured)
+		}
+		rows = append(rows, r)
 	}
 	for _, e := range gpus {
 		row(e.PCI, e.Name, format.HumanBytes2(e.Total), strings.Join(e.Backends, ","))
@@ -505,6 +534,57 @@ func printGPUTable(out io.Writer, g *xollama.GPUSettings, gpus []gpuEntry) {
 		mode = g.SplitMode
 	}
 	fmt.Fprintf(out, "split: %s; split mode: %s\n", split, mode)
+}
+
+// linkInfo is the link probe's report per GPU, by PCI ID.
+type linkInfo map[string]*api.LinkProbeDevice
+
+// probeLinks has the server measure its GPUs' links, and says which backends
+// it could not probe. A server that cannot probe at all gives no link
+// columns: the menu works without them.
+func probeLinks(ctx context.Context, client *api.Client, out io.Writer) linkInfo {
+	fmt.Fprintf(out, "measuring the GPUs' host links (about a second per GPU)...\n")
+	resp, err := client.LinkProbe(ctx)
+	if err != nil {
+		fmt.Fprintf(out, "   link probe unavailable: %v\n", err)
+		return nil
+	}
+	links := linkInfo{}
+	for _, r := range resp.Results {
+		if r.Error != "" {
+			fmt.Fprintf(out, "   %s: %s\n", r.Backend, r.Error)
+			continue
+		}
+		for i := range r.Probe.Devices {
+			d := &r.Probe.Devices[i]
+			pci, ok := xollama.CanonicalPCIID(d.PCIBusID)
+			if !ok {
+				continue
+			}
+			// The same GPU through two backends: keep the measured one.
+			if prev := links[pci]; prev == nil || (!prev.Measured.Available && d.Measured.Available) {
+				links[pci] = d
+			}
+		}
+	}
+	return links
+}
+
+// describeLink is one line on a GPU's link: detected, measured, planned.
+func describeLink(p *api.LinkProbeDevice) string {
+	var parts []string
+	if p.Link.Detected {
+		parts = append(parts, fmt.Sprintf("detected PCIe %d.0 x%d (%g GB/s; the slot takes up to %d.0 x%d)", p.Link.Gen, p.Link.Width, p.Link.GeometryGBps, p.Link.MaxGen, p.Link.MaxWidth))
+	} else {
+		parts = append(parts, "link not detected on this platform")
+	}
+	if p.Measured.Available {
+		parts = append(parts, fmt.Sprintf("measured %.1f GB/s host to device, %.1f back", p.Measured.H2DGBps, p.Measured.D2HGBps))
+	}
+	if p.WouldUseGBps > 0 {
+		parts = append(parts, fmt.Sprintf("the engine would plan with %.1f GB/s", p.WouldUseGBps))
+	}
+	return strings.Join(parts, "; ")
 }
 
 // gpuPolicy reads the server's policy and its GPUs, for `tweak show server`.

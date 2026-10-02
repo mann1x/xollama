@@ -54,8 +54,8 @@ type SettingsEnv struct {
 // Defaults are the server's defaults for every model that does not state a
 // setting itself (plans/system-settings.md), nil when there are none.
 type SettingsResponse struct {
-	Path     string          `json:"path"`
-	Envs     []SettingsEnv   `json:"envs"`
+	Path     string               `json:"path"`
+	Envs     []SettingsEnv        `json:"envs"`
 	Defaults *xollama.Config      `json:"defaults,omitempty"`
 	GPU      *xollama.GPUSettings `json:"gpu,omitempty"`
 	Restart  []string             `json:"restart,omitempty"`

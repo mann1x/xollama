@@ -449,5 +449,13 @@ xollama tweak server gpu --split single                  # never split a model
   opencoti path, or `row`. `row` is CUDA only and not yet validated with
   opencoti's KV paths; on Vulkan it becomes `layer`.
 
+When the menu opens, the engine measures every GPU's link (`opencoti
+--link-probe`, which needs opencoti b62 or later; it takes about a second per GPU).
+The table shows the PCIe generation and lanes the bus reports, and the
+host-to-device rate it measured. The link wizard starts from the detected
+generation and lanes. A backend with a model generating on it is not probed,
+because that engine shares the link and the reading would come out low. An
+idle loaded model does not matter.
+
 Changes apply at a model's next load. `xollama tweak show server` lists the
 GPUs with their settings.

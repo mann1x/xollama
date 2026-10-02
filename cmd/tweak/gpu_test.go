@@ -76,11 +76,30 @@ func TestTheGPUWalkForcesALinkByGenerationAndLanes(t *testing.T) {
 	// pcie, gen 4, lanes x8; then done.
 	in := "2\nyes\n3\nCUDA\npcie\ngen4\nx8\ndone\n"
 	a := newAsker(strings.NewReader(in), &strings.Builder{})
-	if err := askGPU(a, g, gpus); err != nil {
+	if err := askGPU(a, g, gpus, nil); err != nil {
 		t.Fatal(err)
 	}
 	d, _ := g.Device("0000:01:00.0")
 	if d.Priority != 3 || d.Backend != "CUDA" || d.LinkGBps != 12.8 {
 		t.Fatalf("got %+v", d)
+	}
+}
+
+func TestTheLinkWizardStartsFromWhatWasDetected(t *testing.T) {
+	var p api.LinkProbeDevice
+	p.Link.Detected, p.Link.Gen, p.Link.Width = true, 5, 8
+	p.Measured.Available, p.Measured.H2DGBps = true, 24.1
+	d := &xollama.GPUDevice{ID: "0000:01:00.0"}
+	var out strings.Builder
+	// link: pcie; generation and lanes: the defaults.
+	a := newAsker(strings.NewReader("pcie\n\n\n"), &out)
+	if err := askLink(a, d, &p); err != nil {
+		t.Fatal(err)
+	}
+	if d.LinkGBps != 25.6 {
+		t.Fatalf("link = %v, want PCIe 5.0 x8 = 25.6", d.LinkGBps)
+	}
+	if !strings.Contains(out.String(), "measured 24.1 GB/s") || !strings.Contains(out.String(), "pcie-gen [3]>") {
+		t.Fatalf("the detected link is not shown or not the default:\n%s", out.String())
 	}
 }

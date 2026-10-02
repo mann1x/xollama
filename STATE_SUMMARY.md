@@ -5,6 +5,13 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-02 — Server settings, Phase 4: the link probe in `tweak server gpu`.**
+> - The GPU menu now has the engine measure each GPU's host link (`/api/xollama/link-probe`, which runs `opencoti --link-probe`, b62 or later).
+>   - It shows the detected PCIe generation and lanes and the measured rate, and the link wizard starts from them.
+>   - A backend with a model generating on it is not probed.
+> - Measured on solidPC (dev build 2610020719001): the RTX 3090 runs at PCIe 3.0 x8 in a 4.0 x16 slot, 6.7 GB/s host to device.
+> - The owner approved opencoti's per-device link force (`PCI=GBPS,...`). opencoti builds it alongside the rolling-window validation; until then a load uses the slowest forced figure among its GPUs.
+
 > **2026-10-02 — Server settings, Phase 3: `tweak server gpu`; opencoti answered #608.**
 > - `xollama tweak server gpu` sets the GPU policy:
 >   - which GPUs models may use;

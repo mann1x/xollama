@@ -1,8 +1,8 @@
 # Server settings without environment variables
 
-**Status:** ACTIVE. Phases 0–3 closed 2026-10-02 (engine answers: opencoti
-#609); Phase 4 (the link probe) and Phase 5 (auto policies, rolling window)
-next. **Owner:** xollama.
+**Status:** ACTIVE. Phases 0–4 closed 2026-10-02 (engine answers: opencoti
+#609). Phase 5 (auto policies, rolling window) next. The per-device link
+form waits on opencoti. **Owner:** xollama.
 
 ## 1. What the owner asked for (2026-10-02, condensed)
 
@@ -234,3 +234,22 @@ An empty `envs` map adds nothing.
     race tests, lint, and a live smoke test.
   - The `applyGPUPolicy` call in `processPending` is tested only through its
     function.
+- 2026-10-02: the owner approved opencoti's per-device link force. opencoti
+  builds it alongside the rolling-window validation and mails when it is
+  done. Then `gpuPolicyEnvs` sends every forced device as
+  `PCI=GBPS,...` instead of the slowest figure.
+- 2026-10-02, Phase 4 built:
+  - `/api/xollama/link-probe` runs `opencoti --link-probe` once per GPU
+    backend. It is loopback only, and a backend with a model generating on
+    it is not probed.
+  - `tweak server gpu` probes when the menu opens and shows DETECTED and
+    MEASURED H2D columns. The PCIe wizard starts from the detected
+    generation and lanes.
+  - A failure shows the engine's own reason: the last
+    `opencoti --link-probe:` or `fatal error:` line on stderr.
+  - Measured live on solidPC with dev build 2610020719001: the RTX 3090 sits
+    at PCIe 3.0 x8 in a 4.0 x16 slot, measured 6.7 GB/s host to device and
+    6.6 back, and the engine would plan with 6.7. The engine's Vulkan side
+    does not list the integrated Renoir.
+  - The probe finds the CUDA library through the account's home
+    (`~/.llamafile`), as a launch does. A scratch home has none.

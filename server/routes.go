@@ -2171,6 +2171,7 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.POST(api.XollamaAPIKeyPath, s.APIKeyHandler) // xollama-hook: api-key
 	// xollama-hook: system-settings — see plans/system-settings.md
 	r.POST(api.XollamaSettingsPath, s.SettingsHandler)
+	r.POST(api.XollamaLinkProbePath, s.LinkProbeHandler)
 	r.GET("/api/status", s.StatusHandler)
 	// Codex uses this existing Ollama listener for both native and Ollama
 	// models. The proxy selects the upstream per request.

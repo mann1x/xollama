@@ -160,7 +160,11 @@ Its `gpu` section (`types/xollama/gpu.go`) is `xollama tweak server gpu`
 (`cmd/tweak/gpu.go`): allowed GPUs, priority (fill order), backend per GPU,
 forced link (`OPENCOTI_LINK_GBPS`, slowest of a load's GPUs), split
 auto/spread/single and split mode, applied in `server/xollama_gpu.go` via
-`server/sched.go` hooks and `llm.DeviceEnvs`.
+`server/sched.go` hooks and `llm.DeviceEnvs`. Its menu shows each GPU's link as
+the engine measures it: `/api/xollama/link-probe` (`api/xollama_linkprobe.go`,
+`LinkProbeHandler` in `server/xollama_linkprobe.go`, loopback only) runs
+`engine.LinkProbeCommand` (`llm/engine/linkprobe.go`) once per backend, never
+on one with a model generating.
 **Discovery** `discover/` · **Transfers** `transfer/` · **GGUF** `fs/gguf/`,
 `fs/safetensors/` · **Types** `types/model/`.
 **CLI support packages**: Modelfile parsing in `parser/` (`parser.go`,
