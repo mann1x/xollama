@@ -14,6 +14,7 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 > - Cerebriline's `--media-provider` offered no image tool on 22499, because there are two image models and it never guesses.
 > - The operator now names one per kind: `/v1/models` marks it with `default_for`, and a request without a model gets it.
 > - Video: `/v1/videos` (create, poll, content, delete, list) with xollama job ids. The engine is held per job, and the template's clip is the cap. Live on the 3090 with b105: Wan2.1 1.3B 640x352x33 peaks at 17.0 GiB in 216 s; 832x480x17 tiles its VAE decode (~19 GB wanted) and takes 563 s. Both came back as h264 mp4.
+> - The Wan2.1 template is set to 640x352x33 with a 12 GiB reserve (owner) and published as `mannix/wan2.1:t2v-1.3b`.
 
 > **2026-10-02 — Row B on opencoti b103 2610021841001: bug-3859 not fixed (#632 → #635).**
 > - auto: boot 71 s, short arm 2.22 / 197.4 t/s; the 22,662-token arm still dies, now as `failed to allocate CUDA0 buffer of size 363071744` at 17,920 tokens.

@@ -87,11 +87,18 @@ func kokoro() *xollama.TTSMedia {
 	}
 }
 
-func wanDefaults(fps int) *xollama.VideoDefaults {
+func wanDefaults(width, height, fps int) *xollama.VideoDefaults {
 	return &xollama.VideoDefaults{
-		Width: 832, Height: 480, Frames: 33, FPS: fps, CFG: f(6), Sampler: "euler", FlowShift: f(3), OutputFormat: "mp4",
+		Width: width, Height: height, Frames: 33, FPS: fps, CFG: f(6), Sampler: "euler", FlowShift: f(3), OutputFormat: "mp4",
 	}
 }
+
+// wan21Reserve is Wan2.1 1.3B's working memory at its template clip,
+// 640x352x33: measured on an RTX 3090 with opencoti b105 (2026-10-02), the
+// peak 17,044 MiB less 5.7 GiB after boot, about 11.3 GiB, rounded up. At
+// 832x480 the VAE decode alone wants ~19 GB, more than a 24 GB card has
+// beside the weights, so the template's clip is the smaller one.
+const wan21Reserve = 12288
 
 var catalog = []Entry{
 	{
@@ -150,13 +157,14 @@ var catalog = []Entry{
 		}},
 	},
 	{
-		ID: "wan2.1-t2v-1.3b", Template: "mannix/wan2.1:t2v-1.3b", Name: "Wan2.1 T2V 1.3B", Kind: "video", Family: "Wan", License: "apache-2.0",
+		ID: "wan2.1-t2v-1.3b", Template: "mannix/wan2.1:t2v-1.3b", Published: true, Name: "Wan2.1 T2V 1.3B", Kind: "video", Family: "Wan", License: "apache-2.0",
 		Description: "Short clips from text, in the least memory.",
 		Needs:       needsM7,
 		Media: xollama.Media{Video: &xollama.VideoMedia{
 			Model:       "hf.co/samuelchristlie/Wan2.1-T2V-1.3B-GGUF/Wan2.1-T2V-1.3B-Q8_0.gguf",
 			VAE:         "hf.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/split_files/vae/wan_2.1_vae.safetensors",
-			TextEncoder: umt5, Defaults: wanDefaults(16),
+			TextEncoder: umt5, Defaults: wanDefaults(640, 352, 16),
+			MediaEngine: xollama.MediaEngine{ReserveMiB: wan21Reserve},
 		}},
 	},
 	{
@@ -166,7 +174,7 @@ var catalog = []Entry{
 		Media: xollama.Media{Video: &xollama.VideoMedia{
 			Model:       "hf.co/QuantStack/Wan2.2-TI2V-5B-GGUF/Wan2.2-TI2V-5B-Q4_K_M.gguf",
 			VAE:         "hf.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/split_files/vae/wan2.2_vae.safetensors",
-			TextEncoder: umt5, Defaults: wanDefaults(24),
+			TextEncoder: umt5, Defaults: wanDefaults(832, 480, 24),
 		}},
 	},
 	{

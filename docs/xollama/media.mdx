@@ -24,13 +24,14 @@ These are published on ollama.com and pull like any model:
 | `mannix/z-image:turbo` | Photographic image generation in eight steps |
 | `mannix/whisper:large-v3-turbo` | Transcription in 99 languages, and translation to English |
 | `mannix/outetts:0.3` | Speech, OuteTTS with the WavTokenizer vocoder |
+| `mannix/wan2.1:t2v-1.3b` | Video from text, 640×352×33 (2 s at 16 fps); peaks at about 17 GiB, so a 24 GB card |
 
 ```shell
 xollama pull mannix/whisper:large-v3-turbo
 ```
 
 `xollama media list` shows which catalog entries are published, in its `PULL`
-column. Kokoro, Supertonic, KittenTTS, Wan and the mixed `media-kit` follow
+column. Kokoro, Supertonic, KittenTTS, Wan2.2 and the mixed `media-kit` follow
 with the opencoti engine that runs them (M7). Until then,
 `xollama media create` builds them locally.
 

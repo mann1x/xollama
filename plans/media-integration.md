@@ -329,7 +329,8 @@ All voice models are downloaded to `/srv/ml/media/` for the tests.
     - 640x352x33: peak 17,044 MiB (~11.3 GiB working), 216 s (sampling 202 s, decode 13.5 s), h264 mp4 33 frames.
     - 832x480x17: peak 9,660 MiB, 563 s (sampling 532 s, decode 31 s, tiled). The VAE decode wanted ~19 GB, ran out, and the engine retried with spatial+temporal tiling on its own.
     - So most of opencoti's ~20 GiB at 832x480x33 is the decode. The 2.6x slower sampling at the same latent token count is reported to opencoti (#644).
-  - Then: set the Wan templates' defaults and `reserve_mib` (the owner's call for 24 GiB cards). Earlier note: measure Wan2.1 1.3B at 640x352x33 and 832x480x17 for the reserve, and set the Wan templates' defaults and `reserve_mib` from those numbers (opencoti's one point is 832x480x33, about 20 GiB of working memory, more than a 24 GiB card holds with the model).
+  - **Wan2.1 1.3B template** (owner, 2026-10-02: 640x352x33, 12 GiB): `reserve_mib` 12288. A prompt-only clip renders 640x352x33 in 224 s at a 17.0 GiB peak, and 832x480x33 is refused with 400. **Published as `mannix/wan2.1:t2v-1.3b`** (registry 200, 18.6 min upload). Wan2.2 5B is not measured yet.
+  - Then (superseded): set the Wan templates' defaults and `reserve_mib` (the owner's call for 24 GiB cards). Earlier note: measure Wan2.1 1.3B at 640x352x33 and 832x480x17 for the reserve, and set the Wan templates' defaults and `reserve_mib` from those numbers (opencoti's one point is 832x480x33, about 20 GiB of working memory, more than a 24 GiB card holds with the model).
 
 ## 6. Decisions (owner, 2026-10-02)
 
