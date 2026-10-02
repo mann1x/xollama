@@ -5,6 +5,13 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-02 — opencoti b97: row B re-check (#626 → #627).**
+> - **Setup:** llama3.1:70b q3_K_S on the 3090, b97 `2610021340001` with its `ggml-cuda.so` beside it (`/srv/ml/xollama-phase2/engines/b97-2610021340001`), the same recipe as b177.
+> - **Boot (bug-3515) is fixed.** `--kv-residency-mode auto` boots in 38 s on POSITION_WINDOW (window 256, host tail 32512) and answers.
+> - **New defect: `auto` crashes on the long arm.** It dies with a CUDA OOM in `fattn.cu` (ring / `g_slotK` cudaMalloc) at about 18-19k tokens of a 22.6k prompt, reproduced 2/2; b177 completed that arm.
+> - **`head` is clean:** 1.74 / 0.17 t/s on the short / long arm; `auto` gets 2.25 t/s on the short arm.
+> - Row B stays open on opencoti's side. No pin moves.
+
 > **2026-10-02 — Media endpoints, Phase 3: the OpenAI media routes, and a local model mirror.**
 > - **Routes** (`server/media_routes.go`): `/v1/images/generations`, `/v1/images/edits`, `/v1/audio/speech`, `/v1/audio/translations`, and `/v1/audio/transcriptions` for a model with STT (any other model still goes to upstream's shim). `/v1/models` adds modalities and an `?output_modalities=` filter.
 > - **Template control:** every field a client leaves out comes from the template's `defaults`, and `fixed` fields always do. `voice_map` maps OpenAI voice names.
