@@ -44,6 +44,9 @@ const (
 	// kindText is free text kept exactly as typed -- a prompt, a model name --
 	// or `@path` to read it from a file, because a prompt is rarely one line.
 	kindText
+	// kindBlob is a media component: a file path, hashed and uploaded on
+	// write, or the digest of a blob the server has (media.go).
+	kindBlob
 )
 
 // field is one setting in the xollama.json layer.
@@ -287,6 +290,7 @@ func prune(c *xollama.Config) {
 		c.Devices = nil
 	}
 	c.Council = c.Council.Prune()
+	c.Media = c.Media.Prune()
 }
 
 // opencotiOnly is the reason a setting cannot be stated on a model that pins

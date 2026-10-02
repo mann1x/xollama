@@ -33,7 +33,7 @@ const MediaTypeImageJSON = "application/vnd.ollama.image.json"
 
 // SchemaVersion is the newest schema this build can read. It is NOT
 // necessarily what it writes: see requiredVersion.
-const SchemaVersion = 6
+const SchemaVersion = 7
 
 // SchemaVersionBase is the version that expresses everything except the fields
 // added in v2 (kv.unified, kv.residency_mode), v3 (devices) and v4 (council).
@@ -103,6 +103,9 @@ type Config struct {
 
 	// Fit is the engine's automatic fit (engine_policy.go).
 	Fit *Fit `json:"fit,omitempty"`
+
+	// Media attaches opencoti's media engines (media.go). Schema v7.
+	Media *Media `json:"media,omitempty"`
 }
 
 // Slots holds this model's serving-capacity settings.
@@ -351,6 +354,9 @@ func (c *Config) Validate() error {
 	if err := c.Council.validate(c.Engine); err != nil {
 		return err
 	}
+	if err := c.Media.validate(c.Engine); err != nil {
+		return err
+	}
 	if c.Engine != "" && !slices.Contains(validEngines, c.Engine) {
 		return fmt.Errorf("xollama config: unknown engine %q (want one of %v)", c.Engine, validEngines)
 	}
@@ -485,6 +491,12 @@ func Parse(data []byte) (*Config, error) {
 // version that is true of it, and only a model that actually uses a v2 field
 // pays the v2 floor.
 func (c *Config) requiredVersion() int {
+	// An older build would read media as an unknown field and serve the
+	// model with no media engine: its image or speech routes would answer
+	// 404 for a model whose publisher attached them.
+	if !c.Media.IsZero() {
+		return 7
+	}
 	// An older build would drop these and run the engine's own policies,
 	// not the ones stated.
 	if c.setsEnginePolicies() {
@@ -549,7 +561,8 @@ func (c *Config) IsZero() bool {
 		(c.DCA == nil || (c.DCA.Enabled == nil && c.DCA.ChunkSize == 0)) &&
 		(c.Session == nil || (c.Session.Affinity == nil && c.Session.Pool == nil && c.Session.MaxPools == 0 && c.Session.ClientPools == 0)) &&
 		c.Devices.IsZero() &&
-		c.Council.IsZero()
+		c.Council.IsZero() &&
+		c.Media.IsZero()
 }
 
 // The closed sets, exported so a tool that ASKS for one of these values offers

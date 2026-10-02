@@ -51,12 +51,13 @@ fork uses it.
 | `kv.rolling_window` | opencoti's KV rolling window (`--kv-rolling-window`): `on` (the engine sizes it), `off`, or a size in MiB. It acts only when the cache overflows VRAM. `kv.residency_mode` `head` disables the window, so the pair is refused (v6). |
 | `draft.auto_mtp_policy` | When a built-in MTP head drafts (`--auto-mtp-policy`): `measured` (the engine's default), `allocator`, `taper`, `always` or `off` (v6). |
 | `fit.enabled` / `fit.vram_target_mib` | The engine's automatic fit (`--fit on\|off`, which stock llama.cpp also has) and opencoti's `--vram-target` cap on weights, KV and compute together (v6). |
+| `media` | opencoti's media engines attached to the model: `media.image` (generation and edit), `media.stt`, `media.tts`, `media.video` (reserved until the engine has video). Components are named by sha256 digest and stored as `application/vnd.xollama.media` layers named `media/<kind>.<role>`, which `create` writes from the config, so push, pull and blob GC carry them. Each kind's `defaults` are the template's engine settings: they boot the engine and fill every field a request leaves out; a client value wins unless the field is in `fixed`. Stock llama.cpp has no media engine, so `engine: llamacpp` with media is refused (v7). See [plans/media-integration.md](../../plans/media-integration.md). |
 | `council` | Makes the model a council: a planner, researchers and critics in parallel, and a synthesizer answer every chat turn (v4; a role's own `num_ctx`, v5). `council.enabled` is the switch; everything else has a measured default. Settings stated without the switch are refused. A council changes how a turn is answered, never how the model loads, so it is left out of the launch config (`LaunchConfig`). Like any two tags over one blob, a council tag and the model it is built `FROM` do not share a runner: switching between them reloads. See [plans/agentic-council-chat.md](../../plans/agentic-council-chat.md). |
 
 ### The version written is the lowest that is true
 
 `Marshal` recomputes `version` from the fields the config actually uses, and
-never from what the build knows. `SchemaVersion` is 6; `SchemaVersionBase` is 1;
+never from what the build knows. `SchemaVersion` is 7; `SchemaVersionBase` is 1;
 only `kv.unified` and `kv.residency_mode` force the 2, and a `devices` pin forces
 the 3 — an older build would read the pin as an unknown key and serve the model
 on whatever hardware it chose, which is exactly what the pin exists to prevent.
@@ -66,6 +67,8 @@ A role's own `num_ctx` (`council.<role>.num_ctx`) forces the 5: an older build
 would drop it and run that role in its model template's window.
 The engine policies (`kv.rolling_window`, `draft.auto_mtp_policy`, `fit`) force
 the 6: an older build would drop them and run the engine's own policies instead.
+`media` forces the 7: an older build would serve the model with no media engine,
+and its image and speech routes would answer 404.
 
 Stamping the newest version unconditionally would have made every model this
 build touched unreadable to an older xollama, including models using nothing

@@ -5,6 +5,20 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-02 — Media endpoints, Phase 1: schema v7 `media`.**
+> - **Schema:** `xollama.json` gains `media.image`, `media.stt`, `media.tts` and `media.video` (`types/xollama/media.go`).
+>   - Components are named by digest. `create` writes each one as an `application/vnd.xollama.media` layer named `media/<kind>.<role>` (`create/xollama_media.go`, inside the `model-config` hook).
+>   - Each kind's `defaults` are the template's engine settings; `fixed` lists the ones a request may not override.
+> - **CLI:** `xollama tweak model` gains a row per setting (`cmd/tweak/media.go`). A component given as a path is hashed, then uploaded on write only when the server lacks it.
+> - **Tests:** unit and mutation tests (11 mutations, all killed).
+> - **Live on solidPC (scratch store):** Kokoro and Whisper were attached to a Qwen3-4B model, shown, re-run without re-upload, and garbage-collected on `rm`.
+> - **opencoti #622:**
+>   - no mp3 encoder in the engine (the owner decides between encoding in xollama and WAV);
+>   - Klein edits are img2img until a switch;
+>   - combined boot is ungated, so Phase 2 runs media in its own process;
+>   - video is queued as M7.
+> - Next: Phase 2 (launch and scheduler). Phase 0 waits on the b97 handoff.
+
 > **2026-10-02 — Media endpoints: plan written (`plans/media-integration.md`).**
 > - opencoti closed row M (#619, b97 `2610021340001`): image generation and edit, STT and TTS behind the OpenAI routes.
 > - The plan attaches them to a model, or to a media-only template, through a `media` section in `xollama.json` (schema v7). Components are `application/vnd.xollama.media` layers named by role.

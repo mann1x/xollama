@@ -199,8 +199,10 @@ with the Bubble Tea menu in `cmd/tui/tui.go`.
 `fields.go`, `prompt.go`, `reconcile.go`, `devices.go`, `council.go`), registered
 from `cmd/cmd.go` under the `model-config` hook. It reads the model's config
 layer through `/api/show` (`api.ShowResponse.Xollama`), validates against
-`types/xollama/config.go` (schema v6, engine policies in `engine_policy.go`; the `council` block is
-`types/xollama/council.go`), and replaces only that layer — see
+`types/xollama/config.go` (schema v7, engine policies in `engine_policy.go`; the `council` block is
+`types/xollama/council.go`; the `media` block — image/stt/tts/video engines, components by digest as
+`application/vnd.xollama.media` layers written by `create/xollama_media.go`, template-owned `defaults`
+and `fixed` — is `types/xollama/media.go`, its tweak rows and uploads `cmd/tweak/media.go`), and replaces only that layer — see
 `docs/xollama/tweak.mdx`. `xollama show` lists the stated settings in an
 `xOllama` table via `tweak.SettingRows` (same hook, in `showInfo`); unstated ones
 are omitted. A council's settings stay out of the launch: `llamaServerConfigForModel`

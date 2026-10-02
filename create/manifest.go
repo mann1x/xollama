@@ -226,6 +226,9 @@ func ApplyModelfileLayers(layers []manifest.Layer, opts ModelfileLayerOptions) (
 	// parent's engine pin rather than add to it.
 	if opts.Xollama != nil {
 		layers = removeXollamaConfigLayer(layers)
+		if layers, err = syncMediaLayers(layers, opts.Xollama.Media); err != nil {
+			return nil, err
+		}
 		if !opts.Xollama.IsZero() {
 			var err error
 			layers, err = appendXollamaConfigLayer(layers, opts.Xollama)

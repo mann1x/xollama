@@ -1,6 +1,6 @@
 # Media endpoints: images, speech, transcription (video later)
 
-**Status:** ACTIVE 2026-10-02 (owner decisions in §6). Phase 0 engine measurements wait on the b97 handoff; Phase 1 (schema) started 2026-10-02, since it needs no engine.
+**Status:** ACTIVE. Phase 1 (schema v7) closed 2026-10-02. Phase 0 engine measurements wait on the b97 handoff. Phase 2 next.
 **Owner:** xollama; engine work by opencoti.
 
 ## 1. What the owner asked for (2026-10-02, condensed)
@@ -235,10 +235,20 @@ All voice models are downloaded to `/srv/ml/media/` for the tests.
     measured memory, and the 503 on a second request.
   - The registry push test (§4.2), under `mannix`. The owner deletes the template afterwards.
   - Whether SurfSense's TTS path accepts WAV bytes saved as `.mp3`.
-- **Phase 1: schema v7 `media`** (components, `defaults`, `fixed`) with validation, `tweak model` Media part,
+- **Phase 1 — CLOSED 2026-10-02.** Built: `types/xollama/media.go`, `create/xollama_media.go`, `cmd/tweak/media.go`.
+  Tested with unit and mutation tests (11 mutations, all killed), then live on solidPC:
+  - Kokoro and Whisper were attached to a Qwen3-4B model in a scratch store;
+  - 874 MB and 189 MB were uploaded and stored as `media/stt.model` and `media/tts.model`;
+  - `show` listed them; a re-run found them already on the server; `rm` collected both blobs.
+
+  Not built: `hf.co` sourcing (Phase 4, with templates). Media-only templates also wait,
+  because `create` still needs a FROM. Phase 1 as planned:
+  **schema v7 `media`** (components, `defaults`, `fixed`) with validation, `tweak model` Media part,
   `xollama show`, `tweak show model`, sourcing components from a path or
   `hf.co`, and the layers. Unit and mutation tests.
-- **Phase 2: launch and scheduler.** Flags, media-only boot, refusal on
+- **Phase 2: launch and scheduler.**
+  - Media runs in **its own media-only engine process** (no `-m`) until opencoti's M7 gate covers a combined boot beside PolyKV, elastic slots and the rolling window (#622).
+  - Flags, media-only boot, refusal on
   stock, reserves in the estimate, capabilities, the per-engine queue.
 - **Phase 3: routes.** Image generation first, which is **Cerebriline's
   need**. Then edit, speech, transcription, and the `/v1/models`
@@ -263,7 +273,22 @@ All voice models are downloaded to `/srv/ml/media/` for the tests.
 | Media settings | **The template owns them.** Its `media.<kind>.defaults` go to the engine at launch and fill every field a request leaves out. A client value wins unless the field is `fixed` (§4.1). |
 | MP3 | **Asked of opencoti (#620).** xollama passes through what the engine encodes, with no new Go dependency. Until then, Phase 0 tests whether SurfSense accepts WAV. |
 
-## 7. Asked of opencoti (mails #620 and #621, 2026-10-02)
+## 7. Asked of opencoti (mails #620 and #621, 2026-10-02); answered in #622
+
+**Answers (#622):**
+- STT defaults to `json`. `features` on `/health` is authoritative.
+- **No mp3 today:** the engine serves wav and pcm only. The encoder question is back with the owner.
+- **Klein edit is img2img today.** The `--diffusion-edit ref` switch and audio.cpp TTS await the owner's word, asked together with M7.
+- **Combined boot is not gated** with PolyKV, elastic slots or the rolling window. Keep media in its own process for now.
+- Speech engines stay resident from boot.
+- **Video is queued as opencoti M7**, right after the b97 handoff, on the shape asked:
+  - `/v1/videos` plus `/sdcpp/v1/*`;
+  - async jobs;
+  - webm, or mp4 if possible;
+  - `videos_generate_v1` and `videos_i2v_v1`;
+  - Wan2.1 1.3B first.
+
+**What was asked:**
 
 - Gap 1, the Klein reference edit.
 - Gap 2, audio.cpp as a TTS engine.

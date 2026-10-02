@@ -125,6 +125,8 @@ func flagUsage(f field) string {
 		values = "PCI-ID|index|integrated|discrete[,...]|all"
 	case kindText:
 		values = "TEXT|@file|unset"
+	case kindBlob:
+		values = "PATH|sha256:DIGEST|unset"
 	}
 	return fmt.Sprintf("%s (%s); bare asks", f.path, values)
 }
@@ -430,6 +432,9 @@ func write(cmd *cobra.Command, client *api.Client, name string, cfg *xollama.Con
 		return nil
 	}
 	fmt.Fprintf(out, "\nwriting %s\n", name)
+	if err := uploadMedia(cmd.Context(), client, cfg, out); err != nil {
+		return err
+	}
 	if err := client.Create(cmd.Context(), req, fn); err != nil {
 		return err
 	}

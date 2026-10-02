@@ -179,6 +179,41 @@ short call.
   window and the pressure, and `endpoint=polykv/pools` the shared parts during
   a turn (see [Seeing what the engine did](/xollama/introspection)).
 
+## Attaching image, speech and transcription engines
+
+A model can carry opencoti's media engines beside its LLM: image generation and
+edit, speech-to-text, text-to-speech, and later video. Each kind's model is its
+switch, and the bare flag walks that kind's questions:
+
+```shell
+xollama tweak model qwen3:8b --image
+xollama tweak model qwen3:8b \
+  --tts=/srv/ml/media/kokoro-82m-q8_0.gguf --tts-engine=audiocpp \
+  --tts-voice=af_heart --tts-voice-map=alloy=af_heart,nova=af_bella \
+  --stt=/srv/ml/media/ggml-large-v3-turbo-q8_0.bin --stt-format=json
+```
+
+- **Components** (`--image`, `--image-vae`, `--image-llm`, `--tts`,
+  `--tts-vocoder`, `--stt`, `--video`, ...) take a file path or a sha256 digest.
+  A path is hashed when you give it and uploaded when the model is written,
+  only if the server does not already have it; `--dry-run` sends nothing.
+  The model then carries each one as a layer, so `push`, `pull` and `rm` handle
+  them like its weights.
+- **Defaults** (`--image-width`, `--image-steps`, `--tts-voice`,
+  `--stt-format`, ...) are the template's settings for the engine. Clients such
+  as SurfSense send only a prompt or a text, so these decide the size, the steps,
+  the voice and the format. They are passed to the engine when it starts, and
+  xollama fills them into every request that leaves them out.
+- **`--<kind>-fixed`** lists defaults a request may not override, for example
+  `--image-fixed=width,height` for a model trained at one size.
+- A kind's settings without its model are dropped, each with its reason.
+  `tweak server` does not offer media: it belongs to one model, not to every
+  model.
+
+`xollama show` lists them under `media.*`. The routes that serve them
+(`/v1/images/*`, `/v1/audio/*`) come with the next phase of
+[the media plan](https://github.com/mann1x/xollama/blob/dev/plans/media-integration.md).
+
 ## Pinning a drafter's driver
 
 A drafter is attached at build time with a `DRAFT` line, and its driver is
