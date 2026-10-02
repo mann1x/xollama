@@ -5,6 +5,19 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-02 — Plan: server settings without environment variables.**
+> - Owner: `tweak server` sets only the API key, but every server-wide setting should be real configuration. Asked for: `tweak server` (defaults for every pertinent `tweak model` setting), `tweak server gpu` (which GPUs, their priority, the backend, the PCIe link, split), `tweak envs` (environment overrides) and `tweak show server|envs|model NAME`.
+> - Decided with the owner:
+>   - The tweak file beats the process environment.
+>   - Changes apply immediately where possible.
+>   - A forced link is per GPU, set through a generation-then-lanes wizard.
+>   - Priority is fill order.
+>   - Split is auto, spread or single, plus the split mode.
+>   - "Auto" means the engine's fit; residency mode and engine selection are offered as well.
+> - Plan: `plans/system-settings.md`.
+> - Engine questions to opencoti (#608): a per-device link force, every auto policy, residency mode vs `--kv-rolling-window`, split modes, and probing a busy GPU.
+> - No code yet.
+
 > **2026-10-01 — Fixes for 0427/0428's lost time: check tools read, folds stick, housekeeping is plain.**
 > - `check_file`, and any tool whose name says check, lint, validate, verify or diagnose, now counts as read-only (5f29e671b). Researchers and critics get it, and the synthesizer's calls no longer count as changes. A write word still wins.
 > - **Every fold now sticks.** Two causes, both found while testing the refused-root fold:
