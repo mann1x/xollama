@@ -5,6 +5,14 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-02 — Media endpoints, Phase 3: the OpenAI media routes, and a local model mirror.**
+> - **Routes** (`server/media_routes.go`): `/v1/images/generations`, `/v1/images/edits`, `/v1/audio/speech`, `/v1/audio/translations`, and `/v1/audio/transcriptions` for a model with STT (any other model still goes to upstream's shim). `/v1/models` adds modalities and an `?output_modalities=` filter.
+> - **Template control:** every field a client leaves out comes from the template's `defaults`, and `fixed` fields always do. `voice_map` maps OpenAI voice names.
+> - **Queue:** one FIFO per engine (16 deep, 10 min), then 503 with `Retry-After`.
+> - **Mirror** (owner: "we can't re-download them every time"): `xollama media fetch --dir` and `media create --dir` (`internal/mediahub/mirror.go`). The whole catalog is in `/shared/dev/opencoti/.opencoti/models/media`; `/srv/ml/media` is now a symlink to it.
+> - **Live on solidPC, on CPU (dev c7 `2610020719001`):** a Klein image (template steps, cfg and sampler confirmed in the PNG), OuteTTS speech, Whisper transcription (exact) and translation, the modality filter, and two queued speech requests served in turn. 13 mutations, all killed.
+> - **Open:** the GPU run and Cerebriline's image tool wait on the b97 Linux build with its `ggml-cuda.so`. c7 has no `--diffusion-edit`, which M7 adds.
+
 > **2026-10-02 — Media endpoints, Phase 2: the media runner, `hf.co` sourcing and `xollama media`.**
 > - **Runner:** a model's media runs in its own media-only opencoti process (`llm/engine_media.go`), scheduled under `media:<manifest digest>` through one hook in `Scheduler.load` (`server/media.go`).
 >   - Reserves go to the GPU with the most free memory.

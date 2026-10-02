@@ -2226,12 +2226,18 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.POST("/v1/chat/completions", s.withInferenceRequestLogging("/v1/chat/completions", cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.ChatMiddleware(lookupThinking), s.ChatHandler)...)
 	r.POST("/v1/completions", s.withInferenceRequestLogging("/v1/completions", cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.CompletionsMiddleware(), s.GenerateHandler)...)
 	r.POST("/v1/embeddings", cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.EmbeddingsMiddleware(), s.EmbedHandler)
-	r.GET("/v1/models", middleware.ListMiddleware(), s.ListHandler)
+	r.GET("/v1/models", s.mediaModelsMiddleware(), middleware.ListMiddleware(), s.ListHandler) // xollama-hook: media
 	r.GET("/v1/models/:model", cloudModelPathPassthroughMiddleware(cloudErrRemoteModelDetailsUnavailable), middleware.RetrieveMiddleware(), s.ShowHandler)
 	r.POST("/v1/responses", s.withInferenceRequestLogging("/v1/responses", s.responsesCompactionMiddleware(), cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.ResponsesMiddleware(lookupThinking), s.ChatHandler)...)
 	r.POST("/v1/responses/compact", s.ResponsesCompactHandler)
 	// OpenAI-compatible audio endpoint
-	r.POST("/v1/audio/transcriptions", middleware.TranscriptionMiddleware(), s.ChatHandler)
+	r.POST("/v1/audio/transcriptions", s.mediaTranscriptionMiddleware(), middleware.TranscriptionMiddleware(), s.ChatHandler) // xollama-hook: media
+	// xollama-hook: media — the OpenAI media routes, served by a model's media
+	// engines (server/media_routes.go).
+	r.POST("/v1/audio/translations", s.TranslationsHandler)
+	r.POST("/v1/audio/speech", s.SpeechHandler)
+	r.POST("/v1/images/generations", s.ImageGenerationsHandler)
+	r.POST("/v1/images/edits", s.ImageEditsHandler)
 
 	// Inference (Anthropic compatibility)
 	r.POST("/v1/messages", s.withInferenceRequestLogging("/v1/messages", cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.AnthropicMessagesMiddleware(lookupThinking), s.ChatHandler)...)

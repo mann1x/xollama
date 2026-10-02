@@ -336,3 +336,59 @@ func TestMediaListFiltersByKind(t *testing.T) {
 		t.Fatal("an unknown kind listed something")
 	}
 }
+
+func TestMediaCreateUploadsFromTheMirrorInsteadOfFetching(t *testing.T) {
+	dir := t.TempDir()
+	content := []byte("whisper weights")
+	sum := sha256.Sum256(content)
+	digest := fmt.Sprintf("sha256:%x", sum)
+	old := hubResolve
+	t.Cleanup(func() { hubResolve = old })
+	hubResolve = func(_ context.Context, r mediahub.Ref) (mediahub.File, error) {
+		return mediahub.File{Ref: r, Digest: digest, Size: int64(len(content))}, nil
+	}
+	e, _ := mediahub.Find("whisper-large-v3-turbo")
+	ref, err := mediahub.ParseRef(e.Refs()[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := mediahub.MirrorPath(dir, ref)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ms := newMediaServer(t)
+
+	out := mediaCreate(t, "whisper-large-v3-turbo", "whisper", "--dir", dir)
+
+	if len(ms.pulled) != 0 {
+		t.Fatalf("the server fetched %v although the mirror has it", ms.pulled)
+	}
+	if string(ms.blobs[digest]) != string(content) || !strings.Contains(out, "local copy") {
+		t.Fatalf("blobs %v\n%s", ms.blobs, out)
+	}
+}
+
+func TestMediaFetchKeepsWhatTheMirrorHas(t *testing.T) {
+	fakeHub(t)
+	var fetched []string
+	old := mediaFetch
+	t.Cleanup(func() { mediaFetch = old })
+	mediaFetch = func(_ context.Context, dir string, f mediahub.File, _ func(int64, int64)) (string, bool, error) {
+		fetched = append(fetched, f.Ref.String())
+		return mediahub.MirrorPath(dir, f.Ref), len(fetched) == 1, nil
+	}
+	var out bytes.Buffer
+	if err := runMediaFetch(t.Context(), &out, t.TempDir(), []string{"media-kit", "flux2-klein-4b"}); err != nil {
+		t.Fatal(err)
+	}
+	// media-kit has five components and klein's three are among them.
+	if len(fetched) != 5 {
+		t.Fatalf("fetched %d: %v", len(fetched), fetched)
+	}
+	if !strings.Contains(out.String(), "fetched") || !strings.Contains(out.String(), "already there") {
+		t.Fatal(out.String())
+	}
+}

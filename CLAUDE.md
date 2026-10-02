@@ -205,7 +205,8 @@ layer through `/api/show` (`api.ShowResponse.Xollama`), validates against
 and `fixed` — is `types/xollama/media.go`, its tweak rows and uploads `cmd/tweak/media.go`; it is served by a media-only opencoti
 process, `llm/engine_media.go`, scheduled as `media:<digest>` from `server/media.go` (`media` hook); `hf.co` components are resolved by
 `internal/mediahub` and fetched by `/api/xollama/media/pull`, `server/media_pull.go`; catalog and discovery are `xollama media`,
-`cmd/tweak/mediacmd.go`), and replaces only that layer — see
+`cmd/tweak/mediacmd.go`, with a local mirror (`media fetch`, `create --dir`, `internal/mediahub/mirror.go`); the OpenAI media routes,
+per-engine queue and template fill-in are `server/media_routes.go`, see `docs/xollama/media.mdx`), and replaces only that layer — see
 `docs/xollama/tweak.mdx`. `xollama show` lists the stated settings in an
 `xOllama` table via `tweak.SettingRows` (same hook, in `showInfo`); unstated ones
 are omitted. A council's settings stay out of the launch: `llamaServerConfigForModel`

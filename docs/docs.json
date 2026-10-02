@@ -178,6 +178,7 @@
             "pages": [
               "/xollama/model-settings",
               "/xollama/tweak",
+              "/xollama/media",
               "/xollama/kv-cache",
               "/xollama/slots",
               "/xollama/dca",

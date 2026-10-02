@@ -1,6 +1,6 @@
 # Media endpoints: images, speech, transcription (video later)
 
-**Status:** ACTIVE. Phase 1 (schema v7) and Phase 2 (media-only runner, `hf.co` sourcing, catalog, `xollama media`) closed 2026-10-02. Phase 0 engine measurements wait on the b97 handoff and the M7 build. Phase 3 (routes) next.
+**Status:** ACTIVE. Phase 1 (schema v7) and Phase 2 (media-only runner, `hf.co` sourcing, catalog, `xollama media`) closed 2026-10-02. Phase 3 (the OpenAI routes) built 2026-10-02 and live on CPU; its GPU run and Cerebriline's image tool wait on a Linux engine build with its `ggml-cuda.so`. Phase 0 engine measurements wait on the b97 handoff and the M7 build.
 **Owner:** xollama; engine work by opencoti.
 
 ## 1. What the owner asked for (2026-10-02, condensed)
@@ -266,9 +266,27 @@ All voice models are downloaded to `/srv/ml/media/` for the tests.
   - **Tests:** unit tests, a live test gated by `XOLLAMA_MEDIA_LIVE_DIR`, and an HF resolve test gated by `XOLLAMA_HF_LIVE` (23 refs). 12 mutations, all killed.
   - **Not built (moved to Phase 3, with the routes):** the per-engine request queue and the refusal on stock at request time. A media runner never starts on stock, because it always launches opencoti.
 - **Phase 2 as planned:** media-only engine process, flags, refusal on stock, reserves in the estimate, capabilities, the per-engine queue.
-- **Phase 3: routes.** Image generation first, which is **Cerebriline's
-  need**. Then edit, speech, transcription, and the `/v1/models`
-  modalities. Live tests against b97 and against Cerebriline's image tool.
+- **Phase 3 — BUILT 2026-10-02; GPU and Cerebriline runs open.**
+  - **Routes** (`server/media_routes.go`): `/v1/images/generations`, `/v1/images/edits`, `/v1/audio/speech`, `/v1/audio/translations`, and `/v1/audio/transcriptions`. Transcriptions go to the engine only for a model with STT; every other model goes on to upstream's shim, which finds the form already parsed by the same call.
+  - **`/v1/models`:** media models gain `input_modalities` and `output_modalities`, with `?output_modalities=` and `?input_modalities=` filtering. Without media and without a filter, the list is upstream's bytes.
+  - **Template fill-in:** a field the client leaves out gets the default; a `fixed` field gets the template's value. A fixed width, height or flow_shift goes into `sd_cpp_extra_args`, which the engine applies after `size`. `strength` is filled only for an img2img edit, and `voice_map` maps OpenAI voice names. A `task: translate` template answers `/transcriptions` in English.
+  - **`response_format: url`** is answered as a `data:` URL; the engine serves `b64_json` only.
+  - **Per-engine FIFO queue:** 16 deep, 10-minute wait, then 503 with `Retry-After`. An engine's own 503 is asked again after its `Retry-After`.
+  - **Not built:** video routes (Phase 6, M7), and a refusal at request time on stock (a media runner always launches opencoti).
+  - **A template with every engine on `device: CPU`** is never placed on a GPU (`mediaOnCPU`).
+  - **Local mirror** (`internal/mediahub/mirror.go`; owner, 2026-10-02: "we can't re-download them every time"):
+    - `xollama media fetch --dir` downloads a catalog entry once, checked against the hub's sha256, with a `<file>.sha256` sidecar bound to size and mtime;
+    - `media create --dir` uploads from the mirror.
+    - On solidPC the mirror is `/shared/dev/opencoti/.opencoti/models/media` (all catalog files; `/srv/ml/media` is a symlink to it). Klein, 7 GB, went into a store in 10 s.
+  - **Tests:** unit tests, plus 13 mutations, all killed (fixed ignored, strength on a reference edit, voice map, task default, STT hijacking upstream, no 503 retry, unbounded queue, url, response_format leak, modalities, byte-identical list, repeated images, the `/v1/models` route hook).
+  - **Live on solidPC** (dev engine c7 `2610020719001`, on CPU):
+    - Klein generation 200 in 3m52s at 512² with the template's 4 steps, cfg 1 and euler (the PNG's own parameters say so);
+    - OuteTTS speech 200 as WAV in 15 s;
+    - Whisper transcription of that speech exact, and translation 200;
+    - `/v1/models?output_modalities=audio` lists only `outetts`;
+    - two concurrent speech requests both 200, served in turn (11.5 s and 22.8 s).
+  - **GPU not run:** no `ggml-cuda.so` is known to pair with c7 `2610020719001`. The one in `~/.llamafile/v/opencoti-0.10.5-c7-dev` is b97's, from 13:41, and a dev build loads the library beside it (`.claude/rules/solidpc-testing.md`). The GPU run and Cerebriline's image tool wait on the b97 Linux build with its library.
+  - **c7 has no `--diffusion-edit`.** A template stating `edit` cannot boot on it, so Klein ran with `edit` unset; M7 brings the switch.
 - **Phase 4: templates.** The `hf.co` sourcing and the catalog are built (Phase 2); what is left is publishing, per Phase 0: `flux2-klein:4b`, `whisper:turbo`, `outetts:0.3`,
   later `kokoro`, `supertonic`, `kittentts`, and a mixed `media-kit`. Pushed
   or published as `hf.co` references, per Phase 0.

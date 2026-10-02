@@ -33,12 +33,16 @@ func MediaCommand(opts Options) *cobra.Command {
   xollama media files leejet/FLUX.2-klein-4B-GGUF
   xollama media create flux2-klein-4b     a template named after the entry
   xollama media create kokoro-82m --to qwen3:8b
+  xollama media fetch --dir DIR flux2-klein-4b   keep a local copy, once
+  xollama media create flux2-klein-4b --dir DIR  fill the server from it
 
 A template is an ordinary model whose xollama.json carries the media; the
 server fetches every component from Hugging Face by its sha256, and push, pull
-and rm handle them like weights. Change one afterwards with xollama tweak model.`,
+and rm handle them like weights. With --dir, a component already in that
+directory (laid out <owner>/<repo>/<file>) is uploaded from it instead.
+Change one afterwards with xollama tweak model.`,
 	}
-	mediaCmd.AddCommand(mediaListCommand(), mediaSearchCommand(), mediaFilesCommand(), mediaCreateCommand(opts))
+	mediaCmd.AddCommand(mediaListCommand(), mediaSearchCommand(), mediaFilesCommand(), mediaCreateCommand(opts), mediaFetchCommand())
 	return mediaCmd
 }
 
@@ -150,7 +154,8 @@ With NAME the template is created under it, otherwise under the entry's id.
 With --to MODEL the entry's media is added to that model instead, replacing
 any media of the same kind and leaving the rest of the model alone.
 
-The server fetches every component from Hugging Face by its sha256.`,
+The server fetches every component from Hugging Face by its sha256, except
+one already in the --dir mirror (xollama media fetch), which is uploaded.`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if opts.Heartbeat != nil {
@@ -164,15 +169,17 @@ The server fetches every component from Hugging Face by its sha256.`,
 			}
 			to, _ := cmd.Flags().GetString("to")
 			dry, _ := cmd.Flags().GetBool("dry-run")
-			return runMediaCreate(cmd.Context(), client, cmd.OutOrStdout(), args, to, dry)
+			dir, _ := cmd.Flags().GetString("dir")
+			return runMediaCreate(cmd.Context(), client, cmd.OutOrStdout(), args, to, dir, dry)
 		},
 	}
 	cmd.Flags().String("to", "", "Add the media to this existing model instead of creating a template")
 	cmd.Flags().Bool("dry-run", false, "Resolve and print the config without fetching or writing")
+	cmd.Flags().String("dir", "", "A local mirror (xollama media fetch): components found there are uploaded from it")
 	return cmd
 }
 
-func runMediaCreate(ctx context.Context, client *api.Client, out io.Writer, args []string, to string, dry bool) error {
+func runMediaCreate(ctx context.Context, client *api.Client, out io.Writer, args []string, to, dir string, dry bool) error {
 	entry, ok := mediahub.Find(args[0])
 	if !ok {
 		return fmt.Errorf("no catalog entry %q; xollama media list shows them", args[0])
@@ -207,8 +214,14 @@ func runMediaCreate(ctx context.Context, client *api.Client, out io.Writer, args
 			return err
 		}
 		digests[s] = f.Digest
-		mediaSources[f.Digest] = ref.String()
-		fmt.Fprintf(out, "   %s  %s  %s\n", f.Digest[7:19], format.HumanBytes(f.Size), ref)
+		where := ""
+		if p, ok := mediahub.Mirrored(dir, f); ok {
+			mediaFiles[f.Digest] = p
+			where = "  (local copy)"
+		} else {
+			mediaSources[f.Digest] = ref.String()
+		}
+		fmt.Fprintf(out, "   %s  %s  %s%s\n", f.Digest[7:19], format.HumanBytes(f.Size), ref, where)
 	}
 	media.MapComponents(func(s string) string { return digests[s] })
 
@@ -262,5 +275,93 @@ func runMediaCreate(ctx context.Context, client *api.Client, out io.Writer, args
 		return err
 	}
 	fmt.Fprintf(out, "%s carries %s. `xollama show %s` lists it.\n", name, strings.Join(stamped.Media.Kinds(), ", "), name)
+	return nil
+}
+
+func mediaFetchCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "fetch --dir DIR (ID|hf.co/OWNER/REPO/FILE)...",
+		Short: "Download catalog entries or Hugging Face files into a local mirror",
+		Long: `Download media components into a local directory, laid out
+<owner>/<repo>/<file>, so they are downloaded once per machine.
+
+A file already there with the right sha256 is kept; a new one is checked
+against the sha256 Hugging Face names before it takes its place. Give catalog
+ids (xollama media list), hf.co references, or --all for the whole catalog.
+Then xollama media create --dir DIR uploads from the mirror.
+
+This runs on the client and needs no server.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dir, _ := cmd.Flags().GetString("dir")
+			all, _ := cmd.Flags().GetBool("all")
+			if dir == "" {
+				return errors.New("--dir is required")
+			}
+			if all {
+				for _, e := range mediahub.Catalog() {
+					args = append(args, e.ID)
+				}
+			}
+			if len(args) == 0 {
+				return errors.New("name catalog ids or hf.co references, or --all")
+			}
+			return runMediaFetch(cmd.Context(), cmd.OutOrStdout(), dir, args)
+		},
+	}
+	cmd.Flags().String("dir", "", "The mirror directory")
+	cmd.Flags().Bool("all", false, "Every file of every catalog entry")
+	return cmd
+}
+
+// mediaFetch puts one file in the mirror; tests swap it.
+var mediaFetch = func(ctx context.Context, dir string, f mediahub.File, progress func(done, total int64)) (string, bool, error) {
+	return mediahub.Fetch(ctx, &http.Client{}, dir, f, progress)
+}
+
+func runMediaFetch(ctx context.Context, out io.Writer, dir string, args []string) error {
+	var refs []string
+	for _, a := range args {
+		if mediahub.IsRef(a) {
+			refs = append(refs, a)
+			continue
+		}
+		e, ok := mediahub.Find(a)
+		if !ok {
+			return fmt.Errorf("no catalog entry %q; xollama media list shows them", a)
+		}
+		refs = append(refs, e.Refs()...)
+	}
+	seen := map[string]bool{}
+	for _, s := range refs {
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+		ref, err := mediahub.ParseRef(s)
+		if err != nil {
+			return err
+		}
+		f, err := hubResolve(ctx, ref)
+		if err != nil {
+			return err
+		}
+		next := int64(25)
+		p, fetched, err := mediaFetch(ctx, dir, f, func(done, total int64) {
+			if total > 0 && done*100/total >= next {
+				fmt.Fprintf(out, "   %s %d%% of %s\n", ref.Path, done*100/total, format.HumanBytes(total))
+				for next <= done*100/total {
+					next += 25
+				}
+			}
+		})
+		if err != nil {
+			return err
+		}
+		state := "already there"
+		if fetched {
+			state = "fetched"
+		}
+		fmt.Fprintf(out, "   %s  %s  %s  %s\n", f.Digest[7:19], format.HumanBytes(f.Size), p, state)
+	}
 	return nil
 }

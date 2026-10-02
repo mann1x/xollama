@@ -21,7 +21,8 @@ import (
 // Whisper in one process, speaks a sentence and transcribes it back.
 //
 // XOLLAMA_MEDIA_LIVE_DIR is the directory holding the files, laid out as
-// <owner>/<repo>/<file> (the Phase 0 downloads, /srv/ml/media); the engine
+// <owner>/<repo>/<file>: a mirror filled by xollama media fetch (on solidPC
+// /shared/dev/opencoti/.opencoti/models/media); the engine
 // is the one XOLLAMA_ENGINE / XOLLAMA_ENGINE_PATH select.
 func TestMediaRunnerLive(t *testing.T) {
 	dir := os.Getenv("XOLLAMA_MEDIA_LIVE_DIR")

@@ -3,11 +3,12 @@
 // sha256 and size, a search of the hub by task, a repo's file list, and the
 // curated catalog of media templates.
 //
-// Downloading is not here. Hugging Face's ollama-compatible registry serves
-// every large file of a repo by its sha256 at hf.co/v2/<repo>/blobs/<digest>
-// -- GGUF, safetensors and whisper.cpp .bin alike -- so the server fetches a
-// component with the downloader every hf.co pull already uses, and this
-// package only has to name the digest.
+// The server does not download through this package. Hugging Face's
+// ollama-compatible registry serves every large file of a repo by its sha256
+// at hf.co/v2/<repo>/blobs/<digest> -- GGUF, safetensors and whisper.cpp .bin
+// alike -- so the server fetches a component with the downloader every hf.co
+// pull already uses, and this package only has to name the digest. The one
+// download here is the client's local mirror (mirror.go).
 package mediahub
 
 import (

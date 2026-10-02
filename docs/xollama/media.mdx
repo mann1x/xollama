@@ -1,0 +1,80 @@
+---
+title: Images, speech and transcription
+---
+
+A model can carry opencoti's media engines: image generation and edit,
+text-to-speech and speech-to-text. They are served on OpenAI's routes, so any
+OpenAI client works, as do SurfSense and Cerebriline. How to attach engines to
+a model, or install a ready-made media model, is in
+[Attaching image, speech and transcription engines](/xollama/tweak#attaching-image-speech-and-transcription-engines).
+
+```shell
+xollama media create flux2-klein-4b klein
+curl http://localhost:22434/v1/images/generations \
+  -d '{"model": "klein", "prompt": "a lighthouse at dusk"}'
+```
+
+## Keeping one copy of the models
+
+Media models are gigabytes. `xollama media fetch` downloads catalog entries
+(or any `hf.co/…` file) into a directory of your own, laid out
+`<owner>/<repo>/<file>`, and checks each one against the sha256 Hugging Face
+names. `xollama media create --dir` then uploads from that directory instead of
+having the server download again:
+
+```shell
+xollama media fetch --dir ~/media-models --all
+xollama media create whisper-large-v3-turbo whisper --dir ~/media-models
+```
+
+A file already in the directory with the right sha256 is never downloaded
+again. A `<file>.sha256` beside it records the check, so the next run only
+compares size and time.
+
+## Routes
+
+| Route | Needs | Notes |
+|---|---|---|
+| `POST /v1/images/generations` | `image_generation` | JSON. The reply is `b64_json`; `"response_format": "url"` answers a `data:` URL. Besides OpenAI's fields the engine takes `steps`, `cfg_scale`, `sampler`, `scheduler`, `seed` and `negative_prompt`. |
+| `POST /v1/images/edits` | `image_edit` | Multipart, `image[]` (one or more) and an optional `mask`. |
+| `POST /v1/audio/speech` | `speech` | JSON `input`, `voice`, `response_format`, `speed`. The audio comes back as the engine encodes it. |
+| `POST /v1/audio/transcriptions` | `transcription` | Multipart `file`. A model without a speech-to-text engine is served as upstream serves it, through an audio-capable LLM. |
+| `POST /v1/audio/translations` | `transcription` | Multipart `file`, translated to English. |
+| `GET /v1/models` | | Models with media also list `input_modalities` and `output_modalities`. `?output_modalities=image` (or `audio`, `text`, `video`) keeps only the models that produce it. |
+
+A model's capabilities, from `xollama show` or `/api/show`, say which routes it
+answers. A request for media the model doesn't have is a 400 that names what is
+missing.
+
+## The template decides what a client doesn't
+
+Clients such as SurfSense send only a prompt or a text: no size, steps, voice or
+format. The model's media `defaults` fill every field a request leaves out, and
+a field listed in the kind's `fixed` takes the template's value whatever the
+client sends. For example, a model trained at one size can fix `width` and
+`height`.
+
+- **Voices**: `voice_map` turns an OpenAI voice name (`alloy`, `nova`, …) into
+  one of the model's own.
+- **Transcription**: a template whose `task` is `translate` answers
+  `/v1/audio/transcriptions` in English as well. With `task` in `fixed` it
+  decides both routes.
+- **Edits**: a `strength` default is sent only to a model that edits as
+  img2img. On a reference-edit model such as FLUX.2 klein it would turn the edit
+  into img2img.
+
+## When the engine is busy
+
+Each engine (image, speech, transcription) works on one request at a time.
+xollama queues requests to it in arrival order. When 16 are already waiting,
+or a request has waited 10 minutes, the answer is `503` with `Retry-After`.
+
+The engines run in an opencoti process of their own, started by the first media
+request and unloaded after the model's keep-alive like any other model.
+
+## Audio formats
+
+xollama never re-encodes audio. With no `response_format` the engine's default
+applies: WAV on opencoti b97, mp3 from M7, which also brings the audio.cpp voices
+(Kokoro, Supertonic, KittenTTS). SurfSense asks for no format and saves the
+reply as `.mp3`, so serve it speech from an M7 engine.

@@ -232,12 +232,13 @@ xollama media create flux2-klein-4b --to qwen3:8b   # add to an existing model
 
 `create` makes a media-only model, or with `--to` adds the entry's engine to a
 model you already have, keeping its other settings. `--dry-run` prints the
-config without fetching anything. Catalog entries marked `opencoti M7` need an
+config without fetching anything. `xollama media fetch --dir DIR` keeps a local
+copy of the files, and `create --dir DIR` uploads from it rather than download
+again ([Keeping one copy](/xollama/media#keeping-one-copy-of-the-models)). Catalog entries marked `opencoti M7` need an
 engine build that is not out yet.
 
-The routes that serve them (`/v1/images/*`, `/v1/audio/*`) come with the next
-phase of
-[the media plan](https://github.com/mann1x/xollama/blob/dev/plans/media-integration.md).
+The routes that serve them (`/v1/images/*`, `/v1/audio/*`) are described in
+[Images, speech and transcription](/xollama/media).
 
 ## Pinning a drafter's driver
 

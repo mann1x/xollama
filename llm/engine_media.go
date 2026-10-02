@@ -275,6 +275,7 @@ func NewMediaRunner(key string, m *xollama.Media, path func(string) string, size
 	}
 	return &mediaRunner{
 		key:      key,
+		cpu:      mediaOnCPU(m),
 		args:     MediaArgs(m, path, voicesDir),
 		estimate: MediaEstimate(m, size),
 		need:     MediaFeatures(m),
@@ -284,7 +285,10 @@ func NewMediaRunner(key string, m *xollama.Media, path func(string) string, size
 }
 
 type mediaRunner struct {
-	key      string
+	key string
+	// cpu is a template whose every engine states device CPU: it is never
+	// placed on a GPU, and engine.Command, given no GPU, adds --gpu disable.
+	cpu      bool
 	args     []string
 	estimate uint64
 	need     []string
@@ -300,6 +304,29 @@ type mediaRunner struct {
 	tail     tailWriter
 
 	client *http.Client
+}
+
+// mediaOnCPU reports whether every engine of m states device CPU.
+func mediaOnCPU(m *xollama.Media) bool {
+	var devices []string
+	if m.Image != nil {
+		devices = append(devices, m.Image.Device)
+	}
+	if m.STT != nil {
+		devices = append(devices, m.STT.Device)
+	}
+	if m.TTS != nil {
+		devices = append(devices, m.TTS.Device)
+	}
+	if m.Video != nil {
+		devices = append(devices, m.Video.Device)
+	}
+	for _, d := range devices {
+		if !strings.EqualFold(d, "cpu") {
+			return false
+		}
+	}
+	return len(devices) > 0
 }
 
 // pickMediaGPU is the GPU with the most free memory that holds the estimate,
@@ -323,6 +350,9 @@ func pickMediaGPU(gpus []ml.DeviceInfo, need uint64) (ml.DeviceInfo, bool, bool)
 }
 
 func (r *mediaRunner) Load(ctx context.Context, _ ml.SystemInfo, gpus []ml.DeviceInfo, requireFull bool) ([]ml.DeviceID, error) {
+	if r.cpu {
+		gpus = nil
+	}
 	gpu, ok, fits := pickMediaGPU(gpus, r.estimate)
 	if ok && !fits && requireFull {
 		return nil, ErrLoadRequiredFull

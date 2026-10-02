@@ -110,9 +110,10 @@ var catalog = []Entry{
 		ID: "outetts-0.3-500m", Name: "OuteTTS 0.3 500M", Kind: "tts", Family: "OuteTTS", License: "cc-by-sa-4.0",
 		Description: "Speech with the WavTokenizer vocoder; the pair opencoti b97 was tested with.",
 		Media: xollama.Media{TTS: &xollama.TTSMedia{
-			Model:    "hf.co/OuteAI/OuteTTS-0.3-500M-GGUF/OuteTTS-0.3-500M-Q8_0.gguf",
-			Vocoder:  "hf.co/ggml-org/WavTokenizer/WavTokenizer-Large-75-F16.gguf",
-			Defaults: &xollama.TTSDefaults{ResponseFormat: "mp3"},
+			Model: "hf.co/OuteAI/OuteTTS-0.3-500M-GGUF/OuteTTS-0.3-500M-Q8_0.gguf",
+			// No response_format: b97 answers wav only, and M7 makes mp3 the
+			// engine's own default, so the engine's default is right on both.
+			Vocoder: "hf.co/ggml-org/WavTokenizer/WavTokenizer-Large-75-F16.gguf",
 		}},
 	},
 	{

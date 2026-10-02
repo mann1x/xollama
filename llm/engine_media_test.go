@@ -150,3 +150,23 @@ func TestAMediaRunnerServesNoText(t *testing.T) {
 		t.Fatalf("embedding err = %v", err)
 	}
 }
+
+func TestATemplateOnCPUIsNeverPlacedOnAGPU(t *testing.T) {
+	cpu := xollama.MediaEngine{Device: "CPU"}
+	m := &xollama.Media{
+		Image: &xollama.ImageMedia{Model: "i", MediaEngine: cpu},
+		STT:   &xollama.STTMedia{Model: "s", MediaEngine: xollama.MediaEngine{Device: "cpu"}},
+	}
+	r, err := NewMediaRunner("media:x", m, func(d string) string { return d }, func(string) int64 { return 1 }, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !r.(*mediaRunner).cpu {
+		t.Fatal("a template with every engine on CPU would be placed on a GPU")
+	}
+	// One engine left to the scheduler is enough to use a GPU.
+	m.STT.Device = ""
+	if mediaOnCPU(m) {
+		t.Fatal("a template with one engine unpinned was kept on CPU")
+	}
+}
