@@ -324,7 +324,12 @@ All voice models are downloaded to `/srv/ml/media/` for the tests.
     - The engine is held per job until the clip is fetched (+1 min), deleted, or 10 min after it finished.
     - The template's `width x height x frames` is the largest clip served; a bigger one is a 400 before any load.
     - Unit tests under `-race`, plus 9 mutations, all killed (one survivor at first: a refused create left the engine held; now tested).
-  - Next: live on the 3090. Measure Wan2.1 1.3B at 640x352x33 and 832x480x17 for the reserve, and set the Wan templates' defaults and `reserve_mib` from those numbers (opencoti's one point is 832x480x33, about 20 GiB of working memory, more than a 24 GiB card holds with the model).
+  - **Live on the 3090, opencoti b105 `2610022033001`** (with the codec sidecar `oc-codec-linux-x86_64.so` 676b5fa5 beside it; Wan2.1 1.3B Q8 + umt5 Q4_K_M + VAE bf16, `wan` made from the mirror; through xollama's `/v1/videos`, 2026-10-02):
+    - 5,186 MiB of params, 5.5–5.7 GiB after boot.
+    - 640x352x33: peak 17,044 MiB (~11.3 GiB working), 216 s (sampling 202 s, decode 13.5 s), h264 mp4 33 frames.
+    - 832x480x17: peak 9,660 MiB, 563 s (sampling 532 s, decode 31 s, tiled). The VAE decode wanted ~19 GB, ran out, and the engine retried with spatial+temporal tiling on its own.
+    - So most of opencoti's ~20 GiB at 832x480x33 is the decode. The 2.6x slower sampling at the same latent token count is reported to opencoti (#644).
+  - Then: set the Wan templates' defaults and `reserve_mib` (the owner's call for 24 GiB cards). Earlier note: measure Wan2.1 1.3B at 640x352x33 and 832x480x17 for the reserve, and set the Wan templates' defaults and `reserve_mib` from those numbers (opencoti's one point is 832x480x33, about 20 GiB of working memory, more than a 24 GiB card holds with the model).
 
 ## 6. Decisions (owner, 2026-10-02)
 
