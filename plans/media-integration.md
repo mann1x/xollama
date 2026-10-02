@@ -1,6 +1,6 @@
 # Media endpoints: images, speech, transcription (video later)
 
-**Status:** ACTIVE. Phase 1 (schema v7) and Phase 2 (media-only runner, `hf.co` sourcing, catalog, `xollama media`) closed 2026-10-02. Phase 3 (the OpenAI routes) built 2026-10-02 and live on CPU; its GPU run and Cerebriline's image tool wait on a Linux engine build with its `ggml-cuda.so`. Phase 0 engine measurements wait on the b97 handoff and the M7 build.
+**Status:** ACTIVE. Phase 1 (schema v7) and Phase 2 (media-only runner, `hf.co` sourcing, catalog, `xollama media`) closed 2026-10-02. Phase 3 (the OpenAI routes) built 2026-10-02 and live on the 3090 with b97; Cerebriline's own image tool is still to run against it. Phase 0 engine measurements wait on the b97 handoff and the M7 build.
 **Owner:** xollama; engine work by opencoti.
 
 ## 1. What the owner asked for (2026-10-02, condensed)
@@ -266,7 +266,7 @@ All voice models are downloaded to `/srv/ml/media/` for the tests.
   - **Tests:** unit tests, a live test gated by `XOLLAMA_MEDIA_LIVE_DIR`, and an HF resolve test gated by `XOLLAMA_HF_LIVE` (23 refs). 12 mutations, all killed.
   - **Not built (moved to Phase 3, with the routes):** the per-engine request queue and the refusal on stock at request time. A media runner never starts on stock, because it always launches opencoti.
 - **Phase 2 as planned:** media-only engine process, flags, refusal on stock, reserves in the estimate, capabilities, the per-engine queue.
-- **Phase 3 — BUILT 2026-10-02; GPU and Cerebriline runs open.**
+- **Phase 3 — BUILT 2026-10-02, live on GPU with b97; Cerebriline's tool open.**
   - **Routes** (`server/media_routes.go`): `/v1/images/generations`, `/v1/images/edits`, `/v1/audio/speech`, `/v1/audio/translations`, and `/v1/audio/transcriptions`. Transcriptions go to the engine only for a model with STT; every other model goes on to upstream's shim, which finds the form already parsed by the same call.
   - **`/v1/models`:** media models gain `input_modalities` and `output_modalities`, with `?output_modalities=` and `?input_modalities=` filtering. Without media and without a filter, the list is upstream's bytes.
   - **Template fill-in:** a field the client leaves out gets the default; a `fixed` field gets the template's value. A fixed width, height or flow_shift goes into `sd_cpp_extra_args`, which the engine applies after `size`. `strength` is filled only for an img2img edit, and `voice_map` maps OpenAI voice names. A `task: translate` template answers `/transcriptions` in English.
@@ -285,7 +285,12 @@ All voice models are downloaded to `/srv/ml/media/` for the tests.
     - Whisper transcription of that speech exact, and translation 200;
     - `/v1/models?output_modalities=audio` lists only `outetts`;
     - two concurrent speech requests both 200, served in turn (11.5 s and 22.8 s).
-  - **GPU not run:** no `ggml-cuda.so` is known to pair with c7 `2610020719001`. The one in `~/.llamafile/v/opencoti-0.10.5-c7-dev` is b97's, from 13:41, and a dev build loads the library beside it (`.claude/rules/solidpc-testing.md`). The GPU run and Cerebriline's image tool wait on the b97 Linux build with its library.
+  - **Live on the 3090 with b97 `2610021340001`** (handoff #626; the binary, sha `25e68e0c17238315`, staged with its `ggml-cuda.so`, sha `3e3f06eaef58`, in `/srv/ml/xollama-media-b97`; the engine logs `cuda: loaded … (executable directory)`):
+    - **Klein generation:** a prompt-only request answered at the template's 1024² in 16 s, including the load. `response_format: url` came back as a `data:` URL, and the sign text was right.
+    - **Klein edit:** 200 in 33 s. The image barely changed: img2img keeps the source pixels, which is gap 1, until M7's `--diffusion-edit ref`.
+    - **Speech:** OuteTTS 200 in 4 s.
+    - **Transcription:** Whisper 1 s, exact.
+  - **Estimate against use on the GPU:** Klein 10.2 GB estimated, 7.3 GiB used; Whisper 1.41 GB, 1.48 GiB; OuteTTS 0.94 GB, 1.26 GiB. The STT and TTS estimates come in short. Phase 0 measures the reserves, and M7 sends per-family ones.
   - **c7 has no `--diffusion-edit`.** A template stating `edit` cannot boot on it, so Klein ran with `edit` unset; M7 brings the switch.
 - **Phase 4: templates.** The `hf.co` sourcing and the catalog are built (Phase 2); what is left is publishing, per Phase 0: `flux2-klein:4b`, `whisper:turbo`, `outetts:0.3`,
   later `kokoro`, `supertonic`, `kittentts`, and a mixed `media-kit`. Pushed

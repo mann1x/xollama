@@ -11,7 +11,12 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 > - **Queue:** one FIFO per engine (16 deep, 10 min), then 503 with `Retry-After`.
 > - **Mirror** (owner: "we can't re-download them every time"): `xollama media fetch --dir` and `media create --dir` (`internal/mediahub/mirror.go`). The whole catalog is in `/shared/dev/opencoti/.opencoti/models/media`; `/srv/ml/media` is now a symlink to it.
 > - **Live on solidPC, on CPU (dev c7 `2610020719001`):** a Klein image (template steps, cfg and sampler confirmed in the PNG), OuteTTS speech, Whisper transcription (exact) and translation, the modality filter, and two queued speech requests served in turn. 13 mutations, all killed.
-> - **Open:** the GPU run and Cerebriline's image tool wait on the b97 Linux build with its `ggml-cuda.so`. c7 has no `--diffusion-edit`, which M7 adds.
+> - **Live on the 3090 with b97 `2610021340001`** (handoff #626, staged with its `ggml-cuda.so`):
+>   - Klein 1024² in 16 s, as a `data:` URL;
+>   - Klein edit 200, but barely changed: img2img until M7's ref switch;
+>   - OuteTTS speech in 4 s, Whisper transcription in 1 s, exact.
+>   - The STT and TTS memory estimates are short by up to 0.3 GiB; Phase 0 and M7 settle the reserves.
+> - **Open:** Cerebriline's own image tool against xollama. b97 has no `--diffusion-edit`, which M7 adds.
 
 > **2026-10-02 — Media endpoints, Phase 2: the media runner, `hf.co` sourcing and `xollama media`.**
 > - **Runner:** a model's media runs in its own media-only opencoti process (`llm/engine_media.go`), scheduled under `media:<manifest digest>` through one hook in `Scheduler.load` (`server/media.go`).
