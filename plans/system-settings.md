@@ -1,8 +1,8 @@
 # Server settings without environment variables
 
-**Status:** ACTIVE. Phases 0–5 closed 2026-10-02 (engine answers: opencoti
-#609). Phase 6 (surfaces and docs) is left; the per-device link form waits
-on opencoti. **Owner:** xollama.
+**Status:** ACTIVE. Phases 0–6 closed 2026-10-02. Open: the per-device link
+form, waiting on opencoti; a live opencoti run, waiting on eleven2go; the
+desktop app restarting its server for a restart-needed setting. **Owner:** xollama.
 
 ## 1. What the owner asked for (2026-10-02, condensed)
 
@@ -275,3 +275,8 @@ An empty `envs` map adds nothing.
   - Verified: unit tests for validation, merge, launch arguments and tweak
     fields, and the full sweep.
   - Not yet run against a live opencoti, because eleven2go is paused.
+- 2026-10-02, Phase 6:
+  - feature doc `docs/features/system-settings.md`;
+  - user docs in `docs/xollama/tweak.mdx`.
+  - The desktop app's own restart is left open. Quitting and reopening the
+    app applies a restart-needed setting.

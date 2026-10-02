@@ -16,6 +16,7 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 > - All but `--fit` are opencoti only.
 > - These configs are stamped v6, so an older build refuses them rather than dropping them.
 > - Not yet run against a live opencoti: eleven2go is paused for the rolling-window validation.
+> - Phase 6: feature doc `docs/features/system-settings.md`. Open: the desktop app restarting its server for a restart-needed setting.
 
 > **2026-10-02 — Server settings, Phase 4: the link probe in `tweak server gpu`.**
 > - The GPU menu now has the engine measure each GPU's host link (`/api/xollama/link-probe`, which runs `opencoti --link-probe`, b62 or later).
