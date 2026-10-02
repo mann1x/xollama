@@ -724,8 +724,8 @@ func (w *bufferedWriter) Status() int {
 	return w.status
 }
 
-// mediaModelsMiddleware adds input_modalities and output_modalities to the
-// /v1/models entries of models with media, and filters the list by
+// mediaModelsMiddleware adds input_modalities, output_modalities and
+// capabilities to the /v1/models entries of models with media, and filters the list by
 // ?output_modalities= and ?input_modalities= (SurfSense desktop classifies
 // models that way). With no model carrying media and no filter, the list
 // goes out byte for byte as upstream wrote it.
@@ -785,7 +785,10 @@ func rewriteModels(data []byte, wantIn, wantOut []string) ([]byte, bool) {
 		}
 		in, out := mediaModalities(caps)
 		if media {
-			e["input_modalities"], e["output_modalities"] = in, out
+			// The modalities say "audio" for speech and for transcription
+			// alike; the capability names tell a client which routes the
+			// model answers.
+			e["input_modalities"], e["output_modalities"], e["capabilities"] = in, out, caps
 			changed = true
 		}
 		if filter && (!anyOf(in, wantIn) || !anyOf(out, wantOut)) {

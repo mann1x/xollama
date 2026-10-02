@@ -64,7 +64,7 @@ compares size and time.
 | `POST /v1/audio/speech` | `speech` | JSON `input`, `voice`, `response_format`, `speed`. The audio comes back as the engine encodes it. |
 | `POST /v1/audio/transcriptions` | `transcription` | Multipart `file`. A model without a speech-to-text engine is served as upstream serves it, through an audio-capable LLM. |
 | `POST /v1/audio/translations` | `transcription` | Multipart `file`, translated to English. |
-| `GET /v1/models` | | Models with media also list `input_modalities` and `output_modalities`. `?output_modalities=image` (or `audio`, `text`, `video`) keeps only the models that produce it. |
+| `GET /v1/models` | | Models with media also list `input_modalities`, `output_modalities` and `capabilities` (`image_generation`, `image_edit`, `speech`, `transcription`, `video`). `?output_modalities=image` (or `audio`, `text`, `video`) keeps only the models that produce it. |
 
 A model's capabilities, from `xollama show` or `/api/show`, say which routes it
 answers. A request for media the model doesn't have is a 400 that names what is

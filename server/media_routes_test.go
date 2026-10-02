@@ -475,6 +475,10 @@ func TestModelsListCarriesModalitiesOnlyForMediaModels(t *testing.T) {
 		!slices.Equal(toStrings(all["whisper"]["input_modalities"]), []string{"audio"}) {
 		t.Fatalf("list = %v", all)
 	}
+	if !slices.Equal(toStrings(all["kokoro"]["capabilities"]), []string{"speech"}) ||
+		!slices.Equal(toStrings(all["whisper"]["capabilities"]), []string{"transcription"}) {
+		t.Fatalf("capabilities: kokoro %v, whisper %v", all["kokoro"]["capabilities"], all["whisper"]["capabilities"])
+	}
 	if audio := get("?output_modalities=audio"); len(audio) != 1 || audio["kokoro"] == nil {
 		t.Fatalf("output_modalities=audio = %v", audio)
 	}
