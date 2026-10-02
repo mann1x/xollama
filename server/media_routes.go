@@ -151,6 +151,19 @@ var mediaKindName = map[model.Capability]string{
 	CapabilityVideo:           "video",
 }
 
+// mediaRunnerError answers a request whose media engine could not be had.
+func mediaRunnerError(c *gin.Context, err error, name string, kind model.Capability) {
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		mediaError(c, http.StatusNotFound, fmt.Sprintf("model %q not found", name))
+	case errors.Is(err, errNoMedia):
+		mediaError(c, http.StatusBadRequest, fmt.Sprintf("model %q does not support %s", name, mediaKindName[kind]))
+	case errors.Is(err, context.Canceled):
+	default:
+		mediaError(c, http.StatusInternalServerError, err.Error())
+	}
+}
+
 // serveMedia runs one media request: schedule the model's media engine,
 // wait for the engine's turn, send body, and pass the reply on. reply may
 // rewrite a successful JSON reply; nil streams the engine's bytes through.
@@ -158,15 +171,7 @@ func (s *Server) serveMedia(c *gin.Context, name string, kind model.Capability, 
 	ctx := c.Request.Context()
 	r, _, err := s.mediaRunner(ctx, name, kind, nil)
 	if err != nil {
-		switch {
-		case errors.Is(err, os.ErrNotExist):
-			mediaError(c, http.StatusNotFound, fmt.Sprintf("model %q not found", name))
-		case errors.Is(err, errNoMedia):
-			mediaError(c, http.StatusBadRequest, fmt.Sprintf("model %q does not support %s", name, mediaKindName[kind]))
-		case errors.Is(err, context.Canceled):
-		default:
-			mediaError(c, http.StatusInternalServerError, err.Error())
-		}
+		mediaRunnerError(c, err, name, kind)
 		return
 	}
 

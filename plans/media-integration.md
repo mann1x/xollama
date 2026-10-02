@@ -306,7 +306,7 @@ All voice models are downloaded to `/srv/ml/media/` for the tests.
   - **For the owner:** add a "needs xOllama" description on each ollama.com page; the API cannot set it.
 - **Cerebriline (#628/#629, 2026-10-02):** media support has started on their side.
   - Done: `/v1/models` entries carry `capabilities` (`5c5d65d02`).
-  - Promised: a voice-list route (template `voice_map` plus the engine's `/props media.tts.voices`).
+  - Done: the voice list, `/api/xollama/media/voices` (GET `?model=` or POST) and `xollama media voices MODEL` (`server/media_voices.go`). It merges the engine's `/props media.tts.voices` (names or objects) with the template's `voice_map` as aliases, plus the default, formats and sample rate. 7 mutations, all killed. Live: OuteTTS lists its 12 voices, wav and pcm at 24 kHz.
   - Test server: dev xollama on b97 at `127.0.0.1:22499` (`/srv/ml/media-store`, detached) with the four published models, until they say they are done.
 - **Phase 4 as planned:** The `hf.co` sourcing and the catalog are built (Phase 2); what is left is publishing, per Phase 0: `flux2-klein:4b`, `whisper:turbo`, `outetts:0.3`,
   later `kokoro`, `supertonic`, `kittentts`, and a mixed `media-kit`. Pushed

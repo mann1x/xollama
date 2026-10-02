@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-02 — Media: capabilities on `/v1/models` and a voice list, for Cerebriline (#628).**
+> - Media models' `/v1/models` entries carry `capabilities` (`5c5d65d02`).
+> - `/api/xollama/media/voices` (GET `?model=` or POST) and `xollama media voices MODEL` list the engine's voices with the template's OpenAI names as aliases, the default, formats and sample rate.
+> - A test server for Cerebriline runs at `127.0.0.1:22499` (b97, the four published models).
+
 > **2026-10-02 — Media endpoints, Phase 4: templates published on ollama.com.**
 > - **Registry test passed.** ollama.com accepts the `application/vnd.xollama.media` layer, and a clean store pulled it back intact.
 > - **Stock ollama (v0.35.0, built from `upstream`):** it pulls media templates but cannot show or run a media-only one (owner: fine). A chat model with media attached still chats; stock skips the layer.

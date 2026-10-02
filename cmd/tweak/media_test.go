@@ -392,3 +392,18 @@ func TestMediaFetchKeepsWhatTheMirrorHas(t *testing.T) {
 		t.Fatal(out.String())
 	}
 }
+
+func TestVoicesMarkTheDefaultAndTheNamesAClientMayUse(t *testing.T) {
+	var out bytes.Buffer
+	printVoices(&out, &api.MediaVoicesResponse{
+		Default:         "af_heart",
+		Voices:          []api.Voice{{ID: "af_bella"}, {ID: "af_heart", Aliases: []string{"nova", "shimmer"}}},
+		ResponseFormats: []string{"mp3", "wav"}, SampleRate: 24000,
+	})
+	got := out.String()
+	for _, want := range []string{"af_heart  nova, shimmer    *", "af_bella  -", "formats: mp3, wav at 24000 Hz"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in\n%s", want, got)
+		}
+	}
+}

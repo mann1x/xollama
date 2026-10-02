@@ -35,6 +35,7 @@ func MediaCommand(opts Options) *cobra.Command {
   xollama media create kokoro-82m --to qwen3:8b
   xollama media fetch --dir DIR flux2-klein-4b   keep a local copy, once
   xollama media create flux2-klein-4b --dir DIR  fill the server from it
+  xollama media voices mannix/outetts:0.3        a speech model's voices
 
 A template is an ordinary model whose xollama.json carries the media; the
 server fetches every component from Hugging Face by its sha256, and push, pull
@@ -42,7 +43,7 @@ and rm handle them like weights. With --dir, a component already in that
 directory (laid out <owner>/<repo>/<file>) is uploaded from it instead.
 Change one afterwards with xollama tweak model.`,
 	}
-	mediaCmd.AddCommand(mediaListCommand(), mediaSearchCommand(), mediaFilesCommand(), mediaCreateCommand(opts), mediaFetchCommand())
+	mediaCmd.AddCommand(mediaListCommand(), mediaSearchCommand(), mediaFilesCommand(), mediaCreateCommand(opts), mediaFetchCommand(), mediaVoicesCommand(opts))
 	return mediaCmd
 }
 
@@ -368,4 +369,56 @@ func runMediaFetch(ctx context.Context, out io.Writer, dir string, args []string
 		fmt.Fprintf(out, "   %s  %s  %s  %s\n", f.Digest[7:19], format.HumanBytes(f.Size), p, state)
 	}
 	return nil
+}
+
+func mediaVoicesCommand(opts Options) *cobra.Command {
+	return &cobra.Command{
+		Use:   "voices MODEL",
+		Short: "List a speech model's voices",
+		Long: `List the voices a speech model answers to: the engine's own, and the names
+its template maps to them (OpenAI's alloy, nova, ...). The default voice is
+marked. Starts the model's speech engine when it is not running.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if opts.Heartbeat != nil {
+				if err := opts.Heartbeat(cmd, args); err != nil {
+					return err
+				}
+			}
+			client, err := api.ClientFromEnvironment()
+			if err != nil {
+				return err
+			}
+			resp, err := client.MediaVoices(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			printVoices(cmd.OutOrStdout(), resp)
+			return nil
+		},
+	}
+}
+
+func printVoices(out io.Writer, r *api.MediaVoicesResponse) {
+	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "VOICE\tALSO ANSWERS TO\tDEFAULT")
+	for _, v := range r.Voices {
+		def := ""
+		if v.ID == r.Default {
+			def = "*"
+		}
+		also := strings.Join(v.Aliases, ", ")
+		if also == "" {
+			also = "-"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\n", v.ID, also, def)
+	}
+	w.Flush()
+	if len(r.ResponseFormats) > 0 {
+		fmt.Fprintf(out, "\nformats: %s", strings.Join(r.ResponseFormats, ", "))
+		if r.SampleRate > 0 {
+			fmt.Fprintf(out, " at %d Hz", r.SampleRate)
+		}
+		fmt.Fprintln(out)
+	}
 }

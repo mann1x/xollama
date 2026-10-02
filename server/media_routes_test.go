@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -59,6 +60,9 @@ func newFakeEngine(t *testing.T) *fakeEngine {
 		case strings.HasPrefix(r.URL.Path, "/v1/images/"):
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"created":1,"data":[{"b64_json":"aGk="}],"output_format":"png"}`))
+		case r.URL.Path == "/props":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"media":{"tts":{"voices":["af_heart","af_bella",{"id":"am_echo"}],"response_formats":["mp3","wav"],"sample_rate":24000}}}`))
 		case r.URL.Path == "/v1/audio/speech":
 			w.Header().Set("Content-Type", "audio/wav")
 			_, _ = w.Write([]byte("RIFFwave"))
@@ -534,5 +538,51 @@ func TestTheRouterServesTheMediaRoutes(t *testing.T) {
 		if got := e.last(t).path; got != path {
 			t.Fatalf("%s reached the engine as %s", path, got)
 		}
+	}
+}
+
+func TestVoicesMergeTheEnginesListWithTheTemplatesNames(t *testing.T) {
+	mediaStore(t)
+	s, _ := mediaServer(t, map[string]*xollama.Media{
+		"kokoro": {TTS: &xollama.TTSMedia{
+			Engine: "audiocpp", Model: mediaDigest(t, []byte("k")),
+			VoiceMap: map[string]string{"alloy": "af_alloy", "nova": "af_heart", "shimmer": "af_heart"},
+			Defaults: &xollama.TTSDefaults{Voice: "af_heart"},
+		}},
+		"whisper": {STT: &xollama.STTMedia{Model: mediaDigest(t, []byte("w"))}},
+	})
+	router, err := s.GenerateRoutes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	get := func(req *http.Request) (*httptest.ResponseRecorder, api.MediaVoicesResponse) {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		var r api.MediaVoicesResponse
+		_ = json.Unmarshal(w.Body.Bytes(), &r)
+		return w, r
+	}
+
+	w, r := get(httptest.NewRequest(http.MethodGet, api.XollamaMediaVoicesPath+"?model=kokoro", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("voices = %d %s", w.Code, w.Body.String())
+	}
+	want := []api.Voice{
+		{ID: "af_alloy", Aliases: []string{"alloy"}}, // named by the template only
+		{ID: "af_bella"},
+		{ID: "af_heart", Aliases: []string{"nova", "shimmer"}},
+		{ID: "am_echo"}, // an object in the engine's list
+	}
+	if fmt.Sprint(r.Voices) != fmt.Sprint(want) || r.Default != "af_heart" ||
+		!slices.Equal(r.ResponseFormats, []string{"mp3", "wav"}) || r.SampleRate != 24000 {
+		t.Fatalf("voices = %+v", r)
+	}
+
+	// The CLI's form: POST with a body.
+	if w, r := get(httptest.NewRequest(http.MethodPost, api.XollamaMediaVoicesPath, strings.NewReader(`{"model":"kokoro"}`))); w.Code != http.StatusOK || len(r.Voices) != 4 {
+		t.Fatalf("POST voices = %d %s", w.Code, w.Body.String())
+	}
+	if w, _ := get(httptest.NewRequest(http.MethodGet, api.XollamaMediaVoicesPath+"?model=whisper", nil)); w.Code != http.StatusBadRequest {
+		t.Fatalf("voices of a transcription model = %d %s", w.Code, w.Body.String())
 	}
 }

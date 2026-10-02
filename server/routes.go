@@ -2238,6 +2238,8 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.POST("/v1/audio/speech", s.SpeechHandler)
 	r.POST("/v1/images/generations", s.ImageGenerationsHandler)
 	r.POST("/v1/images/edits", s.ImageEditsHandler)
+	r.GET(api.XollamaMediaVoicesPath, s.MediaVoicesHandler)
+	r.POST(api.XollamaMediaVoicesPath, s.MediaVoicesHandler)
 
 	// Inference (Anthropic compatibility)
 	r.POST("/v1/messages", s.withInferenceRequestLogging("/v1/messages", cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.AnthropicMessagesMiddleware(lookupThinking), s.ChatHandler)...)
