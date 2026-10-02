@@ -5,6 +5,12 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-02 — bug-3755 repro on eleven2go for opencoti (#642 → #646; owner's go for this run only).**
+> - b208 `2609281805001` on a separate xollama on 22436, under a commit hog (about 1 GB of commit left free), with procdump attached.
+> - Run 1, one sequence: 60 prompts, 15 clean 503s, no crash.
+> - Run 2, `--max-parallel 4`: the engine aborted on `ggml_aligned_malloc` (3,042 MB) → `GGML_ASSERT(ctx->mem_buffer != NULL)` (exit 6), not a SIGSEGV; xollama expired the model.
+> - The September SIGSEGV did not reproduce. Host restored afterwards (hog and server stopped, WER key removed). eleven2go stays paused otherwise.
+
 > **2026-10-02 — Row B on opencoti b105 2610022033001: bug-3859 fixed (#639 → #641).**
 > - auto: the 22,662-token arm completes at 0.23 / 158.7 t/s (b97 and b103 crashed). The fit makes room in two passes (+432 then +80 MiB), and the sizer reports no shortfall. 62/81 layers on the GPU.
 > - head: 0.20 / 131.7 at long context (was 0.14). Two fit passes of +224 MiB each, 46/81 layers, 25 s boot. Asked opencoti whether head needs that room.
