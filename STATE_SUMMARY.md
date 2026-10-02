@@ -5,6 +5,12 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-03 — Row B on opencoti b109 (head fixed); video slowdown is the shape; b208 commit control on eleven2go.**
+> - b109 `2610022238001`, auto: 22,662-token arm 0.27 / 159.7 t/s (two fit passes, 62/81). Short-arm decode 2.79 t/s (b105: 2.10).
+> - b109, head: no fit passes (bug-3874 fixed), 47/81 layers, 10 s boot, long arm 0.20 / 134.2. Its short-arm decode came in at 1.49 t/s (b105: 1.97), asked opencoti whether to repeat. Pin can move to a published build with 0527 + 3874 + 0531 (#656).
+> - Video, reverse order (#655): 832x480x17 takes 570 s even first in a fresh process, and 640x352x33 takes 216 s second. So it is the shape, not eviction.
+> - eleven2go (owner's go for the b111 rerun of bug-3876): b208 control commit is 17.7 GB after load, 23.3 GB after the first drafting request (+5.6 GB, untouched), 28.4 GB after 4 x 16k. b111 is staged and waits for its Windows CUDA DLL.
+
 > **2026-10-02 — Cerebriline ran all five media tools live on 22499 (b105, #650); an edit keeps its source's size.**
 > - Results: Klein generate 7.6 s; edit 41.2 s (a true reference edit, so b105's `auto` picks reference for FLUX.2); speech mp3 by default; transcription exact; Wan2.1 clip 228.8 s; a cancelled clip freed the card within 5 s. Cerebriline main `daa8ce078` reads `default_for`.
 > - An edit without a size now comes back at its first image's size, capped at the template's pixel count, in multiples of 16 (`server/media_edit_size.go`, 5 mutations, all killed). Before, it came back at the template's 1024x1024.
