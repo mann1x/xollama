@@ -195,7 +195,7 @@ xollama tweak model qwen3:8b \
 
 - **Components** (`--image`, `--image-vae`, `--image-llm`, `--tts`,
   `--tts-vocoder`, `--stt`, `--video`, ...) take a file path, a sha256 digest,
-  or a Hugging Face file as `hf.co/<owner>/<repo>[@rev]:<path>`. The server
+  or a Hugging Face file as `hf.co/<owner>/<repo>/<file>[@rev]`. The server
   fetches a Hugging Face file itself.
   A path is hashed when you give it and uploaded when the model is written,
   only if the server does not already have it; `--dry-run` sends nothing.
