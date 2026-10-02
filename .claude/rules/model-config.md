@@ -10,16 +10,17 @@ paths:
 
 - `types/xollama/config.go` is the schema. It is written by `xollama tweak
   model` (`cmd/tweak/`) and by a Modelfile `XOLLAMA` line (`parser/parser.go`).
-  A feature block in its own file (`devices.go`, `council.go`) is a pointer
+  A feature block in its own file (`devices.go`, `council.go`, `engine_policy.go`) is a pointer
   field with its own `IsZero` and `validate`, wired into `Config.IsZero`,
   `Config.Validate` and `prune` in `cmd/tweak/fields.go` in the same commit.
   `devices` is pruned through `IsZero`; the council has its own `Prune`.
   Missing one leaves an empty block on disk that reads as a stated setting.
-- **The version written is the lowest that is true.** `SchemaVersion` is 5 and
+- **The version written is the lowest that is true.** `SchemaVersion` is 6 and
   `requiredVersion` raises the floor only for a block an older build would
   misread silently: v2 for `kv.unified` / `kv.residency_mode`, v3 for a
   `devices` pin, v4 for a `council`, v5 for a role's own `num_ctx`
-  (`council.<role>.num_ctx`, `setsRoleWindow`). Never stamp `SchemaVersion`
+  (`council.<role>.num_ctx`, `setsRoleWindow`), v6 for an engine policy (`fit`,
+  `kv.rolling_window`, `draft.auto_mtp_policy`; `setsEnginePolicies`). Never stamp `SchemaVersion`
   unconditionally — that makes every model this build touched unreadable to
   an older xollama.
 - **Launch config versus request config.** A setting that changes how the model

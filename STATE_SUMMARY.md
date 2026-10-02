@@ -5,6 +5,18 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-02 — Server settings, Phase 5: the engine's auto policies (schema v6).**
+> - New settings, on `tweak model` and as `tweak server` defaults:
+>   - `kv.rolling_window` (`--kv-rolling-window`: on, off or MiB);
+>   - `draft.auto_mtp_policy` (`--auto-mtp-policy`);
+>   - `fit.enabled` (`--fit`);
+>   - `fit.vram_target_mib` (`--vram-target`).
+> - `kv.residency_mode`'s help now carries opencoti #609's semantics.
+> - A rolling window under `head` residency is refused, because head disables the window.
+> - All but `--fit` are opencoti only.
+> - These configs are stamped v6, so an older build refuses them rather than dropping them.
+> - Not yet run against a live opencoti: eleven2go is paused for the rolling-window validation.
+
 > **2026-10-02 — Server settings, Phase 4: the link probe in `tweak server gpu`.**
 > - The GPU menu now has the engine measure each GPU's host link (`/api/xollama/link-probe`, which runs `opencoti --link-probe`, b62 or later).
 >   - It shows the detected PCIe generation and lanes and the measured rate, and the link wizard starts from them.

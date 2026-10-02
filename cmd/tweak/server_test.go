@@ -180,3 +180,14 @@ func TestServerDefaultsAreSentByFlag(t *testing.T) {
 		t.Fatalf("defaults sent: %+v", d)
 	}
 }
+
+func TestTheEnginePoliciesAreModelAndServerSettings(t *testing.T) {
+	for _, name := range []string{"kv-rolling-window", "mtp-policy", "fit", "vram-target"} {
+		if _, ok := fieldByName(name); !ok {
+			t.Errorf("tweak model has no --%s", name)
+		}
+		if !contains(serverFields(), name) {
+			t.Errorf("tweak server has no --%s", name)
+		}
+	}
+}

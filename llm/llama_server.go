@@ -555,6 +555,8 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	}
 	args = appendKVCacheRingArgs(args, kvTypes, usedOpencoti)
 	args = appendKVResidencyArgs(args, kvTypes, usedOpencoti)
+	// xollama-hook: system-settings — fit, rolling window, MTP policy.
+	args = appendEnginePolicyArgs(args, launch.config.Xollama, usedOpencoti)
 
 	// xollama-hook: launch-config — dynamic slots. See docs/xollama/slots.mdx.
 	// xollama-hook: council -- a council starts with a slot per parallel member.

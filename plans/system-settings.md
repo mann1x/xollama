@@ -1,8 +1,8 @@
 # Server settings without environment variables
 
-**Status:** ACTIVE. Phases 0–4 closed 2026-10-02 (engine answers: opencoti
-#609). Phase 5 (auto policies, rolling window) next. The per-device link
-form waits on opencoti. **Owner:** xollama.
+**Status:** ACTIVE. Phases 0–5 closed 2026-10-02 (engine answers: opencoti
+#609). Phase 6 (surfaces and docs) is left; the per-device link form waits
+on opencoti. **Owner:** xollama.
 
 ## 1. What the owner asked for (2026-10-02, condensed)
 
@@ -253,3 +253,25 @@ An empty `envs` map adds nothing.
     does not list the integrated Renoir.
   - The probe finds the CUDA library through the account's home
     (`~/.llamafile`), as a launch does. A scratch home has none.
+- 2026-10-02, Phase 5 built (schema v6):
+  - New settings: `kv.rolling_window` (on, off or MiB), `draft.auto_mtp_policy`
+    and `fit` (`enabled`, `vram_target_mib`), in
+    `types/xollama/engine_policy.go`.
+  - They are model settings and, with `fit` added to `DefaultSections`,
+    server defaults too.
+  - Launch: `appendEnginePolicyArgs` passes `--fit` on either engine. It
+    passes `--vram-target`, `--kv-rolling-window` and `--auto-mtp-policy`
+    only on opencoti; types/xollama refuses them on a model pinned to
+    llamacpp.
+  - From #609's matrix, refused: a rolling window on or a MiB figure under
+    `head` residency. The tweak walk skips the field under head and says
+    why. A server default the model's head residency cannot take is left out
+    for that model.
+  - The `kv-residency` help now carries #609's semantics, with head as
+    legacy.
+  - Not offered (#609): the legacy headinfer and neo-pipeline knobs,
+    sparse-attn, and the `OPENCOTI_RW_*` test knobs. Sampling placement and
+    `--spec-draft-ngl` stay engine defaults for now.
+  - Verified: unit tests for validation, merge, launch arguments and tweak
+    fields, and the full sweep.
+  - Not yet run against a live opencoti, because eleven2go is paused.

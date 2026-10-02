@@ -247,6 +247,13 @@ func session(c *xollama.Config) *xollama.Session {
 	return c.Session
 }
 
+func fit(c *xollama.Config) *xollama.Fit {
+	if c.Fit == nil {
+		c.Fit = &xollama.Fit{}
+	}
+	return c.Fit
+}
+
 func draft(c *xollama.Config) *xollama.Draft {
 	if c.Draft == nil {
 		c.Draft = &xollama.Draft{}
@@ -270,8 +277,11 @@ func prune(c *xollama.Config) {
 	if c.Session != nil && c.Session.Affinity == nil && c.Session.Pool == nil && c.Session.MaxPools == 0 && c.Session.ClientPools == 0 {
 		c.Session = nil
 	}
-	if c.Draft != nil && c.Draft.SpecType == "" {
+	if c.Draft != nil && c.Draft.SpecType == "" && c.Draft.AutoMTPPolicy == "" {
 		c.Draft = nil
+	}
+	if c.Fit.IsZero() {
+		c.Fit = nil
 	}
 	if c.Devices.IsZero() {
 		c.Devices = nil
@@ -457,9 +467,10 @@ var fields = []field{
 		name:  "kv-residency",
 		path:  "kv.residency_mode",
 		title: "Rolling-KV residency tactic — for a cache that does not fit in VRAM",
-		help: "auto picks the position-window tactic when the cache is eligible and the head\n" +
-			"split otherwise; head and window force one. The set is the engine's own, read\n" +
-			"from its argument parser rather than from documentation.",
+		help: "auto (the engine's default) uses the position window when the cache overflows\n" +
+			"VRAM and is eligible, and keeps it resident otherwise. window forces the window:\n" +
+			"with kv.rolling_window off, that is the host tail read every token; with it on,\n" +
+			"the rolling window. head is legacy: every cell on the device, the window disabled.",
 		kind: kindChoice,
 		choices: func(*xollama.Config) []string {
 			return []string{xollama.ResidencyAuto, xollama.ResidencyHead, xollama.ResidencyWindow}
@@ -474,6 +485,41 @@ var fields = []field{
 				return err
 			}
 			kv(c).ResidencyMode = s
+			return nil
+		},
+	},
+	{
+		name:  "kv-rolling-window",
+		path:  "kv.rolling_window",
+		title: "KV rolling window — stream the overflow of the cache through VRAM",
+		help: "on lets the engine size the window (a share of the KV budget, 64-512 MiB); a\n" +
+			"number is the window in MiB; off keeps the classic host tail. It acts only when\n" +
+			"the cache overflows VRAM, needs one stream (kv.unified on, or one slot) and a\n" +
+			"CUDA or Vulkan GPU, and is the engine's default off. head residency disables it.",
+		kind:    kindOpenChoice,
+		choices: func(*xollama.Config) []string { return []string{xollama.RollingOn, xollama.RollingOff} },
+		blocked: func(c *xollama.Config) string {
+			if why := opencotiOnly("the KV rolling window")(c); why != "" {
+				return why
+			}
+			if c.KV != nil && c.KV.ResidencyMode == xollama.ResidencyHead {
+				return "kv.residency_mode head keeps every cell on the device and disables the window"
+			}
+			return ""
+		},
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.KV != nil, func() string { return c.KV.RollingWindow })
+		},
+		set: func(c *xollama.Config, v string) error {
+			v = strings.ToLower(strings.TrimSpace(v))
+			if v == "unset" || v == "" {
+				kv(c).RollingWindow = ""
+				return nil
+			}
+			if !xollama.ValidRollingWindow(v) {
+				return fmt.Errorf("want on, off or a size in MiB (got %q)", v)
+			}
+			kv(c).RollingWindow = v
 			return nil
 		},
 	},
@@ -692,6 +738,56 @@ var fields = []field{
 			draft(c).SpecType = s
 			return nil
 		},
+	},
+	{
+		name:  "mtp-policy",
+		path:  "draft.auto_mtp_policy",
+		title: "MTP auto policy — when a built-in MTP head drafts",
+		help: "measured (the engine's default) drafts while the measured acceptance pays;\n" +
+			"allocator and taper decide by memory; always drafts whatever it measures; off\n" +
+			"never drafts. The drafter's own KV is always resident.",
+		kind:    kindChoice,
+		choices: func(*xollama.Config) []string { return xollama.ValidAutoMTPPolicies() },
+		blocked: opencotiOnly("the MTP auto policy"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Draft != nil, func() string { return c.Draft.AutoMTPPolicy })
+		},
+		set: func(c *xollama.Config, v string) error {
+			s, err := choice(v, xollama.ValidAutoMTPPolicies())
+			if err != nil {
+				return err
+			}
+			draft(c).AutoMTPPolicy = s
+			return nil
+		},
+	},
+	{
+		name:  "fit",
+		path:  "fit.enabled",
+		title: "Automatic fit — the engine places layers and KV in the memory there is",
+		help: "on is the engine's default: it sizes what goes on the GPU itself, with an\n" +
+			"automatic margin. off places exactly what the launch asks and fails if it does\n" +
+			"not fit -- for measurements, not for serving.",
+		kind: kindTri,
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Fit != nil, func() string { return tri(c.Fit.Enabled) })
+		},
+		set: func(c *xollama.Config, v string) error { return setTri(v, &fit(c).Enabled) },
+	},
+	{
+		name:  "vram-target",
+		path:  "fit.vram_target_mib",
+		title: "VRAM target — the memory the fit and the rolling KV may use",
+		help: "Unset is the engine's default: all free VRAM minus its compute reserve. A\n" +
+			"figure caps the model's weights, KV and compute together, to leave room for\n" +
+			"something else on the card.",
+		kind:    kindInt,
+		unit:    "MiB",
+		blocked: opencotiOnly("the VRAM target"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Fit != nil, func() string { return showInt(c.Fit.VRAMTargetMiB) })
+		},
+		set: func(c *xollama.Config, v string) error { return setInt(v, &fit(c).VRAMTargetMiB) },
 	},
 }
 

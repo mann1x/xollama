@@ -18,7 +18,7 @@ import (
 // the order they are applied. The rest are the model's own: a council is what
 // the model is, a device pin is per model by design (devices.go), and DCA's
 // chunk is a property of the model's training.
-var defaultSections = []string{"engine", "flash_attention", "kv", "slots", "session", "draft"}
+var defaultSections = []string{"engine", "flash_attention", "kv", "slots", "session", "draft", "fit"}
 
 // DefaultSections returns the config's top-level keys a server may default.
 func DefaultSections() []string { return slices.Clone(defaultSections) }

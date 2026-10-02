@@ -80,3 +80,18 @@ func TestAModelsSettingsNameTheirSource(t *testing.T) {
 		t.Fatal("a default this model cannot act on is not reported")
 	}
 }
+
+func TestARollingWindowUnderHeadResidencyIsDropped(t *testing.T) {
+	f, _ := fieldByName("kv-rolling-window")
+	cfg := &xollama.Config{KV: &xollama.KV{ResidencyMode: xollama.ResidencyHead}}
+	if why := f.blocked(cfg); !strings.Contains(why, "disables the window") {
+		t.Fatalf("blocked = %q", why)
+	}
+	if err := f.set(cfg, "640k"); err == nil {
+		t.Fatal("a size that is not MiB was accepted")
+	}
+	cfg.KV.ResidencyMode = xollama.ResidencyWindow
+	if err := f.set(cfg, "256"); err != nil || cfg.KV.RollingWindow != "256" {
+		t.Fatalf("set 256: %v %+v", err, cfg.KV)
+	}
+}

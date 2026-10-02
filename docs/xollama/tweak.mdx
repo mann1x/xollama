@@ -350,7 +350,8 @@ defaults for every model's settings, and the
 
 Every `tweak model` setting that is not a model's own can be given a
 server-wide default: engine, flash attention, KV cache types, unified KV, the
-residency tactic, slots, session pooling, and the drafter's speculative type.
+residency tactic, the KV rolling window, slots, session pooling, the drafter's
+speculative type, the MTP auto policy, and the engine's fit and VRAM target.
 The flags are those of `tweak model`, and the walk and the consistency pass are
 the same:
 
@@ -459,3 +460,26 @@ idle loaded model does not matter.
 
 Changes apply at a model's next load. `xollama tweak show server` lists the
 GPUs with their settings.
+
+## The engine's automatic policies
+
+These settings are on `tweak model` and, as defaults, on `tweak server`:
+
+| Flag | Setting | Values (engine default first) |
+|---|---|---|
+| `--kv-residency` | `kv.residency_mode` | `auto`: the window when the cache overflows, else resident; `window`; `head` (legacy: every cell on the device, the window disabled) |
+| `--kv-rolling-window` | `kv.rolling_window` | `off`; `on` (the engine sizes it); a size in MiB |
+| `--fit` | `fit.enabled` | `on`; `off` |
+| `--vram-target` | `fit.vram_target_mib` | all free VRAM minus the compute reserve; a cap in MiB |
+| `--mtp-policy` | `draft.auto_mtp_policy` | `measured`; `allocator`; `taper`; `always`; `off` |
+
+With `kv.residency_mode` set to `window`, `kv.rolling_window` decides what
+happens when the cache overflows:
+
+- **off:** the overflow stays in host memory and is read every token.
+- **on, or a size:** the rolling window streams the overflow through VRAM. It
+  needs one stream (`kv.unified` on, or one slot) and a CUDA or Vulkan GPU.
+  Without them the engine falls back to the host tail.
+
+`head` disables the window, so a rolling window under `head` is refused.
+Everything except `--fit` is opencoti only.
