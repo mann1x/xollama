@@ -8,7 +8,7 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 > **2026-10-02 — Media: a default model per kind (`XOLLAMA_MEDIA_DEFAULTS`).**
 > - Cerebriline's `--media-provider` offered no image tool on 22499, because there are two image models and it never guesses.
 > - The operator now names one per kind: `/v1/models` marks it with `default_for`, and a request without a model gets it.
-> - Video is not served yet: Phase 6 starts now that M7 (b103) has landed.
+> - Video: `/v1/videos` (create, poll, content, delete, list) with xollama job ids. The engine is held per job, and the template's clip is the cap. Unit-tested, not yet live; the Wan reserve still has to be measured on the 3090.
 
 > **2026-10-02 — Row B on opencoti b103 2610021841001: bug-3859 not fixed (#632 → #635).**
 > - auto: boot 71 s, short arm 2.22 / 197.4 t/s; the 22,662-token arm still dies, now as `failed to allocate CUDA0 buffer of size 363071744` at 17,920 tokens.

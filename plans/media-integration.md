@@ -318,7 +318,13 @@ All voice models are downloaded to `/srv/ml/media/` for the tests.
     variables; the capability override.
   - A first-class `xollama` provider entry in SurfSense only if the owner
     wants one (§6 Q2).
-- **Phase 6: video**, when opencoti ships it.
+- **Phase 6: video** (opencoti M7, b103+). Started 2026-10-02.
+  - Done: `/v1/videos` create, poll, content, delete and list (`server/media_video.go`).
+    - xollama's own job ids, mapped to the engine's.
+    - The engine is held per job until the clip is fetched (+1 min), deleted, or 10 min after it finished.
+    - The template's `width x height x frames` is the largest clip served; a bigger one is a 400 before any load.
+    - Unit tests under `-race`, plus 9 mutations, all killed (one survivor at first: a refused create left the engine held; now tested).
+  - Next: live on the 3090. Measure Wan2.1 1.3B at 640x352x33 and 832x480x17 for the reserve, and set the Wan templates' defaults and `reserve_mib` from those numbers (opencoti's one point is 832x480x33, about 20 GiB of working memory, more than a 24 GiB card holds with the model).
 
 ## 6. Decisions (owner, 2026-10-02)
 

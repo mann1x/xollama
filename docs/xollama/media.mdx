@@ -65,6 +65,11 @@ compares size and time.
 | `POST /v1/audio/transcriptions` | `transcription` | Multipart `file`. A model without a speech-to-text engine is served as upstream serves it, through an audio-capable LLM. |
 | `POST /v1/audio/translations` | `transcription` | Multipart `file`, translated to English. |
 | `GET /api/xollama/media/voices?model=` | `speech` | The model's voices for a picker: the engine's own, the OpenAI names the template maps to each (`aliases`), the `default`, and the engine's `response_formats` and `sample_rate`. POST with `{"model": …}` works too. It starts the speech engine if it isn't running. `xollama media voices MODEL` prints the same. |
+| `POST /v1/videos` | `video` | JSON or multipart: `prompt`, `size` (`832x480`), `seconds` or `frames`, `fps`, `seed`, `steps`, `negative_prompt`, `output_format`, and `input_reference` (a starting image, for a model that takes one). The reply is a job: `{id, object: "video", status, progress}`. |
+| `GET /v1/videos/{id}` | | The job: `queued`, `in_progress`, `completed`, `failed` or `cancelled`, with `progress`. |
+| `GET /v1/videos/{id}/content` | | The clip, as the engine encodes it (mp4 with opencoti's codec sidecar). |
+| `DELETE /v1/videos/{id}` | | Cancels a running clip, or drops a finished one. |
+| `GET /v1/videos` | | This server's jobs, newest first. |
 | `GET /v1/models` | | Models with media also list `input_modalities`, `output_modalities` and `capabilities` (`image_generation`, `image_edit`, `speech`, `transcription`, `video`). `?output_modalities=image` (or `audio`, `text`, `video`) keeps only the models that produce it. A model that is the server's default for a kind also lists it in `default_for`. |
 
 A model's capabilities, from `xollama show` or `/api/show`, say which routes it
@@ -106,6 +111,24 @@ client sends. For example, a model trained at one size can fix `width` and
 - **Edits**: a `strength` default is sent only to a model that edits as
   img2img. On a reference-edit model such as FLUX.2 klein it would turn the edit
   into img2img.
+
+## Video jobs
+
+A clip takes from tens of seconds to minutes, so it is a job, as in OpenAI's
+videos API: create it, poll it, then fetch the content.
+
+- The id is xollama's own (`video_…`), so a poll needs no model name.
+- The video engine stays loaded for as long as its job needs it: until the
+  clip is fetched (plus a minute, for a client that asks again), deleted, or
+  ten minutes after it finished, which is as long as the engine keeps it.
+  Fetch the content as soon as the job is `completed`.
+- **The template's clip is the largest one it serves.** Its `width x height x
+  frames` is the shape its memory reserve was sized for. A request for a bigger
+  clip is a 400 naming that shape, before anything is loaded. The same pixel
+  count in another shape (`480x832` for `832x480`) is fine, and so is a
+  smaller size with more frames. `seconds` counts as `seconds x fps + 1` frames
+  (2 s at 16 fps is 33).
+- A full engine queue is a 503 with `Retry-After`, like the other routes.
 
 ## When the engine is busy
 

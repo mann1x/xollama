@@ -2240,6 +2240,11 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.POST("/v1/images/edits", s.ImageEditsHandler)
 	r.GET(api.XollamaMediaVoicesPath, s.MediaVoicesHandler)
 	r.POST(api.XollamaMediaVoicesPath, s.MediaVoicesHandler)
+	r.POST("/v1/videos", s.VideoCreateHandler)
+	r.GET("/v1/videos", s.VideoListHandler)
+	r.GET("/v1/videos/:id", s.VideoGetHandler)
+	r.GET("/v1/videos/:id/content", s.VideoContentHandler)
+	r.DELETE("/v1/videos/:id", s.VideoDeleteHandler)
 
 	// Inference (Anthropic compatibility)
 	r.POST("/v1/messages", s.withInferenceRequestLogging("/v1/messages", cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.AnthropicMessagesMiddleware(lookupThinking), s.ChatHandler)...)

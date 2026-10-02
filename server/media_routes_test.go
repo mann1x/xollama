@@ -41,7 +41,9 @@ type fakeEngine struct {
 	mu    sync.Mutex
 	calls []mediaCall
 	busy  atomic.Int32 // answer 503 this many times first
-	srv   *httptest.Server
+	// videoStatus is what a poll of the engine's one video job answers.
+	videoStatus atomic.Value
+	srv         *httptest.Server
 }
 
 func newFakeEngine(t *testing.T) *fakeEngine {
@@ -63,6 +65,24 @@ func newFakeEngine(t *testing.T) *fakeEngine {
 		case r.URL.Path == "/props":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"media":{"tts":{"voices":["af_heart","af_bella",{"id":"am_echo"}],"response_formats":["mp3","wav"],"sample_rate":24000}}}`))
+		case r.URL.Path == "/v1/videos" && r.Method == http.MethodPost:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"video_1","object":"video","status":"queued","progress":0}`))
+		case r.URL.Path == "/v1/videos/video_1" && r.Method == http.MethodDelete:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"video_1","object":"video.deleted","deleted":true}`))
+		case r.URL.Path == "/v1/videos/video_1":
+			status, _ := e.videoStatus.Load().(string)
+			if status == "" {
+				status = "in_progress"
+			}
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"id":"video_1","object":"video","status":%q,"progress":50}`, status)
+		case r.URL.Path == "/v1/videos/video_1/content":
+			w.Header().Set("Content-Type", "video/mp4")
+			_, _ = w.Write([]byte("MP4DATA"))
+		case strings.HasPrefix(r.URL.Path, "/v1/videos/"):
+			http.Error(w, `{"error":{"message":"not found"}}`, http.StatusNotFound)
 		case r.URL.Path == "/v1/audio/speech":
 			w.Header().Set("Content-Type", "audio/wav")
 			_, _ = w.Write([]byte("RIFFwave"))
