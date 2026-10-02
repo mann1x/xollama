@@ -304,6 +304,10 @@ All voice models are downloaded to `/srv/ml/media/` for the tests.
   - **Klein and Z-Image state no `edit`.** The engine picks: b97 edits as img2img, and M7's `auto` gives FLUX.2 reference edits. So Klein is published once, with no re-push at M7, and a test guards that no entry states an edit mode.
   - **With M7:** `mannix/kokoro:82m`, `mannix/supertonic:3`, `mannix/kittentts:mini-0.8`, `mannix/wan2.1:t2v-1.3b`, `mannix/wan2.2:ti2v-5b` and `mannix/media-kit`, each tested on the M7 build before it is pushed.
   - **For the owner:** add a "needs xOllama" description on each ollama.com page; the API cannot set it.
+- **Cerebriline (#628/#629, 2026-10-02):** media support has started on their side.
+  - Done: `/v1/models` entries carry `capabilities` (`5c5d65d02`).
+  - Promised: a voice-list route (template `voice_map` plus the engine's `/props media.tts.voices`).
+  - Test server: dev xollama on b97 at `127.0.0.1:22499` (`/srv/ml/media-store`, detached) with the four published models, until they say they are done.
 - **Phase 4 as planned:** The `hf.co` sourcing and the catalog are built (Phase 2); what is left is publishing, per Phase 0: `flux2-klein:4b`, `whisper:turbo`, `outetts:0.3`,
   later `kokoro`, `supertonic`, `kittentts`, and a mixed `media-kit`. Pushed
   or published as `hf.co` references, per Phase 0.
