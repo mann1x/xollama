@@ -308,6 +308,13 @@ var (
 	// allows any. Empty allows none. Operator-side only: a council model can be
 	// pulled, and the host it names receives every conversation it serves.
 	CouncilHosts = String("XOLLAMA_COUNCIL_HOSTS")
+	// MediaDefaults names the server's default media model per kind, as
+	// kind=model pairs, comma separated: image (generation and edit),
+	// image_generation, image_edit, transcription (stt), speech (tts), video.
+	// A media request that names no model gets it, and /v1/models marks it,
+	// so a client choosing among several models of a kind has the operator's
+	// answer instead of a guess.
+	MediaDefaults = String("XOLLAMA_MEDIA_DEFAULTS")
 	// SessionPool opts in to sharing one physical copy of a common prefix --
 	// a system prompt and tool definitions -- between the conversations of a
 	// model, instead of one copy each. Off by default: it changes how KV is
@@ -474,6 +481,7 @@ func AsMap() map[string]EnvVar {
 		"XOLLAMA_SESSION_AFFINITY":    {"XOLLAMA_SESSION_AFFINITY", SessionAffinity(), "Return a conversation to the slot holding its KV, on the opencoti engine (default true)"},
 		"XOLLAMA_SESSION_POOL":        {"XOLLAMA_SESSION_POOL", SessionPool(), "Share one copy of a common prefix between conversations, on the opencoti engine (default false)"},
 		"XOLLAMA_COUNCIL_HOSTS":       {"XOLLAMA_COUNCIL_HOSTS", CouncilHosts(), "Servers a council role may run on (council.<role>.host): host or host:port, comma separated, * for any (default none)"},
+		"XOLLAMA_MEDIA_DEFAULTS":      {"XOLLAMA_MEDIA_DEFAULTS", MediaDefaults(), "Default media model per kind: kind=model, comma separated (image, image_generation, image_edit, transcription, speech, video)"},
 		"XOLLAMA_K_CACHE_TYPE":        {"XOLLAMA_K_CACHE_TYPE", KCacheType(), "KV cache type for keys, overriding OLLAMA_KV_CACHE_TYPE for that half"},
 		"XOLLAMA_V_CACHE_TYPE":        {"XOLLAMA_V_CACHE_TYPE", VCacheType(), "KV cache type for values, overriding OLLAMA_KV_CACHE_TYPE for that half"},
 		"XOLLAMA_UPDATE_FEED":         {"XOLLAMA_UPDATE_FEED", UpdateFeed(), "Where the desktop app looks for updates (default: this fork's GitHub releases)"},

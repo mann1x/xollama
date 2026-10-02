@@ -65,11 +65,30 @@ compares size and time.
 | `POST /v1/audio/transcriptions` | `transcription` | Multipart `file`. A model without a speech-to-text engine is served as upstream serves it, through an audio-capable LLM. |
 | `POST /v1/audio/translations` | `transcription` | Multipart `file`, translated to English. |
 | `GET /api/xollama/media/voices?model=` | `speech` | The model's voices for a picker: the engine's own, the OpenAI names the template maps to each (`aliases`), the `default`, and the engine's `response_formats` and `sample_rate`. POST with `{"model": …}` works too. It starts the speech engine if it isn't running. `xollama media voices MODEL` prints the same. |
-| `GET /v1/models` | | Models with media also list `input_modalities`, `output_modalities` and `capabilities` (`image_generation`, `image_edit`, `speech`, `transcription`, `video`). `?output_modalities=image` (or `audio`, `text`, `video`) keeps only the models that produce it. |
+| `GET /v1/models` | | Models with media also list `input_modalities`, `output_modalities` and `capabilities` (`image_generation`, `image_edit`, `speech`, `transcription`, `video`). `?output_modalities=image` (or `audio`, `text`, `video`) keeps only the models that produce it. A model that is the server's default for a kind also lists it in `default_for`. |
 
 A model's capabilities, from `xollama show` or `/api/show`, say which routes it
 answers. A request for media the model doesn't have is a 400 that names what is
 missing.
+
+## A default model per kind
+
+A server with two image models has no single answer for a client that wants
+"an image model", and a careful client won't guess. Name the default for each
+kind with `XOLLAMA_MEDIA_DEFAULTS`: comma-separated `kind=model` pairs.
+
+```shell
+xollama tweak envs XOLLAMA_MEDIA_DEFAULTS=image=mannix/flux2-klein:4b,speech=mannix/outetts:0.3
+```
+
+- The kinds are `image` (generation and edit), `image_generation`, `image_edit`,
+  `transcription` (or `stt`), `speech` (or `tts`) and `video`. A later pair for
+  the same kind wins, so `image=a,image_edit=b` generates with `a` and edits
+  with `b`.
+- `/v1/models` lists the kinds a model is the default for in `default_for`.
+  A pair that names a model without that kind marks nothing.
+- A media request that names no model is served by the default for its route.
+  Without one, it's still a 400.
 
 ## The template decides what a client doesn't
 

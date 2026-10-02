@@ -463,7 +463,8 @@ func (s *Server) ImageGenerationsHandler(c *gin.Context) {
 	if !ok {
 		return
 	}
-	name := body.get("model")
+	name := mediaName(body.get("model"), CapabilityImageGeneration)
+	body.set("model", name)
 	media, ok := mediaModel(c, name)
 	if !ok {
 		return
@@ -488,7 +489,8 @@ func (s *Server) ImageEditsHandler(c *gin.Context) {
 		return
 	}
 	fields := formFields(form.Value)
-	name := fields.get("model")
+	name := mediaName(fields.get("model"), CapabilityImageEdit)
+	fields.set("model", name)
 	media, ok := mediaModel(c, name)
 	if !ok {
 		return
@@ -547,7 +549,8 @@ func (s *Server) SpeechHandler(c *gin.Context) {
 	if !ok {
 		return
 	}
-	name := body.get("model")
+	name := mediaName(body.get("model"), CapabilitySpeech)
+	body.set("model", name)
 	media, ok := mediaModel(c, name)
 	if !ok {
 		return
@@ -585,7 +588,7 @@ func (s *Server) mediaTranscriptionMiddleware() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusBadRequest, openai.NewError(http.StatusBadRequest, "failed to parse multipart form: "+err.Error()))
 			return
 		}
-		m, err := GetModel(c.Request.FormValue("model"))
+		m, err := GetModel(mediaName(c.Request.FormValue("model"), CapabilityTranscription))
 		if err != nil || !slices.Contains(mediaCapabilities(m), CapabilityTranscription) {
 			c.Next()
 			return
@@ -597,7 +600,8 @@ func (s *Server) mediaTranscriptionMiddleware() gin.HandlerFunc {
 
 func (s *Server) serveTranscription(c *gin.Context, form *multipart.Form, translate bool) {
 	fields := formFields(form.Value)
-	name := fields.get("model")
+	name := mediaName(fields.get("model"), CapabilityTranscription)
+	fields.set("model", name)
 	media, ok := mediaModel(c, name)
 	if !ok {
 		return
@@ -794,6 +798,9 @@ func rewriteModels(data []byte, wantIn, wantOut []string) ([]byte, bool) {
 			// alike; the capability names tell a client which routes the
 			// model answers.
 			e["input_modalities"], e["output_modalities"], e["capabilities"] = in, out, caps
+			if d := mediaDefaultFor(id, caps); len(d) > 0 {
+				e["default_for"] = d
+			}
 			changed = true
 		}
 		if filter && (!anyOf(in, wantIn) || !anyOf(out, wantOut)) {

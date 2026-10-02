@@ -28,6 +28,7 @@ func (s *Server) MediaVoicesHandler(c *gin.Context) {
 		}
 		name = req.Model
 	}
+	name = mediaName(name, CapabilitySpeech)
 	media, ok := mediaModel(c, name)
 	if !ok {
 		return
