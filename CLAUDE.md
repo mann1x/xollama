@@ -206,7 +206,7 @@ and `fixed` — is `types/xollama/media.go`, its tweak rows and uploads `cmd/twe
 process, `llm/engine_media.go`, scheduled as `media:<digest>` from `server/media.go` (`media` hook); `hf.co` components are resolved by
 `internal/mediahub` and fetched by `/api/xollama/media/pull`, `server/media_pull.go`; catalog and discovery are `xollama media`,
 `cmd/tweak/mediacmd.go`, with a local mirror (`media fetch`, `create --dir`, `internal/mediahub/mirror.go`); the OpenAI media routes,
-per-engine queue and template fill-in are `server/media_routes.go`, a speech model's voices `server/media_voices.go`, the operator's default model per kind `server/media_defaults.go` (`XOLLAMA_MEDIA_DEFAULTS`), video jobs (`/v1/videos`, the engine held per job) `server/media_video.go`, see `docs/xollama/media.mdx`), and replaces only that layer — see
+per-engine queue and template fill-in are `server/media_routes.go`, an edit without a size keeps its source's (`editSize`, `server/media_edit_size.go`), a speech model's voices `server/media_voices.go`, the operator's default model per kind `server/media_defaults.go` (`XOLLAMA_MEDIA_DEFAULTS`), video jobs (`/v1/videos`, the engine held per job) `server/media_video.go`, see `docs/xollama/media.mdx`), and replaces only that layer — see
 `docs/xollama/tweak.mdx`. `xollama show` lists the stated settings in an
 `xOllama` table via `tweak.SettingRows` (same hook, in `showInfo`); unstated ones
 are omitted. A council's settings stay out of the launch: `llamaServerConfigForModel`

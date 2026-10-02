@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-02 — Cerebriline ran all five media tools live on 22499 (b105, #650); an edit keeps its source's size.**
+> - Results: Klein generate 7.6 s; edit 41.2 s (a true reference edit, so b105's `auto` picks reference for FLUX.2); speech mp3 by default; transcription exact; Wan2.1 clip 228.8 s; a cancelled clip freed the card within 5 s. Cerebriline main `daa8ce078` reads `default_for`.
+> - An edit without a size now comes back at its first image's size, capped at the template's pixel count, in multiples of 16 (`server/media_edit_size.go`, 5 mutations, all killed). Before, it came back at the template's 1024x1024.
+> - 22499 also names a video default (`video=mannix/wan2.1:t2v-1.3b`).
+
 > **2026-10-02 — bug-3755 repro on eleven2go for opencoti (#642 → #646; owner's go for this run only).**
 > - b208 `2609281805001` on a separate xollama on 22436, under a commit hog (about 1 GB of commit left free), with procdump attached.
 > - Run 1, one sequence: 60 prompts, 15 clean 503s, no crash.

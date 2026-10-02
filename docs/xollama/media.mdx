@@ -61,7 +61,7 @@ compares size and time.
 | Route | Needs | Notes |
 |---|---|---|
 | `POST /v1/images/generations` | `image_generation` | JSON. The reply is `b64_json`; `"response_format": "url"` answers a `data:` URL. Besides OpenAI's fields the engine takes `steps`, `cfg_scale`, `sampler`, `scheduler`, `seed` and `negative_prompt`. |
-| `POST /v1/images/edits` | `image_edit` | Multipart, `image[]` (one or more) and an optional `mask`. |
+| `POST /v1/images/edits` | `image_edit` | Multipart, `image[]` (one or more) and an optional `mask`. Without a `size` (or with `auto`) the edit comes back at its first image's size, scaled down to the template's pixel count when larger, in multiples of 16. |
 | `POST /v1/audio/speech` | `speech` | JSON `input`, `voice`, `response_format`, `speed`. The audio comes back as the engine encodes it. |
 | `POST /v1/audio/transcriptions` | `transcription` | Multipart `file`. A model without a speech-to-text engine is served as upstream serves it, through an audio-capable LLM. |
 | `POST /v1/audio/translations` | `transcription` | Multipart `file`, translated to English. |

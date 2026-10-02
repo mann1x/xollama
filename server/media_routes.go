@@ -495,6 +495,15 @@ func (s *Server) ImageEditsHandler(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if !fields.has("size") || fields.get("size") == "auto" {
+		var d *xollama.ImageDefaults
+		if media.Image != nil {
+			d = media.Image.Defaults
+		}
+		if size, ok := editSize(form, d); ok {
+			fields.set("size", size)
+		}
+	}
 	if media.Image != nil {
 		fillImage(fields, media.Image, true)
 	}
