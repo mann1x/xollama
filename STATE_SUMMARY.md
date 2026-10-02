@@ -5,6 +5,15 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-02 — Media endpoints, Phase 4: templates published on ollama.com.**
+> - **Registry test passed.** ollama.com accepts the `application/vnd.xollama.media` layer, and a clean store pulled it back intact.
+> - **Stock ollama (v0.35.0, built from `upstream`):** it pulls media templates but cannot show or run a media-only one (owner: fine). A chat model with media attached still chats; stock skips the layer.
+> - **Published** as `mannix/<family>:<size>` (owner's choice): `whisper:large-v3-turbo`, `outetts:0.3`, `z-image:turbo` and `flux2-klein:4b`.
+>   - Z-Image was GPU-tested before the push (1024² in 36 s), and a clean store pulled Whisper and OuteTTS and used them.
+>   - Klein and Z-Image state no edit mode, so one Klein template edits as img2img on b97 and from reference images on M7.
+> - **Catalog:** `Template` names and a PULL column in `xollama media list`.
+> - **Next:** the M7 templates (Kokoro, Supertonic, KittenTTS, Wan, media-kit) once M7 is tested. The owner deletes `mannix/xollama-registry-test` and adds "needs xOllama" descriptions on the pages.
+
 > **2026-10-02 — opencoti b97: row B re-check (#626 → #627).**
 > - **Setup:** llama3.1:70b q3_K_S on the 3090, b97 `2610021340001` with its `ggml-cuda.so` beside it (`/srv/ml/xollama-phase2/engines/b97-2610021340001`), the same recipe as b177.
 > - **Boot (bug-3515) is fixed.** `--kv-residency-mode auto` boots in 38 s on POSITION_WINDOW (window 256, host tail 32512) and answers.

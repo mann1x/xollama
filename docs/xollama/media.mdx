@@ -14,6 +14,30 @@ curl http://localhost:22434/v1/images/generations \
   -d '{"model": "klein", "prompt": "a lighthouse at dusk"}'
 ```
 
+## Ready-made models
+
+These are published on ollama.com and pull like any model:
+
+| Model | What it does |
+|---|---|
+| `mannix/flux2-klein:4b` | Image generation and edits, 1024×1024 in four steps |
+| `mannix/z-image:turbo` | Photographic image generation in eight steps |
+| `mannix/whisper:large-v3-turbo` | Transcription in 99 languages, and translation to English |
+| `mannix/outetts:0.3` | Speech, OuteTTS with the WavTokenizer vocoder |
+
+```shell
+xollama pull mannix/whisper:large-v3-turbo
+```
+
+`xollama media list` shows which catalog entries are published, in its `PULL`
+column. Kokoro, Supertonic, KittenTTS, Wan and the mixed `media-kit` follow
+with the opencoti engine that runs them (M7). Until then,
+`xollama media create` builds them locally.
+
+Stock ollama can pull these models, but cannot show or run a model that carries
+only media. A chat model with media attached still chats on stock ollama, which
+skips the media.
+
 ## Keeping one copy of the models
 
 Media models are gigabytes. `xollama media fetch` downloads catalog entries

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ollama/ollama/types/model"
 	"github.com/ollama/ollama/types/xollama"
 )
 
@@ -172,6 +173,25 @@ func TestCatalogResolvesLive(t *testing.T) {
 				continue
 			}
 			t.Logf("%-22s %s %d", e.ID, f.Digest[:19], f.Size)
+		}
+	}
+}
+
+func TestEveryEntryHasItsOwnPublishedName(t *testing.T) {
+	seen := map[string]string{}
+	for _, e := range Catalog() {
+		n := model.ParseName(e.Template)
+		if !n.IsValid() || !strings.HasPrefix(e.Template, "mannix/") || !strings.Contains(e.Template, ":") {
+			t.Errorf("%s: template name %q is not mannix/<family>:<size>", e.ID, e.Template)
+		}
+		if other, ok := seen[e.Template]; ok {
+			t.Errorf("%s and %s are both published as %s", e.ID, other, e.Template)
+		}
+		seen[e.Template] = e.ID
+		// The engine picks the edit mode by family; a stated one keeps the
+		// template off an engine without the switch (b97).
+		if e.Media.Image != nil && e.Media.Image.Edit != "" {
+			t.Errorf("%s states edit %q", e.ID, e.Media.Image.Edit)
 		}
 	}
 }

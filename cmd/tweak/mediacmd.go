@@ -64,7 +64,7 @@ func mediaListCommand() *cobra.Command {
 
 func printCatalog(out io.Writer, kind string) error {
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tKIND\tNAME\tLICENSE\tNEEDS\tDESCRIPTION")
+	fmt.Fprintln(w, "ID\tKIND\tNAME\tPULL\tNEEDS\tDESCRIPTION")
 	n := 0
 	for _, e := range mediahub.Catalog() {
 		if kind != "" && e.Kind != kind {
@@ -74,7 +74,11 @@ func printCatalog(out io.Writer, kind string) error {
 		if needs == "" {
 			needs = "-"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", e.ID, e.Kind, e.Name, e.License, needs, e.Description)
+		pull := "-"
+		if e.Published {
+			pull = e.Template
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", e.ID, e.Kind, e.Name, pull, needs, e.Description)
 		n++
 	}
 	if n == 0 {

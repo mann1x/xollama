@@ -22,7 +22,13 @@ type Entry struct {
 	Description string
 	// Needs says what the engine must have for it, when b97 does not.
 	Needs string
-	Media xollama.Media
+	// Template is the name the entry is published under on ollama.com, and
+	// Published says it is there: xollama pull Template gets the same model
+	// media create builds. The names are mannix/<family>:<size> (owner,
+	// 2026-10-02); stock ollama pulls them but cannot run a media-only one.
+	Template  string
+	Published bool
+	Media     xollama.Media
 }
 
 // Refs lists the entry's component references, in component order.
@@ -57,7 +63,9 @@ func klein() *xollama.ImageMedia {
 		Model: "hf.co/leejet/FLUX.2-klein-4B-GGUF/flux-2-klein-4b-Q8_0.gguf",
 		VAE:   "hf.co/Comfy-Org/vae-text-encorder-for-flux-klein-4b/split_files/vae/flux2-vae.safetensors",
 		LLM:   qwen3_4B,
-		Edit:  "reference",
+		// No edit mode: the engine decides by family. M7's auto edits FLUX.2
+		// from reference images, and b97, which has no switch, edits as
+		// img2img; stating one would keep the template off b97.
 		Defaults: &xollama.ImageDefaults{
 			Width: 1024, Height: 1024, Steps: 4, CFG: f(1), Sampler: "euler", OutputFormat: "png",
 		},
@@ -87,27 +95,27 @@ func wanDefaults(fps int) *xollama.VideoDefaults {
 
 var catalog = []Entry{
 	{
-		ID: "flux2-klein-4b", Name: "FLUX.2 klein 4B", Kind: "image", Family: "FLUX.2", License: "apache-2.0",
+		ID: "flux2-klein-4b", Template: "mannix/flux2-klein:4b", Published: true, Name: "FLUX.2 klein 4B", Kind: "image", Family: "FLUX.2", License: "apache-2.0",
 		Description: "Generates and edits (reference images) in four steps, in the least memory.",
 		Media:       xollama.Media{Image: klein()},
 	},
 	{
-		ID: "z-image-turbo", Name: "Z-Image Turbo", Kind: "image", Family: "Z-Image", License: "apache-2.0",
+		ID: "z-image-turbo", Template: "mannix/z-image:turbo", Published: true, Name: "Z-Image Turbo", Kind: "image", Family: "Z-Image", License: "apache-2.0",
 		Description: "Photographic detail in eight steps; shares klein's text encoder.",
 		Media: xollama.Media{Image: &xollama.ImageMedia{
-			Model: "hf.co/leejet/Z-Image-Turbo-GGUF/z_image_turbo-Q4_0.gguf",
-			VAE:   "hf.co/Comfy-Org/z_image_turbo/split_files/vae/ae.safetensors",
-			LLM:   qwen3_4B, Edit: "img2img",
+			Model:    "hf.co/leejet/Z-Image-Turbo-GGUF/z_image_turbo-Q4_0.gguf",
+			VAE:      "hf.co/Comfy-Org/z_image_turbo/split_files/vae/ae.safetensors",
+			LLM:      qwen3_4B, // edit by the engine's choice, img2img for Z-Image
 			Defaults: &xollama.ImageDefaults{Width: 1024, Height: 1024, Steps: 8, CFG: f(1), OutputFormat: "png"},
 		}},
 	},
 	{
-		ID: "whisper-large-v3-turbo", Name: "Whisper large-v3 turbo", Kind: "stt", Family: "Whisper", License: "mit",
+		ID: "whisper-large-v3-turbo", Template: "mannix/whisper:large-v3-turbo", Published: true, Name: "Whisper large-v3 turbo", Kind: "stt", Family: "Whisper", License: "mit",
 		Description: "Transcription in 99 languages, and translation to English.",
 		Media:       xollama.Media{STT: whisper()},
 	},
 	{
-		ID: "outetts-0.3-500m", Name: "OuteTTS 0.3 500M", Kind: "tts", Family: "OuteTTS", License: "cc-by-sa-4.0",
+		ID: "outetts-0.3-500m", Template: "mannix/outetts:0.3", Published: true, Name: "OuteTTS 0.3 500M", Kind: "tts", Family: "OuteTTS", License: "cc-by-sa-4.0",
 		Description: "Speech with the WavTokenizer vocoder; the pair opencoti b97 was tested with.",
 		Media: xollama.Media{TTS: &xollama.TTSMedia{
 			Model: "hf.co/OuteAI/OuteTTS-0.3-500M-GGUF/OuteTTS-0.3-500M-Q8_0.gguf",
@@ -117,12 +125,12 @@ var catalog = []Entry{
 		}},
 	},
 	{
-		ID: "kokoro-82m", Name: "Kokoro 82M", Kind: "tts", Family: "Kokoro", License: "apache-2.0",
+		ID: "kokoro-82m", Template: "mannix/kokoro:82m", Name: "Kokoro 82M", Kind: "tts", Family: "Kokoro", License: "apache-2.0",
 		Description: "46 natural voices in eight languages; SurfSense's default voice.",
 		Needs:       needsM7, Media: xollama.Media{TTS: kokoro()},
 	},
 	{
-		ID: "supertonic-3", Name: "Supertonic 3", Kind: "tts", Family: "Supertonic", License: "openrail",
+		ID: "supertonic-3", Template: "mannix/supertonic:3", Name: "Supertonic 3", Kind: "tts", Family: "Supertonic", License: "openrail",
 		Description: "Ten voices, each in 31 languages, in the least memory.",
 		Needs:       needsM7,
 		Media: xollama.Media{TTS: &xollama.TTSMedia{
@@ -132,7 +140,7 @@ var catalog = []Entry{
 		}},
 	},
 	{
-		ID: "kitten-tts-mini-0.8", Name: "KittenTTS Mini 0.8", Kind: "tts", Family: "KittenTTS", License: "apache-2.0",
+		ID: "kitten-tts-mini-0.8", Template: "mannix/kittentts:mini-0.8", Name: "KittenTTS Mini 0.8", Kind: "tts", Family: "KittenTTS", License: "apache-2.0",
 		Description: "Eight English voices.",
 		Needs:       needsM7,
 		Media: xollama.Media{TTS: &xollama.TTSMedia{
@@ -142,7 +150,7 @@ var catalog = []Entry{
 		}},
 	},
 	{
-		ID: "wan2.1-t2v-1.3b", Name: "Wan2.1 T2V 1.3B", Kind: "video", Family: "Wan", License: "apache-2.0",
+		ID: "wan2.1-t2v-1.3b", Template: "mannix/wan2.1:t2v-1.3b", Name: "Wan2.1 T2V 1.3B", Kind: "video", Family: "Wan", License: "apache-2.0",
 		Description: "Short clips from text, in the least memory.",
 		Needs:       needsM7,
 		Media: xollama.Media{Video: &xollama.VideoMedia{
@@ -152,7 +160,7 @@ var catalog = []Entry{
 		}},
 	},
 	{
-		ID: "wan2.2-ti2v-5b", Name: "Wan2.2 TI2V 5B", Kind: "video", Family: "Wan", License: "apache-2.0",
+		ID: "wan2.2-ti2v-5b", Template: "mannix/wan2.2:ti2v-5b", Name: "Wan2.2 TI2V 5B", Kind: "video", Family: "Wan", License: "apache-2.0",
 		Description: "Clips from text or an image, at 24 frames a second.",
 		Needs:       needsM7,
 		Media: xollama.Media{Video: &xollama.VideoMedia{
@@ -162,7 +170,7 @@ var catalog = []Entry{
 		}},
 	},
 	{
-		ID: "media-kit", Name: "Media kit", Kind: "mix", Family: "mix", License: "see components",
+		ID: "media-kit", Template: "mannix/media-kit:latest", Name: "Media kit", Kind: "mix", Family: "mix", License: "see components",
 		Description: "FLUX.2 klein, Whisper turbo and Kokoro in one template: images, transcription and speech.",
 		Needs:       needsM7,
 		Media:       xollama.Media{Image: klein(), STT: whisper(), TTS: kokoro()},

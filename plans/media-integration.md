@@ -1,6 +1,6 @@
 # Media endpoints: images, speech, transcription (video later)
 
-**Status:** ACTIVE. Phase 1 (schema v7) and Phase 2 (media-only runner, `hf.co` sourcing, catalog, `xollama media`) closed 2026-10-02. Phase 3 (the OpenAI routes) built 2026-10-02 and live on the 3090 with b97; Cerebriline's own image tool is still to run against it. Phase 0 engine measurements wait on the b97 handoff and the M7 build.
+**Status:** ACTIVE. Phase 4 (publishing on ollama.com as `mannix/<family>:<size>`) under way: four b97 templates published 2026-10-02, the M7 ones to follow. Phase 1 (schema v7) and Phase 2 (media-only runner, `hf.co` sourcing, catalog, `xollama media`) closed 2026-10-02. Phase 3 (the OpenAI routes) built 2026-10-02 and live on the 3090 with b97; Cerebriline's own image tool is still to run against it. Phase 0 engine measurements wait on the b97 handoff and the M7 build.
 **Owner:** xollama; engine work by opencoti.
 
 ## 1. What the owner asked for (2026-10-02, condensed)
@@ -170,6 +170,11 @@ Each component is a blob in the model's manifest, named by role:
 - **If it is refused:** templates are published as a small manifest whose
   components are `hf.co/…@rev` references with sha256. `xollama pull` fetches
   them from Hugging Face. Nothing heavy is pushed.
+- **MEASURED 2026-10-02: accepted.**
+  - `mannix/xollama-registry-test` (Kokoro, one `media/tts.model` layer) pushed in 62 s. A clean store pulled it back with the layer, media type and name intact, and `show` listed `speech`.
+  - Upstream's v0.35.0, built from the `upstream` history, also pulls it: it lists the model but answers "not found" to `show` and `run` on a media-only template (owner: fine).
+  - On a chat model with media attached, stock reports only `completion` and generates normally: it skips the layer.
+  - The owner was told to delete the test template.
 
 ### 4.3 Launch and scheduling
 
@@ -292,7 +297,14 @@ All voice models are downloaded to `/srv/ml/media/` for the tests.
     - **Transcription:** Whisper 1 s, exact.
   - **Estimate against use on the GPU:** Klein 10.2 GB estimated, 7.3 GiB used; Whisper 1.41 GB, 1.48 GiB; OuteTTS 0.94 GB, 1.26 GiB. The STT and TTS estimates come in short. Phase 0 measures the reserves, and M7 sends per-family ones.
   - **c7 has no `--diffusion-edit`.** A template stating `edit` cannot boot on it, so Klein ran with `edit` unset; M7 brings the switch.
-- **Phase 4: templates.** The `hf.co` sourcing and the catalog are built (Phase 2); what is left is publishing, per Phase 0: `flux2-klein:4b`, `whisper:turbo`, `outetts:0.3`,
+- **Phase 4 — ACTIVE 2026-10-02: publishing on ollama.com.**
+  - **Names** (owner, 2026-10-02): `mannix/<family>:<size>`, in `Entry.Template`, with `Published` shown in `media list`'s PULL column.
+  - **Timing** (owner): what b97 runs goes now, the rest with M7.
+  - **Published:** `mannix/whisper:large-v3-turbo`, `mannix/outetts:0.3`, `mannix/z-image:turbo` and `mannix/flux2-klein:4b`, built from the mirror. Z-Image was tested on the GPU first: 1024² in 36 s. A clean store pulled Whisper and OuteTTS from ollama.com, then spoke and transcribed with them.
+  - **Klein and Z-Image state no `edit`.** The engine picks: b97 edits as img2img, and M7's `auto` gives FLUX.2 reference edits. So Klein is published once, with no re-push at M7, and a test guards that no entry states an edit mode.
+  - **With M7:** `mannix/kokoro:82m`, `mannix/supertonic:3`, `mannix/kittentts:mini-0.8`, `mannix/wan2.1:t2v-1.3b`, `mannix/wan2.2:ti2v-5b` and `mannix/media-kit`, each tested on the M7 build before it is pushed.
+  - **For the owner:** add a "needs xOllama" description on each ollama.com page; the API cannot set it.
+- **Phase 4 as planned:** The `hf.co` sourcing and the catalog are built (Phase 2); what is left is publishing, per Phase 0: `flux2-klein:4b`, `whisper:turbo`, `outetts:0.3`,
   later `kokoro`, `supertonic`, `kittentts`, and a mixed `media-kit`. Pushed
   or published as `hf.co` references, per Phase 0.
 - **Phase 5: SurfSense.**
