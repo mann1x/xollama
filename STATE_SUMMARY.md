@@ -5,6 +5,12 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-02 — Row B on opencoti b103 2610021841001: bug-3859 not fixed (#632 → #635).**
+> - auto: boot 71 s, short arm 2.22 / 197.4 t/s; the 22,662-token arm still dies, now as `failed to allocate CUDA0 buffer of size 363071744` at 17,920 tokens.
+> - Patch 0524 flags the 359 MiB shortfall, but no `fit target … weights placed again` follows, and the fit keeps 64/81 layers on the GPU, as b97 did.
+> - head: 15 s boot, 1.82 / 147.8 t/s, and the long arm passes at 0.14 / 133.7 t/s.
+> - Logs: `/srv/ml/xollama-phase2/as-ollama/residency-ab-b103/`. The engine pin does not move.
+
 > **2026-10-02 — Media: capabilities on `/v1/models` and a voice list, for Cerebriline (#628).**
 > - Media models' `/v1/models` entries carry `capabilities` (`5c5d65d02`).
 > - `/api/xollama/media/voices` (GET `?model=` or POST) and `xollama media voices MODEL` list the engine's voices with the template's OpenAI names as aliases, the default, formats and sample rate.
