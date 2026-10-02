@@ -1,7 +1,8 @@
 # Server settings without environment variables
 
-**Status:** ACTIVE. Phase 0 is waiting on opencoti's answers to #608; Phases
-1 and 2 were built 2026-10-02. **Owner:** xollama.
+**Status:** ACTIVE. Phases 0–3 closed 2026-10-02 (engine answers: opencoti
+#609); Phase 4 (the link probe) and Phase 5 (auto policies, rolling window)
+next. **Owner:** xollama.
 
 ## 1. What the owner asked for (2026-10-02, condensed)
 
@@ -181,3 +182,55 @@ An empty `envs` map adds nothing.
     - the auto policies (fit and the rest) and the KV rolling window, waiting
       on #608;
     - `tweak server gpu` (Phase 3).
+- 2026-10-02, opencoti's answers (#609), recorded here:
+  1. **Per-device link force: not implemented.** `OPENCOTI_LINK_GBPS` is one
+     value per process. opencoti agrees the interim (the slowest forced
+     figure among a load's GPUs) is right. A per-device form
+     (`PCI=GBPS,...`) is queued at opencoti and needs the owner's go-ahead.
+  2. **Auto policies:**
+     - `-ngl auto` (the fit);
+     - `--fit on|off`, `--fit-target`, `--fit-ctx`;
+     - `--vram-target` (0 = all free VRAM minus the compute reserve);
+     - `--kv-residency-mode auto|head|window`;
+     - `--kv-rolling-window on|off|MiB` (default off; on = R auto);
+     - `--pcie-autodetect`;
+     - `--sampling-placement device|cpu|auto`;
+     - `--auto-mtp-policy measured|allocator|taper|always|off`
+       (default measured);
+     - `--spec-draft-ngl auto`;
+     - the elastic-slot knobs.
+     - Legacy, not to offer as serving defaults: the headinfer heads
+       fraction, `--neo-pipeline`, `--sparse-attn-topk`.
+     - Never to expose: `OPENCOTI_RW_*`, the Vulkan ring test knobs.
+  3. **Residency mode × rolling window** (FINAL as a surface):
+     - `head` disables the window, and the rolling window is inert.
+     - `window` with rolling off is the classic POSITION_WINDOW host tail.
+     - `window` with rolling on or a MiB figure is the live slide. It needs
+       a single stream (`--kv-unified` or `-np 1`) and CUDA or Vulkan,
+       otherwise opencoti warns and falls back to the classic window.
+     - `auto` uses the window when the cache overflows, otherwise the cache
+       stays resident.
+     - Offer: `auto` (the default), and `window` with the rolling window
+       on, off or a MiB figure. Offer `head` as "legacy, disables the
+       window".
+  4. **Split modes:**
+     - Only `layer` is validated on every opencoti path.
+     - `row` is CUDA only and unvalidated; Vulkan turns it into `layer`.
+     - `tensor` is unsupported, so it is not offered.
+  5. **`--link-probe` while a model is loaded:** safe when about 64 MiB of
+     VRAM and a context are free. The reading drops only while another
+     engine is moving data over the link. So allow it when the GPU is idle,
+     and refuse it while the engine is generating.
+- 2026-10-02, Phase 3 built:
+  - `tweak server gpu`: flags per PCI ID, plus an interactive walk with the
+    PCIe generation-and-lanes wizard;
+  - the `gpu` section of the settings file;
+  - scheduler hooks: disabled GPUs out, one backend per GPU, priority first
+    in the single-GPU choice and in the device order, split
+    auto/spread/single;
+  - `llm.DeviceEnvs`: the split mode on loads over several GPUs, and the
+    forced link (the slowest of the load's GPUs).
+  - Verified: mutation (each of the three placement hooks fails a test),
+    race tests, lint, and a live smoke test.
+  - The `applyGPUPolicy` call in `processPending` is tested only through its
+    function.

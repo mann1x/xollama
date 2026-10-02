@@ -56,8 +56,15 @@ func (s *Server) SettingsHandler(c *gin.Context) {
 		}
 	}
 
+	if req.GPU != nil {
+		if err := req.GPU.Validate(); err != nil {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
 	var restart []string
-	if len(req.Envs) > 0 || req.Defaults != nil {
+	if len(req.Envs) > 0 || req.Defaults != nil || req.GPU != nil {
 		var err error
 		if restart, err = applySettings(req); err != nil {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -66,7 +73,7 @@ func (s *Server) SettingsHandler(c *gin.Context) {
 	}
 
 	p, _ := envconfig.SettingsPath()
-	c.JSON(http.StatusOK, api.SettingsResponse{Path: p, Envs: settingsEnvs(), Defaults: serverDefaults(), Restart: restart})
+	c.JSON(http.StatusOK, api.SettingsResponse{Path: p, Envs: settingsEnvs(), Defaults: serverDefaults(), GPU: serverGPU(), Restart: restart})
 }
 
 // applySettings writes req's changes over the file as it is now, and
@@ -112,6 +119,20 @@ func applySettings(req api.SettingsRequest) ([]string, error) {
 				cur.Rest = map[string]json.RawMessage{}
 			}
 			cur.Rest[settingsDefaults] = data
+		}
+	}
+	if req.GPU != nil {
+		if req.GPU.IsZero() {
+			delete(cur.Rest, settingsGPU)
+		} else {
+			data, err := json.Marshal(req.GPU)
+			if err != nil {
+				return nil, err
+			}
+			if cur.Rest == nil {
+				cur.Rest = map[string]json.RawMessage{}
+			}
+			cur.Rest[settingsGPU] = data
 		}
 	}
 	if err := writeSettings(cur); err != nil {

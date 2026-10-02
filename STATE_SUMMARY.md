@@ -5,6 +5,19 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-02 — Server settings, Phase 3: `tweak server gpu`; opencoti answered #608.**
+> - `xollama tweak server gpu` sets the GPU policy:
+>   - which GPUs models may use;
+>   - priority (fill order, ahead of free memory);
+>   - the backend for a GPU reachable through several;
+>   - a forced link speed (GB/s, `4x16`, or a generation-and-lanes wizard);
+>   - split auto/spread/single;
+>   - split mode: layer, or row (CUDA only, unvalidated).
+> - A model's own device pin still wins.
+> - The engine takes one forced link figure per process, so a load spread over several GPUs gets the slowest forced figure among them; opencoti confirms that's right.
+> - opencoti #609: per-device link force is queued at opencoti and needs the owner's go-ahead. It also gave the complete auto-policy list, the residency × rolling-window matrix (FINAL), the split modes (tensor unsupported), and confirmed the link probe is safe on an idle GPU. All of it is recorded in the plan.
+> - Verified: mutation on the three placement hooks, race tests, lint, and a live smoke test.
+
 > **2026-10-02 — Server settings, Phase 2: defaults for every model's settings.**
 > - `xollama tweak server` now sets server-wide defaults for every `tweak model` setting a server may default: engine, flash attention, KV types, unified KV, residency, slots, session pooling and the speculative type.
 >   - It uses the same flags, walk and consistency pass as `tweak model`.

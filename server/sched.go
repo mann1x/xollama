@@ -328,6 +328,9 @@ func (s *Scheduler) processPending(ctx context.Context) {
 						}
 						gpus = selected
 					}
+					// xollama-hook: system-settings — the server's GPU policy: disabled
+					// GPUs out, one backend per GPU, highest priority first.
+					gpus = applyGPUPolicy(pending.model.Xollama, gpus)
 					gpus = opencotiPlacement(llamaServerConfigForModel(pending.model), gpus) // xollama-hook: opencoti-placement
 
 					if loadedCount == 0 {
@@ -1087,8 +1090,12 @@ func selectLlamaServerPlacement(systemInfo ml.SystemInfo, gpus []ml.DeviceInfo, 
 		return selected, launchOpts
 	}
 
-	if !envconfig.SchedSpread() && predictedVRAM > 0 {
+	// xollama-hook: system-settings — the GPU policy's split, else OLLAMA_SCHED_SPREAD
+	if !schedSpread() && predictedVRAM > 0 {
 		gpu, available, ok := bestSingleGPUFit(systemInfo, groups, predictedVRAM)
+		if !ok && neverSplit() {
+			gpu, available, ok = bestSingleGPUFit(systemInfo, groups, 0)
+		}
 		if ok {
 			selected, launchOpts := singleLlamaServerGPUPlacement(gpu, launchOpts)
 			slog.Info("selecting single GPU for llama-server model",
@@ -1157,6 +1164,10 @@ func bestSingleGPUFit(systemInfo ml.SystemInfo, groups [][]ml.DeviceInfo, predic
 }
 
 func betterPlacementGPU(candidate ml.DeviceInfo, candidateAvailable uint64, current ml.DeviceInfo, currentAvailable uint64) bool {
+	// xollama-hook: system-settings — the operator's GPU priority comes first.
+	if p := priorityOrder(candidate, current); p != 0 {
+		return p > 0
+	}
 	if candidate.Integrated != current.Integrated {
 		return !candidate.Integrated
 	}

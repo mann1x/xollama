@@ -156,6 +156,11 @@ Its `defaults` section is the server's default for every `tweak model` setting
 in `xollama.DefaultSections()`, merged under the model's own by
 `WithDefaults` (`types/xollama/defaults.go`) in `launchXollama`; set with
 `xollama tweak server` (`serverFields`, `cmd/tweak/server.go`).
+Its `gpu` section (`types/xollama/gpu.go`) is `xollama tweak server gpu`
+(`cmd/tweak/gpu.go`): allowed GPUs, priority (fill order), backend per GPU,
+forced link (`OPENCOTI_LINK_GBPS`, slowest of a load's GPUs), split
+auto/spread/single and split mode, applied in `server/xollama_gpu.go` via
+`server/sched.go` hooks and `llm.DeviceEnvs`.
 **Discovery** `discover/` · **Transfers** `transfer/` · **GGUF** `fs/gguf/`,
 `fs/safetensors/` · **Types** `types/model/`.
 **CLI support packages**: Modelfile parsing in `parser/` (`parser.go`,

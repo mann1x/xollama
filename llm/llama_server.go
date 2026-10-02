@@ -1213,6 +1213,12 @@ func NewLlamaServerRunner(
 		serverEnvs[k] = v
 	}
 	serverEnvs["LLAMA_MEDIA_MARKER"] = mediaMarker
+	// xollama-hook: system-settings — the server's GPU policy for these GPUs.
+	if DeviceEnvs != nil {
+		for k, v := range DeviceEnvs(gpus) {
+			serverEnvs[k] = v
+		}
+	}
 
 	launch := llamaServerLaunchConfig{
 		modelPath:      splitModel.modelPath,

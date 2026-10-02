@@ -21,9 +21,13 @@ const XollamaSettingsPath = "/api/xollama/settings"
 //
 // Defaults, when set, replaces the server's defaults for the models'
 // settings whole; an empty config clears them. nil leaves them as they are.
+//
+// GPU, when set, replaces the server's GPU policy whole; an empty one clears
+// it.
 type SettingsRequest struct {
-	Envs     map[string]*string `json:"envs,omitempty"`
-	Defaults *xollama.Config    `json:"defaults,omitempty"`
+	Envs     map[string]*string   `json:"envs,omitempty"`
+	Defaults *xollama.Config      `json:"defaults,omitempty"`
+	GPU      *xollama.GPUSettings `json:"gpu,omitempty"`
 }
 
 // SettingsEnv is one variable as the server sees it.
@@ -52,8 +56,9 @@ type SettingsEnv struct {
 type SettingsResponse struct {
 	Path     string          `json:"path"`
 	Envs     []SettingsEnv   `json:"envs"`
-	Defaults *xollama.Config `json:"defaults,omitempty"`
-	Restart  []string        `json:"restart,omitempty"`
+	Defaults *xollama.Config      `json:"defaults,omitempty"`
+	GPU      *xollama.GPUSettings `json:"gpu,omitempty"`
+	Restart  []string             `json:"restart,omitempty"`
 }
 
 // Settings sends req to the server's XollamaSettingsPath.

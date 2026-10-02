@@ -67,6 +67,8 @@ func showCommand(opts Options) *cobra.Command {
 			} else {
 				fmt.Fprintln(out, "none: a model that states nothing runs on the environment and the built-in defaults.")
 			}
+			fmt.Fprintf(out, "\n── GPUs\n")
+			printGPUTable(out, resp.GPU, gpuPolicy(cmd.Context(), client, resp))
 			fmt.Fprintf(out, "\n── environment variables\n")
 			printEnvTable(out, resp.Envs, false)
 			return nil

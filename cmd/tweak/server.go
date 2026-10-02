@@ -91,6 +91,7 @@ server behind TLS.`,
 	serverCmd.Flags().Bool("dry-run", false, "Show the resulting defaults without writing them")
 	serverCmd.Flags().Bool("json", false, "Print the resulting defaults as JSON")
 	serverCmd.Flags().BoolP("yes", "y", false, "Do not ask for confirmation, and unload running models when a change needs it")
+	serverCmd.AddCommand(gpuCommand(opts))
 	return serverCmd
 }
 
@@ -113,6 +114,7 @@ func runServer(cmd *cobra.Command, opts Options) error {
 		part, err := a.menu("part", "the server's settings", [][2]string{
 			{"defaults", "defaults for every model's settings (KV cache, slots, engine, pooling...)"},
 			{"api-key", "the local API key"},
+			{"gpu", "the GPUs: which, their priority, backend, link speed and split"},
 		}, 0)
 		if err != nil {
 			if errors.Is(err, errQuit) {
@@ -120,6 +122,9 @@ func runServer(cmd *cobra.Command, opts Options) error {
 				return nil
 			}
 			return err
+		}
+		if part == "gpu" {
+			return runGPU(cmd, nil, opts)
 		}
 		keyFlag = part == "api-key"
 	}

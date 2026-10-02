@@ -416,8 +416,38 @@ xollama tweak show server          # the API key, the defaults and the variables
 xollama tweak show model qwen3:8b  # what the model runs with, model or server
 ```
 
-<Note>
-`xollama tweak server gpu` (which GPUs, their priority, the backend, the PCIe
-link, split) and the engine's auto policies are the next part of this work.
-Until then, set them as variables with `tweak envs`.
-</Note>
+## The server's GPUs
+
+`xollama tweak server gpu` sets which GPUs models may use, in what order,
+through which backend, at what link speed, and whether a model is split:
+
+```shell
+xollama tweak server gpu                                 # ask
+xollama tweak server gpu 0000:01:00.0 --priority 10      # first choice
+xollama tweak server gpu 0000:02:00.0 --disable          # keep models off it
+xollama tweak server gpu 0000:01:00.0 --backend CUDA     # it is also a Vulkan device
+xollama tweak server gpu 0000:01:00.0 --link 4x16        # plan with PCIe 4.0 x16
+xollama tweak server gpu --split single                  # never split a model
+```
+
+- **Priority is fill order.** A model that fits on one GPU goes to the
+  highest-priority GPU with room, instead of the one with the most free
+  memory. A split fills the GPUs in priority order.
+- **A model's own device pin wins.** A model that pins GPUs with
+  `tweak model --devices` keeps them, even a disabled one.
+- **Link speed.** opencoti plans the KV rolling window with the host link
+  speed, which it probes when a model loads. A host that is busy at that moment
+  gets a wrong reading for the whole session, and a forced figure skips the
+  probe. Set it as GB/s, as a PCIe generation and lane count (`4x16`, or the
+  generation and lanes wizard), or as `auto`. The engine takes one figure per
+  process, so a load spread over several GPUs uses the slowest forced figure
+  among them.
+- **Split** is `auto` (split only a model too large for one GPU, or follow
+  `OLLAMA_SCHED_SPREAD`), `spread` (always split) or `single` (never: what
+  does not fit stays on the CPU).
+- **Split mode** is `layer`, the default and the one validated on every
+  opencoti path, or `row`. `row` is CUDA only and not yet validated with
+  opencoti's KV paths; on Vulkan it becomes `layer`.
+
+Changes apply at a model's next load. `xollama tweak show server` lists the
+GPUs with their settings.
