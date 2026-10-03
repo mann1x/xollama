@@ -27,7 +27,12 @@ usage() {
 
 mkdir -p dist
 
-ARCHS="arm64 amd64"
+# xollama-hook: macos-engine -- Apple silicon only by default (owner,
+# 2026-10-03). The Intel half is 22 x86_64-only llama.cpp libraries, which make
+# macOS 27 warn that the app has a component macOS 28 will not open, and the
+# opencoti engine and the media libraries are arm64 only anyway.
+# `-a "arm64 amd64"` still builds upstream's universal app.
+ARCHS="arm64"
 while getopts "a:h" OPTION; do
     case $OPTION in
         a) ARCHS=$OPTARG ;;
@@ -95,7 +100,8 @@ _merge_darwin_payload() {
     rm -rf dist/darwin/lib
     mkdir -p dist/darwin/lib/ollama
 
-    for ROOT in dist/darwin-amd64/lib/ollama dist/darwin-arm64/lib/ollama; do
+    for ARCH in $ARCHS; do
+        ROOT=dist/darwin-$ARCH/lib/ollama
         [ -d "$ROOT" ] || continue
         for F in "$ROOT"/*; do
             [ -e "$F" ] || continue
@@ -113,6 +119,7 @@ _merge_darwin_payload() {
         DEST=dist/darwin/lib/ollama/$VNAME
         AMD_VARIANT=dist/darwin-amd64/lib/ollama/$VNAME
         [ -d "$AMD_VARIANT" ] || AMD_VARIANT=dist/darwin-amd64/lib/ollama
+        case "$ARCHS" in *amd64*) ;; *) AMD_VARIANT=/nonexistent ;; esac
         mkdir -p "$DEST"
 
         for LIB in libmlx.dylib libmlxc.dylib libollama_xgrammar.dylib; do
@@ -198,20 +205,27 @@ _staple() {
     $(xcrun -f stapler) staple "$1"
 }
 
+# xollama-hook: macos-engine
+# One binary from the architectures in ARCHS: $1 is the output, $2 the path
+# under dist/darwin-<arch>/. With one architecture it is that file.
+_join_archs() {
+    INPUTS=
+    for ARCH in $ARCHS; do
+        INPUTS="$INPUTS dist/darwin-$ARCH/$2"
+    done
+    lipo -create -output "$1" $INPUTS
+    chmod +x "$1"
+    for ARCH in $ARCHS; do
+        case $ARCH in amd64) lipo "$1" -verify_arch x86_64 ;; *) lipo "$1" -verify_arch "$ARCH" ;; esac
+    done
+}
+
 _prepare_darwin_runtime() {
-    status "Creating universal binary..."
+    status "Creating the runtime for: $ARCHS"
     mkdir -p dist/darwin
-    lipo -create -output dist/darwin/xollama dist/darwin-amd64/xollama dist/darwin-arm64/xollama
-    chmod +x dist/darwin/xollama
-    lipo dist/darwin/xollama -verify_arch x86_64 && lipo dist/darwin/xollama -verify_arch arm64
-
-    lipo -create -output dist/darwin/llama-server dist/darwin-amd64/lib/ollama/llama-server dist/darwin-arm64/lib/ollama/llama-server
-    chmod +x dist/darwin/llama-server
-    lipo dist/darwin/llama-server -verify_arch x86_64 && lipo dist/darwin/llama-server -verify_arch arm64
-
-    lipo -create -output dist/darwin/llama-quantize dist/darwin-amd64/lib/ollama/llama-quantize dist/darwin-arm64/lib/ollama/llama-quantize
-    chmod +x dist/darwin/llama-quantize
-    lipo dist/darwin/llama-quantize -verify_arch x86_64 && lipo dist/darwin/llama-quantize -verify_arch arm64
+    _join_archs dist/darwin/xollama xollama
+    _join_archs dist/darwin/llama-server lib/ollama/llama-server
+    _join_archs dist/darwin/llama-quantize lib/ollama/llama-quantize
 
     _merge_darwin_payload
 }
@@ -276,11 +290,14 @@ _build_macapp() {
     touch dist/xOllama.app
 
     go clean -cache
-    GOARCH=amd64 CGO_ENABLED=1 GOOS=darwin go build -o dist/darwin-app-amd64 -ldflags="-s -w -X=github.com/ollama/ollama/app/version.Version=${VERSION}" ./app/cmd/app
-    GOARCH=arm64 CGO_ENABLED=1 GOOS=darwin go build -o dist/darwin-app-arm64 -ldflags="-s -w -X=github.com/ollama/ollama/app/version.Version=${VERSION}" ./app/cmd/app
+    APP_INPUTS=
+    for ARCH in $ARCHS; do
+        GOARCH=$ARCH CGO_ENABLED=1 GOOS=darwin go build -o dist/darwin-app-$ARCH -ldflags="-s -w -X=github.com/ollama/ollama/app/version.Version=${VERSION}" ./app/cmd/app
+        APP_INPUTS="$APP_INPUTS dist/darwin-app-$ARCH"
+    done
     mkdir -p dist/xOllama.app/Contents/MacOS
-    lipo -create -output dist/xOllama.app/Contents/MacOS/xOllama dist/darwin-app-amd64 dist/darwin-app-arm64
-    rm -f dist/darwin-app-amd64 dist/darwin-app-arm64
+    lipo -create -output dist/xOllama.app/Contents/MacOS/xOllama $APP_INPUTS
+    rm -f $APP_INPUTS
 
     # Create a mock Squirrel.framework bundle
     mkdir -p dist/xOllama.app/Contents/Frameworks/Squirrel.framework/Versions/A/Resources/
