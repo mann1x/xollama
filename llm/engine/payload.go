@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 
 	"github.com/ollama/ollama/envconfig"
@@ -71,6 +73,10 @@ const payloadLockName = ".xollama-payload.lock"
 // unpacking into. The root's file lock covers a second process.
 var payloadMu sync.Mutex
 
+// foreignWarned holds the roots already reported as holding another account's
+// files, so the warning is said once per server and not once per engine run.
+var foreignWarned sync.Map
+
 // payloadOwner identifies the bytes that unpacked the current payload.
 //
 // Identity is content, not path: the same bytes at two paths own one payload.
@@ -97,6 +103,26 @@ type payloadStat struct {
 
 // maxSeen bounds the stats one marker remembers.
 const maxSeen = 8
+
+// PayloadHome is PreparePayloadHome over the default roots: the HOME every
+// run of the engine gets, whether it serves a model, lists devices or probes a
+// link. One function, so a listing can never see a different HOME than the
+// launch it is listing for.
+func PayloadHome(artifact, libOllamaPath, home string) string {
+	return PreparePayloadHome(artifact, DefaultPayloadRoots(libOllamaPath, home)...)
+}
+
+// HomeOf is the HOME a command's environment ends up with: the last one, as
+// os/exec resolves duplicates.
+func HomeOf(env []string) string {
+	home := ""
+	for _, kv := range env {
+		if v, ok := strings.CutPrefix(kv, "HOME="); ok {
+			home = v
+		}
+	}
+	return home
+}
 
 // DefaultPayloadRoots returns the directories xollama will try to give the
 // engine as HOME, best first.
@@ -194,11 +220,28 @@ func PreparePayloadHome(artifact string, roots ...string) string {
 			slog.Debug("cannot write to this engine payload directory; trying the next", "root", root, "error", err)
 			continue
 		}
+		// Files an earlier run left as another account make the root one the
+		// engine cannot work in, though the directory itself is writable.
+		if err := payloadForeign(root); err != nil {
+			// Once per root: every listing and every launch comes through here.
+			level := slog.LevelDebug
+			if _, told := foreignWarned.LoadOrStore(root, true); !told {
+				level = slog.LevelWarn
+			}
+			slog.Log(context.Background(), level, "the engine payload directory holds files this account cannot use; trying the next",
+				"root", root, "error", err,
+				"consequence", "with it as HOME the engine could not load its GPU library",
+				"fix", "as root: chown -R <the account xollama runs as> "+root)
+			continue
+		}
 		home, err := preparePayloadRoot(artifact, root, want)
 		if err != nil {
 			slog.Warn("could not prepare the engine payload directory; trying the next", "root", root, "error", err)
 			continue
 		}
+		// As root, hand over what an earlier root run left before this engine
+		// adds to it; the launch hands the rest over when the engine exits.
+		AdoptPayloadHome(home)
 		return home
 	}
 

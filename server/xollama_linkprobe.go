@@ -39,6 +39,10 @@ var linkProbeRun = func(ctx context.Context, b engine.Backend) ([]byte, error) {
 	name, args := engine.LinkProbeCommand(artifact, b, runtime.GOOS)
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Env = envconfig.Environ()
+	if payloadHome := engine.PayloadHome(artifact, ml.LibOllamaPath, home); payloadHome != "" {
+		cmd.Env = append(cmd.Env, "HOME="+payloadHome)
+		defer engine.AdoptPayloadHome(payloadHome)
+	}
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()

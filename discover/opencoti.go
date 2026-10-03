@@ -37,6 +37,13 @@ var opencotiListDevices = func(ctx context.Context, artifact string, b engine.Ba
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.WaitDelay = llamaServerDiscoveryWaitDelay
 	cmd.Env = envconfig.Environ()
+	// The HOME the launch will give this same artifact, so a listing and the
+	// load it places cannot disagree about what the engine finds there.
+	home, _ := os.UserHomeDir()
+	if payloadHome := engine.PayloadHome(artifact, ml.LibOllamaPath, home); payloadHome != "" {
+		cmd.Env = append(cmd.Env, "HOME="+payloadHome)
+		defer engine.AdoptPayloadHome(payloadHome)
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		err = fmt.Errorf("%w; engine output: %s", err, outputTail(string(out)))

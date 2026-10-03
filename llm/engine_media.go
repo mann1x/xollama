@@ -497,7 +497,8 @@ func (r *mediaRunner) start(gpus []ml.DeviceInfo) error {
 		envs = map[string]string{}
 	}
 	userHome, _ := os.UserHomeDir()
-	if payloadHome := engine.PreparePayloadHome(engine.ArtifactOf(name, args), engine.DefaultPayloadRoots(ml.LibOllamaPath, userHome)...); payloadHome != "" {
+	payloadHome := engine.PayloadHome(engine.ArtifactOf(name, args), ml.LibOllamaPath, userHome)
+	if payloadHome != "" {
 		envs["HOME"] = payloadHome
 	}
 
@@ -516,6 +517,7 @@ func (r *mediaRunner) start(gpus []ml.DeviceInfo) error {
 	r.mu.Unlock()
 	go func() {
 		err := cmd.Wait()
+		engine.AdoptPayloadHome(payloadHome)
 		r.mu.Lock()
 		r.exitErr = err
 		r.mu.Unlock()

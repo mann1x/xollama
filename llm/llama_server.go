@@ -617,7 +617,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	if usedOpencoti {
 		envs = launch.opencotiEnvsForStart() // xollama-hook: engine-fit -- no vision pad on the fit target; see llm/engine_fit_target.go
 		userHome, _ := os.UserHomeDir()
-		if payloadHome := engine.PreparePayloadHome(engine.ArtifactOf(name, args), engine.DefaultPayloadRoots(ml.LibOllamaPath, userHome)...); payloadHome != "" {
+		if payloadHome := engine.PayloadHome(engine.ArtifactOf(name, args), ml.LibOllamaPath, userHome); payloadHome != "" {
 			envs = cloneStringMap(envs)
 			envs["HOME"] = payloadHome
 		}
@@ -1360,6 +1360,9 @@ func (s *llamaServerRunner) startProcess() error {
 	// Reap subprocess when it exits.
 	go func(cmd *exec.Cmd, done chan struct{}) {
 		err := cmd.Wait()
+		if s.usedOpencoti {
+			engine.AdoptPayloadHome(engine.HomeOf(cmd.Env)) // xollama-hook: engine-payload -- a root run hands the engine's files to the service account
+		}
 		s.doneErr = err
 		if msg := s.lastErrMsg(); err != nil && msg != "" {
 			// xollama-hook: engine-select -- at load, opencoti prints a benign

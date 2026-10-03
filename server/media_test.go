@@ -1,7 +1,6 @@
 package server
 
 import (
-	"archive/tar"
 	"bytes"
 	"context"
 	"errors"
@@ -75,20 +74,6 @@ func TestTheMediaTwinIsItsOwnRunner(t *testing.T) {
 	if twin.Xollama.Engine != "" {
 		t.Fatal("the twin carries the LLM's launch settings")
 	}
-}
-
-func voicesTar(t *testing.T, files map[string]string) []byte {
-	t.Helper()
-	var b bytes.Buffer
-	tw := tar.NewWriter(&b)
-	tw.WriteHeader(&tar.Header{Name: "voices/", Typeflag: tar.TypeDir, Mode: 0o755})
-	tw.WriteHeader(&tar.Header{Name: "voices/link.json", Typeflag: tar.TypeSymlink, Linkname: "/etc/passwd"})
-	for name, body := range files {
-		tw.WriteHeader(&tar.Header{Name: name, Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(body))})
-		tw.Write([]byte(body))
-	}
-	tw.Close()
-	return b.Bytes()
 }
 
 func TestAMediaOnlyTemplateNeedsNoWeights(t *testing.T) {
