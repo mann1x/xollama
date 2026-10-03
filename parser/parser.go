@@ -641,7 +641,7 @@ func ParseFile(r io.Reader) (*Modelfile, error) {
 // a Modelfile directive with an argument: the sign of a quote left open on the
 // directive's own line. SYSTEM, LICENSE and MESSAGE are left out on purpose --
 // a prompt or template can plausibly start a line with those words.
-var swallowedDirective = regexp.MustCompile(`(?m)^[ \t]*(FROM|ADAPTER|DRAFT|TEMPLATE|RENDERER|PARSER|PARAMETER|REQUIRES)[ \t]+\S.*$`)
+var swallowedDirective = regexp.MustCompile(`(?m)^[ \t]*(FROM|ADAPTER|DRAFT|TEMPLATE|RENDERER|PARSER|PARAMETER|REQUIRES|CAPABILITY)[ \t]+\S.*$`)
 
 // checkSwallowedDirective refuses a quoted TEMPLATE or SYSTEM value that ran
 // on over the directives after it.

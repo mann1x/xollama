@@ -29,6 +29,25 @@ func TestParseFileRefusesSwallowedDirectives(t *testing.T) {
 	}
 }
 
+// CAPABILITY is a directive since upstream v0.35.1 (#18708), and a quote left
+// open above it swallows it the same way: the model is created without the
+// capability and nothing says so.
+func TestParseFileRefusesASwallowedCapability(t *testing.T) {
+	input := "FROM model.gguf\n" +
+		"TEMPLATE \"{{ .Prompt }}\n" +
+		"CAPABILITY tools\n" +
+		"SYSTEM \"You are terse.\"\n"
+
+	_, err := ParseFile(strings.NewReader(input))
+	var perr *ParserError
+	if !errors.As(err, &perr) {
+		t.Fatalf("err = %v, want a ParserError", err)
+	}
+	if !strings.Contains(perr.Msg, `"CAPABILITY tools"`) {
+		t.Fatalf("message %q should name the swallowed CAPABILITY line", perr.Msg)
+	}
+}
+
 func TestParseFileKeepsMultilineTemplates(t *testing.T) {
 	for _, input := range []string{
 		"FROM m\nTEMPLATE \"\"\"{{ if .System }}SYSTEM: {{ .System }}\n{{ end }}USER: {{ .Prompt }}\nASSISTANT:\"\"\"\n",
