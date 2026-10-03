@@ -25,6 +25,7 @@ import (
 	"golang.org/x/text/transform"
 
 	"github.com/ollama/ollama/api"
+	"github.com/ollama/ollama/types/model"
 	"github.com/ollama/ollama/types/xollama"
 )
 
@@ -145,6 +146,11 @@ func (f Modelfile) CreateRequest(relativeDir string) (*api.CreateRequest, error)
 			req.Renderer = c.Args
 		case "parser":
 			req.Parser = c.Args
+		case "capability":
+			if !model.Capability(c.Args).IsValid() {
+				return nil, fmt.Errorf("unknown capability: %q", c.Args)
+			}
+			req.Capabilities = append(req.Capabilities, c.Args)
 		case "requires":
 			// golang.org/x/mod/semver requires "v" prefix
 			requires := c.Args
@@ -451,7 +457,7 @@ func (c Command) String() string {
 	case "model":
 		fmt.Fprintf(&sb, "FROM %s", c.Args)
 	// xollama-hook: model-config
-	case "license", "template", "system", "adapter", "renderer", "parser", "requires", "draft", "xollama":
+	case "license", "template", "system", "adapter", "renderer", "parser", "requires", "draft", "capability", "xollama":
 		fmt.Fprintf(&sb, "%s %s", strings.ToUpper(c.Name), quote(c.Args))
 	case "message":
 		role, message, _ := strings.Cut(c.Args, ": ")
@@ -477,7 +483,7 @@ const (
 var (
 	errMissingFrom        = errors.New("no FROM line")
 	errInvalidMessageRole = errors.New("message role must be one of \"system\", \"user\", or \"assistant\"")
-	errInvalidCommand     = errors.New("command must be one of \"from\", \"license\", \"template\", \"system\", \"adapter\", \"draft\", \"renderer\", \"parser\", \"parameter\", \"message\", or \"requires\"")
+	errInvalidCommand     = errors.New("command must be one of \"from\", \"license\", \"template\", \"system\", \"adapter\", \"draft\", \"renderer\", \"parser\", \"parameter\", \"message\", \"requires\", or \"capability\"")
 )
 
 type ParserError struct {
@@ -635,7 +641,7 @@ func ParseFile(r io.Reader) (*Modelfile, error) {
 // a Modelfile directive with an argument: the sign of a quote left open on the
 // directive's own line. SYSTEM, LICENSE and MESSAGE are left out on purpose --
 // a prompt or template can plausibly start a line with those words.
-var swallowedDirective = regexp.MustCompile(`(?m)^[ \t]*(FROM|ADAPTER|DRAFT|TEMPLATE|RENDERER|PARSER|PARAMETER|REQUIRES)[ \t]+\S.*$`)
+var swallowedDirective = regexp.MustCompile(`(?m)^[ \t]*(FROM|ADAPTER|DRAFT|TEMPLATE|RENDERER|PARSER|PARAMETER|REQUIRES|CAPABILITY)[ \t]+\S.*$`)
 
 // checkSwallowedDirective refuses a quoted TEMPLATE or SYSTEM value that ran
 // on over the directives after it.
@@ -815,7 +821,7 @@ func parseXollamaConfig(arg, relativeDir string) (*xollama.Config, error) {
 func isValidCommand(cmd string) bool {
 	switch strings.ToLower(cmd) {
 	// xollama-hook: model-config — "xollama" carries the fork's own model config
-	case "from", "license", "template", "system", "adapter", "draft", "renderer", "parser", "parameter", "message", "requires", "xollama":
+	case "from", "license", "template", "system", "adapter", "draft", "renderer", "parser", "parameter", "message", "requires", "capability", "xollama":
 		return true
 	default:
 		return false

@@ -27,6 +27,59 @@ first if a patch looks missing or out of date.
    other row in this file keys on the PR number, and these cannot. They are
    listed apart, below.
 
+**Status as of 2026-10-03: the set moved to upstream v0.35.1.** Manifest
+`f430d02f` (`base: v0.35.1`, `integration.sha 1338776a`, 24 patches), consumed
+on `sync/upstream-v0.35.1` after `d3c2f4ea` merged the upstream tag (four
+conflicts, each kept both sides: upstream's `CAPABILITY` directive beside the
+`model-config` hook's `XOLLAMA` in `parser/parser.go` and
+`cmd/create_safetensors.go`, `/v1/systemone` beside the tokenize routes in
+`docs/docs.json`, and `XOLLAMA_HOST` in upstream's reworked
+`TestWebSearchLoopMaxLimit`). Each patch is its own `--no-ff` merge at the
+manifest's sha, in `patches[]` order. None retires with this sync: all 12
+upstream PRs are still open.
+
+Twenty-three patches are their v0.35.0 commits rebased: `git range-diff`
+against the old shas is `=` for every commit, apart from added cherry-pick
+lines in the messages of `up-compat-readme` and
+`up-response-scope-think-budget`. Each of those merges was checked to leave the
+tree exactly as its first parent; where one conflicted with its own earlier
+copy it was resolved to this tree's side. The one change is
+`up-modelfile-roundtrip`'s new `95ece51a`, which adds `CAPABILITY` to the
+swallowed-directive pattern, and that merge adds exactly its diff.
+
+`LLAMA_CPP_VERSION` moves b11081 → b11232 with upstream, which also adds
+`llama/compat/002-clef.patch`. `LLAMA_CPP_VERSION`, `llama/compat` and
+`llama/server` are byte-identical to the fork's `think-budget` (inputs digest
+`f9c1055da0f6`), and `check-compat-origin` passes. The runtime pin moves with
+the next build of `xollama-runtime.yaml`.
+
+| PR | branch | manifest sha | 2026-10-03 merge |
+|---|---|---|---|
+| #17563 | `up-repeat-guard` | `2c500afb` | `acb29d3c` |
+| #17564 | `up-truncated-tool-calls` | `0aa4213d` | `327df9ed` |
+| #17565 | `up-gemma4-object-close` | `3239fc69` | `eb73a726` |
+| #17566 | `up-think-budget` | `7eb1f6d8` | `11c3a74c` |
+| #17567 | `up-mlx-libdl` | `40b1ba4f` | `706a5b67` |
+| #17626 | `up-gemma4-stray-channel-name` | `7764ffde` | `568abf15` |
+| #17914 | `qwen3coder-tolerate-malformed-tool-calls` | `588bcec2` | `d40dfc98` |
+| #18212 | `up-reasoning-budget-line-boundary` | `f91aaf7d` | `de0f0cb2` |
+| #18281 | `up-native-thinking-replay` | `068fcbc1` | `5f507018` |
+| #18288 | `up-gemma4-stray-closer` | `5e582498` | `5562e271` |
+| #18289 | `up-jinja-runner-reuse` | `85083266` | `d27bb68b` |
+| fork-only | `gemma4-toolcall-in-thinking` | `72a3c97e` | `f6b0047a` |
+| #18624 | `qwen35-toolcall-in-thinking` | `25fc733e` | `315310d4` |
+| fork-only | `up-gemma4-unparsed-tool-call-content` | `18c24e00` | `1c511f82` |
+| fork-only | `up-toolcall-tags` | `9f557737` | `3b72d2ff` |
+| fork-only | `up-codex-request-count-mtime` | `cb80afca` | `c88c67b9` |
+| fork-only | `up-fileutil-root-permission-tests` | `baeb8635` | `c1e0e91a` |
+| fork-only | `up-gofmt-vision-test-data` | `54cb8a3b` | `7c00275b` |
+| fork-only | `up-lfm2-think-off-discard` | `7e5f02e8` | `f3debf4c` |
+| fork-only | `up-gemma4-assistant-shape` | `2050204b` | `b9edab4e` |
+| fork-only | `up-gemma4-swallowed-key` | `bef6dd2e` | `a22950f8` |
+| fork-only | `up-compat-readme` (stacked) | `0cc14f51` | `14d24678` |
+| fork-only | `up-response-scope-think-budget` (stacked) | `53a4bf73` | `48751607` |
+| fork-only | `up-modelfile-roundtrip` | `95ece51a` | `38c76e8a` |
+
 **Status as of 2026-09-29: the set moved to upstream v0.35.0.** Manifest
 `b723d1ce` (`base: v0.35.0`, `integration.sha 5a409087`, 24 patches), consumed
 on `sync/upstream-v0.35.0` after `1ab773d7` merged the upstream tag (one
