@@ -173,7 +173,10 @@ var (
 	validVideoFormats = []string{"mp4", "webm", "webp", "avi"}
 	mediaDigest       = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 	// voiceName is what the engine accepts as a --tts-voice name.
-	voiceName            = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
+	voiceName = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
+	// reservedVoiceNames are OuteTTS's own: its default voice and the OpenAI
+	// names it maps to it (opencoti #679).
+	reservedVoiceNames   = []string{"default", "alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse"}
 	imageDefaultFields   = []string{"width", "height", "steps", "cfg", "sampler", "scheduler", "flow_shift", "seed", "output_format", "strength"}
 	sttDefaultFields     = []string{"language", "response_format", "task"}
 	ttsDefaultFields     = []string{"voice", "language", "response_format", "speed"}
@@ -463,7 +466,15 @@ func (t *TTSMedia) validate() error {
 	if (t.Engine == "" || t.Engine == "outetts") && t.Vocoder == "" {
 		return fmt.Errorf("xollama config: media.tts.vocoder is required for the outetts engine (its WavTokenizer)")
 	}
+	// The engine refuses these at boot (opencoti #679); refused here, they
+	// never reach a launch.
+	if len(t.Voices) > 0 && t.Engine == "audiocpp" {
+		return fmt.Errorf("xollama config: media.tts.voices: the audiocpp engine serves only its model's built-in voices and takes no voice file")
+	}
 	for name, digest := range t.Voices {
+		if slices.Contains(reservedVoiceNames, name) {
+			return fmt.Errorf("xollama config: media.tts.voices.%s: %q is a built-in voice name of the engine; pick another", name, name)
+		}
 		if !voiceName.MatchString(name) {
 			return fmt.Errorf("xollama config: media.tts.voices: %q is not a voice name (letters, digits, '_', '.', '-', at most 64)", name)
 		}

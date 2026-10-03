@@ -224,8 +224,18 @@ func TestEachVoiceIsItsOwnLayerNamedByItsVoice(t *testing.T) {
 			t.Fatalf("voice name %q was accepted; the engine refuses it", bad)
 		}
 	}
+	for _, builtin := range []string{"default", "alloy", "verse"} {
+		m.TTS.Voices = map[string]string{builtin: digest('c')}
+		if err := m.TTS.validate(); err == nil {
+			t.Fatalf("voice name %q was accepted; it is one of the engine's own", builtin)
+		}
+	}
 	m.TTS.Voices = map[string]string{"Narrator_2.en-GB": digest('c')}
 	if err := m.TTS.validate(); err != nil {
 		t.Fatal(err)
+	}
+	m.TTS.Engine, m.TTS.Vocoder = "audiocpp", ""
+	if err := m.TTS.validate(); err == nil || !strings.Contains(err.Error(), "audiocpp") {
+		t.Fatalf("err = %v; audio.cpp takes no voice file and the engine refuses the boot", err)
 	}
 }

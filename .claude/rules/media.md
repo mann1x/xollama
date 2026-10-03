@@ -29,6 +29,11 @@ paths:
   `TestAudioCppSpeechNeedsAnEngineThatReadsBlobsAsTheyAre`,
   `TestAMissingMediaBlobIsRefusedByName`,
   `TestAnUnreadableHealthIsNotReadAsMissingFeatures`.
+- **A voice the engine refuses at boot is refused by `Validate` first**
+  (`TTSMedia.validate`, `types/xollama/media.go`; opencoti #679): a name in
+  `reservedVoiceNames` (OuteTTS's `default` and the OpenAI names it maps to
+  it), and any `tts.voices` on `engine: audiocpp`, which serves only its
+  model's built-in voices. Guard: `TestEachVoiceIsItsOwnLayerNamedByItsVoice`.
 - **The catalog** (`internal/mediahub/catalog.go`) feeds `xollama media list`
   and `media create`. Entries of one family share a builder (`supertonic(file)`,
   `wan21(model, encoder)`, `wan22(model)`) so a quant tag differs from its
