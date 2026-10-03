@@ -105,10 +105,23 @@ fetch "$rrepo" "$rtag" "$rasset" "$rsum"
 tar -xzf "$assets/$rasset" -C "$rootfs/lib"
 
 # 3. the opencoti engine, sha256-enforced by the same script the Dockerfile and
-#    the release use. Whatever llm/engine/pin.txt names is what ships.
+#    the release use. Whatever llm/engine/pin.txt names is what ships: the
+#    engine, its GPU payload and its media sidecars ("#! sidecar": the codec
+#    and audio.cpp), each beside the engine under its published name.
 cmake -DPIN_FILE="$repo/llm/engine/pin.txt" -DARCH=x86_64 \
     -DDEST_DIR="$lib" -DCACHE_DIR="$assets/opencoti" \
     -P "$repo/cmake/opencoti-fetch.cmake"
+
+# The pin's sidecar rows, as the fetch above staged them. A row whose file is
+# not there, or is other bytes, would ship an engine that refuses mp3, mp4 and
+# the audio.cpp voices.
+sidecars=()
+while read -r skind spath ssum; do
+    sfile="$lib/$(basename "$spath")"
+    echo "$ssum  $sfile" | sha256sum -c --quiet || fail "$skind sidecar $(basename "$spath") is not what the pin names"
+    sidecars+=("$sfile")
+done < <(awk '$1=="#!" && $2=="sidecar" && $3=="x86_64" {print $4, $5, $6}' "$repo/llm/engine/pin.txt")
+echo "media sidecars staged beside the engine: ${#sidecars[@]}"
 
 # 3b. the CUDA 12 payload ("#! dso-cuda12", for the cards the CUDA 13 payload
 #     has no code for). The engine loads the ggml-cuda library beside its own
@@ -131,6 +144,9 @@ if [ -n "$c12" ]; then
     echo "$c12sum  $c12file" | sha256sum -c --quiet || fail "CUDA 12 payload does not match the pin"
     cp -p "$engine" "$lib/engines/cuda_v12/"
     cp "$c12file" "$lib/engines/cuda_v12/ggml-cuda.so"
+    # The engine looks for its sidecars in its own directory, so this copy
+    # needs them too.
+    [ ${#sidecars[@]} -eq 0 ] || cp -p "${sidecars[@]}" "$lib/engines/cuda_v12/"
     echo "CUDA 12 payload $c12sum staged in engines/cuda_v12"
 fi
 
@@ -175,5 +191,6 @@ EOF
     awk '$1=="gpu" {print "gpu     ollama/ollama '"$upstream"' " $2 " " $3}' "$pin"
     awk '$1=="tag" || $1=="rev" {print "engine  " $1 " " $2}' "$repo/llm/engine/pin.txt"
     awk '$1=="#!" && $2=="dso-cuda12" {print "engine  cuda12 " $5}' "$repo/llm/engine/pin.txt"
+    awk '$1=="#!" && $2=="sidecar" && $3=="x86_64" {print "engine  sidecar " $4 " " $6}' "$repo/llm/engine/pin.txt"
 } | tee "$lib/PAYLOAD"
 du -sh "$lib"/* | sort -h | tail -12
