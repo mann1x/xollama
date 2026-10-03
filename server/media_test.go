@@ -8,8 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -91,39 +89,6 @@ func voicesTar(t *testing.T, files map[string]string) []byte {
 	}
 	tw.Close()
 	return b.Bytes()
-}
-
-func TestVoicesAreUnpackedOnceAndStayInTheirDirectory(t *testing.T) {
-	t.Setenv("OLLAMA_MODELS", t.TempDir())
-	digest := mediaDigest(t, voicesTar(t, map[string]string{
-		"voices/af_heart.json": "heart",
-		"../../escape.json":    "out",
-		".hidden":              "x",
-	}))
-
-	dir, err := mediaVoicesDir(digest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	entries, _ := os.ReadDir(dir)
-	var names []string
-	for _, e := range entries {
-		names = append(names, e.Name())
-	}
-	if strings.Join(names, ",") != ".unpacked,af_heart.json,escape.json" {
-		t.Fatalf("unpacked %v", names)
-	}
-	if _, err := os.Stat(filepath.Join(filepath.Dir(filepath.Dir(dir)), "escape.json")); err == nil {
-		t.Fatal("an archive path escaped the voices directory")
-	}
-
-	os.Remove(filepath.Join(dir, "af_heart.json"))
-	if again, err := mediaVoicesDir(digest); err != nil || again != dir {
-		t.Fatalf("second call = %q, %v", again, err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "af_heart.json")); err == nil {
-		t.Fatal("a second call unpacked again instead of reusing the directory")
-	}
 }
 
 func TestAMediaOnlyTemplateNeedsNoWeights(t *testing.T) {
@@ -282,4 +247,24 @@ func TestMediaPullFetchesTheResolvedBlobFromTheReposRegistry(t *testing.T) {
 			t.Fatalf("%+v = %d, want 400", bad, w.Code)
 		}
 	}
+}
+
+func TestAMissingMediaBlobIsRefusedByName(t *testing.T) {
+	t.Setenv("OLLAMA_MODELS", t.TempDir())
+	present := mediaDigest(t, []byte("GGUF present"))
+	gone := "sha256:" + strings.Repeat("e", 64)
+	m := &Model{ShortName: "kokoro", Xollama: &xollama.Config{Media: &xollama.Media{
+		TTS: &xollama.TTSMedia{Engine: "audiocpp", Model: present, Voices: gone},
+	}}}
+	_, err := newMediaRunner(m)
+	if err == nil || !strings.Contains(err.Error(), gone) || !strings.Contains(err.Error(), "tts") {
+		t.Fatalf("err = %v, want a refusal naming the missing voices blob", err)
+	}
+
+	m.Xollama.Media.TTS.Voices = ""
+	r, err := newMediaRunner(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Close()
 }

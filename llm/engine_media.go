@@ -43,6 +43,15 @@ const (
 	FeatureTranscriptions = "audio_transcriptions_v1"
 	FeatureSpeech         = "audio_speech_v1"
 	FeatureVideos         = "videos_generate_v1"
+
+	// FeatureSpeechContentFormat is an audio.cpp that tells a model file's
+	// format by its contents, so it loads a blob path as it is (opencoti
+	// bug-3880). Before it, audio.cpp read any path without ".gguf" as a
+	// safetensors package and refused every published audio.cpp template.
+	FeatureSpeechContentFormat = "audio_speech_content_format_v1"
+	// FeatureSpeechVoicesTar is a --tts-voices that reads the template's
+	// voices tar from its blob, as published, instead of a directory.
+	FeatureSpeechVoicesTar = "audio_speech_voices_tar_v1"
 )
 
 // Default reserves, the engine's own (handover 2026-09-26), used for the
@@ -69,8 +78,14 @@ func MediaFeatures(m *xollama.Media) []string {
 	if m.STT != nil {
 		out = append(out, FeatureTranscriptions)
 	}
-	if m.TTS != nil {
+	if t := m.TTS; t != nil {
 		out = append(out, FeatureSpeech)
+		if t.Engine == "audiocpp" {
+			out = append(out, FeatureSpeechContentFormat)
+		}
+		if t.Voices != "" {
+			out = append(out, FeatureSpeechVoicesTar)
+		}
 	}
 	if m.Video != nil {
 		out = append(out, FeatureVideos)
@@ -147,8 +162,9 @@ func appendEngineCommon(args []string, flag string, e xollama.MediaEngine) []str
 }
 
 // MediaArgs is the engine command line for the media, after the server's own
-// flags. path maps a component digest to its blob; voicesDir is the unpacked
-// voice files, when the template carries them.
+// flags. path maps a component digest to its blob. Every component, the
+// voices tar included, is passed as its blob path: the engine tells a file's
+// format by its contents, never its name.
 //
 // The template's defaults reach the engine here, at boot, and again per
 // request (server/media_routes.go), so they hold whatever the engine's own
@@ -157,7 +173,7 @@ func appendEngineCommon(args []string, flag string, e xollama.MediaEngine) []str
 // The video flags and --tts-engine are opencoti M7's, assumed by the owner's
 // word ahead of the build (2026-10-02); the M7 handoff confirms or renames
 // them.
-func MediaArgs(m *xollama.Media, path func(digest string) string, voicesDir string) []string {
+func MediaArgs(m *xollama.Media, path func(digest string) string) []string {
 	if m.IsZero() {
 		return nil
 	}
@@ -200,8 +216,8 @@ func MediaArgs(m *xollama.Media, path func(digest string) string, voicesDir stri
 		if t.Vocoder != "" {
 			a = append(a, "--tts-vocoder", path(t.Vocoder))
 		}
-		if voicesDir != "" {
-			a = append(a, "--tts-voices", voicesDir)
+		if t.Voices != "" {
+			a = append(a, "--tts-voices", path(t.Voices))
 		}
 		a = appendEngineCommon(a, "tts", t.MediaEngine)
 		a = append(a, t.Args...)
@@ -269,14 +285,14 @@ var errMediaOnly = errors.New("this runner serves media (images, speech, transcr
 
 // NewMediaRunner prepares a media-only runner. Nothing starts until Load.
 // key is the scheduler's key for it, returned as its ModelPath.
-func NewMediaRunner(key string, m *xollama.Media, path func(string) string, size func(string) int64, voicesDir string) (MediaRunner, error) {
+func NewMediaRunner(key string, m *xollama.Media, path func(string) string, size func(string) int64) (MediaRunner, error) {
 	if m.IsZero() {
 		return nil, errors.New("model has no media")
 	}
 	return &mediaRunner{
 		key:      key,
 		cpu:      mediaOnCPU(m),
-		args:     MediaArgs(m, path, voicesDir),
+		args:     MediaArgs(m, path),
 		estimate: MediaEstimate(m, size),
 		need:     MediaFeatures(m),
 		done:     make(chan struct{}),
@@ -460,7 +476,13 @@ func (r *mediaRunner) health(ctx context.Context) (mediaHealth, int, error) {
 	}
 	defer resp.Body.Close()
 	var h mediaHealth
-	_ = json.NewDecoder(resp.Body).Decode(&h)
+	if resp.StatusCode == http.StatusOK {
+		if err := json.NewDecoder(resp.Body).Decode(&h); err != nil {
+			// Read as "no features", an unreadable body would be blamed on
+			// an engine that lacks them.
+			return mediaHealth{}, resp.StatusCode, fmt.Errorf("media engine /health: unreadable body: %w", err)
+		}
+	}
 	return h, resp.StatusCode, nil
 }
 
@@ -488,6 +510,12 @@ func (r *mediaRunner) WaitUntilRunning(ctx context.Context) error {
 		hctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		h, code, err := r.health(hctx)
 		cancel()
+		if err != nil && code == http.StatusOK {
+			// The engine is up and answered something that is not its
+			// health: waiting longer will not change it.
+			_ = r.Close()
+			return err
+		}
 		if err == nil && code == http.StatusOK {
 			if missing := missingFeatures(r.need, h.Features); len(missing) > 0 {
 				_ = r.Close()

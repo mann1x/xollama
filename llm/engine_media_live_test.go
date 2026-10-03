@@ -46,7 +46,7 @@ func TestMediaRunnerLive(t *testing.T) {
 		TTS: &xollama.TTSMedia{Model: "tts", Vocoder: "vocoder"},
 		STT: &xollama.STTMedia{Model: "stt"},
 	}
-	r, err := NewMediaRunner("media:live", m, path, size, "")
+	r, err := NewMediaRunner("media:live", m, path, size)
 	if err != nil {
 		t.Fatal(err)
 	}

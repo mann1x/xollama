@@ -37,8 +37,11 @@ xollama pull mannix/whisper:large-v3-turbo
 
 `xollama media list` shows which catalog entries are published, in its `PULL`
 column. The mixed `media-kit` is not published yet; `xollama media create`
-builds it locally. The audio.cpp voices (Kokoro, Supertonic, KittenTTS) and
-video need an opencoti engine from M7 on (b103 and later).
+builds it locally. Video needs an opencoti engine from M7 on (b103 and later).
+The audio.cpp voices (Kokoro, Supertonic, KittenTTS) need an engine that reads a
+model file by its contents, which xOllama passes as its blob: opencoti c8 or
+later, advertising `audio_speech_content_format_v1`. An older engine is refused
+at load with a message naming that feature.
 
 Stock ollama can pull these models, but cannot show or run a model that carries
 only media. A chat model with media attached still chats on stock ollama, which

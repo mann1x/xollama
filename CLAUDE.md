@@ -216,10 +216,10 @@ layer through `/api/show` (`api.ShowResponse.Xollama`), validates against
 `types/xollama/council.go`; the `media` block — image/stt/tts/video engines, components by digest as
 `application/vnd.xollama.media` layers written by `create/xollama_media.go`, template-owned `defaults`
 and `fixed` — is `types/xollama/media.go`, its tweak rows and uploads `cmd/tweak/media.go`; it is served by a media-only opencoti
-process, `llm/engine_media.go`, scheduled as `media:<digest>` from `server/media.go` (`media` hook; an audio.cpp speech model in GGUF is hard-linked as `<models>/media/named/<digest>.gguf` by `server/media_named.go`, since audio.cpp tells the format by the name); `hf.co` components are resolved by
+process, `llm/engine_media.go`, scheduled as `media:<digest>` from `server/media.go` (`media` hook; every component, the voices tar included, goes to the engine as its blob path, and an engine lacking a needed `/health` feature is refused at load, `MediaFeatures`); `hf.co` components are resolved by
 `internal/mediahub` and fetched by `/api/xollama/media/pull`, `server/media_pull.go`; catalog and discovery are `xollama media`,
 `cmd/tweak/mediacmd.go`, with a local mirror (`media fetch`, `create --dir`, `internal/mediahub/mirror.go`); the OpenAI media routes,
-per-engine queue and template fill-in are `server/media_routes.go`, an edit without a size keeps its source's (`editSize`, `server/media_edit_size.go`), a speech model's voices `server/media_voices.go`, the operator's default model per kind `server/media_defaults.go` (`XOLLAMA_MEDIA_DEFAULTS`), video jobs (`/v1/videos`, the engine held per job) `server/media_video.go`, see `docs/xollama/media.mdx`), and replaces only that layer — see
+per-engine queue and template fill-in are `server/media_routes.go`, an edit without a size keeps its source's (`editSize`, `server/media_edit_size.go`), a speech model's voices `server/media_voices.go`, the operator's default model per kind `server/media_defaults.go` (`XOLLAMA_MEDIA_DEFAULTS`), video jobs (`/v1/videos`, the engine held per job) `server/media_video.go`, see `docs/xollama/media.mdx` and `.claude/rules/media.md`), and replaces only that layer — see
 `docs/xollama/tweak.mdx`. `xollama show` lists the stated settings in an
 `xOllama` table via `tweak.SettingRows` (same hook, in `showInfo`); unstated ones
 are omitted. A council's settings stay out of the launch: `llamaServerConfigForModel`

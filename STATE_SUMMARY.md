@@ -5,6 +5,13 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-03 — No engine workarounds in xollama: the audio.cpp hard link is gone, the engine is fixed instead; audit of the rest sent to opencoti.**
+> - Owner ruling: xollama never papers over a limitation of an engine we control. `server/media_named.go` (hard-linking an audio.cpp GGUF as `<digest>.gguf`) was filesystem-dependent, fell back silently and cleaned up only on a later load. Deleted, with the voices-tar unpack (`mediaVoicesDir`).
+> - Now every media component, the voices tar included, goes to the engine as its blob path. An audio.cpp speech model needs `/health` feature `audio_speech_content_format_v1`, a voices tar `audio_speech_voices_tar_v1` (`MediaFeatures`); an older engine is refused at load naming the feature. A missing component blob is refused by name before launch; an unreadable `/health` body fails at once instead of reading as "no features".
+> - opencoti: #672 (bug-3880 contract: format by contents at package.cpp:60, tensor_source.cpp:1566, vocos_vocoder.cpp:61, espeak_phonemizer.cpp:136; voices from a tar file) and #674 (owner: both in c8 today, with the two feature flags). Audit of 14 further engine/packaging workarounds in xollama sent as #673, ranked (payload HOME, dlopen helper, text-parsed 429, /health retry, voices dir, staging renames, CUDA 12 APE copy, …); task xo-14 retires each with the build that fixes it. xollama's own silent fallbacks: task xo-15.
+> - Published models are unchanged and need no republish: the same blobs load on a c8 engine. Cards in `dev/posts/ollama` now name c8 as the minimum. Their b112 measurements were taken through the hard link and are re-run on c8.
+> - Left: c8 build + gate lines from opencoti, pin move, TTS re-measure on c8.
+
 > **2026-10-03 — Media templates published from bs2: Kokoro, Supertonic, KittenTTS, Wan2.2 5B and a Wan2.1 fp16 tag; audio.cpp needs a `.gguf` name.**
 > - Owner: publish the M7 templates from bs2, with the most relevant quants rather than a full ladder. On bs2 GPU0 (opencoti's slot, #667/#668), using opencoti b112 `2610030147001` with its CUDA payload `023a2930` and its codec and audio.cpp sidecars, all checked by sha256. GPU1/8244 was left alone.
 > - **bs2 house rule:** models come from HF only. A copy from solidPC was stopped and removed. `xollama media fetch` fetched from HF by sha256, and bs2's own files were hard-linked.

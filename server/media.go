@@ -1,18 +1,13 @@
 package server
 
 import (
-	"archive/tar"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/ollama/ollama/api"
-	"github.com/ollama/ollama/envconfig"
-	"github.com/ollama/ollama/internal/fsowner"
 	"github.com/ollama/ollama/llm"
 	"github.com/ollama/ollama/manifest"
 	"github.com/ollama/ollama/types/model"
@@ -116,68 +111,15 @@ func newMediaRunner(m *Model) (llm.LlamaServer, error) {
 	if media == nil {
 		return nil, fmt.Errorf("%s has no media", m.ShortName)
 	}
-	var voices string
-	if media.TTS != nil && media.TTS.Voices != "" {
-		var err error
-		if voices, err = mediaVoicesDir(media.TTS.Voices); err != nil {
-			return nil, fmt.Errorf("voices of %s: %w", m.ShortName, err)
+	// Every component goes to the engine as its blob path, so a missing blob
+	// is refused here by name rather than handed to the engine as a path it
+	// cannot open.
+	for _, c := range media.Components() {
+		if _, err := os.Stat(blobPath(c.Digest)); err != nil {
+			return nil, fmt.Errorf("%s: media component %s (%s) is missing from the store; pull the model again: %w", m.ShortName, c.Name, c.Digest, err)
 		}
 	}
-	return llm.NewMediaRunner(m.ModelPath, media, mediaComponentPath(media), blobSize, voices)
-}
-
-// mediaVoicesDir unpacks a voices tar once into the model store, next to the
-// blobs, and returns the directory the engine reads (--tts-voices). The
-// directory is named by the tar's digest, so a second model with the same
-// voices shares it and a changed tar is a new directory.
-func mediaVoicesDir(digest string) (string, error) {
-	dir := filepath.Join(envconfig.Models(), "media", "voices", strings.ReplaceAll(digest, ":", "-"))
-	done := filepath.Join(dir, ".unpacked")
-	if _, err := os.Stat(done); err == nil {
-		return dir, nil
-	}
-	f, err := os.Open(blobPath(digest))
-	if err != nil {
-		return "", err
-	}
-	defer f.Close()
-	if err := fsowner.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	tr := tar.NewReader(f)
-	for {
-		h, err := tr.Next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return "", fmt.Errorf("read voices tar: %w", err)
-		}
-		if h.Typeflag != tar.TypeReg {
-			continue
-		}
-		// Flattened to its base name: a voice is one file, and a path from
-		// the archive never reaches outside the directory.
-		name := filepath.Base(filepath.Clean("/" + h.Name))
-		if name == "/" || name == "." || strings.HasPrefix(name, ".") {
-			continue
-		}
-		out, err := fsowner.Create(filepath.Join(dir, name))
-		if err != nil {
-			return "", err
-		}
-		_, err = io.Copy(out, io.LimitReader(tr, h.Size))
-		if cerr := out.Close(); err == nil {
-			err = cerr
-		}
-		if err != nil {
-			return "", err
-		}
-	}
-	if err := fsowner.WriteFile(done, nil, 0o644); err != nil {
-		return "", err
-	}
-	return dir, nil
+	return llm.NewMediaRunner(m.ModelPath, media, blobPath, blobSize)
 }
 
 // errNoMedia answers a media request to a model that has none of that kind.

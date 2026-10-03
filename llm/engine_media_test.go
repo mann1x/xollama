@@ -26,7 +26,7 @@ func TestAKleinTemplateBootsWithItsOwnDefaults(t *testing.T) {
 		MediaEngine: xollama.MediaEngine{Device: "CUDA0", ReserveMiB: 4096, Args: []string{"--vae-tiling"}},
 		Defaults:    &xollama.ImageDefaults{Width: 1024, Height: 1024, Steps: 4, CFG: fp(1), Sampler: "euler"},
 	}}
-	got := strings.Join(MediaArgs(m, blob, ""), " ")
+	got := strings.Join(MediaArgs(m, blob), " ")
 	want := "--diffusion-model /blobs/aa --diffusion-vae /blobs/bb --diffusion-llm /blobs/cc " +
 		"--diffusion-edit ref --diffusion-device CUDA0 --diffusion-reserve-mib 4096 " +
 		"--diffusion-args -W 1024 -H 1024 --steps 4 --cfg-scale 1 --sampling-method euler --vae-tiling"
@@ -34,27 +34,27 @@ func TestAKleinTemplateBootsWithItsOwnDefaults(t *testing.T) {
 		t.Fatalf("args\n got: %s\nwant: %s", got, want)
 	}
 	// The sd options travel as ONE argument, the way the engine parses them.
-	args := MediaArgs(m, blob, "")
+	args := MediaArgs(m, blob)
 	if last := args[len(args)-1]; !strings.HasPrefix(last, "-W 1024") {
 		t.Fatalf("--diffusion-args value = %q, want one string", last)
 	}
 }
 
 func TestSpeechAndTranscriptionArgs(t *testing.T) {
-	outetts := &xollama.Media{TTS: &xollama.TTSMedia{Model: d('a'), Vocoder: d('b')}}
-	if got := strings.Join(MediaArgs(outetts, blob, "/voices"), " "); got != "--tts-model /blobs/aa --tts-vocoder /blobs/bb --tts-voices /voices" {
+	outetts := &xollama.Media{TTS: &xollama.TTSMedia{Model: d('a'), Vocoder: d('b'), Voices: d('c')}}
+	if got := strings.Join(MediaArgs(outetts, blob), " "); got != "--tts-model /blobs/aa --tts-vocoder /blobs/bb --tts-voices /blobs/cc" {
 		t.Fatalf("outetts: %s (b97 has no --tts-engine; the default must not send one)", got)
 	}
-	outetts.TTS.Engine = "outetts"
-	if got := strings.Join(MediaArgs(outetts, blob, ""), " "); strings.Contains(got, "--tts-engine") {
+	outetts.TTS.Engine, outetts.TTS.Voices = "outetts", ""
+	if got := strings.Join(MediaArgs(outetts, blob), " "); strings.Contains(got, "--tts-engine") {
 		t.Fatalf("an explicit outetts sent %s; b97 refuses a flag it does not know", got)
 	}
 	kokoro := &xollama.Media{TTS: &xollama.TTSMedia{Engine: "audiocpp", Model: d('a')}}
-	if got := strings.Join(MediaArgs(kokoro, blob, ""), " "); got != "--tts-engine audiocpp --tts-model /blobs/aa" {
+	if got := strings.Join(MediaArgs(kokoro, blob), " "); got != "--tts-engine audiocpp --tts-model /blobs/aa" {
 		t.Fatalf("audiocpp: %s", got)
 	}
 	stt := &xollama.Media{STT: &xollama.STTMedia{Model: d('a'), Threads: 4, MediaEngine: xollama.MediaEngine{Device: "CPU"}}}
-	if got := strings.Join(MediaArgs(stt, blob, ""), " "); got != "--stt-model /blobs/aa --stt-device CPU --stt-threads 4" {
+	if got := strings.Join(MediaArgs(stt, blob), " "); got != "--stt-model /blobs/aa --stt-device CPU --stt-threads 4" {
 		t.Fatalf("stt: %s", got)
 	}
 }
@@ -64,11 +64,36 @@ func TestVideoArgs(t *testing.T) {
 		Model: d('a'), VAE: d('b'), TextEncoder: d('c'),
 		Defaults: &xollama.VideoDefaults{Width: 832, Height: 480, Frames: 33, FPS: 16, CFG: fp(6), FlowShift: fp(3)},
 	}}
-	got := strings.Join(MediaArgs(m, blob, ""), " ")
+	got := strings.Join(MediaArgs(m, blob), " ")
 	want := "--video-model /blobs/aa --video-vae /blobs/bb --video-t5xxl /blobs/cc " +
 		"--video-args -W 832 -H 480 --cfg-scale 6 --flow-shift 3 --video-frames 33 --fps 16"
 	if got != want {
 		t.Fatalf("args\n got: %s\nwant: %s", got, want)
+	}
+}
+
+func TestAudioCppSpeechNeedsAnEngineThatReadsBlobsAsTheyAre(t *testing.T) {
+	kokoro := &xollama.Media{TTS: &xollama.TTSMedia{Engine: "audiocpp", Model: d('a')}}
+	if got := strings.Join(MediaFeatures(kokoro), ","); got != "audio_speech_v1,audio_speech_content_format_v1" {
+		t.Fatalf("audiocpp features = %s; an engine that judges a file by its name must be refused", got)
+	}
+	voiced := &xollama.Media{TTS: &xollama.TTSMedia{Model: d('a'), Vocoder: d('b'), Voices: d('c')}}
+	if got := strings.Join(MediaFeatures(voiced), ","); got != "audio_speech_v1,audio_speech_voices_tar_v1" {
+		t.Fatalf("voices features = %s; the voices tar goes to the engine as its blob", got)
+	}
+}
+
+func TestAnUnreadableHealthIsNotReadAsMissingFeatures(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("<html>not the engine</html>"))
+	}))
+	t.Cleanup(srv.Close)
+	_, port, _ := net.SplitHostPort(srv.Listener.Addr().String())
+	p, _ := strconv.Atoi(port)
+	r := &mediaRunner{port: p, done: make(chan struct{}), client: srv.Client(), need: []string{FeatureSpeech}}
+	err := r.WaitUntilRunning(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "unreadable body") || strings.Contains(err.Error(), "does not offer") {
+		t.Fatalf("err = %v, want the unreadable /health named, not a missing feature", err)
 	}
 }
 
@@ -157,7 +182,7 @@ func TestATemplateOnCPUIsNeverPlacedOnAGPU(t *testing.T) {
 		Image: &xollama.ImageMedia{Model: "i", MediaEngine: cpu},
 		STT:   &xollama.STTMedia{Model: "s", MediaEngine: xollama.MediaEngine{Device: "cpu"}},
 	}
-	r, err := NewMediaRunner("media:x", m, func(d string) string { return d }, func(string) int64 { return 1 }, "")
+	r, err := NewMediaRunner("media:x", m, func(d string) string { return d }, func(string) int64 { return 1 })
 	if err != nil {
 		t.Fatal(err)
 	}
