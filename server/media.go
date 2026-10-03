@@ -123,7 +123,7 @@ func newMediaRunner(m *Model) (llm.LlamaServer, error) {
 			return nil, fmt.Errorf("voices of %s: %w", m.ShortName, err)
 		}
 	}
-	return llm.NewMediaRunner(m.ModelPath, media, blobPath, blobSize, voices)
+	return llm.NewMediaRunner(m.ModelPath, media, mediaComponentPath(media), blobSize, voices)
 }
 
 // mediaVoicesDir unpacks a voices tar once into the model store, next to the

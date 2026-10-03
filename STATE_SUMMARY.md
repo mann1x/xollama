@@ -5,6 +5,26 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-03 — Media templates published from bs2: Kokoro, Supertonic, KittenTTS, Wan2.2 5B and a Wan2.1 fp16 tag; audio.cpp needs a `.gguf` name.**
+> - Owner: publish the M7 templates from bs2, with the most relevant quants rather than a full ladder. On bs2 GPU0 (opencoti's slot, #667/#668), using opencoti b112 `2610030147001` with its CUDA payload `023a2930` and its codec and audio.cpp sidecars, all checked by sha256. GPU1/8244 was left alone.
+> - **bs2 house rule:** models come from HF only. A copy from solidPC was stopped and removed. `xollama media fetch` fetched from HF by sha256, and bs2's own files were hard-linked.
+> - **Published:** `mannix/kokoro:82m`, `mannix/supertonic:3` (f16) and `:3-q8_0`, `mannix/kittentts:mini-0.8`, `mannix/wan2.2:ti2v-5b` (Q4_K_M) and `:ti2v-5b-q8_0`, `mannix/wan2.1:t2v-1.3b-fp16`.
+>   - New catalog entries, sharing builders (`supertonic`, `wan21`, `wan22`) with the defaults.
+>   - The `--dry-run` configs of the five existing entries are byte-identical before and after.
+> - **Fix, `server/media_named.go`:** audio.cpp judges a model file by its name.
+>   - It read the blob path as a safetensors package and failed on all four TTS templates (missing `config.json` or `voice_styles/M2.json`).
+>   - A symlink is not enough: it is resolved and then refused.
+>   - So an audio.cpp GGUF speech model is now hard-linked as `<models>/media/named/<digest>.gguf`, and names whose blob is gone are dropped.
+>   - Three tests; four plus three mutations, all killed. Reported to opencoti (#670).
+> - **TTS:** every template answers mp3 (Kokoro 54 voices at 24 kHz, Supertonic 10 at 44.1 kHz, KittenTTS 8 at 24 kHz). Whisper large-v3 turbo transcribed the default voice and `nova` word for word on all four. audio.cpp runs on the CPU.
+> - **Wan2.2 TI2V 5B, first run anywhere:**
+>   - 832x480x33: 29.3 GiB (Q4_K_M) and 31.2 GiB (Q8_0) peak, 74 s;
+>   - 640x352x33: 20.3 and 22.2 GiB, 35 s.
+>   - The template is now 640x352x33 at 24 fps with a 13,312 MiB reserve, so the Q4_K_M tag fits a 24 GB card; a larger request is a 400.
+> - **Wan2.1 fp16:** 640x352x33 in 76 s at 20.4 GiB, but the mp4 has 32 frames for 33 asked (asked opencoti).
+> - **Model cards** for all nine media repos on ollama.com: `/srv/dev-disk-by-label-opt/dev/posts/ollama/`.
+> - Left: `mannix/media-kit`, and Wan2.2 image-to-video (not measured).
+
 > **2026-10-03 — Upstream v0.35.1 synced (fork manifest `f430d02f`, llama.cpp b11232).**
 > - `sync/upstream-v0.35.1`, in its own worktree (the new one-branch-one-worktree rule, `9ccbf89b`):
 >   - `d3c2f4ea` merged the tag. Four conflicts, each kept both sides: upstream's `CAPABILITY` directive beside the `model-config` hook's `XOLLAMA` (`parser/parser.go`, `cmd/create_safetensors.go`), `/v1/systemone` beside the tokenize routes (`docs/docs.json`), and `XOLLAMA_HOST` in upstream's reworked `TestWebSearchLoopMaxLimit`.

@@ -1,6 +1,6 @@
 # Media endpoints: images, speech, transcription (video later)
 
-**Status:** ACTIVE. Phase 4 (publishing on ollama.com as `mannix/<family>:<size>`) under way: four b97 templates published 2026-10-02, the M7 ones to follow. Phase 1 (schema v7) and Phase 2 (media-only runner, `hf.co` sourcing, catalog, `xollama media`) closed 2026-10-02. Phase 3 (the OpenAI routes) built 2026-10-02 and live on the 3090 with b97; Cerebriline's own image tool is still to run against it. Phase 0 engine measurements wait on the b97 handoff and the M7 build.
+**Status:** ACTIVE. Phase 4 (publishing on ollama.com as `mannix/<family>:<size>`) under way: four b97 templates published 2026-10-02, Wan2.1 the same day, and the M7 ones (Kokoro, Supertonic, KittenTTS, Wan2.2, a Wan2.1 fp16 tag) on 2026-10-03; `media-kit` left. Phase 1 (schema v7) and Phase 2 (media-only runner, `hf.co` sourcing, catalog, `xollama media`) closed 2026-10-02. Phase 3 (the OpenAI routes) built 2026-10-02 and live on the 3090 with b97; Cerebriline's own image tool is still to run against it. Phase 0 engine measurements wait on the b97 handoff and the M7 build.
 **Owner:** xollama; engine work by opencoti.
 
 ## 1. What the owner asked for (2026-10-02, condensed)
@@ -303,6 +303,12 @@ All voice models are downloaded to `/srv/ml/media/` for the tests.
   - **Published:** `mannix/whisper:large-v3-turbo`, `mannix/outetts:0.3`, `mannix/z-image:turbo` and `mannix/flux2-klein:4b`, built from the mirror. Z-Image was tested on the GPU first: 1024² in 36 s. A clean store pulled Whisper and OuteTTS from ollama.com, then spoke and transcribed with them.
   - **Klein and Z-Image state no `edit`.** The engine picks: b97 edits as img2img, and M7's `auto` gives FLUX.2 reference edits. So Klein is published once, with no re-push at M7, and a test guards that no entry states an edit mode.
   - **With M7:** `mannix/kokoro:82m`, `mannix/supertonic:3`, `mannix/kittentts:mini-0.8`, `mannix/wan2.1:t2v-1.3b`, `mannix/wan2.2:ti2v-5b` and `mannix/media-kit`, each tested on the M7 build before it is pushed.
+  - **Published 2026-10-03, from bs2** (owner: "the most relevant quants, not a full ladder"; models fetched on bs2 from HF by sha256, bs2's own files hard-linked, never copied between hosts): `mannix/kokoro:82m`, `mannix/supertonic:3` and `:3-q8_0`, `mannix/kittentts:mini-0.8`, `mannix/wan2.1:t2v-1.3b-fp16`, `mannix/wan2.2:ti2v-5b` and `:ti2v-5b-q8_0`. Tested on GPU0 with opencoti b112 `2610030147001` and its codec and audio.cpp sidecars.
+    - TTS: every template answers mp3; Whisper transcribed the default voice and `nova` word for word on all four. Needed a fix first: audio.cpp judges a GGUF by its file name, and a blob path (`sha256-…`) or a symlink to it is refused, so the speech model is hard-linked as `<models>/media/named/<digest>.gguf` (`server/media_named.go`).
+    - Wan2.2 TI2V 5B, first run anywhere: 832x480x33 peaks at 29.3 GiB (Q4_K_M) / 31.2 GiB (Q8_0) in 74 s; 640x352x33 at 20.3 / 22.2 GiB in 35 s. Template: 640x352x33 at 24 fps, reserve 13312 MiB, so the Q4_K_M tag fits a 24 GB card. Image-to-video is not measured.
+    - Wan2.1 fp16 (opencoti's gate set): 640x352x33 in 76 s at 20.4 GiB; its mp4 has 32 frames for 33 asked (reported to opencoti, #670).
+    - Model cards for every media repo on ollama.com: `dev/posts/ollama/`.
+  - Left: `mannix/media-kit`.
   - **For the owner:** add a "needs xOllama" description on each ollama.com page; the API cannot set it.
 - **Cerebriline (#628/#629, 2026-10-02):** media support has started on their side.
   - Done: `/v1/models` entries carry `capabilities` (`5c5d65d02`).

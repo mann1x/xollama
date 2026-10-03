@@ -24,16 +24,21 @@ These are published on ollama.com and pull like any model:
 | `mannix/z-image:turbo` | Photographic image generation in eight steps |
 | `mannix/whisper:large-v3-turbo` | Transcription in 99 languages, and translation to English |
 | `mannix/outetts:0.3` | Speech, OuteTTS with the WavTokenizer vocoder |
+| `mannix/kokoro:82m` | Speech, 54 voices, mp3 at 24 kHz (audio.cpp, on the CPU) |
+| `mannix/supertonic:3`, `:3-q8_0` | Speech, ten voices in 31 languages, mp3 at 44.1 kHz (audio.cpp, on the CPU) |
+| `mannix/kittentts:mini-0.8` | Speech, eight English voices (audio.cpp, on the CPU) |
 | `mannix/wan2.1:t2v-1.3b` | Video from text, 640×352×33 (2 s at 16 fps); peaks at about 17 GiB, so a 24 GB card |
+| `mannix/wan2.1:t2v-1.3b-fp16` | The same at full precision with the Q8_0 text encoder; peaks at about 20.4 GiB |
+| `mannix/wan2.2:ti2v-5b`, `:ti2v-5b-q8_0` | Video at 24 fps, 640×352×33; peaks at 20.3 GiB (Q4_K_M) or 22.2 GiB (Q8_0) |
 
 ```shell
 xollama pull mannix/whisper:large-v3-turbo
 ```
 
 `xollama media list` shows which catalog entries are published, in its `PULL`
-column. Kokoro, Supertonic, KittenTTS, Wan2.2 and the mixed `media-kit` follow
-with the opencoti engine that runs them (M7). Until then,
-`xollama media create` builds them locally.
+column. The mixed `media-kit` is not published yet; `xollama media create`
+builds it locally. The audio.cpp voices (Kokoro, Supertonic, KittenTTS) and
+video need an opencoti engine from M7 on (b103 and later).
 
 Stock ollama can pull these models, but cannot show or run a model that carries
 only media. A chat model with media attached still chats on stock ollama, which

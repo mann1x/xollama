@@ -87,6 +87,35 @@ func kokoro() *xollama.TTSMedia {
 	}
 }
 
+func supertonic(file string) *xollama.TTSMedia {
+	return &xollama.TTSMedia{
+		Engine: "audiocpp", Model: audioCppHub + "Supertonic-3-GGUF/" + file,
+		VoiceMap: supertonicVoices,
+		Defaults: &xollama.TTSDefaults{Voice: "F1", ResponseFormat: "mp3"},
+	}
+}
+
+// wan21 is Wan2.1 T2V 1.3B with the given weights and text encoder.
+func wan21(model, encoder string) *xollama.VideoMedia {
+	return &xollama.VideoMedia{
+		Model:       model,
+		VAE:         "hf.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/split_files/vae/wan_2.1_vae.safetensors",
+		TextEncoder: encoder, Defaults: wanDefaults(640, 352, 16),
+		MediaEngine: xollama.MediaEngine{ReserveMiB: wan21Reserve},
+	}
+}
+
+// wan22 is Wan2.2 TI2V 5B with the given weights. It takes Wan2.2's own VAE,
+// never 2.1's.
+func wan22(model string) *xollama.VideoMedia {
+	return &xollama.VideoMedia{
+		Model:       model,
+		VAE:         "hf.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/split_files/vae/wan2.2_vae.safetensors",
+		TextEncoder: umt5, Defaults: wanDefaults(640, 352, 24),
+		MediaEngine: xollama.MediaEngine{ReserveMiB: wan22Reserve},
+	}
+}
+
 func wanDefaults(width, height, fps int) *xollama.VideoDefaults {
 	return &xollama.VideoDefaults{
 		Width: width, Height: height, Frames: 33, FPS: fps, CFG: f(6), Sampler: "euler", FlowShift: f(3), OutputFormat: "mp4",
@@ -99,6 +128,14 @@ func wanDefaults(width, height, fps int) *xollama.VideoDefaults {
 // 832x480 the VAE decode alone wants ~19 GB, more than a 24 GB card has
 // beside the weights, so the template's clip is the smaller one.
 const wan21Reserve = 12288
+
+// wan22Reserve is Wan2.2 TI2V 5B's working memory at its template clip,
+// 640x352x33: measured on an RTX PRO 6000 with opencoti b112 (2026-10-03),
+// the peak less the components (Q4_K_M 20,773 - 8,104 MiB; Q8_0 22,687 -
+// 10,013 MiB), about 12.4 GiB either way, rounded up. At 832x480x33 the peak
+// is 29.3 GiB (Q4_K_M) and 31.2 GiB (Q8_0), more than a 24 GB card, so the
+// template's clip is the smaller one, as for Wan2.1.
+const wan22Reserve = 13312
 
 var catalog = []Entry{
 	{
@@ -132,22 +169,24 @@ var catalog = []Entry{
 		}},
 	},
 	{
-		ID: "kokoro-82m", Template: "mannix/kokoro:82m", Name: "Kokoro 82M", Kind: "tts", Family: "Kokoro", License: "apache-2.0",
+		ID: "kokoro-82m", Template: "mannix/kokoro:82m", Published: true, Name: "Kokoro 82M", Kind: "tts", Family: "Kokoro", License: "apache-2.0",
 		Description: "46 natural voices in eight languages; SurfSense's default voice.",
 		Needs:       needsM7, Media: xollama.Media{TTS: kokoro()},
 	},
 	{
-		ID: "supertonic-3", Template: "mannix/supertonic:3", Name: "Supertonic 3", Kind: "tts", Family: "Supertonic", License: "openrail",
+		ID: "supertonic-3", Template: "mannix/supertonic:3", Published: true, Name: "Supertonic 3", Kind: "tts", Family: "Supertonic", License: "openrail",
 		Description: "Ten voices, each in 31 languages, in the least memory.",
 		Needs:       needsM7,
-		Media: xollama.Media{TTS: &xollama.TTSMedia{
-			Engine: "audiocpp", Model: audioCppHub + "Supertonic-3-GGUF/supertonic-3-f16.gguf",
-			VoiceMap: supertonicVoices,
-			Defaults: &xollama.TTSDefaults{Voice: "F1", ResponseFormat: "mp3"},
-		}},
+		Media:       xollama.Media{TTS: supertonic("supertonic-3-f16.gguf")},
 	},
 	{
-		ID: "kitten-tts-mini-0.8", Template: "mannix/kittentts:mini-0.8", Name: "KittenTTS Mini 0.8", Kind: "tts", Family: "KittenTTS", License: "apache-2.0",
+		ID: "supertonic-3-q8_0", Template: "mannix/supertonic:3-q8_0", Published: true, Name: "Supertonic 3 (Q8_0)", Kind: "tts", Family: "Supertonic", License: "openrail",
+		Description: "Supertonic 3 from its Q8_0 file, the one opencoti's M7 gate ran.",
+		Needs:       needsM7,
+		Media:       xollama.Media{TTS: supertonic("supertonic-3-q8_0.gguf")},
+	},
+	{
+		ID: "kitten-tts-mini-0.8", Template: "mannix/kittentts:mini-0.8", Published: true, Name: "KittenTTS Mini 0.8", Kind: "tts", Family: "KittenTTS", License: "apache-2.0",
 		Description: "Eight English voices.",
 		Needs:       needsM7,
 		Media: xollama.Media{TTS: &xollama.TTSMedia{
@@ -160,22 +199,27 @@ var catalog = []Entry{
 		ID: "wan2.1-t2v-1.3b", Template: "mannix/wan2.1:t2v-1.3b", Published: true, Name: "Wan2.1 T2V 1.3B", Kind: "video", Family: "Wan", License: "apache-2.0",
 		Description: "Short clips from text, in the least memory.",
 		Needs:       needsM7,
-		Media: xollama.Media{Video: &xollama.VideoMedia{
-			Model:       "hf.co/samuelchristlie/Wan2.1-T2V-1.3B-GGUF/Wan2.1-T2V-1.3B-Q8_0.gguf",
-			VAE:         "hf.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/split_files/vae/wan_2.1_vae.safetensors",
-			TextEncoder: umt5, Defaults: wanDefaults(640, 352, 16),
-			MediaEngine: xollama.MediaEngine{ReserveMiB: wan21Reserve},
-		}},
+		Media:       xollama.Media{Video: wan21("hf.co/samuelchristlie/Wan2.1-T2V-1.3B-GGUF/Wan2.1-T2V-1.3B-Q8_0.gguf", umt5)},
 	},
 	{
-		ID: "wan2.2-ti2v-5b", Template: "mannix/wan2.2:ti2v-5b", Name: "Wan2.2 TI2V 5B", Kind: "video", Family: "Wan", License: "apache-2.0",
+		ID: "wan2.1-t2v-1.3b-fp16", Template: "mannix/wan2.1:t2v-1.3b-fp16", Published: true, Name: "Wan2.1 T2V 1.3B (fp16)", Kind: "video", Family: "Wan", License: "apache-2.0",
+		Description: "Wan2.1 at full precision with the Q8_0 text encoder, the set opencoti's M7 gate ran.",
+		Needs:       needsM7,
+		Media: xollama.Media{Video: wan21(
+			"hf.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/split_files/diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors",
+			"hf.co/city96/umt5-xxl-encoder-gguf/umt5-xxl-encoder-Q8_0.gguf")},
+	},
+	{
+		ID: "wan2.2-ti2v-5b", Template: "mannix/wan2.2:ti2v-5b", Published: true, Name: "Wan2.2 TI2V 5B", Kind: "video", Family: "Wan", License: "apache-2.0",
 		Description: "Clips from text or an image, at 24 frames a second.",
 		Needs:       needsM7,
-		Media: xollama.Media{Video: &xollama.VideoMedia{
-			Model:       "hf.co/QuantStack/Wan2.2-TI2V-5B-GGUF/Wan2.2-TI2V-5B-Q4_K_M.gguf",
-			VAE:         "hf.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/split_files/vae/wan2.2_vae.safetensors",
-			TextEncoder: umt5, Defaults: wanDefaults(832, 480, 24),
-		}},
+		Media:       xollama.Media{Video: wan22("hf.co/QuantStack/Wan2.2-TI2V-5B-GGUF/Wan2.2-TI2V-5B-Q4_K_M.gguf")},
+	},
+	{
+		ID: "wan2.2-ti2v-5b-q8_0", Template: "mannix/wan2.2:ti2v-5b-q8_0", Published: true, Name: "Wan2.2 TI2V 5B (Q8_0)", Kind: "video", Family: "Wan", License: "apache-2.0",
+		Description: "Wan2.2 TI2V 5B at Q8_0, for the most quality in 5.4 GB of weights.",
+		Needs:       needsM7,
+		Media:       xollama.Media{Video: wan22("hf.co/QuantStack/Wan2.2-TI2V-5B-GGUF/Wan2.2-TI2V-5B-Q8_0.gguf")},
 	},
 	{
 		ID: "media-kit", Template: "mannix/media-kit:latest", Name: "Media kit", Kind: "mix", Family: "mix", License: "see components",
