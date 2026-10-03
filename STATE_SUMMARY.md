@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-03 — macOS: the app and its DMG are notarized.**
+> - Apple accepted the signed universal `xOllama.app` (submission `e793062d`) and the DMG (`c95ba8de`); both are stapled and Gatekeeper reports "Notarized Developer ID". The notarized app is installed on the Mac mini. `xOllama.dmg` sha256 `26a668e0…4560c` (272 MB), in `~/dev/xollama/dist` there; not published anywhere.
+> - The app is the build of commit `7997b42a9`'s tree made before that commit, so it names itself `0.35.1-dev.fb0ec3f5`. The DMG was made without the Finder styling (no desktop session over ssh).
+> - Left for macOS: a run of the app at the Mac's screen (the CLI-link dialog, the login item), a release path for the macOS assets, image, video, vision and MTP on Metal.
+
 > **2026-10-03 — macOS: opencoti on Metal inside a Developer ID signed universal xOllama.app; engine pin moved to `2610031615001` (rev `cee83ff6`), on the owner's word.**
 > - The pin: `2610031615001` fixes the Metal abort on a prompt longer than one ubatch (0549), ships the signed macOS loader `ape-macos-aarch64`, and carries the ffmpeg, lame and openh264 licence texts, now on rows of their own for every platform. New bytes: the engine (`abd906ca`) and the Linux CUDA payload (`154dc672`); the Windows DLL and every Linux and Windows library are unchanged.
 > - solidPC as `ollama`, one run (`pin-b130`; `2610031319001` in brackets): compat 8/8 (8/8), llama3 77.4 tok/s (77.1), four slots 302 tok/s (302), gemma4 identical, 70B overflow 4.0 tok/s (4.1). Speech 8/8 mp3, each transcribed back. Wan2.1 33/33 frames (221 s), Wan2.2 Q4_K_M 33/33 (112 s). **Windows was not measured on this build**: eleven2go is paused and this test was not among the owner's exceptions.
