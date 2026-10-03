@@ -113,7 +113,9 @@ client sends. For example, a model trained at one size can fix `width` and
 `height`.
 
 - **Voices**: `voice_map` turns an OpenAI voice name (`alloy`, `nova`, …) into
-  one of the model's own.
+  one of the model's own. An OuteTTS model can also carry extra voices of its
+  own (`voices`, set with `xollama tweak model --tts-voices name=file,…`): each
+  is one speaker file stored as its own layer and selected by its name.
 - **Transcription**: a template whose `task` is `translate` answers
   `/v1/audio/transcriptions` in English as well. With `task` in `fixed` it
   decides both routes.

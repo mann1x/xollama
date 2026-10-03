@@ -201,6 +201,14 @@ xollama tweak model qwen3:8b \
   only if the server does not already have it; `--dry-run` sends nothing.
   The model then carries each one as a layer, so `push`, `pull` and `rm` handle
   them like its weights.
+- **Extra voices** (`--tts-voices`) are `name=file` pairs, comma-separated:
+  `--tts-voices=narrator=~/voices/narrator.json,host=hf.co/<owner>/<repo>/<file>`.
+  Each file is one voice (an OuteTTS speaker JSON) and becomes its own layer;
+  a request selects it by its name. Names use letters, digits, `_`, `.` and
+  `-`, at most 64. The engine's own names (`default`, `alloy`, `nova`, ...) are
+  refused, and so is any extra voice on the `audiocpp` engine, whose models
+  (Kokoro, Supertonic, KittenTTS) serve only their built-in voices. It needs an
+  opencoti engine advertising `audio_speech_voice_files_v1`.
 - **Defaults** (`--image-width`, `--image-steps`, `--tts-voice`,
   `--stt-format`, ...) are the template's settings for the engine. Clients such
   as SurfSense send only a prompt or a text, so these decide the size, the steps,
