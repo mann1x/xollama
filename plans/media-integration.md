@@ -149,8 +149,10 @@ Each component is a blob in the model's manifest, named by role:
   STT and TTS together). It boots media-only.
 - **Source of a component:** a local GGUF path, or
   `hf.co/<repo>:<file>@<rev>`. Either way it is pulled by sha256 into the
-  store, through `internal/fsowner`. Voice packs are a tar layer, unpacked
-  once into a store-owned directory for `--tts-voices`.
+  store, through `internal/fsowner`. Each extra voice is its own layer
+  (`tts.voices.<NAME>`), passed as `--tts-voice NAME=<blob>` (owner,
+  2026-10-03: the voices tar and its unpacking were dropped; the template
+  format freezes at c8).
 - **Layer media type:** `application/vnd.xollama.media`, with
   `name=image.model|image.vae|…`, as `xollama.json` is named today.
   - Upstream's load switch (`server/images.go:751-850`) has no default case,

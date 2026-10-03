@@ -41,11 +41,11 @@ func TestAKleinTemplateBootsWithItsOwnDefaults(t *testing.T) {
 }
 
 func TestSpeechAndTranscriptionArgs(t *testing.T) {
-	outetts := &xollama.Media{TTS: &xollama.TTSMedia{Model: d('a'), Vocoder: d('b'), Voices: d('c')}}
-	if got := strings.Join(MediaArgs(outetts, blob), " "); got != "--tts-model /blobs/aa --tts-vocoder /blobs/bb --tts-voices /blobs/cc" {
+	outetts := &xollama.Media{TTS: &xollama.TTSMedia{Model: d('a'), Vocoder: d('b'), Voices: map[string]string{"narrator": d('c'), "host": d('d')}}}
+	if got := strings.Join(MediaArgs(outetts, blob), " "); got != "--tts-model /blobs/aa --tts-vocoder /blobs/bb --tts-voice host=/blobs/dd --tts-voice narrator=/blobs/cc" {
 		t.Fatalf("outetts: %s (b97 has no --tts-engine; the default must not send one)", got)
 	}
-	outetts.TTS.Engine, outetts.TTS.Voices = "outetts", ""
+	outetts.TTS.Engine, outetts.TTS.Voices = "outetts", nil
 	if got := strings.Join(MediaArgs(outetts, blob), " "); strings.Contains(got, "--tts-engine") {
 		t.Fatalf("an explicit outetts sent %s; b97 refuses a flag it does not know", got)
 	}
@@ -77,9 +77,9 @@ func TestAudioCppSpeechNeedsAnEngineThatReadsBlobsAsTheyAre(t *testing.T) {
 	if got := strings.Join(MediaFeatures(kokoro), ","); got != "audio_speech_v1,audio_speech_content_format_v1" {
 		t.Fatalf("audiocpp features = %s; an engine that judges a file by its name must be refused", got)
 	}
-	voiced := &xollama.Media{TTS: &xollama.TTSMedia{Model: d('a'), Vocoder: d('b'), Voices: d('c')}}
-	if got := strings.Join(MediaFeatures(voiced), ","); got != "audio_speech_v1,audio_speech_voices_tar_v1" {
-		t.Fatalf("voices features = %s; the voices tar goes to the engine as its blob", got)
+	voiced := &xollama.Media{TTS: &xollama.TTSMedia{Model: d('a'), Vocoder: d('b'), Voices: map[string]string{"narrator": d('c')}}}
+	if got := strings.Join(MediaFeatures(voiced), ","); got != "audio_speech_v1,audio_speech_voice_files_v1" {
+		t.Fatalf("voices features = %s; each voice goes to the engine as --tts-voice NAME=<blob>", got)
 	}
 }
 

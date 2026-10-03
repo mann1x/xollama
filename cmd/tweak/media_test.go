@@ -407,3 +407,28 @@ func TestVoicesMarkTheDefaultAndTheNamesAClientMayUse(t *testing.T) {
 		}
 	}
 }
+
+func TestEachExtraVoiceIsAFileByName(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "narrator.json")
+	if err := os.WriteFile(file, []byte(`{"speaker":"narrator"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var voices map[string]string
+	digest := "sha256:" + strings.Repeat("a", 64)
+	if err := setVoices("narrator="+file+", host="+digest, &voices); err != nil {
+		t.Fatal(err)
+	}
+	if voices["host"] != digest || !strings.HasPrefix(voices["narrator"], "sha256:") || mediaFiles[voices["narrator"]] != file {
+		t.Fatalf("voices = %v; a local file is hashed and queued for upload", voices)
+	}
+	if err := setVoices("a="+digest+",a="+digest, &voices); err == nil {
+		t.Fatal("a voice given twice was accepted")
+	}
+	if err := setVoices("narrator", &voices); err == nil {
+		t.Fatal("a voice without a file was accepted")
+	}
+	if err := setVoices("unset", &voices); err != nil || voices != nil {
+		t.Fatalf("unset left %v, %v", voices, err)
+	}
+}

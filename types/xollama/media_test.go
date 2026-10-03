@@ -194,15 +194,38 @@ func TestMediaPruneDropsWhatStatesNothing(t *testing.T) {
 func TestMapComponentsReachesEveryComponent(t *testing.T) {
 	m := kitchen().Media
 	m.Video = &VideoMedia{Model: digest('f'), VAE: digest('g'), TextEncoder: digest('h')}
-	m.TTS.Vocoder, m.TTS.Voices, m.Image.LLMVision = digest('i'), digest('j'), digest('k')
+	m.TTS.Vocoder, m.Image.LLMVision = digest('i'), digest('k')
+	m.TTS.Voices = map[string]string{"narrator": digest('j'), "host": digest('l')}
 	n := 0
 	m.MapComponents(func(s string) string { n++; return "x" + s })
-	if n != len(m.Components()) || n != 11 {
+	if n != len(m.Components()) || n != 12 {
 		t.Fatalf("mapped %d of %d components", n, len(m.Components()))
 	}
 	for _, c := range m.Components() {
 		if !strings.HasPrefix(c.Digest, "x") {
 			t.Fatalf("%s not mapped", c.Name)
 		}
+	}
+}
+
+func TestEachVoiceIsItsOwnLayerNamedByItsVoice(t *testing.T) {
+	m := &Media{TTS: &TTSMedia{Model: digest('a'), Vocoder: digest('b'),
+		Voices: map[string]string{"narrator": digest('c'), "host": digest('d')}}}
+	var names []string
+	for _, c := range m.Components() {
+		names = append(names, c.Name+"="+c.Digest[7:8])
+	}
+	if got := strings.Join(names, ","); got != "media/tts.model=a,media/tts.vocoder=b,media/tts.voices.host=d,media/tts.voices.narrator=c" {
+		t.Fatalf("layers = %s", got)
+	}
+	for _, bad := range []string{"", "a b", "x=y", "../up", strings.Repeat("v", 65)} {
+		m.TTS.Voices = map[string]string{bad: digest('c')}
+		if err := m.TTS.validate(); err == nil {
+			t.Fatalf("voice name %q was accepted; the engine refuses it", bad)
+		}
+	}
+	m.TTS.Voices = map[string]string{"Narrator_2.en-GB": digest('c')}
+	if err := m.TTS.validate(); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -22,7 +22,8 @@ paths:
   (owner, 2026-10-03, after a hard-link workaround for audio.cpp). An engine
   that cannot do this is refused at load by a `/health` feature it lacks:
   `audio_speech_content_format_v1` for `engine: audiocpp`,
-  `audio_speech_voices_tar_v1` for a voices tar (`MediaFeatures`,
+  `audio_speech_voice_files_v1` for extra voices (`tts.voices`, one layer per
+  voice, `--tts-voice NAME=<blob>`; never a tar or a directory) (`MediaFeatures`,
   `llm/engine_media.go`; opencoti bug-3880). A missing blob is refused by name
   before launch (`newMediaRunner`). Guards:
   `TestAudioCppSpeechNeedsAnEngineThatReadsBlobsAsTheyAre`,

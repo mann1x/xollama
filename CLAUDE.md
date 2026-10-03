@@ -216,7 +216,7 @@ layer through `/api/show` (`api.ShowResponse.Xollama`), validates against
 `types/xollama/council.go`; the `media` block — image/stt/tts/video engines, components by digest as
 `application/vnd.xollama.media` layers written by `create/xollama_media.go`, template-owned `defaults`
 and `fixed` — is `types/xollama/media.go`, its tweak rows and uploads `cmd/tweak/media.go`; it is served by a media-only opencoti
-process, `llm/engine_media.go`, scheduled as `media:<digest>` from `server/media.go` (`media` hook; every component, the voices tar included, goes to the engine as its blob path, and an engine lacking a needed `/health` feature is refused at load, `MediaFeatures`); `hf.co` components are resolved by
+process, `llm/engine_media.go`, scheduled as `media:<digest>` from `server/media.go` (`media` hook; every component goes to the engine as its blob path, each extra voice its own layer passed as `--tts-voice NAME=<blob>`, and an engine lacking a needed `/health` feature is refused at load, `MediaFeatures`); `hf.co` components are resolved by
 `internal/mediahub` and fetched by `/api/xollama/media/pull`, `server/media_pull.go`; catalog and discovery are `xollama media`,
 `cmd/tweak/mediacmd.go`, with a local mirror (`media fetch`, `create --dir`, `internal/mediahub/mirror.go`); the OpenAI media routes,
 per-engine queue and template fill-in are `server/media_routes.go`, an edit without a size keeps its source's (`editSize`, `server/media_edit_size.go`), a speech model's voices `server/media_voices.go`, the operator's default model per kind `server/media_defaults.go` (`XOLLAMA_MEDIA_DEFAULTS`), video jobs (`/v1/videos`, the engine held per job) `server/media_video.go`, see `docs/xollama/media.mdx` and `.claude/rules/media.md`), and replaces only that layer — see
@@ -285,7 +285,7 @@ in `server/identity.go`) feeds the `tweak` device menu (`cmd/tweak/devices.go`)
 with the server's view. Where opencoti serves a backend, discovery takes the
 engine's own device list (`discover/opencoti.go`, `llm/engine/enumerate.go`;
 CUDA is also asked of the CUDA 12 engine, `discover/opencoti_cuda12.go`),
-and refreshes free memory from it before a load (`discover/refresh_opencoti.go`).
+and refreshes free memory from it before a load (`discover/refresh_opencoti.go`); a listing that fails or a refresh that finds nothing is said at Warn with the engine's last output (`outputTail`), never Debug.
 A model whose own `kv.k` / `kv.v` only opencoti runs (`llm.NeedsOpencoti`,
 `llm/engine_placement.go`) is placed only on the GPUs opencoti serves:
 `opencotiPlacement` in `server/placement_opencoti.go` (`opencoti-placement`

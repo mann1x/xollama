@@ -2,6 +2,7 @@
 paths:
   - llm/engine_context_window.go
   - llm/engine_admission.go
+  - llm/engine_council.go
   - llm/llama_server.go
   - server/context_window.go
   - server/context_window_test.go
@@ -32,6 +33,11 @@ paths:
   least 1 s, rounded up) and `X-Context-Largest-Admissible` only when the
   engine named one. Everything else keeps ollama's queue:
   `postWaitingForAdmission` waits.
+- **A queued engine request gives up.** `engineRequestQueued`
+  (`llm/engine_council.go`) waits out the engine's 429s for at most
+  `engineQueueBudget` (`admissionRetryBudget`), then fails with `errNoAdmission`
+  naming the request and the last refusal, at Warn — never until the client
+  gives up. Guard: `llm/engine_council_queue_test.go`.
 - **`ErrNeverFits` must be mapped** (400, the numbers in the message) in
   `Completion` and `Chat`. Unmapped it fell into "model runner has
   unexpectedly stopped" and lost the reason (found 2026-09-27).

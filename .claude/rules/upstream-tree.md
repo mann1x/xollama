@@ -27,5 +27,10 @@ paths:
   hook's `Placement.PoolID` (`placementFields` in `llm/engine_council.go`). The engine numbers
   its first pool `0`, so `nil` means "no pool"; a `> 0` guard or an `omitempty`
   plain `int` on the wire silently drops pool 0. See `docs/xollama/sessions.mdx`.
+- **A fallback is loud.** A path that degrades says why at Warn, or fails with
+  the cause, never Debug: a device listing that fails carries the engine's last
+  lines (`outputTail`, `discover/opencoti.go`), a refresh that finds nothing
+  names the cooldown (`discover/refresh_opencoti.go`). Guard:
+  `discover/opencoti_loud_test.go`.
 - Run `golangci-lint run` before pushing — `.golangci.yaml` uses `gofumpt` and a
   `depguard` rule denying `internal/testutil` outside `_test.go` files.

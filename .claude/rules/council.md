@@ -179,7 +179,12 @@ paths:
   closed after every call, a resumed synthesizer re-prefilled ~18k of 21k
   tokens, ab-4). `closeSessions` closes the turn's member sessions only when
   the request context ended, i.e. the client left. Pools are released newest
-  first, and the owner is never closed. Guards:
+  first, and the owner is never closed. A pool the engine will not release is
+  named at Warn by `unreleased()` (`server/council_polykv.go`): its cells stay
+  booked in the owner until the session ends (bug-118), the line that explains
+  a refusal minutes later. A root the engine still refuses or that nothing
+  folded, a root whose text cannot be rendered, and a member that runs unpooled
+  are Warn too, never Debug (`server/council_loud_test.go`). Guards:
   `TestAResumedMemberReattachesToItsStage`,
   `TestAClientThatLeavesClosesItsCouncilsSessions`.
 - A layer is the rendered prompt up to `councilSentinel`, and must be a byte

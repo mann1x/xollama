@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -49,9 +50,9 @@ const (
 	// bug-3880). Before it, audio.cpp read any path without ".gguf" as a
 	// safetensors package and refused every published audio.cpp template.
 	FeatureSpeechContentFormat = "audio_speech_content_format_v1"
-	// FeatureSpeechVoicesTar is a --tts-voices that reads the template's
-	// voices tar from its blob, as published, instead of a directory.
-	FeatureSpeechVoicesTar = "audio_speech_voices_tar_v1"
+	// FeatureSpeechVoiceFiles is --tts-voice NAME=PATH: one extra voice per
+	// flag, each a file read by its contents from its blob path.
+	FeatureSpeechVoiceFiles = "audio_speech_voice_files_v1"
 )
 
 // Default reserves, the engine's own (handover 2026-09-26), used for the
@@ -83,8 +84,8 @@ func MediaFeatures(m *xollama.Media) []string {
 		if t.Engine == "audiocpp" {
 			out = append(out, FeatureSpeechContentFormat)
 		}
-		if t.Voices != "" {
-			out = append(out, FeatureSpeechVoicesTar)
+		if len(t.Voices) > 0 {
+			out = append(out, FeatureSpeechVoiceFiles)
 		}
 	}
 	if m.Video != nil {
@@ -162,8 +163,8 @@ func appendEngineCommon(args []string, flag string, e xollama.MediaEngine) []str
 }
 
 // MediaArgs is the engine command line for the media, after the server's own
-// flags. path maps a component digest to its blob. Every component, the
-// voices tar included, is passed as its blob path: the engine tells a file's
+// flags. path maps a component digest to its blob. Every component, each
+// voice included, is passed as its blob path: the engine tells a file's
 // format by its contents, never its name.
 //
 // The template's defaults reach the engine here, at boot, and again per
@@ -216,8 +217,13 @@ func MediaArgs(m *xollama.Media, path func(digest string) string) []string {
 		if t.Vocoder != "" {
 			a = append(a, "--tts-vocoder", path(t.Vocoder))
 		}
-		if t.Voices != "" {
-			a = append(a, "--tts-voices", path(t.Voices))
+		names := make([]string, 0, len(t.Voices))
+		for name := range t.Voices {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			a = append(a, "--tts-voice", name+"="+path(t.Voices[name]))
 		}
 		a = appendEngineCommon(a, "tts", t.MediaEngine)
 		a = append(a, t.Args...)

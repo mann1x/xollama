@@ -529,8 +529,13 @@ func ttsFields() []field {
 			func(t *xollama.TTSMedia, v string) error { return setChoice(v, xollama.ValidTTSEngines(), &t.Engine) }),
 		blobRow(k, "vocoder", "vocoder", "OuteTTS vocoder", "The WavTokenizer GGUF (--tts-vocoder); OuteTTS cannot speak without it.",
 			func(t *xollama.TTSMedia) *string { return &t.Vocoder }),
-		blobRow(k, "voices", "voices", "Voice files", "A tar of voice files for --tts-voices.",
-			func(t *xollama.TTSMedia) *string { return &t.Voices }),
+		k.row("voices", "voices", "Extra voices",
+			"name=file pairs, comma-separated: narrator=~/voices/narrator.json. Each file is one\n"+
+				"voice (an OuteTTS speaker JSON), stored as its own layer and selected by its name.\n"+
+				"A file is a local path, an hf.co reference or a sha256 digest.",
+			kindText, nil,
+			func(t *xollama.TTSMedia) string { return showVoiceMap(t.Voices) },
+			func(t *xollama.TTSMedia, v string) error { return setVoices(v, &t.Voices) }),
 		k.row("voice-map", "voice_map", "Voice names a client may use",
 			"name=voice pairs, comma-separated: alloy=af_heart,nova=af_bella. OpenAI clients\n"+
 				"ask for alloy, echo, fable, onyx, nova or shimmer. Unset passes names through.",
@@ -590,6 +595,37 @@ func setVoiceMap(v string, dst *map[string]string) error {
 			return fmt.Errorf("want name=voice pairs (got %q)", p)
 		}
 		out[name] = voice
+	}
+	*dst = out
+	return nil
+}
+
+// setVoices reads name=file pairs, each file through setBlob, so a voice is
+// uploaded, fetched or named by digest like any other component.
+func setVoices(v string, dst *map[string]string) error {
+	var s string
+	if err := setText(v, &s); err != nil {
+		return err
+	}
+	if s == "" {
+		*dst = nil
+		return nil
+	}
+	out := map[string]string{}
+	for _, p := range splitList(s) {
+		name, file, ok := strings.Cut(p, "=")
+		name, file = strings.TrimSpace(name), strings.TrimSpace(file)
+		if !ok || name == "" || file == "" {
+			return fmt.Errorf("want name=file pairs (got %q)", p)
+		}
+		if _, dup := out[name]; dup {
+			return fmt.Errorf("voice %q is given twice", name)
+		}
+		var digest string
+		if err := setBlob(file, &digest); err != nil {
+			return fmt.Errorf("voice %s: %w", name, err)
+		}
+		out[name] = digest
 	}
 	*dst = out
 	return nil

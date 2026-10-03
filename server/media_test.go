@@ -254,14 +254,14 @@ func TestAMissingMediaBlobIsRefusedByName(t *testing.T) {
 	present := mediaDigest(t, []byte("GGUF present"))
 	gone := "sha256:" + strings.Repeat("e", 64)
 	m := &Model{ShortName: "kokoro", Xollama: &xollama.Config{Media: &xollama.Media{
-		TTS: &xollama.TTSMedia{Engine: "audiocpp", Model: present, Voices: gone},
+		TTS: &xollama.TTSMedia{Engine: "audiocpp", Model: present, Voices: map[string]string{"narrator": gone}},
 	}}}
 	_, err := newMediaRunner(m)
 	if err == nil || !strings.Contains(err.Error(), gone) || !strings.Contains(err.Error(), "tts") {
 		t.Fatalf("err = %v, want a refusal naming the missing voices blob", err)
 	}
 
-	m.Xollama.Media.TTS.Voices = ""
+	m.Xollama.Media.TTS.Voices = nil
 	r, err := newMediaRunner(m)
 	if err != nil {
 		t.Fatal(err)

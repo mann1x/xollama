@@ -103,8 +103,10 @@ type TTSMedia struct {
 	Model string `json:"model"`
 	// Vocoder is OuteTTS's WavTokenizer; OuteTTS cannot speak without it.
 	Vocoder string `json:"vocoder,omitempty"`
-	// Voices is a tar of voice files, unpacked for --tts-voices.
-	Voices string `json:"voices,omitempty"`
+	// Voices are extra voices by name, each one file (an OuteTTS speaker
+	// JSON, say) stored as its own layer and passed to the engine as
+	// --tts-voice NAME=<blob>. The name is what a request's voice selects.
+	Voices map[string]string `json:"voices,omitempty"`
 	// VoiceMap maps a client's voice name to one of the model's: OpenAI
 	// clients ask for alloy, echo, fable, onyx, nova or shimmer.
 	VoiceMap map[string]string `json:"voice_map,omitempty"`
@@ -162,14 +164,16 @@ type MediaEngine struct {
 
 // Closed sets, each taken from the route it describes.
 var (
-	validImageEdit       = []string{"reference", "img2img", "none"}
-	validImageFormats    = []string{"png", "jpeg"}
-	validSTTFormats      = []string{"json", "text", "verbose_json", "srt", "vtt"}
-	validSTTTasks        = []string{"transcribe", "translate"}
-	validTTSEngines      = []string{"outetts", "audiocpp"}
-	validTTSFormats      = []string{"mp3", "opus", "aac", "flac", "wav", "pcm"}
-	validVideoFormats    = []string{"mp4", "webm", "webp", "avi"}
-	mediaDigest          = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	validImageEdit    = []string{"reference", "img2img", "none"}
+	validImageFormats = []string{"png", "jpeg"}
+	validSTTFormats   = []string{"json", "text", "verbose_json", "srt", "vtt"}
+	validSTTTasks     = []string{"transcribe", "translate"}
+	validTTSEngines   = []string{"outetts", "audiocpp"}
+	validTTSFormats   = []string{"mp3", "opus", "aac", "flac", "wav", "pcm"}
+	validVideoFormats = []string{"mp4", "webm", "webp", "avi"}
+	mediaDigest       = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+	// voiceName is what the engine accepts as a --tts-voice name.
+	voiceName            = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
 	imageDefaultFields   = []string{"width", "height", "steps", "cfg", "sampler", "scheduler", "flow_shift", "seed", "output_format", "strength"}
 	sttDefaultFields     = []string{"language", "response_format", "task"}
 	ttsDefaultFields     = []string{"voice", "language", "response_format", "speed"}
@@ -227,7 +231,14 @@ func (m *Media) Components() []MediaComponent {
 	if t := m.TTS; t != nil {
 		add("tts", "model", t.Model)
 		add("tts", "vocoder", t.Vocoder)
-		add("tts", "voices", t.Voices)
+		names := make([]string, 0, len(t.Voices))
+		for name := range t.Voices {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			add("tts", "voices."+name, t.Voices[name])
+		}
 	}
 	if v := m.Video; v != nil {
 		add("video", "model", v.Model)
@@ -452,6 +463,14 @@ func (t *TTSMedia) validate() error {
 	if (t.Engine == "" || t.Engine == "outetts") && t.Vocoder == "" {
 		return fmt.Errorf("xollama config: media.tts.vocoder is required for the outetts engine (its WavTokenizer)")
 	}
+	for name, digest := range t.Voices {
+		if !voiceName.MatchString(name) {
+			return fmt.Errorf("xollama config: media.tts.voices: %q is not a voice name (letters, digits, '_', '.', '-', at most 64)", name)
+		}
+		if digest == "" {
+			return fmt.Errorf("xollama config: media.tts.voices.%s has no file", name)
+		}
+	}
 	names := make([]string, 0, len(t.VoiceMap))
 	for k := range t.VoiceMap {
 		names = append(names, k)
@@ -577,6 +596,12 @@ func (m *Media) Clone() *Media {
 	if m.TTS != nil {
 		t := *m.TTS
 		t.MediaEngine = m.TTS.MediaEngine.clone()
+		if m.TTS.Voices != nil {
+			t.Voices = make(map[string]string, len(m.TTS.Voices))
+			for k, v := range m.TTS.Voices {
+				t.Voices[k] = v
+			}
+		}
 		if m.TTS.VoiceMap != nil {
 			t.VoiceMap = make(map[string]string, len(m.TTS.VoiceMap))
 			for k, v := range m.TTS.VoiceMap {
@@ -641,7 +666,10 @@ func (m *Media) Prune() *Media {
 		if len(t.VoiceMap) == 0 {
 			t.VoiceMap = nil
 		}
-		if t.Engine == "" && t.Model == "" && t.Vocoder == "" && t.Voices == "" && t.VoiceMap == nil && t.MediaEngine.isZero() && t.Defaults == nil {
+		if len(t.Voices) == 0 {
+			t.Voices = nil
+		}
+		if t.Engine == "" && t.Model == "" && t.Vocoder == "" && t.Voices == nil && t.VoiceMap == nil && t.MediaEngine.isZero() && t.Defaults == nil {
 			m.TTS = nil
 		}
 	}
@@ -682,7 +710,9 @@ func (m *Media) MapComponents(f func(string) string) {
 	if t := m.TTS; t != nil {
 		set(&t.Model)
 		set(&t.Vocoder)
-		set(&t.Voices)
+		for name, digest := range t.Voices {
+			t.Voices[name] = f(digest)
+		}
 	}
 	if v := m.Video; v != nil {
 		set(&v.Model)
