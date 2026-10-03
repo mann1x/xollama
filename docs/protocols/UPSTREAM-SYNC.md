@@ -112,9 +112,14 @@ Then, in order, and do not skip one because the previous passed:
 4. Re-check every carried PR in
    [`CARRIED-PATCHES.md`](./CARRIED-PATCHES.md): any that landed upstream
    gets **retired**, not merged twice.
-5. Boot both engines against one model and compare:
+5. Check that the fork delivered its release for this tag
+   ([`FORK-SYNC.md` R6](./FORK-SYNC.md#the-rules)): `v<X>-thinkbudget` with
+   `ollama-linux-amd64-runtime.tgz`, named in the fork's mail with its sha256
+   and inputs digest. Move `llama/runtime-pin-linux.txt` to it. A sync whose
+   Linux pin still names the previous tag cannot build the Docker image.
+6. Boot both engines against one model and compare:
    `XOLLAMA_ENGINE=llamacpp` vs `XOLLAMA_ENGINE=opencoti`.
-6. Read `git diff main...HEAD` over the parser/thinking paths. Not the merge
+7. Read `git diff main...HEAD` over the parser/thinking paths. Not the merge
    diff — the diff against our own trunk, which is what actually changed for us.
 
 Merge with `--no-ff` so the sync is one identifiable commit range.

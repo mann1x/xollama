@@ -435,3 +435,14 @@ dso  win-x86_64  builds/opencoti-0.10.5-c7-2610031112001/ggml-cuda-win-x86_64.dl
 #! sidecar  aarch64     codec     builds/opencoti-0.10.5-c7-2610031112001/oc-codec-linux-aarch64.so       7daf2e8c1e83e8186e5916c3f3e156478c3f11b47a8e998475067a0784021d73
 #! sidecar  aarch64     audiocpp  builds/opencoti-0.10.5-c7-2610031112001/oc-audiocpp-linux-aarch64.so    0b599637d4d3ab1c8c4a673b4657d330490df725884a4b13c5ab80393c77cba1
 #! sidecar  aarch64     espeak    builds/opencoti-0.10.5-c7-2610031112001/oc-espeak-linux-aarch64.so      47d6e5fd8d52ab6520c7a6bc707bf0165947cd79b81c5401bfb9bdd4dd27b764
+#
+# The licence text and the source references of the libraries above, staged
+# beside them like any sidecar row so no package carries the GPL eSpeak-ng
+# library or the LGPL codec without them. Arch-independent files, one row per
+# arch because a package is staged per arch (TestEveryLicensedSidecarShipsItsText).
+#! sidecar  x86_64      espeak-licence  builds/opencoti-0.10.5-c7-2610031112001/COPYING.espeak-ng  8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903
+#! sidecar  x86_64      build-info      builds/opencoti-0.10.5-c7-2610031112001/BUILD_INFO.md      aac8a566b121b85540b888a8ad4bc82521dd804f7bf4c3d9ce6d7777672b138b
+#! sidecar  win-x86_64  espeak-licence  builds/opencoti-0.10.5-c7-2610031112001/COPYING.espeak-ng  8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903
+#! sidecar  win-x86_64  build-info      builds/opencoti-0.10.5-c7-2610031112001/BUILD_INFO.md      aac8a566b121b85540b888a8ad4bc82521dd804f7bf4c3d9ce6d7777672b138b
+#! sidecar  aarch64     espeak-licence  builds/opencoti-0.10.5-c7-2610031112001/COPYING.espeak-ng  8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903
+#! sidecar  aarch64     build-info      builds/opencoti-0.10.5-c7-2610031112001/BUILD_INFO.md      aac8a566b121b85540b888a8ad4bc82521dd804f7bf4c3d9ce6d7777672b138b

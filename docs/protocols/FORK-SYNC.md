@@ -109,9 +109,44 @@ above happened.
 **R5 — A mail on every manifest bump**, to `xollama@solidpc`, naming the base
 tag and the shas that moved. Neither side polls.
 
-**R6 — Rebase cadence.** On every upstream tag we build against, all `up-*`
-branches are rebased onto it, the manifest is republished with the new `base`,
-and the mail goes out. One event to track instead of ten branches.
+**R6 — A sync delivers everything xollama consumes.** "Sync the fork to
+upstream tag X" is one job, and it is done only when xollama can move to X
+without asking the fork for anything. On every upstream tag we build against,
+the fork delivers all of the following, in this order:
+
+1. **The patch set.** Every `up-*` and PR-head branch rebased onto the tag, and
+   the manifest republished with the new `base` and shas.
+2. **The fork release for that tag**, `v<X>-thinkbudget`, cut from
+   `think-budget` by `thinkbudget-release.yaml` (`--ref think-budget`). It
+   carries `ollama-linux-amd64-runtime.tgz`, the Linux CPU runtime xollama pins
+   in `llama/runtime-pin-linux.txt`. Without it `scripts/docker-assemble.sh`
+   refuses and xollama cannot build its Docker image.
+   - A release is required on **every** sync, even when `LLAMA_CPP_VERSION`,
+     `llama/server` and `llama/compat` did not change. That keeps the pin's
+     tag in step with the base and leaves nothing to decide per sync.
+   - The release commit may add only release notes and manifest commits on top
+     of `integration.sha`, so the llama inputs digest is unchanged.
+3. **The release recorded in the manifest**: `integration.release` with the
+   tag, the commit it was built at, the run, the asset's sha256 and the inputs
+   digest in xollama's definition (below).
+4. **One mail** naming the base tag, the shas that moved, the release tag, the
+   build commit, the asset sha256 and the inputs digest.
+
+The digest xollama checks is the sha256 of
+`git ls-tree -r <commit> -- LLAMA_CPP_VERSION llama/server llama/compat` with
+the `llama/compat/README.md` line removed. The fork computes it at the release
+commit and states it in the manifest and the mail. If the two sides disagree,
+the mail says which side moved.
+
+> **Why this is spelled out.** On 2026-10-03 the v0.35.1 sync stopped after
+> step 1: branches rebased, manifest `f430d02f` published, mail sent, no
+> release. xollama merged all 24 patches and then could not assemble rc.1's
+> Docker image, because its Linux pin still named `v0.34.4-thinkbudget`
+> (llama.cpp b11081, inputs `17ab8578…`) against a tree at b11232 (inputs
+> `57004c3c…`). It had to ask (mail #703), and the release was cut hours later
+> as `v0.35.1-thinkbudget` at `1040f03d`. The old wording of this rule,
+> "rebased, the manifest is republished, and the mail goes out", described
+> exactly the half that was done.
 
 **R7 — `mann1x/ollama@main` mirrors upstream, plus the release workflow.** It
 was six weeks stale, which is what made every fork PR a 451-file diff burying
@@ -292,6 +327,10 @@ not merged and the fork is asked, as before.
 
 ## What xollama does on receipt of a manifest bump
 
+A bump that moves `base` arrives with the fork release for that tag (R6). If the
+mail names no release, the sync is not finished: say so in the reply instead
+of working around it.
+
 1. `git fetch fork` and merge each named `up-<slug>` **at the manifest's sha**,
    in `patches[]` order, each as its own `--no-ff` merge — so retiring one stays
    a single revert of an identifiable range.
@@ -299,7 +338,9 @@ not merged and the fork is asked, as before.
    PR number, the branch, and **our** merge sha.
 3. Reply with those merge shas, so the fork's manifest and this registry can be
    reconciled from either end.
-4. Never hand-copy a hunk from `think-budget`. If something is needed before the
+4. Move `llama/runtime-pin-linux.txt` to the release the mail names, checking
+   the asset's sha256 and that the pin's inputs digest equals this tree's.
+5. Never hand-copy a hunk from `think-budget`. If something is needed before the
    manifest exists, ask for the branch and sha.
 
 ## Identifiers
