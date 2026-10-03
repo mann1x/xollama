@@ -5,6 +5,16 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-03 — Upstream v0.35.1 synced (fork manifest `f430d02f`, llama.cpp b11232).**
+> - `sync/upstream-v0.35.1`, in its own worktree (the new one-branch-one-worktree rule, `9ccbf89b`):
+>   - `d3c2f4ea` merged the tag. Four conflicts, each kept both sides: upstream's `CAPABILITY` directive beside the `model-config` hook's `XOLLAMA` (`parser/parser.go`, `cmd/create_safetensors.go`), `/v1/systemone` beside the tokenize routes (`docs/docs.json`), and `XOLLAMA_HOST` in upstream's reworked `TestWebSearchLoopMaxLimit`.
+>   - The 24 patches followed as `--no-ff` merges at the manifest's shas, in order (`acb29d3c` … `38c76e8a`; the table is in CARRIED-PATCHES).
+> - 23 patches are the v0.35.0 commits rebased (`git range-diff` all `=`). Each of those merges leaves the tree exactly as its first parent; the ones that conflicted with their own earlier copy were resolved to this side. The one change is `up-modelfile-roundtrip`'s `95ece51a` (`CAPABILITY` is a directive a quote can swallow), and that merge adds exactly its diff.
+> - `LLAMA_CPP_VERSION` b11081 → b11232 plus upstream's `002-clef.patch`. `LLAMA_CPP_VERSION`, `llama/compat` and `llama/server` are byte-identical to the fork's `think-budget` (digest `f9c1055da0f6`). The runtime pin moves when `xollama-runtime.yaml` has built it from `dev`.
+> - Checks: gofmt silent, `go build`/`go vet ./...` clean, `go test ./...` no failures, `-race` clean on llm, server, model/parsers, thinking, parser, middleware and internal/council, `golangci-lint` 0 issues, `check-hooks` 33 hooks all registered, `check-compat-origin` 0 commits not from the fork or upstream.
+> - Also committed: five agent rule files that `CLAUDE.md` already pointed at but were never added (`app-brand`, `engine-fit`, `modelfile-roundtrip`, `system-settings`, `system-settings-gpu`).
+> - Left: a `TEMPLATE` quote swallowing an `XOLLAMA` line is still not caught (the pattern is the fork's and `XOLLAMA` is ours). `main` stays v0.34.4 until the next release PR.
+
 > **2026-10-03 — Row B on opencoti b109 (head fixed); video slowdown is the shape; b208 commit control on eleven2go.**
 > - b109 `2610022238001`, auto: 22,662-token arm 0.27 / 159.7 t/s (two fit passes, 62/81). Short-arm decode 2.79 t/s (b105: 2.10).
 > - b109, head: no fit passes (bug-3874 fixed), 47/81 layers, 10 s boot, long arm 0.20 / 134.2. Its short-arm decode came in at 1.49 t/s (b105: 1.97), asked opencoti whether to repeat. Pin can move to a published build with 0527 + 3874 + 0531 (#656).
