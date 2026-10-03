@@ -50,6 +50,16 @@ paths:
   it per load in `Launch`, and a load spanning both payloads goes to llama.cpp.
   An explicit `XOLLAMA_ENGINE_PATH` is used as given. Guard:
   `llm/engine/pin_cuda12_test.go`.
+- Media sidecars are `#! sidecar <arch> <kind> <path> <sha256>` (`Pin.Sidecars`;
+  `SidecarCodec`, `SidecarAudioCpp`, the kind list is open and checked for shape
+  only, `isSidecarKind`). A `-gpu` bin shares its platform's rows; one row per
+  kind per arch. It is the one `#!` key `cmake/opencoti-fetch.cmake` reads too:
+  every row of the arch is staged beside the engine under its published file
+  name, never renamed (offline: `-DXOLLAMA_OPENCOTI_SIDECAR_DIR=<dir>`, still
+  verified), and `scripts/docker-assemble.sh` and
+  `.github/workflows/xollama-release.yaml` check the staged bytes against the
+  pin. Guards: `llm/engine/pin_sidecar_test.go`,
+  `llm/engine/pin_sidecar_cmake_test.go`.
 - Windows: `Pin.ArchFor` (used by `pinUncoveredIn`) falls back to the bare
   `bin win-x86_64` (+ `dso win-x86_64`) when no `win-x86_64-gpu` bin exists; the
   `-gpu` row wins when both do. `cmake/opencoti-engine.cmake` makes the same
@@ -63,9 +73,9 @@ paths:
   `bin <arch>` row is a STATUS line and a llama.cpp-only package, not a
   configure failure; more than one row is still fatal.
 - Asset rows are `bin` (the engine), `dso` (a side-loadable GPU payload staged
-  beside the binary) or `dso-cuda12`; release bins embed their payloads, a dev
+  beside the binary), `dso-cuda12` or `sidecar`; release bins embed their payloads, a dev
   snapshot is a bare APE that needs one. Address them with `pin.Asset` (bin rows
-  only), `pin.DSO` and `pin.CUDA12DSO`; build offline with
+  only), `pin.DSO`, `pin.CUDA12DSO` and `pin.Sidecars`; build offline with
   `-DLOCAL_DSO_FILE=<payload>`. One row per kind per arch and at least one
   `bin` — `TestCommittedPinParses` fails duplicates and dso-only pins.
 - `Find` in `llm/engine/opencoti.go` knows **both** artifact names: release
