@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -193,5 +194,42 @@ func TestATemplateOnCPUIsNeverPlacedOnAGPU(t *testing.T) {
 	m.STT.Device = ""
 	if mediaOnCPU(m) {
 		t.Fatal("a template with one engine unpinned was kept on CPU")
+	}
+}
+
+func TestAudioCppSpeechIsNeverPlacedOnAGPU(t *testing.T) {
+	kokoro := &xollama.Media{TTS: &xollama.TTSMedia{Engine: "audiocpp", Model: d('a')}}
+	if !mediaOnCPU(kokoro) {
+		t.Fatal("an audio.cpp speech model, which has no GPU backend, would be placed on a GPU")
+	}
+	outetts := &xollama.Media{TTS: &xollama.TTSMedia{Model: d('a'), Vocoder: d('b')}}
+	if mediaOnCPU(outetts) {
+		t.Fatal("OuteTTS with no device stated was kept off the GPU")
+	}
+	mixed := &xollama.Media{TTS: kokoro.TTS, Image: &xollama.ImageMedia{Model: d('c')}}
+	if mediaOnCPU(mixed) {
+		t.Fatal("an image engine beside audio.cpp was kept off the GPU")
+	}
+}
+
+func TestAFailedLoadReportsTheCauseNotOnlyTheLastLine(t *testing.T) {
+	var w tailWriter
+	stderr := os.Stderr
+	os.Stderr, _ = os.Open(os.DevNull)
+	defer func() { os.Stderr = stderr }()
+	w.Write([]byte("booting\nfatal error: --gpu vulkan was explicitly requested but Vulkan is not usable on this system\n" +
+		"  - no Vulkan-capable device was detected\n\n  - retry with --gpu auto\n"))
+	got := w.last()
+	if !strings.Contains(got, "fatal error: --gpu vulkan") || !strings.HasSuffix(got, "retry with --gpu auto") {
+		t.Fatalf("tail = %q, want the cause and the advice", got)
+	}
+	for range 10 {
+		w.Write([]byte("noise\n"))
+	}
+	if n := strings.Count(w.last(), "noise"); n != tailLines {
+		t.Fatalf("tail kept %d lines, want %d", n, tailLines)
+	}
+	if (&tailWriter{}).last() != "no output" {
+		t.Fatal("an engine that said nothing is not reported as such")
 	}
 }

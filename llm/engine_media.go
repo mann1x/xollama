@@ -328,7 +328,11 @@ type mediaRunner struct {
 	client *http.Client
 }
 
-// mediaOnCPU reports whether every engine of m states device CPU.
+// mediaOnCPU reports whether every engine of m runs on the CPU: it states
+// device CPU, or it is audio.cpp, which has no GPU backend in the engine. A
+// speech model placed on a GPU would book memory it never uses and be launched
+// with a --gpu backend the engine may not have (solidPC, b117, 2026-10-03: a
+// Vulkan-only view of the host made every audio.cpp model fail to boot).
 func mediaOnCPU(m *xollama.Media) bool {
 	var devices []string
 	if m.Image != nil {
@@ -338,7 +342,11 @@ func mediaOnCPU(m *xollama.Media) bool {
 		devices = append(devices, m.STT.Device)
 	}
 	if m.TTS != nil {
-		devices = append(devices, m.TTS.Device)
+		if m.TTS.Engine == "audiocpp" {
+			devices = append(devices, "cpu")
+		} else {
+			devices = append(devices, m.TTS.Device)
+		}
 	}
 	if m.Video != nil {
 		devices = append(devices, m.Video.Device)
@@ -666,11 +674,15 @@ func (r *mediaRunner) Tokenize(context.Context, string) ([]int, error) { return 
 func (r *mediaRunner) Detokenize(context.Context, []int) (string, error) { return "", errMediaOnly }
 
 // tailWriter passes the engine's output to the server log and keeps its last
-// line, so a failed load can say why.
+// lines, so a failed load can say why. One line is not enough: the engine
+// states the cause first and its advice last.
 type tailWriter struct {
-	mu   sync.Mutex
-	line string
+	mu    sync.Mutex
+	lines []string
 }
+
+// tailLines is how many of the engine's last lines a failed load reports.
+const tailLines = 4
 
 func (w *tailWriter) Write(p []byte) (int, error) {
 	os.Stderr.Write(p)
@@ -678,7 +690,10 @@ func (w *tailWriter) Write(p []byte) (int, error) {
 	defer w.mu.Unlock()
 	for _, l := range bytes.Split(bytes.TrimRight(p, "\n"), []byte("\n")) {
 		if s := strings.TrimSpace(string(l)); s != "" {
-			w.line = s
+			w.lines = append(w.lines, s)
+			if len(w.lines) > tailLines {
+				w.lines = w.lines[len(w.lines)-tailLines:]
+			}
 		}
 	}
 	return len(p), nil
@@ -687,8 +702,8 @@ func (w *tailWriter) Write(p []byte) (int, error) {
 func (w *tailWriter) last() string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.line == "" {
+	if len(w.lines) == 0 {
 		return "no output"
 	}
-	return w.line
+	return strings.Join(w.lines, " | ")
 }

@@ -34,6 +34,16 @@ paths:
   `reservedVoiceNames` (OuteTTS's `default` and the OpenAI names it maps to
   it), and any `tts.voices` on `engine: audiocpp`, which serves only its
   model's built-in voices. Guard: `TestEachVoiceIsItsOwnLayerNamedByItsVoice`.
+- **`engine: audiocpp` speech is always on the CPU** (`mediaOnCPU`,
+  `llm/engine_media.go`): audio.cpp has no GPU backend in the engine, so its
+  `tts.device` is never read. Placed on a GPU it books memory it never uses and
+  is launched with a `--gpu` backend the engine may not have (solidPC, b117,
+  2026-10-03). Another engine beside it still decides for itself. Guard:
+  `TestAudioCppSpeechIsNeverPlacedOnAGPU`.
+- **A failed load reports the engine's last `tailLines` (4) lines**, joined
+  with ` | ` (`tailWriter.last`), never only the last: the engine states the
+  cause first and its advice last. Guard:
+  `TestAFailedLoadReportsTheCauseNotOnlyTheLastLine`.
 - **The catalog** (`internal/mediahub/catalog.go`) feeds `xollama media list`
   and `media create`. Entries of one family share a builder (`supertonic(file)`,
   `wan21(model, encoder)`, `wan22(model)`) so a quant tag differs from its
