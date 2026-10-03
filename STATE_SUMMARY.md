@@ -5,6 +5,971 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-03 — The macOS app is Apple silicon only (owner's choice); built, notarized and installed in one script run.**
+> - Why: the owner saw macOS 27's popup that xOllama "includes a component that will not open in macOS 28". The universal bundle carried 22 x86_64-only llama.cpp libraries (the Intel runtime is shared libraries, the arm64 one is static). `scripts/build_darwin.sh` now takes its architecture list for the merge, the payload copy and the app binary, and defaults to `arm64` (`7870ebef3`); `-a "arm64 amd64"` builds the universal app.
+> - The build of `7870ebef` ran `build sign app` in one pass with notarization on: app and DMG accepted and stapled, 17 Mach-O files, all arm64. `xOllama.dmg` 219 MB, sha256 `2e0e4e90…7b1bf`, in `~/dev/xollama/dist` on the Mac mini; not published.
+> - Installed on the Mac mini and run through the app's own server on 22434: qwen2.5:1.5b 129.5 tok/s, gemma3:4b-it-qat 43.9 tok/s (512 tokens, warm), speech 7/7, signature valid after the runs, no authorization dialog on this start.
+
+> **2026-10-03 — `2610031615001` measured on Windows; the Mac app's names confirmed at the screen.**
+> - eleven2go (Windows 11, RTX 3090), on the owner's word, side directory `xollama-b130` on port 22498, installed servers untouched: qwen2.5:1.5b three 512-token runs at 327.5 / 326.7 / 325.2 tok/s, 100 % GPU (322 on the previous pin); Kokoro (two voices), Supertonic, KittenTTS and OuteTTS mp3, each transcribed back; two custom voices listed and spoken; Wan2.1 in 149 s, 21.8 GiB peak; the four licence texts beside the DLLs. The pin is now measured on Linux, Windows and macOS.
+> - Mac mini, after the owner answered the authorization dialog: the app started its server, the CLI link is `/usr/local/bin/xollama` (the old `/usr/local/bin/ollama` removed by the owner), the login item registered under `com.mann1x.xollama`, state is in `~/Library/Application Support/xOllama`. Phase 4 of `plans/macos-build.md` closed.
+> - The hosted `test` workflow failed on the macOS runner after the macOS commit (two tests asserting llama.cpp or upstream names, one gofumpt line); fixed in `bdcaa7e30`, green.
+
+> **2026-10-03 — macOS: the app and its DMG are notarized.**
+> - Apple accepted the signed universal `xOllama.app` (submission `e793062d`) and the DMG (`c95ba8de`); both are stapled and Gatekeeper reports "Notarized Developer ID". The notarized app is installed on the Mac mini. `xOllama.dmg` sha256 `26a668e0…4560c` (272 MB), in `~/dev/xollama/dist` there; not published anywhere.
+> - The app is the build of commit `7997b42a9`'s tree made before that commit, so it names itself `0.35.1-dev.fb0ec3f5`. The DMG was made without the Finder styling (no desktop session over ssh).
+> - Left for macOS: a run of the app at the Mac's screen (the CLI-link dialog, the login item), a release path for the macOS assets, image, video, vision and MTP on Metal.
+
+> **2026-10-03 — macOS: opencoti on Metal inside a Developer ID signed universal xOllama.app; engine pin moved to `2610031615001` (rev `cee83ff6`), on the owner's word.**
+> - The pin: `2610031615001` fixes the Metal abort on a prompt longer than one ubatch (0549), ships the signed macOS loader `ape-macos-aarch64`, and carries the ffmpeg, lame and openh264 licence texts, now on rows of their own for every platform. New bytes: the engine (`abd906ca`) and the Linux CUDA payload (`154dc672`); the Windows DLL and every Linux and Windows library are unchanged.
+> - solidPC as `ollama`, one run (`pin-b130`; `2610031319001` in brackets): compat 8/8 (8/8), llama3 77.4 tok/s (77.1), four slots 302 tok/s (302), gemma4 identical, 70B overflow 4.0 tok/s (4.1). Speech 8/8 mp3, each transcribed back. Wan2.1 33/33 frames (221 s), Wan2.2 Q4_K_M 33/33 (112 s). **Windows was not measured on this build**: eleven2go is paused and this test was not among the owner's exceptions.
+> - macOS code (hook `macos-engine`, plan `plans/macos-build.md`): package `macos-aarch64` (`PackageArch`), `darwin/arm64` Metal and CPU in the tested matrix, the launch, device listing and link probe through the loader (`run`), `--gpu apple`, Metal in discovery, the engine's HOME never inside the app bundle (`payloadRoots`), the loader staged executable by `cmake/opencoti-fetch.cmake`. `scripts/build_darwin.sh` stages the engine into `Contents/Resources/engines`, signs the loader with `app/darwin/engine-loader.entitlements`, and notarizes by API key (`XOLLAMA_NOTARIZE=off` signs only). An Intel Mac has no opencoti files and stays on llama.cpp.
+> - Mac mini (M6, 24 GB, macOS 27.0.1), engine inside the signed app, 512 tokens, one cold and three warm runs, stock llama.cpp on Metal in brackets: qwen2.5:1.5b 124.5 tok/s (130.3), llama3 31.3 (31.4), gemma3:4b-it-qat 42.2 (42.4). Speech 7/7 (Kokoro, Supertonic mp3 and wav, KittenTTS, OuteTTS, a custom voice), transcribed back by Whisper there. Signature valid after the runs. Intel half under Rosetta: opencoti refused by name, llama.cpp serves. The Mac's store holds 27 tags (129 GB) copied from solidPC.
+> - The app on macOS (`app-brand`, `app-state`): it registered a login item under upstream's plist name (failed), wrote its CLI link to `/usr/local/bin/ollama`, kept state in `~/Library/Application Support/Ollama`, relaunched itself as `Contents/MacOS/Ollama`, and treated a running stock Ollama app as another instance of itself. All five fixed; the fixes are built and signed but not yet run at the Mac's screen.
+> - Left: notarization (Apple has accepted nothing from this account yet), staple and DMG; the Windows measurement of this pin; image, video, vision and MTP on Metal; a macOS release path. Found by running the tests on the Mac: two launch tests read the runner's real `~/.ollama/engines` (given a private HOME).
+
+> **2026-10-03 — Engine pin moved to opencoti `2610031319001` (rev `26cd5645`), on the owner's word; measured on solidPC and on Windows.**
+> - What it adds over `2610031112001` (opencoti #714, #715): a request cancelled while queued no longer keeps its KV reservation for 600 s and a queued stream gets its keepalive (0546); `--dca on` no longer aborts on a CPU-only run (0542). Only the engine (`1e6e30cb`) and `BUILD_INFO.md` changed among what xollama ships; CUDA payloads and all libraries are the same bytes. The snapshot's new macOS files have no pin rows.
+> - solidPC as `ollama`, one run (`pin-b128`; `2610031112001` in brackets): compat 8/8 (8/8), llama3 77.1 tok/s (76.4), four slots 302 tok/s (302), gemma4 identical, 70B overflow 4.1 tok/s (3.8). Speech: all five models and two custom voices mp3, Whisper returns the sentence. Wan2.1 33/33 frames (223 s), Wan2.2 Q4_K_M 33/33 (114 s).
+> - eleven2go (Windows 11, RTX 3090), side directory on port 22498, installed servers untouched: qwen2.5:1.5b three 512-token runs at 322 tok/s, 100 % GPU; Kokoro, Supertonic, KittenTTS, OuteTTS mp3 and transcribed back; two custom voices; Wan2.1 33/33 frames in 149 s; licence text and `BUILD_INFO.md` beside the DLLs.
+> - CPU-only gap: opencoti decodes about 12 % under stock on CPU (36.9 vs 41.8 tok/s). opencoti: structural (only the matmul kernels are built per ISA), their c9 stage 17. No tuning on our side.
+> - Left: the queueing faults 0546 fixes were not exercised here; Wan2.2 and the installer on Windows; the Docker assembly and the hosted workflows on this pin.
+>
+> **2026-10-03 — Linux runtime pin moved to the fork's `v0.35.1-thinkbudget` (b11232); the Docker assembly runs unmodified again.**
+> - `llama/runtime-pin-linux.txt`: runtime `2334fe35…` built at fork `1040f03d` (inputs `57004c3c…`, this tree's), upstream `v0.35.1` GPU archives `9fcd79ac…` and `15ee9a52…` (upstream's own `sha256sum.txt`). The runtime's sha256 was checked on a download of my own, not taken from the fork's mail (#708).
+> - `scripts/docker-assemble.sh`, as CI runs it, exit 0: both llama checks pass; the image carries the runtime, the engine, the three libraries and both licence files. In a container (no compiler, no eSpeak-ng, CPU only): Kokoro, KittenTTS, Supertonic mp3; qwen2.5:1.5b answers on stock `llama-server` and on opencoti. Measured afterwards at 256 tokens, six warm runs, host load 12-14: stock 41.8 tok/s, opencoti 36.9, a consistent ~12 % CPU-only gap (opencoti mail #712); the 47 / 38 first quoted here came from a 10-token smoke and is withdrawn.
+> - Left: a GPU run of the image (solidPC's Docker has no NVIDIA runtime), the hosted `docker-release` run.
+>
+> **2026-10-03 — A root-run server no longer costs the service its GPU (xo-17); licence text ships with the libraries (xo-18); the Docker assembly is blocked on the fork's Linux runtime.**
+> - xo-17. The engine writes `.cosmo/` (dlopen helper), `.nv/` and `.cache/` into the HOME xollama gives it, as whoever it runs as. After one `sudo xollama serve`, the `ollama` service failed every GPU load with "dlopen() isn't supported on this platform". Fix: `engine.AdoptPayloadHome` hands the tree to the store's owner when the engine exits and when the HOME is prepared (root only, only a directory with the payload marker); an unprivileged server that finds unusable foreign files warns once and takes the next root; launch, device listing and link probe all get their HOME from `engine.PayloadHome`.
+> - Measured on solidPC with one install run as root, then as `ollama` (`/srv/ml/xo17/run.sh`, qwen2.5:1.5b): unfixed binary, root ok then `ollama` fails with the dlopen error; fixed binary, both fully on the GPU and every file `ollama`-owned; fixed binary as `ollama` in the directory the unfixed root run spoiled, one Warn naming the path and the fix, fallback to `~/.ollama/engines/payload`, GPU ok.
+> - xo-18. `COPYING.espeak-ng` and the engine's `BUILD_INFO.md` are `#! sidecar` rows (kinds `espeak-licence`, `build-info`, three arches), staged beside the libraries; `TestEveryLicensedSidecarShipsItsText` refuses a pin without them. They first landed in `9f01c170c`, the fork session's docs commit, which swept up the staged files by accident (its mail #706); on the owner's word they were taken back out (`af2c9ee5b`) and committed as themselves (`0d16aebe7`), the tree byte for byte the same. The LGPL texts of ffmpeg and lame and openh264's licence are not in the snapshot: asked of opencoti.
+> - Docker. `scripts/docker-assemble.sh` refuses this tree: `llama/runtime-pin-linux.txt` still names the fork's `v0.34.4-thinkbudget` runtime (b11081) and the tree is at b11232. The fork is cutting `v0.35.1-thinkbudget` (its run 37116267125); the pin moves on its mail. With those two checks skipped in a test copy, the assembly staged the engine, three libraries and both licence files, the image built, and in a container with no compiler and no eSpeak-ng Kokoro, KittenTTS and Supertonic answered mp3 (the eSpeak data is written under the engine's HOME, `/usr/lib/ollama/engines/payload`, writable there). No NVIDIA runtime in solidPC's Docker, so no GPU-in-container run.
+> - Also removed: `voicesTar`, an unused test helper left by the voices change, which failed lint.
+> - Left: move the Linux runtime pin and rerun the real assembly; the LGPL licence texts; a GPU run of the image.
+>
+> **2026-10-03 — Engine pin moved to opencoti `2610031112001` (rev `50f953bd`): b119 with the Windows audio.cpp fix. Measured on solidPC and, for the first time, on Windows (eleven2go).**
+> - Why: opencoti #701, bug-3899. b119's `oc-audiocpp-win-x86_64.dll` killed the engine at the first audio.cpp model load on Windows. The fix is half in the DLL, half in the engine (0541), so the engine (`9f7b8637`) and the three `oc-audiocpp` files move together; CUDA payloads, `oc-codec` and `oc-espeak` are b119's bytes.
+> - solidPC, as `ollama`, one run (`/srv/ml/xollama-phase2/as-ollama/pin-b120`; b119 in brackets): compat 8/8 (8/8), llama3 76.4 tok/s (77.3), four slots 302 tok/s (300), gemma4 identical, 70B overflow 3.8 tok/s (3.0). Through xollama: Kokoro, Supertonic f16/q8_0, KittenTTS, OuteTTS (default + two voice files) all mp3, Whisper returns the sentence; Wan2.1 33/33 frames (270 s, 18.1 GiB), Wan2.2 Q4_K_M 33/33 (116 s, 21.6 GiB).
+> - eleven2go (Windows 11, RTX 3090), dev `xollama.exe` in `%USERPROFILE%\xollama-b120` on port 22498 with its own store, beside the installed xOllama (22434) and Ollama (11434), both left running; `lib\ollama\engines` staged by `cmake/opencoti-fetch.cmake` from this pin, hashes checked on the host; no eSpeak-ng on the host. qwen2.5:1.5b 100 % GPU at 322 tok/s; Kokoro (default, nova), Supertonic, KittenTTS, OuteTTS answer mp3 with `oc-codec`, `oc-audiocpp` and `oc-espeak` mapped in the engine process, Whisper returns the sentence from each; `--tts-voices=` with two files, both listed and spoken by name; Wan2.1 640x352 33/33 decoded frames, 149 s, 20.3 GiB peak. Logs: `/srv/ml/xollama-b120/win-test.log`, `win-test2.log`.
+> - Doc bug found by the Windows run: `tweak model` flags take `--flag=value` (cobra `NoOptDefVal`); `docs/xollama/media.mdx` and the posted OuteTTS card had `--tts-voices value`, which fails with "accepts 1 arg(s), received 2". Both corrected.
+> - Left: the Windows installer and updater path (this was a side directory, not an install), Wan2.2 on Windows, the aarch64 sidecars, macOS sidecars (opencoti c9), no CUDA 12 payload (Volta on llama.cpp), the Docker assemble run and its writable-home check, xo-17, xo-14.
+>
+> **2026-10-03 — Engine pin moved to opencoti b119 (`2610031022001`, rev `a542184f`), measured; eSpeak-ng ships with the engine; three engine workarounds removed.**
+> - Pin (`f9eabcd22`): engine `7bd91cb6`, Linux CUDA `7d129e82`, Windows CUDA DLL `32de1a88`, and nine `#! sidecar` rows (codec, audiocpp, espeak for x86_64, win-x86_64, aarch64). No CUDA 12 payload: Volta goes to llama.cpp until opencoti publishes one (owner accepted the gap). The Windows DLL and the Windows / aarch64 sidecars have not run on their platforms.
+> - Measured on solidPC, paired with b208 on the same xollama (`/srv/ml/xollama-phase2/as-ollama/pin-b119`, `pin-b119-baseline-b208`), one run each: compat 8/8 (8/8), llama3 77.3 tok/s (77.6), four slots 300 tok/s aggregate (144), gemma4 identical, 70B overflow 3.0 tok/s (3.2); a two-turn `/api/chat` held (93 tok/s).
+> - Media through xollama on a host with NO system eSpeak-ng, all from blob paths: Kokoro 7.9 s, Supertonic f16 6.9 s, q8_0 6.8 s, KittenTTS 5.0 s cold, mp3, Whisper word for word; OuteTTS with two `--tts-voice` files (`tweak --tts-voices narrator=…,host=…`) speaks as each and lists both. Wan2.1 33/33 decoded frames at 16 fps (221 s, 17.2 GiB), Wan2.2 Q4_K_M 33/33 at 24 fps (113 s, 20.6 GiB) on the 3090.
+> - eSpeak-ng (owner): a third sidecar, `oc-espeak`, one file with its data inside, GPL-3, loaded at runtime (opencoti #696–#698). The rebuilt `oc-audiocpp` is required with it.
+> - Merged with the pin, each checked on b119's bytes against b208: no f16-V relaunch on opencoti (`-fa auto` with `-ctv q8_0` on CPU: b208 refuses, b119 boots), no `--override-kv` for DCA (`--dca on -c 49152` on a 32768 model boots and generates), the opencoti status-line filter deleted (`llm/status.go` is upstream's again).
+> - Found on the way: a root run leaves root-owned `.cosmo`/`.nv` in the engine's payload HOME and the service then loses the GPU with "dlopen() isn't supported" (task xo-17, open). `--dca on` on the CPU aborts in ggml on both builds (reported to opencoti).
+> - NOT merged: `098712c9b` (no `-<arch>` renames when staging; needs a Windows run) and `1172994dd` (one engine for CUDA 12; needs a CUDA 12 payload and a Volta run).
+> - Left: eleven2go run of the Windows payloads, xo-17, cards re-posted, PR #5 notes.
+
+> **2026-10-03 — opencoti b117 measured through xollama on solidPC; the engine's media sidecars are read from the pin and staged; eSpeak-ng found to be a host dependency.**
+> - b117 `2610030921001` (HF dev rev `a6cc834c`, same bytes as `5d1aad39` plus six sidecars) fetched by sha to `/srv/ml/xollama-b117`, sidecars beside the engine under their published names; test server on 22498, CPU only.
+> - `mannix/supertonic:3` and `:3-q8_0` answer mp3 44.1 kHz from the blob path, no hard link (6.4 s / 6.8 s cold); `/health` features `audio_speech_v1, audio_speech_content_format_v1, audio_speech_audiocpp_v1, media_codec_v1`. `mannix/kokoro:82m` and `mannix/kittentts:mini-0.8` are refused at load: they phonemise with eSpeak-ng, which nobody ships and solidPC lacks (bs2 has it, which hid it). Owner: eSpeak-ng ships as a third sidecar loaded at runtime, no system dependency, on Linux, Windows and macOS (opencoti #696).
+> - Release blocker found and fixed on our side (task xo-16): the sidecars (`oc-audiocpp`, `oc-codec`) were on bs2 only, with no pin rows and nothing in xollama staging them. Now `#! sidecar <arch> <kind> <path> <sha256>` rows (any kind) are read by `ParsePin` (`Pin.Sidecars`) and staged beside the engine by `cmake/opencoti-fetch.cmake`, `scripts/docker-assemble.sh` and the Windows release workflow, sha256 enforced (`5362dab31`). Load-time gate: an `audiocpp` model needs `audio_speech_audiocpp_v1`; a template default that needs the codec (not wav/pcm, avi/webm) needs `media_codec_v1`.
+> - Two xollama bugs from the run, fixed in `cdce0b274`: an audio.cpp speech model was placed on a GPU (VRAM booked for nothing, `--gpu vulkan` refused by the engine) and now counts as CPU; a failed media load reported the engine's last line only (its advice) and now its last four.
+> - `3bbd7100e`: the engine payload directory is locked (mutex + lock file) and keyed by content, through `fsowner`.
+> - NOT merged, waiting on a measured pin move: `841f9a688` (pin b117 with sidecar rows; no Windows CUDA DLL and no CUDA 12 row in this snapshot yet), the c8-tree glue removals (`worktree-agent-aa0b54d446e18540e`: f16-V relaunch, DCA override-kv, status filter, arch renames) and one engine for CUDA 12 (`1172994dd`).
+> - Left: Windows DLL re-issue, eSpeak sidecar, OuteTTS with `--tts-voice` through xollama, mp4 frame counts on the 3090, the pin measurement, cards re-posted (kokoro, supertonic, kittentts, outetts, wan2.1, wan2.2).
+
+> **2026-10-03 — Extra voices are one layer each, `--tts-voice NAME=<blob>`; the voices tar is gone, before the template format freezes at c8.**
+> - Owner: one layer per voice, and the engine flag now, because the model template format cannot change after c8 without breaking published models. `tts.voices` is `{NAME: digest}`, each voice a `media/tts.voices.<NAME>` layer; names `[A-Za-z0-9_.-]{1,64}`. The launch passes `--tts-voice NAME=<blob>` per voice (sorted); a model with voices needs `/health` feature `audio_speech_voice_files_v1`. `xollama tweak model`'s "Extra voices" row takes `name=file` pairs (local path, hf.co or digest). No published model carried a voices tar.
+> - opencoti #677: stop the tar reader (B), ship `--tts-voice` + the feature flag in c8; asked whether audio.cpp can take a standalone voice file.
+
+> **2026-10-03 — No engine workarounds in xollama: the audio.cpp hard link is gone, the engine is fixed instead; audit of the rest sent to opencoti.**
+> - Owner ruling: xollama never papers over a limitation of an engine we control. `server/media_named.go` (hard-linking an audio.cpp GGUF as `<digest>.gguf`) was filesystem-dependent, fell back silently and cleaned up only on a later load. Deleted, with the voices-tar unpack (`mediaVoicesDir`).
+> - Now every media component goes to the engine as its blob path. An audio.cpp speech model needs `/health` feature `audio_speech_content_format_v1` (`MediaFeatures`); an older engine is refused at load naming the feature. A missing component blob is refused by name before launch; an unreadable `/health` body fails at once instead of reading as "no features".
+> - opencoti: #672 (bug-3880 contract: format by contents at package.cpp:60, tensor_source.cpp:1566, vocos_vocoder.cpp:61, espeak_phonemizer.cpp:136; voices from a tar file) and #674 (owner: both in c8 today, with the two feature flags). Audit of 14 further engine/packaging workarounds in xollama sent as #673, ranked (payload HOME, dlopen helper, text-parsed 429, /health retry, voices dir, staging renames, CUDA 12 APE copy, …); task xo-14 retires each with the build that fixes it. xollama's own silent fallbacks: task xo-15.
+> - Published models are unchanged and need no republish: the same blobs load on a c8 engine. Cards in `dev/posts/ollama` now name c8 as the minimum. Their b112 measurements were taken through the hard link and are re-run on c8.
+> - Left: c8 build + gate lines from opencoti, pin move, TTS re-measure on c8.
+
+> **2026-10-03 — Media templates published from bs2: Kokoro, Supertonic, KittenTTS, Wan2.2 5B and a Wan2.1 fp16 tag; audio.cpp needs a `.gguf` name.**
+> - Owner: publish the M7 templates from bs2, with the most relevant quants rather than a full ladder. On bs2 GPU0 (opencoti's slot, #667/#668), using opencoti b112 `2610030147001` with its CUDA payload `023a2930` and its codec and audio.cpp sidecars, all checked by sha256. GPU1/8244 was left alone.
+> - **bs2 house rule:** models come from HF only. A copy from solidPC was stopped and removed. `xollama media fetch` fetched from HF by sha256, and bs2's own files were hard-linked.
+> - **Published:** `mannix/kokoro:82m`, `mannix/supertonic:3` (f16) and `:3-q8_0`, `mannix/kittentts:mini-0.8`, `mannix/wan2.2:ti2v-5b` (Q4_K_M) and `:ti2v-5b-q8_0`, `mannix/wan2.1:t2v-1.3b-fp16`.
+>   - New catalog entries, sharing builders (`supertonic`, `wan21`, `wan22`) with the defaults.
+>   - The `--dry-run` configs of the five existing entries are byte-identical before and after.
+> - **Fix, `server/media_named.go`:** audio.cpp judges a model file by its name.
+>   - It read the blob path as a safetensors package and failed on all four TTS templates (missing `config.json` or `voice_styles/M2.json`).
+>   - A symlink is not enough: it is resolved and then refused.
+>   - So an audio.cpp GGUF speech model is now hard-linked as `<models>/media/named/<digest>.gguf`, and names whose blob is gone are dropped.
+>   - Three tests; four plus three mutations, all killed. Reported to opencoti (#670).
+> - **TTS:** every template answers mp3 (Kokoro 54 voices at 24 kHz, Supertonic 10 at 44.1 kHz, KittenTTS 8 at 24 kHz). Whisper large-v3 turbo transcribed the default voice and `nova` word for word on all four. audio.cpp runs on the CPU.
+> - **Wan2.2 TI2V 5B, first run anywhere:**
+>   - 832x480x33: 29.3 GiB (Q4_K_M) and 31.2 GiB (Q8_0) peak, 74 s;
+>   - 640x352x33: 20.3 and 22.2 GiB, 35 s.
+>   - The template is now 640x352x33 at 24 fps with a 13,312 MiB reserve, so the Q4_K_M tag fits a 24 GB card; a larger request is a 400.
+> - **Wan2.1 fp16:** 640x352x33 in 76 s at 20.4 GiB, but the mp4 has 32 frames for 33 asked (asked opencoti).
+> - **Model cards** for all nine media repos on ollama.com: `/srv/dev-disk-by-label-opt/dev/posts/ollama/`.
+> - Left: `mannix/media-kit`, and Wan2.2 image-to-video (not measured).
+
+> **2026-10-03 — Upstream v0.35.1 synced (fork manifest `f430d02f`, llama.cpp b11232).**
+> - `sync/upstream-v0.35.1`, in its own worktree (the new one-branch-one-worktree rule, `9ccbf89b`):
+>   - `d3c2f4ea` merged the tag. Four conflicts, each kept both sides: upstream's `CAPABILITY` directive beside the `model-config` hook's `XOLLAMA` (`parser/parser.go`, `cmd/create_safetensors.go`), `/v1/systemone` beside the tokenize routes (`docs/docs.json`), and `XOLLAMA_HOST` in upstream's reworked `TestWebSearchLoopMaxLimit`.
+>   - The 24 patches followed as `--no-ff` merges at the manifest's shas, in order (`acb29d3c` … `38c76e8a`; the table is in CARRIED-PATCHES).
+> - 23 patches are the v0.35.0 commits rebased (`git range-diff` all `=`). Each of those merges leaves the tree exactly as its first parent; the ones that conflicted with their own earlier copy were resolved to this side. The one change is `up-modelfile-roundtrip`'s `95ece51a` (`CAPABILITY` is a directive a quote can swallow), and that merge adds exactly its diff.
+> - `LLAMA_CPP_VERSION` b11081 → b11232 plus upstream's `002-clef.patch`. `LLAMA_CPP_VERSION`, `llama/compat` and `llama/server` are byte-identical to the fork's `think-budget` (digest `f9c1055da0f6`). The runtime pin moved to `runtime-windows-amd64-b11232-f9c1055da0f6` (run 37093679156: compat markers present, asset sha256 `6c2bdf2c…` and inputs digest checked here).
+> - Checks: gofmt silent, `go build`/`go vet ./...` clean, `go test ./...` no failures, `-race` clean on llm, server, model/parsers, thinking, parser, middleware and internal/council, `golangci-lint` 0 issues, `check-hooks` 33 hooks all registered, `check-compat-origin` 0 commits not from the fork or upstream.
+> - Also committed: five agent rule files that `CLAUDE.md` already pointed at but were never added (`app-brand`, `engine-fit`, `modelfile-roundtrip`, `system-settings`, `system-settings-gpu`).
+> - Left: a `TEMPLATE` quote swallowing an `XOLLAMA` line is still not caught (the pattern is the fork's and `XOLLAMA` is ours). `main` stays v0.34.4 until the next release PR.
+
+> **2026-10-03 — Row B on opencoti b109 (head fixed); video slowdown is the shape; b208 commit control on eleven2go.**
+> - b109 `2610022238001`, auto: 22,662-token arm 0.27 / 159.7 t/s (two fit passes, 62/81). Short-arm decode 2.79 t/s (b105: 2.10).
+> - b109, head: no fit passes (bug-3874 fixed), 47/81 layers, 10 s boot, long arm 0.20 / 134.2. Its short-arm decode came in at 1.49 t/s (b105: 1.97), asked opencoti whether to repeat. Pin can move to a published build with 0527 + 3874 + 0531 (#656).
+> - Video, reverse order (#655): 832x480x17 takes 570 s even first in a fresh process, and 640x352x33 takes 216 s second. So it is the shape, not eviction.
+> - eleven2go (owner's go for the b111 rerun of bug-3876): b208 control commit is 17.7 GB after load, 23.3 GB after the first drafting request (+5.6 GB, untouched), 28.4 GB after 4 x 16k. b111 is staged and waits for its Windows CUDA DLL.
+
+> **2026-10-02 — Cerebriline ran all five media tools live on 22499 (b105, #650); an edit keeps its source's size.**
+> - Results: Klein generate 7.6 s; edit 41.2 s (a true reference edit, so b105's `auto` picks reference for FLUX.2); speech mp3 by default; transcription exact; Wan2.1 clip 228.8 s; a cancelled clip freed the card within 5 s. Cerebriline main `daa8ce078` reads `default_for`.
+> - An edit without a size now comes back at its first image's size, capped at the template's pixel count, in multiples of 16 (`server/media_edit_size.go`, 5 mutations, all killed). Before, it came back at the template's 1024x1024.
+> - 22499 also names a video default (`video=mannix/wan2.1:t2v-1.3b`).
+
+> **2026-10-02 — bug-3755 repro on eleven2go for opencoti (#642 → #646; owner's go for this run only).**
+> - b208 `2609281805001` on a separate xollama on 22436, under a commit hog (about 1 GB of commit left free), with procdump attached.
+> - Run 1, one sequence: 60 prompts, 15 clean 503s, no crash.
+> - Run 2, `--max-parallel 4`: the engine aborted on `ggml_aligned_malloc` (3,042 MB) → `GGML_ASSERT(ctx->mem_buffer != NULL)` (exit 6), not a SIGSEGV; xollama expired the model.
+> - The September SIGSEGV did not reproduce. Host restored afterwards (hog and server stopped, WER key removed). eleven2go stays paused otherwise.
+
+> **2026-10-02 — Row B on opencoti b105 2610022033001: bug-3859 fixed (#639 → #641).**
+> - auto: the 22,662-token arm completes at 0.23 / 158.7 t/s (b97 and b103 crashed). The fit makes room in two passes (+432 then +80 MiB), and the sizer reports no shortfall. 62/81 layers on the GPU.
+> - head: 0.20 / 131.7 at long context (was 0.14). Two fit passes of +224 MiB each, 46/81 layers, 25 s boot. Asked opencoti whether head needs that room.
+> - Short arm: auto 2.10, head 1.97 t/s decode. The pin can move to a published build with patch 0527 on this measurement.
+
+> **2026-10-02 — Media: a default model per kind (`XOLLAMA_MEDIA_DEFAULTS`).**
+> - Cerebriline's `--media-provider` offered no image tool on 22499, because there are two image models and it never guesses.
+> - The operator now names one per kind: `/v1/models` marks it with `default_for`, and a request without a model gets it.
+> - Video: `/v1/videos` (create, poll, content, delete, list) with xollama job ids. The engine is held per job, and the template's clip is the cap. Live on the 3090 with b105: Wan2.1 1.3B 640x352x33 peaks at 17.0 GiB in 216 s; 832x480x17 tiles its VAE decode (~19 GB wanted) and takes 563 s. Both came back as h264 mp4.
+> - The Wan2.1 template is set to 640x352x33 with a 12 GiB reserve (owner) and published as `mannix/wan2.1:t2v-1.3b`.
+
+> **2026-10-02 — Row B on opencoti b103 2610021841001: bug-3859 not fixed (#632 → #635).**
+> - auto: boot 71 s, short arm 2.22 / 197.4 t/s; the 22,662-token arm still dies, now as `failed to allocate CUDA0 buffer of size 363071744` at 17,920 tokens.
+> - Patch 0524 flags the 359 MiB shortfall, but no `fit target … weights placed again` follows, and the fit keeps 64/81 layers on the GPU, as b97 did.
+> - head: 15 s boot, 1.82 / 147.8 t/s, and the long arm passes at 0.14 / 133.7 t/s.
+> - Logs: `/srv/ml/xollama-phase2/as-ollama/residency-ab-b103/`. The engine pin does not move.
+
+> **2026-10-02 — Media: capabilities on `/v1/models` and a voice list, for Cerebriline (#628).**
+> - Media models' `/v1/models` entries carry `capabilities` (`5c5d65d02`).
+> - `/api/xollama/media/voices` (GET `?model=` or POST) and `xollama media voices MODEL` list the engine's voices with the template's OpenAI names as aliases, the default, formats and sample rate.
+> - A test server for Cerebriline runs at `127.0.0.1:22499` (b97, the four published models).
+
+> **2026-10-02 — Media endpoints, Phase 4: templates published on ollama.com.**
+> - **Registry test passed.** ollama.com accepts the `application/vnd.xollama.media` layer, and a clean store pulled it back intact.
+> - **Stock ollama (v0.35.0, built from `upstream`):** it pulls media templates but cannot show or run a media-only one (owner: fine). A chat model with media attached still chats; stock skips the layer.
+> - **Published** as `mannix/<family>:<size>` (owner's choice): `whisper:large-v3-turbo`, `outetts:0.3`, `z-image:turbo` and `flux2-klein:4b`.
+>   - Z-Image was GPU-tested before the push (1024² in 36 s), and a clean store pulled Whisper and OuteTTS and used them.
+>   - Klein and Z-Image state no edit mode, so one Klein template edits as img2img on b97 and from reference images on M7.
+> - **Catalog:** `Template` names and a PULL column in `xollama media list`.
+> - **Next:** the M7 templates (Kokoro, Supertonic, KittenTTS, Wan, media-kit) once M7 is tested. The owner deletes `mannix/xollama-registry-test` and adds "needs xOllama" descriptions on the pages.
+
+> **2026-10-02 — opencoti b97: row B re-check (#626 → #627).**
+> - **Setup:** llama3.1:70b q3_K_S on the 3090, b97 `2610021340001` with its `ggml-cuda.so` beside it (`/srv/ml/xollama-phase2/engines/b97-2610021340001`), the same recipe as b177.
+> - **Boot (bug-3515) is fixed.** `--kv-residency-mode auto` boots in 38 s on POSITION_WINDOW (window 256, host tail 32512) and answers.
+> - **New defect: `auto` crashes on the long arm.** It dies with a CUDA OOM in `fattn.cu` (ring / `g_slotK` cudaMalloc) at about 18-19k tokens of a 22.6k prompt, reproduced 2/2; b177 completed that arm.
+> - **`head` is clean:** 1.74 / 0.17 t/s on the short / long arm; `auto` gets 2.25 t/s on the short arm.
+> - Row B stays open on opencoti's side. No pin moves.
+
+> **2026-10-02 — Media endpoints, Phase 3: the OpenAI media routes, and a local model mirror.**
+> - **Routes** (`server/media_routes.go`): `/v1/images/generations`, `/v1/images/edits`, `/v1/audio/speech`, `/v1/audio/translations`, and `/v1/audio/transcriptions` for a model with STT (any other model still goes to upstream's shim). `/v1/models` adds modalities and an `?output_modalities=` filter.
+> - **Template control:** every field a client leaves out comes from the template's `defaults`, and `fixed` fields always do. `voice_map` maps OpenAI voice names.
+> - **Queue:** one FIFO per engine (16 deep, 10 min), then 503 with `Retry-After`.
+> - **Mirror** (owner: "we can't re-download them every time"): `xollama media fetch --dir` and `media create --dir` (`internal/mediahub/mirror.go`). The whole catalog is in `/shared/dev/opencoti/.opencoti/models/media`; `/srv/ml/media` is now a symlink to it.
+> - **Live on solidPC, on CPU (dev c7 `2610020719001`):** a Klein image (template steps, cfg and sampler confirmed in the PNG), OuteTTS speech, Whisper transcription (exact) and translation, the modality filter, and two queued speech requests served in turn. 13 mutations, all killed.
+> - **Live on the 3090 with b97 `2610021340001`** (handoff #626, staged with its `ggml-cuda.so`):
+>   - Klein 1024² in 16 s, as a `data:` URL;
+>   - Klein edit 200, but barely changed: img2img until M7's ref switch;
+>   - OuteTTS speech in 4 s, Whisper transcription in 1 s, exact.
+>   - The STT and TTS memory estimates are short by up to 0.3 GiB; Phase 0 and M7 settle the reserves.
+> - **Open:** Cerebriline's own image tool against xollama. b97 has no `--diffusion-edit`, which M7 adds.
+
+> **2026-10-02 — Media endpoints, Phase 2: the media runner, `hf.co` sourcing and `xollama media`.**
+> - **Runner:** a model's media runs in its own media-only opencoti process (`llm/engine_media.go`), scheduled under `media:<manifest digest>` through one hook in `Scheduler.load` (`server/media.go`).
+>   - Reserves go to the GPU with the most free memory.
+>   - An engine missing a configured feature is refused at start.
+> - **Capabilities:** `image_generation`, `image_edit`, `speech`, `transcription` and `video` show in `/api/show`.
+> - **Media-only templates:** `create` and `show` now handle a model with no GGUF.
+> - **Sourcing:** `hf.co/<repo>@<rev>:<path>` resolves by HEAD (`internal/mediahub`), and the server fetches it with upstream's `downloadBlob` (`/api/xollama/media/pull`).
+> - **Discovery:** a catalog (Klein, Z-Image, Whisper, OuteTTS, Kokoro, Supertonic, KittenTTS, Wan 2.1/2.2, `media-kit`) and `xollama media list|search|files|create`.
+> - **Live on solidPC (dev engine c7):** OuteTTS speech → Whisper transcription round-tripped; `media create` fetched Whisper (874 MB in 37 s) and attached OuteTTS to Qwen3-4B. 12 mutations, all killed.
+> - **opencoti:**
+>   - #623: mp3 encoding, Klein `ref` edit, combined-boot gate and `/v1/videos` are in M7;
+>   - #624: audio.cpp TTS and mp4/h264 are in M7, and the provisional `--video-*` flag names were sent.
+>   - xollama never encodes audio.
+> - Next: Phase 3, the OpenAI routes, with image generation first for Cerebriline. Phase 0 waits on b97 and the M7 build.
+
+> **2026-10-02 — Media endpoints, Phase 1: schema v7 `media`.**
+> - **Schema:** `xollama.json` gains `media.image`, `media.stt`, `media.tts` and `media.video` (`types/xollama/media.go`).
+>   - Components are named by digest. `create` writes each one as an `application/vnd.xollama.media` layer named `media/<kind>.<role>` (`create/xollama_media.go`, inside the `model-config` hook).
+>   - Each kind's `defaults` are the template's engine settings; `fixed` lists the ones a request may not override.
+> - **CLI:** `xollama tweak model` gains a row per setting (`cmd/tweak/media.go`). A component given as a path is hashed, then uploaded on write only when the server lacks it.
+> - **Tests:** unit and mutation tests (11 mutations, all killed).
+> - **Live on solidPC (scratch store):** Kokoro and Whisper were attached to a Qwen3-4B model, shown, re-run without re-upload, and garbage-collected on `rm`.
+> - **opencoti #622:**
+>   - no mp3 encoder in the engine (the owner decides between encoding in xollama and WAV);
+>   - Klein edits are img2img until a switch;
+>   - combined boot is ungated, so Phase 2 runs media in its own process;
+>   - video is queued as M7.
+> - Next: Phase 2 (launch and scheduler). Phase 0 waits on the b97 handoff.
+
+> **2026-10-02 — Media endpoints: plan written (`plans/media-integration.md`).**
+> - opencoti closed row M (#619, b97 `2610021340001`): image generation and edit, STT and TTS behind the OpenAI routes.
+> - The plan attaches them to a model, or to a media-only template, through a `media` section in `xollama.json` (schema v7). Components are `application/vnd.xollama.media` layers named by role.
+> - Routes: `/v1/images/*`, `/v1/audio/speech`, and `/v1/audio/transcriptions` when the model has STT (otherwise upstream's shim). `/v1/models` gains modalities.
+> - SurfSense was read from source (666bbb07). Chat and embeddings already work; images, TTS and STT go through `openai_compatible` and LiteLLM's routes.
+> - Engine gaps were mailed to opencoti: the Klein reference edit, audio.cpp for Kokoro, Supertonic and KittenTTS (GGUF in `audio-cpp/audio.cpp-gguf`), mp3, and video.
+> - Owner decisions:
+>   - push a registry test under `mannix` (the owner deletes it);
+>   - SurfSense gets docs first;
+>   - mp3 is asked of opencoti;
+>   - the model template owns the media engine's settings: launch defaults plus a per-request fill-in, with a client value winning unless the field is `fixed`.
+> - Video and SurfSense's other engine needs were sent to opencoti (#621).
+> - Phase 0 test models are downloading to `/srv/ml/media`.
+> - Next: Phase 1 (schema v7). The Phase 0 engine runs wait on the b97 handoff.
+
+> **2026-10-02 — A forced link speed is now per GPU.**
+> - opencoti #611 shipped patch 0512 (dev build 2610020826001), which accepts `OPENCOTI_LINK_GBPS=<pci>=<GB/s>,...`.
+> - `tweak server gpu` now sends one entry per GPU of the load that has a forced link; a GPU without one is probed. The engine still plans each KV cache with the slowest of its GPUs.
+> - Not gated on the engine build. Owner: there has been no first release, and every build is a dev build.
+> - Also from #611: the link profile no longer reads a GPU's idle gen1 state, and `--link-probe` lists integrated GPUs.
+
+> **2026-10-02 — Server settings, Phase 5: the engine's auto policies (schema v6).**
+> - New settings, on `tweak model` and as `tweak server` defaults:
+>   - `kv.rolling_window` (`--kv-rolling-window`: on, off or MiB);
+>   - `draft.auto_mtp_policy` (`--auto-mtp-policy`);
+>   - `fit.enabled` (`--fit`);
+>   - `fit.vram_target_mib` (`--vram-target`).
+> - `kv.residency_mode`'s help now carries opencoti #609's semantics.
+> - A rolling window under `head` residency is refused, because head disables the window.
+> - All but `--fit` are opencoti only.
+> - These configs are stamped v6, so an older build refuses them rather than dropping them.
+> - Not yet run against a live opencoti: eleven2go is paused for the rolling-window validation.
+> - Phase 6: feature doc `docs/features/system-settings.md`. Open: the desktop app restarting its server for a restart-needed setting.
+
+> **2026-10-02 — Server settings, Phase 4: the link probe in `tweak server gpu`.**
+> - The GPU menu now has the engine measure each GPU's host link (`/api/xollama/link-probe`, which runs `opencoti --link-probe`, b62 or later).
+>   - It shows the detected PCIe generation and lanes and the measured rate, and the link wizard starts from them.
+>   - A backend with a model generating on it is not probed.
+> - Measured on solidPC (dev build 2610020719001): the RTX 3090 runs at PCIe 3.0 x8 in a 4.0 x16 slot, 6.7 GB/s host to device.
+> - The owner approved opencoti's per-device link force (`PCI=GBPS,...`). opencoti builds it alongside the rolling-window validation; until then a load uses the slowest forced figure among its GPUs.
+
+> **2026-10-02 — Server settings, Phase 3: `tweak server gpu`; opencoti answered #608.**
+> - `xollama tweak server gpu` sets the GPU policy:
+>   - which GPUs models may use;
+>   - priority (fill order, ahead of free memory);
+>   - the backend for a GPU reachable through several;
+>   - a forced link speed (GB/s, `4x16`, or a generation-and-lanes wizard);
+>   - split auto/spread/single;
+>   - split mode: layer, or row (CUDA only, unvalidated).
+> - A model's own device pin still wins.
+> - The engine takes one forced link figure per process, so a load spread over several GPUs gets the slowest forced figure among them; opencoti confirms that's right.
+> - opencoti #609: per-device link force is queued at opencoti and needs the owner's go-ahead. It also gave the complete auto-policy list, the residency × rolling-window matrix (FINAL), the split modes (tensor unsupported), and confirmed the link probe is safe on an idle GPU. All of it is recorded in the plan.
+> - Verified: mutation on the three placement hooks, race tests, lint, and a live smoke test.
+
+> **2026-10-02 — Server settings, Phase 2: defaults for every model's settings.**
+> - `xollama tweak server` now sets server-wide defaults for every `tweak model` setting a server may default: engine, flash attention, KV types, unified KV, residency, slots, session pooling and the speculative type.
+>   - It uses the same flags, walk and consistency pass as `tweak model`.
+>   - A bare run asks whether to change the defaults or the API key.
+> - The defaults are merged under the model's own settings at launch (`WithDefaults`).
+>   - The model wins, and a cache pair stays a pair.
+>   - A default the model cannot act on is left out and logged.
+>   - DCA, devices and council are a model's own settings and are not offered as defaults.
+> - `tweak show model NAME` marks each setting `model` or `server`.
+> - Verified: mutation, race tests, lint, and a live smoke test.
+> - Next: Phase 3, `tweak server gpu`. Still waiting on opencoti #608: the auto policies, and residency mode vs the rolling window.
+
+> **2026-10-02 — Server settings, Phase 1: `tweak envs` and `tweak show`.**
+> - The server's `~/.ollama/xollama-settings.json` now overrides the environment.
+>   - `envconfig.Var` and `XollamaOnly` read its `envs` section first.
+>   - Engines get it through `envconfig.Environ()`.
+>   - It is written only through `/api/xollama/settings`: from the server's own machine, never through a proxy, and with the key while one is set.
+> - New commands:
+>   - `xollama tweak envs NAME=VALUE`, `--unset NAME`, or no arguments to be asked;
+>   - `xollama tweak show envs` (`--all` too), `show server` and `show model NAME`.
+> - What each change does:
+>   - Load-time variables apply at once; the command offers to unload the running models.
+>   - Variables read when the server starts say a restart is needed.
+>   - The API key and unknown names are refused.
+> - With no settings file nothing changes. The Registry has a new `system-settings` row.
+> - Verified: mutation (removing the `Var` hook fails two tests), the race detector, lint, and a live smoke test on a scratch server.
+> - Next: Phase 2, server defaults for the `tweak model` settings.
+
+> **2026-10-02 — Plan: server settings without environment variables.**
+> - Owner: `tweak server` sets only the API key, but every server-wide setting should be real configuration. Asked for: `tweak server` (defaults for every pertinent `tweak model` setting), `tweak server gpu` (which GPUs, their priority, the backend, the PCIe link, split), `tweak envs` (environment overrides) and `tweak show server|envs|model NAME`.
+> - Decided with the owner:
+>   - The tweak file beats the process environment.
+>   - Changes apply immediately where possible.
+>   - A forced link is per GPU, set through a generation-then-lanes wizard.
+>   - Priority is fill order.
+>   - Split is auto, spread or single, plus the split mode.
+>   - "Auto" means the engine's fit; residency mode and engine selection are offered as well.
+> - Plan: `plans/system-settings.md`.
+> - Engine questions to opencoti (#608): a per-device link force, every auto policy, residency mode vs `--kv-rolling-window`, split modes, and probing a busy GPU.
+> - No code yet.
+
+> **2026-10-01 — Fixes for 0427/0428's lost time: check tools read, folds stick, housekeeping is plain.**
+> - `check_file`, and any tool whose name says check, lint, validate, verify or diagnose, now counts as read-only (5f29e671b). Researchers and critics get it, and the synthesizer's calls no longer count as changes. A write word still wins.
+> - **Every fold now sticks.** Two causes, both found while testing the refused-root fold:
+>   - `sentTokens` (194c9cab6, this morning) measured the client's raw messages through `apply`. `apply` drops a record that doesn't match, and the raw messages never match the members' view, so every fold was dropped the moment it was made. All 8 server folds of series 4 were dropped; series 3 had none. Now it measures the raw messages directly and the record is never touched.
+>   - The refused-root fold and the idle fold folded the client's raw messages (`full`). They now fold the members' view (`hist`), as every apply does.
+>   - Guards: `TestARefusedRootsFoldIsOfTheMembersView` (each site fails it alone) and `TestTheSentConversationIsMeasuredWhole` (fails with `apply` back in).
+> - **A generic client's housekeeping is answered plainly.** A request without tools and without `council_chat_state`, whose messages already hold tool calls, skips the council: no members, no server fold. In 0427 each of Cerebriline's compaction requests took 13.5 minutes through the council. Edge case, documented in `council-integration.mdx`: a desktop chat that used web search and then turns it off is answered by the model alone after that. Guard: `TestAToolTasksHousekeepingIsAnsweredPlainly`, verified by removal.
+> - Not yet run on eleven2go: testing there is paused for opencoti's gates.
+
+> **2026-10-01 — Why council runs 0427 and 0428 lost time (analysis; no code change yet).**
+> - Neither run ever got the game to parse. Every oracle run in both was a SyntaxError: the original one-bracket error on a long minified line (`dDec`) became "Unexpected token '{'" on the next method and stayed that way. 0427 ended as a TIMEOUT at 7,204 s. 0428 was stopped at 12:38 by the owner, with about 10 minutes of its cap left.
+> - **The members could not locate the error.** Read-only tools are inferred from their names, and `check_file` has neither a read word nor a run word. So researchers and critics never get it, and for the synthesizer it counts as a change. 0428 called `check_file` 0 times (0427: 1), against 47 reads and 11 edits. The synthesizer edited a different long line almost every time, twice resending one unchanged. Plain 0425 called it 6 times, with 16 reads and 21 edits.
+> - **Researchers and critics took most of the time.** 0428: 30 round trips with researchers or critics took 4,419 s (79% of the time in requests), against 31 synthesizer steps (1,079 s), over 5 synthesizer cycles. 0427: 3,070 s against 1,973 s.
+> - **Server-side compaction is thrown away.** The refused-root fold in `councilChat` folds `full`, the client's raw conversation, while every other fold and apply uses `hist` (after `council.History`, which rewrites tool-call messages). The record's hash never matches, so each fold (about 6 minutes) is dropped by the next apply, the root is refused again, and another fold follows. 0428's last 20 minutes were three folds, each dropped.
+> - **A client compaction runs through the whole council.** Each of Cerebriline's compaction requests in 0427 (route=direct, no tools) took 13.5 minutes: a server fold of the same conversation (6 min 16 s), a refused fold (5 min 39 s), then the summary the client asked for. Two of them, plus a 426 s round at 161k, account for most of 0427's last 2,000 s.
+> - Analysis files: `/srv/ml/xollama-phase2/as-ollama/e2g-s4/` (`server-1.log`, `losttime-*.txt`).
+
+> **2026-10-01 — A Q4_K_M council fits the 3090 at the same window, on kvarn2.**
+> - Owner: IQ2_M costs about 3.6x the steps of Q4_K_M (v6 arms), and every council role pays it. New tags on eleven2go: `omni-council-q4km-kv2` (omnimerge-v4 Q4_K_M MTP, `kv: kvarn2`, `num_ctx` 196,608, 2 live slots, the council settings of `omni-council-think`) and its plain twin `omni-plain-q4km-kv2` (same, council off). A plain arm uses its council's KV type even where it would not need it (owner).
+> - Measured on b208, 393,216 cells (196,608 x 2), all fully resident on the GPU:
+>
+>   | | IQ2_M + kvarn3 | Q4_K_M + kvarn2 |
+>   |---|---|---|
+>   | weights | 9,238 MiB | 15,339 MiB |
+>   | KV cache | 5,672 MiB | 4,136 MiB |
+>   | GPU in use | 19,202 MiB | 23,760 MiB (of 24,576) |
+>   | one council turn | 282 s, 17,770 tokens, 50.7 tok/s | 221 s, 10,519 tokens, 47.4 tok/s |
+>
+>   The turn is one sample, not a measurement. About 800 MiB is left free, so 196,608 per slot is the ceiling for Q4_K_M on this card.
+> - Also: `omni-plain-v4-iq2m-128k` (IQ2_M, 128k, default KV): `omnimerge-v4-mtp_tb:27b-iq2m-128k` with its `think_budget_message` fixed (it was a lone `"`).
+> - Why plain omni went from ~300 s (0129) to ~2,000 s (0425): the oracle. Re-scored with v3, none of eight old fast fixes passes (0129: 16/23). The work grew about 4x (16 to 59 requests, 15.6k to 62k output tokens, 87-94% of it thinking), generation slowed from 60 to 46 tok/s (Q4_K_M MTP on stock to IQ2_M kvarn3 on opencoti), and prefill grew from 32 s to 613 s (contexts 28k to 98k). The 0129 setup reruns on Q4_K_M with the v3 oracle and medium thinking after series 4.
+> - Council run 0427 (da40325d, first on the session fix): TIMEOUT in 7,204 s, the page does not parse. No engine abort; its conversation reached 161k.
+
+> **2026-10-01 — A task sent again starts clean.**
+> - A request with no assistant turn, on a session the server derived, drops what was kept for that session: the kept deliberation, the review desk, the held resume point and the compaction record. The derived id comes from the conversation's opening, so every run of the harness's task landed on the last run's session (0422, 0424 and 0426 all ran on `xo-efd33195b0dfad24`). The test showed this was worse than a stale note: without the reset, a re-sent task resumed the past run's council mid-turn from its held point, with no planner. A session the client names is never reset.
+> - Guards: `TestATaskSentAgainStartsClean` (verified by removal) and `TestOnlyAConversationWithNoAnswerYetIsANewTask`.
+> - opencoti fixed the overnight abort (#593 → #594): b32 `2610010811001`, patch 0489. The refusal is now an HTTP 400 `exceed_context_size_error`. It is a dev snapshot; eleven2go stays on b208 until the owner says otherwise.
+
+> **2026-10-01 — Series 3 on eleven2go (2fa24de0): council 0 of 3 fixed, plain omni 1 of 2. A council's reported size is now the request's whole.**
+> - Runs (cline 1bd850f60, generic wire, `PROVIDER=ollama`, `THINKING=medium`, 7,200 s cap):
+>
+>   | Run | Arm | Result | Time |
+>   |---|---|---|---|
+>   | 0422 | council | TIMEOUT, does not load | 7,203 s |
+>   | 0423 | plain omni | broken, does not load | 2,874 s |
+>   | 0424 | council | TIMEOUT, 18/23 (friction, run, jump, wall, left_edge) | 7,204 s |
+>   | 0425 | plain omni | FIXED 23/23 | 2,012 s |
+>   | 0426 | council | TIMEOUT, 22/23 (hud) | 7,203 s |
+>
+> - The check now runs through the turn: 0426 ran the program at 55, 587, 1,092, 1,469 and 1,861 s (0418: 51 s, then nothing until 1,989 s).
+> - Where the council's time went:
+>   - **The reported size was still a sum on resumed research rounds** (143k-393k on 0426; the window is 196,608). The compactor measured only the history before the turn's tool traffic. A generic harness's task is one message, so that history was too short to measure, and a turn with no front or planner call fell back to the members' sum. Cerebriline then compacted its conversation (0426: two compactions, about 1,500 s with the crash below). Fixed: the done chunk now reports the whole request the client sent, tool round trips included, rendered with its tools and tokenized (`sentTokens`). Guards: `TestTheSentConversationIsMeasuredWhole` and `TestTheDoneChunkReportsTheConversationsPrompt`, the latter verified by removal.
+>   - **The engine aborted five times** (opencoti b208, `server-context.cpp:6852: GGML_ASSERT(n_ctx > 0 && n_prompt_tokens > 0)`, exit 6). Each abort came beside a "session allocation full … compact the session" refusal, while a compaction writer and the front ran together. Each cost about 10 minutes: a retry that waited 5 minutes on a closed pipe, then a 5-minute GPU discovery watchdog before the reload. Reported to opencoti.
+>   - Every council run used the same xollama session (`xo-efd33195b0dfad24`), because the session id comes from the conversation's first message and the harness sends the same task each time. What a session keeps (the held resume point, the compaction record, the review desk, the kept deliberation, the root pool) may therefore cross runs. Not yet measured.
+
+> **2026-10-01 — The done chunk reports the conversation's size; a turn's first run is its check.**
+> - 0418's done chunks once reported a 229k prompt: the synthesizer's, which holds the plan and the findings on top of the conversation. Cerebriline sizes its context from that number and compacts at about 159k, so the council's own deliberation could fold the client's conversation.
+> - The compactor now records what it measured on every pass (folded or not), and the done chunk reports that. Without a measurement it falls back to the front's or the planner's prompt; the synthesizer's is never taken as the conversation's.
+> - Guards: `TestTheReportedPromptIsTheConversations`, `TestCompactMeasuresTheConversation`, both verified by removal.
+> - A turn's check can now be inferred from one run. 0418 ran the program once at 51 s, before any change, and nothing ran it again until 1,989 s, because the check was inferred only from a call repeated across a change. Now, with no repeat, the turn's first non-reading call is the check when its tool runs something (run, exec, command, shell, bash, test). An edit tool's call is never taken, and a member's own inference still waits for a repeat. Guard: `TestATurnsFirstRunIsItsCheck`, verified by removal.
+
+> **2026-09-30 — Council members get Cerebriline's output budget.**
+> - Each member's reply cap is the least of three quarters of the council's window, the ceiling (`council.max_tokens`, default 16,384, settable 1,024-96,000) and the model's `num_predict`. It is the VS Code plugin's rule (#578), with a lower ceiling.
+> - The thinking now sits inside the cap instead of on top of it. A level is a share of the cap, and `on` means medium. Each member is told its cap and its thinking share (Cerebriline's Output Budget section).
+> - The reserve books the caps alone.
+> - The Cerebriline harness now works for both plain arms:
+>   - plain omni, 0411: FIXED 23/23 in 1,125 s;
+>   - plain glm, 0412: FIXED 23/23 in 2,532 s.
+>   Both ran on the CLI's old budget (49,152 / 12,288: the gateway fallback, not the plugin's 96,000 / 24,000), and 0412 overlapped a rebuild of Cerebriline's core (#580). They will be rerun once the CLI matches the plugin.
+> - Runner-issued check: a directive's `check_call` (`council_check_call_v1`) is the turn's check, even through a shell tool. A synthesizer that changed something and ends without running it has the council make it. Needed because Cerebriline's `./run_game` goes through `run_commands`, which the council counted as a change (#581).
+> - `council_read_many` dropped: `read_files` already takes several files, and one step already carries several calls.
+> - **A generic harness now gets the council** (owner: the test is a council tag driven by a harness that does not know it is one).
+>   - 0411 showed why this was needed: tools without `council_chat_state` had been a plain chat. Now they are the council's, and the server keeps the resume point itself.
+>   - Read-only tools are inferred from their names.
+>   - The check is inferred as the call repeated unchanged across a change.
+>   - Resent thinking is not read by members.
+>   - From this build on, a council tag is no plain arm: plain runs need a plain tag.
+> - Plain arms on the parity build (96,000 / 24,000):
+>   - plain omni, 0413: FIXED 23/23 in 2,197 s;
+>   - plain glm, 0414: FIXED 23/23 in 1,189 s.
+> - First council arm, 0415 (`omni-council-think`, bb7434ce): the council engaged on the plain request (front turn, 4,096 think budget), then ABORTED at 692 s. A researcher's forced report carried `maxLength` 2,000, which the engine cannot turn into a grammar. The fix drops the bound from the schema and asks a refused format again once without it.
+> - A request whose `num_predict` is below 64 is a probe and is answered plainly. Cerebriline's fixed template probe sends two such requests (`num_predict` 1), and without this each would start a council.
+> - Council arm 0416 (`omni-council-think`, 55d4baf7, generic wire, PROVIDER=ollama) ended **broken**: the game loads, but only 18/23 checks pass (friction, run, wall, left_edge and hud fail), after 4,815 s. The plain arms fixed it in 1,189-2,197 s.
+> - The lane is paused (owner) while Cerebriline lands its `/chat` template-probe fix (#586/#587); eleven2go is on 19fd62cc. Runs after that fix are a new series, since past thinking may then be replayed.
+> - **Why 0416 lost** (log in `/srv/ml/xollama-phase2/as-ollama/e2g-0416/`):
+>   1. **Compaction, 1,987 s (41% of the run).** The done chunk's `prompt_eval_count` was the sum over all members, 161,214. The harness took that for its context size and ran its 5-step compaction on a ~50k conversation, each step a council turn. Fixed: the done chunk now reports the prompt of the last call on the conversation.
+>   2. **Stopped at 18/23.** The synthesizer called the failures "minor" and said DONE. A reviewer refuted that. The synthesizer then re-sent the same unchanged result, and the second reviewer, fed only a file read, confirmed it. Fixed:
+>      - a refutation stands until a change answers it, and DONE is refused meanwhile;
+>      - a review with no change since judges the last check;
+>      - the verdict wording counts any failure anywhere in the output.
+>   3. **Slow to 18/23: 2,588 s, where plain took 309 s.** Six cycles, each fixing the one runtime error the last check named. Each cycle spent 3-5 min on planner, researchers and critics before the synthesizer's minute, and ended at the step bound with a RETEST. Fixed (owner approved):
+>      - the synthesizer's step bound counts from its check's last change of output (`cycleSteps`), so it keeps its cycle while each fix moves the check;
+>      - a cycle is capped at 4× its steps;
+>      - a new research round starts only when the check stops moving, or when the synthesizer asks for one.
+> - **Council arm 0417** (9d3a2d2f, Cerebriline d3c58e1a9, new series): TIMEOUT at 7,203 s, the game never loading.
+>   - The synthesizer spent nine cycles on edits built on a wrong theory ("trailing semicolons" on class methods), and restored the original file twice.
+>   - It ran the check twice in two hours. Every cycle ended at its step bound, never on a check result.
+>   - The council-issued check never fired. The check had not been inferred, because the front and each synthesizer cycle start their own turns, so no one member's turns held two runs of it. And a cycle ended by its steps skipped the end-of-turn issue.
+>   - Fixed: the check is inferred from the whole turn's tool traffic (`InferCheck`, server side), and a cycle whose steps are spent with changes unchecked has the check made before it ends.
+> - **Council arm 0418** (6c03a9cf): **FIXED 23/23 in 3,333 s.** The first council fix driven by a generic harness.
+>   - First edit at 788 s. The checks went 20, then 21, then 23 passed between 2,493 s and 2,956 s. No harness compaction ran.
+>   - Left: the check was not run from 51 s to 1,989 s. The only earlier run was the front's, and inference needs two runs; a single run of a run-type tool could seed it.
+>   - One reported prompt still reached 229k. A member's prompt can exceed the client's conversation.
+> - Plain control for the council tag: `omni-plain-kv3-384k` on eleven2go, a copy of `omni-council-kv3-384k` with `council.enabled` off. Plain arms of the new series, one run each:
+>   - plain omni, 0419 (`omni-plain-kv3-384k`): FIXED 23/23 in 2,672 s;
+>   - plain glm, 0420: FIXED 23/23 in 419 s.
+>   - The council, 0418, took 3,333 s: 1.25x plain omni on the same weights.
+
+> **2026-09-30 — 11.29 started: step limits, a spot-checking critic, empty-reply retries.**
+> - Plain omni through Cerebriline's harness (`native.sh`, eleven2go lane): FIXED 23/23 in 1,125 s. The engine budget was 12,288; asked Cerebriline why (#577).
+> - Researchers take 4 tool steps and critics 3. A step is any turn that called a client tool. Past the limit the call is not made, and the member reports.
+> - The critic checks only the claims the answer depends on.
+> - An empty plan or report is asked again once without thinking. No two researchers share a fallback brief.
+> - The scope of 11.29, with the owner's choices (16k default ceiling; all four structural changes), is in the plan.
+> - Every member call is asked again when it fails or stalls (5 min with nothing sent, 20 min in all): up to twice, never for a refusal or a full owner.
+> - Members end with typed results the council answers itself, rendered into the flow's existing form:
+>   - researchers call `council_report`: proposals with their exact old text, claims, reads by ref;
+>   - critics call `council_verdict`;
+>   - a checking synthesizer calls `council_done` or `council_retest`.
+>   At the step limit the member's call carries its result's schema as the format.
+> - Each member step now replays the reasoning of the member's last step. Reasoning that hit its budget is replaced by a short note in the member's own voice (Cerebriline's condensation).
+> - A compaction fold is now one call, the writer's. The critics' review and the retrospective are opt-in (`council.context.review`, `.retrospective`).
+
+> **2026-09-30 — glm council fixed hard at 13x the plain cost. The council will be rebuilt on Cerebriline's budgets.**
+> - **All-glm council** (every role on glm-5.3-flash:cloud, max_tokens 131072):
+>   - Fixed hard, 23/23 traps.
+>   - It took 10,866 s, 60 trips, 3.44M tokens in and 875k out. Plain glm took 300-814 s and 29k-70k out.
+>   - The first edit came only after 62 min.
+>   - One critic made 50 `find_text` calls in a row. The critics used 1.94M input tokens, about 44k per call.
+>   - Researchers wrote a median of 10.6k tokens per call.
+>   - The synthesizer broke the file 3 times before the fix.
+>   - The owner stopped the rest of the batch (glm on one role at a time).
+> - **Plain omni, thinking on** (`think_budget "medium"`, num_predict 131072):
+>   - Failed, with the original SyntaxError, after 1,815 s and 21 trips.
+>   - "medium" is a quarter of the reply room, so the engine budget was 32,768 (`common_reaso: activated, budget=32768`). The engine also forgives spent tokens on a reset sequence (up to 13,435 in this run).
+>   - One turn ran 1,062 s with no tool call.
+> - **Owner's direction:**
+>   - Thinking stays on.
+>   - The manic harness here is not reliable enough to decide anything; measure plain and council through Cerebriline's harness (eleven2go lane, oracle v3).
+>   - Port Cerebriline's approach into the council: the automatic output budget; a customisable ceiling, low by default; mapping thinking levels and tokens onto the output; reasoning replay; reasoning condensation; and one-step agentic replay compaction instead of the 5-member fold.
+>   - Asked Cerebriline for source pointers and the harness commands (mail #573).
+
+> **2026-09-30 — solidPC's service (11434) moved to `0.35.0-dev.562eea98`.**
+> - The owner asked for it. The payload was assembled with `scripts/docker-assemble.sh` from the pins: runtime b11081 (the inputs digest matches), upstream GPU backends, and opencoti b208. No native code was rebuilt.
+> - It was swapped by `/srv/ml/xollama-phase2/solidpc-swap-0.35.0.sh`. The old binary and `lib/ollama` are kept as `.bak-20260930-103348`. The unit's drop-ins (11434, debug, parallel 1) are unchanged.
+> - Checks: `/api/xollama` lists 11 features (council included); CUDA0 is on opencoti and the Vulkan iGPU on llamacpp; `qwen3.5:2b` ran on the opencoti engine at 130 tok/s.
+> - The service now serves council models, which the 05c16dfa build refused.
+
+> **2026-09-30 — Harness v3 (the logic oracle), the glm plain baseline, and 11.27 (a role's cap and window are its own model's).**
+> - **Harness v3** (`/srv/ml/xollama-phase2`, `manic/README.md`). `manic/bin/run_game` is a compiled, obfuscated build of `manic/work/run_game.logic.js` (root 0600). It prints the old verdict plus `game_logic`: 23 behavioural traps on the game's own rules. A run is fixed only when the page loads and the traps pass. The model sees which traps fail but cannot read them.
+> - **Re-score of every earlier run.** 12 of 28 old "fixed" runs keep the game's rules: omni council 2/12, omni plain 8/13, glm 2/3. Both of a0968aea's hard council fixes fail (empty `pop()`; falling through the floor). Table: `manic/work/logic-rescore-all-20260930.tsv`.
+> - **Fixed in the oracle:** a countdown-trap false positive, which jumped the clock without frames, found live. Rebuilt; sha f13e481f. Sent to the ollama session for Cerebriline (#569-#571).
+> - **Plain glm-5.3-flash:cloud, hard, thinking on, `num_predict` 131,072:**
+>
+>   | Run | Result | Trips | Wall | In | Out |
+>   |---|---|---|---|---|---|
+>   | 1 | fixed, 23/23 | 6 | 814 s | 80,463 | 69,755 |
+>   | 2 | fixed, 23/23 | 13 | 572 s | 367,051 | 57,588 |
+>   | 3 | fixed, 23/23 | 10 | 300 s | 144,875 | 28,985 |
+>
+>   Mean 562 s, 197k in, 52k out. The longest replies were 59k, 48k and 24k tokens, mostly thinking. The old 16,384 cap would have cut every run.
+> - **11.27.** The council's built-in caps (1024-3072 plus 2048) would have cut every glm role. Now a role's stated `max_tokens` holds on its own model. Unstated, a cloud or other-model role inherits its template, and a lead role takes the council model's `num_predict`, else the built-in cap. Only lead roles are booked in the owner (`councilReserve`). There is a new `council.<role>.num_ctx` (schema v5), and members on another model shed the client's `num_predict` and `num_ctx`.
+> - **11.28.**
+>   - The owner's reserve now books each lead member's think budget beside its reply cap: a stated `think`, else the builder's ceiling of 4096. It had counted only the cap, although a member is sent cap + budget.
+>   - A token budget is sent with the model template's `think_budget_message`, to local members and xollama endpoints alike.
+>   - Measured in the omni councils: 22-29% of thinking calls exhausted the 2048 budget.
+> - **Also fixed:** the route decision, the direct answer and the front turn ran on the lead whatever their role's model, as the first all-glm smoke run showed. They now run on the planner's and the synthesizer's model.
+> - **Next.** Set glm roles to `max_tokens` 131,072 in the four glm councils; run all-glm, then critic, researcher and planner one at a time, with glm as the builder.
+
+> **2026-09-30 — Hard on eleven2go with a0968aea, stopped at 4 pairs (the owner's call): council 2/4, plain 3/4.**
+> | Pair | Council | Plain |
+> |---|---|---|
+> | 1 | fixed, 81 trips, 4,695 s | fixed, 59 trips, 1,353 s |
+> | 2 | fixed, 46 trips, 2,278 s | fixed, 56 trips, 499 s |
+> | 3 | lost at trip 41: a health dial failed (fixed on dev, `engine-health-retry`) | not fixed, 120 trips, 1,298 s |
+> | 4 | lost at trip 118: owner full, waited out (fixed on dev, 11.26) | fixed, 64 trips, 590 s |
+>
+> The council's first fixes of hard. Neither council loss was a reasoning
+> failure; both are fixed on dev and not yet measured live. Council run 5 was
+> stopped at about 10 minutes, with its run directory marked `-STOPPED`. Next,
+> the owner's direction: test with the cloud model.
+
+> **2026-09-30 — 11.26: a full owner compacts and the turn resumes.**
+> Council run 4 of hard (a0968aea, eleven2go) failed at trip 118. A 120k
+> root plus a 39k stage filled the 196608-cell owner, and the next worker's
+> 39662 cells did not fit. The engine said "compact the session"; xollama
+> waited two minutes and failed. The owner's choice: compact on the refusal
+> and retry the member. Built: owner-bound members are refused at once
+> (`llm.ErrOwnerFull`, 507). They wait only while a sibling may give cells
+> back. Otherwise the turn lets its pools go, folds the conversation, rebuilds
+> the root, and resumes from the last checkpoint.
+> `server/council_owner_full.go`, the `context-window` hook row extended.
+> Four tests, each piece mutation-checked; server, llm and council pass under
+> `-race`, lint clean. bug-186. Deploy after the batch.
+
+> **2026-09-30 — Hard on eleven2go with a0968aea: 5 of 6 fixed so far; a failed health dial lost council run 3.**
+> - Council: run 1 fixed in 81 trips (4,695 s), run 2 in 46 trips (2,278 s).
+>   Before this build the council had never fixed hard. Run 3 ended at trip 41:
+>   a health check to the live engine failed on loopback (`connectex: A
+>   connection attempt failed…`), and the engine answered three seconds later.
+> - Plain: run 1 fixed in 59 trips (1,353 s), run 2 in 56 trips (499 s).
+> - Council run 1 kept its layers on 76 of 81 requests, and 30 builds prefilled
+>   261k tokens. The layer log shows no per-researcher split.
+> - Fix on dev, not deployed until the batch ends: `engine-health-retry`
+>   (`llm/engine_health_retry.go`, one hook line). On opencoti only, while the
+>   engine runs, a dial that failed is tried up to four more times with
+>   backoff; stock llama.cpp keeps upstream's single failure. Three tests
+>   (mutation-checked), `-race`, lint, 31 hooks registered. bug-185.
+> - The batch continues on a0968aea (pairs 3–5), so all ten runs share a build.
+
+> **2026-09-30 — 11.25: with broadcast on, researchers never shared their stage.**
+> The pools of the same length on solidPC's hard run (13 and 14, 6724) were
+> round 2's two researchers, one layer each. The member log shows their
+> messages equal up to each one's own instruction, then the mates' notes. The
+> layer was cut before the last user message (the notes), so it held the
+> instruction. Now `council.OwnPart` cuts at the member's first instruction
+> after the last plan. That also covers the synthesizer's appended system
+> prompt and the nudges in a tool loop, which had put a member's own turns into
+> its layer. Pool texts and where siblings diverge are logged
+> (`council_layer_log.go`). Tests (mutation-checked); server and council under
+> `-race`, lint clean. bug-184.
+
+> **2026-09-29 — 11.24: a turn's stage layers are kept across its tool round trips.**
+> On hard, 265,334 of the 582,509 tokens the pool builds prefilled were
+> layers the previous request had just released. Each round trip is a new
+> request, and only the conversation's root survived one. Now a request
+> ending with the members' calls stashes the layers it used, and the next
+> request of the same turn adopts them, on the same runner and kept root.
+> Anything else releases them, as does 10 minutes without a round trip.
+> `server/council_layers_kept.go`. Six tests (mutation-checked); server and
+> council suites pass under `-race`, lint clean. Live on solidPC's 3090
+> (569747788, `omni-council-ab5`, hard, 40 trips): 37 of 40 requests stashed
+> their layers and the next adopted them. Resumes built no pool. Pool builds
+> prefilled 275,292 tokens in 34 builds (6.9k a trip), against eleven2go's
+> 582,509 in 68 (12.1k a trip, a different host and model, so indicative).
+> Nothing failed to release. Not fixed in 40 trips (3,012 s). Open: two pools
+> of the same length (6,724) built 7 s apart on one parent; the texts were not
+> logged, so a duplicate build is not ruled out.
+
+> **2026-09-29 — 11.23: the 12800-token windows were a reviewer sized by a character estimate.**
+> The small windows on hard were the members sized to their own request (a
+> background reviewer, the builder), not the council's working members (116
+> requests in 196608-token pool windows). `ownWindow` counted characters/3 as
+> tokens; a critic's 13196-token review was sized 12800 and refused, and that
+> review was lost. Now the request is rendered and tokenized as sent (the
+> tree's counter, handed to the background reviewer's member set); half the
+> characters only if counting fails. Tests (mutation-checked), server and
+> council suites under `-race`. Open: a reviewer shares no prefix with the
+> tree and prefills its whole request each time.
+
+> **2026-09-29 — 11.22: a stuck re-plan has to change the task list.**
+> From the hard analysis: the planner said it would replace the failing part
+> whole and kept every task open. Now, while the stuck note is in force, a
+> re-plan whose list update refutes no task or adds none is asked again once
+> with `keptNote` (which says what it left undone, and that a whole
+> replacement is a task a researcher writes out and the synthesizer applies in
+> one write); the second answer stands. `approachKept`/`keptNote`
+> (`stuck.go`), `ReplanAgain` (`steps.go`), `run.go`. Tests on the real
+> round-2 list and a run-level one (mutation-checked); council and server
+> suites pass under `-race`. Not measured live yet (eleven2go lent to
+> opencoti). Next, in the owner's order: the 12800-token member windows (the
+> owner: not low priority), the engine memory note to opencoti, the hard
+> rerun when eleven2go is free.
+
+> **2026-09-29 — Why the hard pair ended as it did: the host ran out of virtual memory, and the council's change of approach never became a task.**
+> Engine deaths (eleven2go server log, Windows event 2004): both followed a
+> low-virtual-memory condition. 15:34:55: our b208 engine 33.2 GB + opencoti's
+> own test engine on the 9070 (2609291336001) 21.8 GB; 15:36:37 SIGSEGV in the
+> CUDA graph path. 16:00:30: 37.3 + 18.6 GB; 16:00:40 `cudaGraphInstantiate`
+> out of memory, abort 0xc0000409; Edge crashed OOM the same second. Commit
+> limit 63 GB on 31 GB RAM. Our engine's host footprint is large for a 10 GB
+> model: 10 sequences, up to 32 context checkpoints each at 85-250 MiB (8.3 GiB
+> live at the second death) plus the prompt cache. Contention, not a new defect.
+> Plain did not localize the fault either: 20 trips on the same template-literal
+> theory with the check unchanged, then `write_file` of the whole file at trip
+> 22, which passes `run_gamefull.js` exactly as `reference.html` does. The
+> council never used `write_file` (16 local edits). The stuck note fired (58
+> times, "or replace the failing part whole"), and planner round 2 wrote "instead
+> of piecemeal fixes, I'll replace the entire JavaScript section", but its
+> briefs kept the refuted theory (task #4, template literals), left every task
+> `open`, and assigned the rewrite to nobody; the synthesizer applies what
+> members propose, so it made local edits again. Round 5 narrowed to "the Level
+> class methods for unclosed braces" (the actual fault, `Level.dDec`) two
+> minutes before the engine died, at trip 48 of 120. Also: four member requests
+> got a 12800-token engine window; one critic's 13196-token request was refused.
+
+> **2026-09-29 — A quantized V the engine refuses without flash attention is retried at f16 (`kv-fa-retry`); hard: plain fixed, council not, both runs ended in an engine death.**
+> llama.cpp resolves `--flash-attn auto` from the actual placement
+> (`llm_fused_op_flash_attn_probe`) and then refuses a quantized V. Upstream
+> v0.35.0 sends the same flags and has no retry, which corrects my earlier
+> claim that upstream falls back to f16 (only its old Go runner did). The
+> owner chose a single retry: on exactly that refusal, relaunch once with V at
+> f16 and warn, only for a V xollama asked for (the model's `kv.v` or
+> `XOLLAMA_V_CACHE_TYPE`). `OLLAMA_KV_CACHE_TYPE` alone keeps upstream's
+> failure. `llm/engine_kv_fa.go` plus three marked lines in
+> `llm/llama_server.go`; four tests, the upstream gate mutation-checked.
+> Verified live on solidPC's xollama-dev (`council-c365.sh`, now the
+> `xollama-kvfa-wip` build, b208 at the pin): `omni-council-64k` (`kv.v`
+> q8_0) CPU-only was refused, retried with `v=f16` (KV 98 → 128 MiB) and
+> answered; the failed start cost 11 s. solidPC's 3090 was busy with
+> opencoti's gemma-4-31B run, hence the CPU-only probe.
+> Hard on eleven2go (5ce5f7e7, 120 trips, `MANIC_NUM_PREDICT=16384`):
+> **plain fixed** in 24 trips, 232 s (oracle PLAYING), and then its next
+> request died with the engine (`wsarecv: forcibly closed`); **council not
+> fixed**, 48 trips, 1440 s, ended by a critic request over its 12800-token
+> slot and then `CUDA error: out of memory` in `cudaGraphInstantiate` on the
+> 3090. The first plain start ran without the reply cap and was aborted after
+> one reply ran more than 20 minutes (kept as `*-ABORTED-uncapped`). Next:
+> the eleven2go server log for both engine deaths.
+
+> **2026-09-29 — Every load names its model in the server log (`load-log`).**
+> The engines log a load only by its blob path. `server/load_log.go`, from one
+> hook line before `newServerFn` in `server/sched.go`, now writes three Info
+> lines first: `loading model` (name:tag, blob, shards, drafter, projectors,
+> adapters), `model file` (family, quant, parameters, size, layers, embedding,
+> heads, experts used/total, sliding window, trained context) and
+> `model placement` (devices, num_ctx, parallel, batch, predicted memory). All
+> from the GGUF metadata the estimator already parsed and the placement
+> already made: no read, no computation. Logged on every engine, llamacpp
+> included, by the owner's decision (a Go log line, not behaviour). Tests
+> `TestALoadIsLoggedByTheModelsName` (mutation-checked) and
+> `TestALoadWithoutAFileStillNamesTheModel`; Registry row `load-log`. Not yet
+> deployed: eleven2go is running the hard pair.
+
+> **2026-09-29 — Versions follow upstream's, with release candidates; PR #5 is `release: v0.35.0-rc.1.xollama`.**
+> Owner's rule: a version always follows the upstream release dev is based on.
+> Three forms: `v<upstream>-rc.<k>.xollama` (a candidate, the dev builds, never
+> promoted), `v<upstream>-xollama` (the release, which must ship the tree of
+> the last published candidate and so takes a short install check), and
+> `v<upstream>-xollama.<n>` (a re-release, no candidates, full check). The
+> owner first proposed `xollama.rc<k>`. Measured against both sorters in the
+> release path, that sorts after `xollama.3` under semver (the updater) and
+> between `xollama` and `xollama.1` under `sort -V` (the workflow), so the
+> updater would have offered a candidate to an install already on the release.
+> With the candidate before the fork's name, both sorters agree and no
+> comparator of our own is needed. `xollama-release.yaml`: the title pattern,
+> a `kind` output, the tag filters, and the tree rule for a release.
+> `discord-announce.yaml` never announces a candidate. `app/updater`: the order
+> is documented, and `TestReleaseNamesOrderAsTheyShip` plus
+> `TestACandidateMovesToItsRelease` hold it (compiled for Windows here; they run
+> on CI's windows and macos legs). RELEASE.md's "Versions and tags" and step 7
+> (the short check) are rewritten; CLAUDE.md and the docker docs follow. PR #5
+> (head 339ef4b6, notes as before: v0.35.0 base, b208, council 11.17–11.21)
+> is retitled from the never-cut v0.34.4-xollama.3. Budgeted localization is
+> dropped (owner); the escalate measurement is later.
+> Hard runs started on eleven2go's 3090 (5ce5f7e7, plain then council, 120
+> trips each, up from 60, since both arms ran out at 60 on 2026-09-28; plain
+> at 120 stays at about 320k of the 384k window). The owner lifted the hold on
+> eleven2go for the 3090; the 9070 XT stays opencoti's (mail #556 sent).
+
+> **2026-09-29 — Medium council twice on 2da8f3fd (11.21): fixed twice; the stuck path fires live.**
+> - Run 1: FIXED, 27 trips, 939 s, 1.21 M prompt tokens, 6 edits (0 missed).
+> - Run 2: FIXED, 45 trips, 2,312 s, 2.99 M prompt tokens, 10 edits (1 missed).
+> - The server log now carries `same` 78, `moved` 55 and the stuck note 41 times; on 4770e33b it was `same` 0, `moved` 149, stuck 0.
+>   - In run 2 the planner saw "same" at re-plans 2 and 3, with the stuck note. Then the checks moved (4 and 5), and it fixed the task.
+> - Medium council across today's builds: 26 fixed / 60 not / 31 fixed / 60 not / 27 fixed / 45 fixed. Plain: 11–15 trips, 125–132 s.
+> - Deployed `5ce5f7e7` (the line-number hint) to eleven2go.
+
+> **2026-09-29 — The consultants' answer to csl-2026-09-29-1156-aa48, and why they read old code.**
+> - Their code review of `quote.go` was mostly wrong: no replay, a guard that disables itself, a per-turn budget. The main checkout they read (their `cwd`) was on `sync/upstream-v0.35.0` at `ce7f5147`, two fixes behind. Everything since was committed from a separate worktree on `dev`. My mistake, not the skill's.
+>   - Fixed: the main checkout is back on `dev`, and the worktree is removed.
+> - Kept from the review: a quote that copies the read's line numbers is now answered in place (`numberedQuote`, `TestAQuoteWithLineNumbersIsAnswered`, which fails with the branch off).
+> - Held by the owner: their #1, budgeted localization (a narrowing brief when the check names no place), and the escalate measurement ("first we stabilize"). Their refined hidden-progress rule is recorded, not built.
+
+> **2026-09-29 — Why the council missed the brace: every check read as progress (11.21).**
+> - 4770e33b run 2 had 7 identical `SyntaxError`s, yet the planner was told "changed ... progress" every cycle: 149 `moved` notes in the log, 0 `same`. So the stuck note never fired, and the first theory (template literals) was never refuted.
+> - The cause is `lastCheck` again. "The first read after the last change" took the synthesizer's read of the file it had just edited, after it had run the check and edited again. The e75c7c3e logs show the same: 140 `moved`, 0 `same`.
+> - Fix: the check is the read-only call the member calls most after its first change. One repeating the previous check is taken first. Replayed over run 2, the stuck note fires from cycle 3.
+> - Guard `TestTheCheckIsTheCallTheMemberChecksWith`, which fails on the old rule exactly as live.
+
+> **2026-09-29 — Medium council twice on 4770e33b (replay): fixed once, unfixed once.**
+> - Run 1: FIXED, 31 trips, 784 s, 1.51 M prompt tokens, 8 edits (1 missed). That is the council's fastest medium fix so far.
+> - Run 2: UNFIXED at the 60-trip cap, 1,644 s, 4.10 M prompt tokens, 11 edits (2 missed).
+>   - It failed in a different way: all 7 checks returned the same first error (the stray `}` ending `dGrid`), and the council never located it.
+>   - It made 36 `find_text` searches, 14 of them by researcher 2, and edited elsewhere.
+> - Misses at the client fell from 13 of 32 edits (`cf223635`) to 1 of 8 and 2 of 11.
+> - Sent to the consultants as follow-up `csl-2026-09-29-1156-aa48` (7 of 11 in the chain), with a review request for `quote.go` and `directive.go`, the re-plan cost, and the escalate measurement.
+>   - Per the owner, n = 5 per cell with the seed fixed is planned for later.
+
+> **2026-09-29 — 11.20: the read follows the member's own changes.**
+> - The member's own changes to a target since its last read, when they went through, are now replayed onto that read. A whole write is taken as the text itself.
+> - So a misquote right after an edit is answered in place too. On `cf223635` those were nearly all of the 13 misses.
+> - Guard `TestTheReadFollowsTheMembersOwnChanges`, which fails with the replay off.
+> - Next: deploy, and run medium twice.
+
+> **2026-09-29 — Medium council after 11.20: fixed once, unfixed once; 78e49747 deployed on eleven2go.**
+> - Run 1 on `96ff1f5d`: FIXED, 26 trips, 1,078 s, 3.20 M prompt tokens, 6 edits (1 missed at the client). This is the council's best result on medium so far (earlier: 34 / 54 trips).
+> - Run 2 on `cf223635`: UNFIXED at the 60-trip cap, 3,786 s, 5.67 M prompt tokens, 32 edits (13 missed at the client).
+>   - This build adds the cue line in the front's prompt. At n = 1 each, run-to-run variance can't be told apart from the change.
+> - Why the guard let run 2's misses through: almost all of them follow a successful edit to the same file (trips 34→35, 39→40, 45→46). The guard then treats the member's last read as stale, by design, and forwards the edit. One followed only a partial `find_text` read, which it also skips.
+>   - Next step for 11.20: replay the member's own successful edits onto its last read, so the read stays current after a change.
+> - Deployed `78e49747` (v0.35.0 + everything above) to eleven2go: `0.35.0-dev.78e49747`, `council_directive_v1` advertised, `/v1/systemone` answering.
+
+> **2026-09-29 — Upstream v0.35.0 synced (fork manifest `b723d1ce`).**
+> - `sync/upstream-v0.35.0`:
+>   - `1ab773d7` merged the tag. One conflict, `server/routes.go`: the carried tokenize routes stay beside upstream's new `/v1/systemone`.
+>   - The 24 patches followed as `--no-ff` merges at the manifest's shas, in order (`9d7b8793` … `7d479188`; the table is in CARRIED-PATCHES).
+>   - Then `dev` was merged in.
+> - Every rebased patch has the same diff as at v0.34.4 (`git patch-id`). Conflicts were resolved `-X ours`, owner-authorized; every merge was checked to add nothing over its first parent.
+> - Fixed: six new upstream tests in `cmd/bench/bench_test.go` set `OLLAMA_HOST`, which the fork ignores by design, so they reached a live server (404). They now set `XOLLAMA_HOST`, as the file's other tests do.
+> - Checks: `go test ./...`, `-race` on the main packages, `golangci-lint` 0 issues, `check-hooks` and `check-compat-origin` all pass.
+> - llama.cpp stays b11081, and the runtime pin does not move. `main` stays v0.34.4 until the next release PR.
+
+> **2026-09-29 — The council for harnesses: instructions, the directive and the user's cues (plan Phases 1–3).**
+> - `ChatRequest.Council` (`council_directive_v1`) states the turn's `mode`, `instructions`, `build`, `evidence` and `check`.
+>   - `answer` is the synthesizer alone; `escalate` and `deliberate` start the council with no front turn or route decision.
+>   - A stated build replaces the builder, and its `max_tests`/`max_steps` stand within the builder's bounds.
+>   - The evidence is verbatim, and the agent's last check is the council's first comparison point.
+>   - A named check tool replaces the `lastCheck` guess. An unknown mode or slot is a 400.
+> - Instructions by slot, from the model (`council.instructions`, `council.<role>.instructions`) and the request. The council-wide ones sit in the charter's shared prefix.
+> - The route decision and the front read the user's cues about care. A stated mode skips them.
+> - Also: the medium council on `96ff1f5d` (11.20) is running on eleven2go. The upstream v0.35.0 sync is on `sync/upstream-v0.35.0`, paused at `up-think-budget`'s conflicts. All 24 rebased patches have the same diff as before (`git patch-id`), so HEAD's side is right; resolving them needs the owner's go-ahead.
+
+> **2026-09-29 — The consultants answered; a misquoted change is now answered in place (11.20).**
+> - `csl-2026-09-29-0846-320d` (34 min). Ranked: (1) a hidden-progress signal, (2) repairing edit quotes, (3) the harness directive, (4) batching by a runtime prompt, (5) runtime escalation, (6) Stream-and-Sift. Measure n = 5 per cell with seeds fixed and jitter 0 before the cloud tests.
+> - Built (2): `internal/council/quote.go`. When a writer's own last read of the same target shows a long start of the change's quote but not the rest, the call is answered in place with the read's own text where the match stops. No trip. At most 4 per member. Four tests, three of which fail with the guard off.
+> - Not built (1), as proposed. Its signal ("same check output, but a write was accepted, so continue") is exactly 96edc4ae's failure: accepted syntax conversions and the same error six times. It would undo 11.19. The correction also stands: on e75c7c3e the rewrites of `dIt`/`dPw` were no progress, and the real faults surfaced one per check, as in plain.
+> - Not built (4). It is a prompt at the step budget, and plain also edits once per trip. The cost is the re-plan cycles (≈1,300 of 1,954 s), not the synthesizer's trips.
+> - The harness review is recorded in `plans/council-harness.md` (Review): verbatim evidence, `answer` skips the route, instructions in the charter, the mode holds for the turn, and an optional check tool named by the harness.
+
+> **2026-09-29 — Plain medium on e75c7c3e: fixed in 15 trips / 125 s. A correction: `dIt`/`dPw` were never faults.**
+> - Plain: 15 trips, 125 s, 549 k prompt tokens, 3 edits, all applied. It changed exactly three places: the extra `}` ending `dGrid`, a missing `sX`, a missing `initClouds`.
+> - Correction to earlier entries and to the consultants' brief: `} })};` at the end of `dIt` and `dPw` is valid JavaScript (a class body allows a stray `;`; checked with node).
+>   - The council's seven failed edits on `dIt`'s ending were attempts to fix text that was never broken. Those rewrites were no progress, not hidden progress.
+>   - What diagnosing a non-fault costs is now part of the consultation (injected into `csl-2026-09-29-0846-320d`).
+> - Plain run 2 confirms it: fixed in 11 trips / 132 s, 305 k prompt tokens, 3 edits, all applied. It fixed `dGrid`'s brace, added `sX`, and added the missing top-level functions in one block. Again it never touched `dIt` or `dPw`.
+> - Council vs plain on this build: 34 / 54 trips vs 15 / 11, and 1,954 / 3,054 s vs 125 / 132.
+
+> **2026-09-29 — Medium council run 2 on e75c7c3e: fixed again, 54 trips / 3,054 s.**
+> - Two of two runs fixed on this build (34 trips / 1,954 s, then 54 / 3,054). Plain: 12 / 114.
+> - Run 2 cleared the syntax errors by trip 35, then followed each runtime error one per check (`initClouds`, `setupLevel`, `sX`, `gameLoop`). 6 of its 21 edits missed their text.
+>   - Re-plan cycles cost 140–290 s per trip; the synthesizer's own trips cost 15–30 s.
+> - Usage (calls / prompt tokens): synthesizer 62 / 2.08 M, researcher 50 / 1.44 M, critic 19 / 0.51 M, planner 7, reviewer 6, front 5, builder 1. Total 4.21 M.
+> - Both runs and today's fixes went to the consultants as a follow-up of `csl-2026-09-28-1844-26be`. The harness plan went with them for review.
+
+> **2026-09-29 — Plan: the council for harnesses, and an integration guide.**
+> - The owner wants the council adaptive in a chat, and usable by agents and as an escalation path, with Cerebriline first. A harness should drive the builder and the council, and say how the council is built, to save trips and avoid mode switches.
+> - New plan `plans/council-harness.md` (PROPOSED):
+>   - Phase 1: instructions for the council and the builder, at model and request level.
+>   - Phase 2: the harness directive `council_directive_v1` (`mode` answer/escalate/deliberate/auto, a stated `build` that replaces the builder call, `evidence` as prior failed checks).
+>   - Phase 3: adaptive chat from the user's cues.
+>   - Phase 4: Cerebriline, built by the ollama session, with quality feedback.
+> - Phase 0 built: `docs/xollama/council-integration.mdx`, the integration guide for harness authors. It covers today's contract, the three use cases, and the planned parts marked as planned.
+> - Phases 1–4 wait for the consultants' answer to the follow-up, which is sent after medium run 2.
+> - Owner's decisions: the field is `council`; `answer` mode offers no hand-off; a harness `build` may override the model's `max_tests` / `max_steps` up or down (a user setting in the harness), within the builder's bound.
+
+> **2026-09-29 — Fork patch 24 merged: `up-modelfile-roundtrip` @ `c8e22c11` (manifest `23a43c77`, fork-only).**
+> - `show --modelfile` writes `TEMPLATE` only for a model that carries one. `create` refuses an unterminated `TEMPLATE`/`SYSTEM` quote that would have swallowed the directives after it.
+> - One conflict, in `server/images.go`: xollama's own `modelfile-roundtrip` hook carried the same condition. Resolved to the patch's side. The hook and its registry row are retired, since the fork now supplies the fix.
+> - `go test ./parser ./server ./cmd` passes, and `check-hooks` reports 28 hooks.
+
+> **2026-09-29 — Medium council on e75c7c3e (eleven2go 3090): fixed.**
+> - **Fixed** in 34 trips and 1,954 s, and declared DONE. The first council fix of medium since d17af426 on b203 (19 trips / 778 s).
+>   - Nine checks: five identical SyntaxErrors, then a changed error (`missing ) after argument list`), then back to the first error, then passing.
+>   - Twelve edits, three of which missed their text.
+> - Plain on the same build and host: 12 trips / 114 s, so the council is 17× slower.
+> - Usage (calls / prompt / output tokens):
+>   - synthesizer 35 / 1.20 M / 18 k;
+>   - researcher 28 / 0.87 M / 35 k;
+>   - critic 8 / 0.20 M / 9 k;
+>   - planner 4, front 5, reviewer 4, builder 1.
+> - The first attempt on this build died at engine startup: an engine orphaned by the test deploy script held its pinned memory. The script now unloads models before stopping xollama.
+
+> **2026-09-29 — Why the council kept a refuted explanation: its "moved" signal was wrong.**
+> - In the 96edc4ae transcripts, the planner converted one kind of syntax, then more of it, then another kind, while every check returned the same SyntaxError.
+> - The runtime told it each check had moved. It took the cycle's last read-only call as the check, and that was a search after `run_game`. The stuck note never fired.
+> - Fixed (plan 11.19): the check is the first read after the cycle's last change. The stuck note now also says the explanation behind the unmoved changes is refuted.
+> - `TestTheCheckIsTheReadAfterTheLastChange` fails on the old code exactly as live.
+
+> **2026-09-29 — Medium council on 96edc4ae (eleven2go 3090, 384k context back): unfixed, no stalls.**
+> - 60 trips (the harness limit), 1,695 s (was 4,137 s on 837a1fce). No cut replies and no admission refusals: the cap and placement fixes held.
+> - 23 edits "succeeded". Every check still returned `SyntaxError: Unexpected token '{'`, with no line number.
+>   - The members rewrote syntax they suspected: arrow functions to `function` (which breaks `this` in `gen`) and template literals to concatenation.
+>   - The extra `}` ending `dGrid` was never touched.
+> - Plain fixed the same task in 12 trips / 114 s by reading the file and rewriting the broken class whole. The council's failure is now diagnosis, not capacity.
+> - Usage: synthesizer 59 calls / 1.81 M prompt tokens; researcher 40 / 1.11 M; critic 13 / 0.34 M; planner 6; front 5; reviewer 3; builder 1.
+> - 688d1f53 (owner makes room) deployed afterwards.
+
+> **2026-09-29 — The owner makes room for the builder and the reviewers.**
+> - A member booked on its own session beside the conversation's owner could wait out its whole admission budget when the owner held the whole window. That was the builder's 2-minute refusal on 62c7d5ec.
+> - `roomFor` (plan 11.18, `server/council_room.go`) reads `/kv`'s `largest_admissible`. When it is short of the member's window, the owner shrinks by the difference, never below its used cells plus the turn's reserve. The shrink is applied at once, or deferred if the engine refuses. The next turn grows the owner back.
+> - Two tests; the call was checked by removal.
+> - Not yet deployed: the medium council run on 96edc4ae is still going on eleven2go.
+
+> **2026-09-29 — Medium council rerun on 62c7d5ec: stopped by the placement fix, now fixed again.**
+> - The first rerun without the CUDA pin ended after 5 trips. The engine refused the builder for 2 minutes ("no room"). Nothing to do with the cap fix:
+>   - `opencotiPlacement` (b22e5649) filtered the GPUs only where the model is placed;
+>   - `liveSlots` and the deny-list still saw the 3090 and the 9070 XT together, answered "not opencoti", and dropped `slots.live 2` to one slot;
+>   - the engine launched with `-c 196608`, not 393216, and the conversation's owner booked the whole window.
+> - Fix: the filter runs in `processPending`, right after the device pin, so the whole load sees it. The new `TestAModelOnlyOpencotiServesLoadsWithItsOwnSlots` fails with the old position ("launched with 1 slots, want slots.live's 2").
+> - Also seen: an unpooled member (the builder) waits for its full timeout when the owner holds the whole window. Not changed here.
+
+> **2026-09-29 — Why the medium council failed, and the fix: a writer has room for its edit.**
+> - Plain medium on 837a1fce + b208 (eleven2go 3090): **fixed** in 12 trips, 114 s, 208 k prompt tokens, 5.2 k output. It read the file and rewrote the whole broken class in one `edit_file`.
+> - The council's front and synthesizer set out to make the same rewrite. The front's last three calls each stopped at exactly 3,072 output tokens, the cap, inside the tool call, so only the prose survived. The class is about 3.3 k tokens, and an edit carries old and new (about 6.6 k).
+> - Built (plan 11.17, `internal/council/cut.go`):
+>   - a writer's cap on a tool turn is at least 16,384;
+>   - `done_reason "length"` reaches the council as `Reply.Cut`, and a cut writer is asked again once for smaller steps.
+>   - Four tests, each checked by removal.
+> - Next: deploy to eleven2go with b22e5649, drop the `--device-backend=cuda` workaround, rerun the medium council. Cloud tests wait until the council works.
+
+> **2026-09-28 — Medium council on 837a1fce + b208 (eleven2go 3090): unfixed.**
+> - 57 trips, 4,137 s. Every one of the 10 checks returned the same `SyntaxError: Unexpected token '{'`, which carries no line number.
+>   - The fault is in `dDec`, which no member ever read, the same miss as simple run 7.
+>   - The members edited template literals, braces elsewhere and `sX`, and 5 edits missed their text.
+>   - The run ended with 4 trips of narrated intent and no tool call (3 nudges), which the harness scored as DONE.
+> - For reference, d17af426 on b203 fixed medium in 19 trips / 778 s.
+> - Usage (prompt share / output share):
+>   - synthesizer 44 % / 31 %;
+>   - researcher 36 % / 45 %;
+>   - critic 10 % / 13 %;
+>   - front 9 % / 7 %;
+>   - planner 1.3 % / 3.5 %.
+> - Totals: 5.39 M prompt tokens (2.5 M cached), 145 k output.
+
+> **2026-09-28 — A model only opencoti can serve stays on opencoti's GPUs.**
+> - eleven2go has an RX 9070 XT (Vulkan) beside its RTX 3090. The medium council model (kvarn3, 384k) fits no single GPU, and upstream's placement picked the Vulkan backend by free memory. The launch refused it: kvarn3 needs opencoti.
+> - `opencotiPlacement` (registry row `opencoti-placement`) now keeps such a model on the GPU groups opencoti serves; nothing changes for other models or with `XOLLAMA_ENGINE=llamacpp`.
+> - Workaround for the current run: `omni-council-kv3-384k` pinned to `--device-backend=cuda`.
+> - Also measured on eleven2go (2k prompt, 512 gen), xOllama on the 3090:
+>   - omnimerge-v4 IQ2_M: 48 tok/s gen, 1,150 prefill;
+>   - qwen3.6 35b-a3b: 189 / 3,040;
+>   - v9-agentic: 124 / 4,600.
+> - On the 9070 XT, xOllama (Vulkan) matches stock Ollama within noise. b208 has no Windows Vulkan payload, so there is no rolling-KV on AMD yet.
+
+> **2026-09-28 — xOllama's own icon, and an installer that stops only xOllama.**
+> - The icons are the llama with a red X painted on its chest, from `scripts/xollama-icon.py`; the owner picked red over violet (preview artifact).
+> - The installer and uninstaller no longer run `taskkill /im llama-server.exe`, which stopped a stock Ollama's runners and missed the opencoti engine.
+>   - `app/xollama-stop.ps1` stops what runs from the install directory, the engines and runners those started, and orphaned opencoti engines, then waits for them to exit.
+>   - It runs from `PrepareToInstall`, before any file is copied, and from `[UninstallRun]`. It replaces the 5 s timeout hack.
+> - Not yet run on Windows: eleven2go is rebooting for updates.
+
+> **2026-09-28 — The desktop app says xOllama.**
+> - Found on eleven2go: two identical trays, both called Ollama.
+> - Tray tooltip, menu (Open/Quit xOllama), notifications and window title now come from `wintray.AppName`.
+> - The UI's ~170 "Ollama" strings are rewritten at build time by `app/ui/app/xollama-brand.ts` (a Vite plugin), not edited, so UI merges stay clean. "Ollama account" and "Ollama.com" stay, since they name ollama.com.
+> - Registry row `app-brand`. The new icon followed (entry above).
+
+> **2026-09-28 — The xOllama tray no longer exits when a stock Ollama tray started first.**
+> - Found on eleven2go after the 9070 XT reboot. At logon the xOllama app logged "existing instance found, exiting": its single-instance check is `FindWindowW` on the tray window class, and the class was still upstream's `OllamaClass`, which Ollama's own tray had already registered.
+> - It also sent Ollama's app a focus request. The class is now `xOllamaClass` (the `app-state` hook). The source guard in `internal/onboarding` flags `"OllamaClass"` and fails without the fix.
+
+> **2026-09-28 — Engine pin moved to b208 for v0.34.4-xollama.3 (owner's ruling).**
+> - opencoti `2609281805001` (b208, rev `f8fc1116`, mail #540): the V100 fixes (KVarN collapse 0447, the engine picking the CUDA 12 payload below cc 7.5), the #530 scatter assert (0448), the drafter-KV fixes (0449/0450) and the wider TinyBLAS GEMM (0451).
+> - Measured on these bytes (`as-ollama/b208-ab`), against b177: compat 8/8; llama3 76.8 tok/s (75.5); multislot 144 (142); gemma4 identical.
+>   - Overflow read 3.32 against b177's 3.85. Paired, alternating reruns read b177 at 3.28 and 3.34, b208 at 3.36 and 3.29: noise.
+>   - Two-turn `/api/chat` held on two models, with 0 REFUSED. The argv probe (`probe208.sh`) matches b177 on every row. All four shas were checked on HF at the rev.
+> - No defect row is retired. Docs name b208.
+> - Next: release PR `release: v0.34.4-xollama.3`, a pre-release (not promoted).
+
+> **2026-09-28 — council 11.16: the builder gets its own model.**
+> - `council.builder` (`model`, `host`, `think`, `max_tokens`; no `prompt`, no `count`); unstated, it runs on the planner's, as before.
+> - For the owner's cloud tests: the builder on `glm-5.3-turbo:cloud` while the critic, researcher or planner moves there, one at a time.
+
+> **2026-09-28 — council 11.15: loop guards from Cerebriline, the front's handoff, no idle researchers.**
+> - The consultants' #3–#6, as the owner took them (#2 waits for the flow-modes follow-up):
+>   - a no-op change is refused in place;
+>   - a changing call resent with the same result gets Cerebriline's steering ladder, and at 4 strikes the member reports;
+>   - a refused change is redone from the text as it is now;
+>   - the front stops at 3 steps, and its current reads reach every member as research, not as a failed attempt;
+>   - the planner keeps every researcher working.
+> - Next: deploy, then measure.
+
+> **2026-09-28 — b203 holds on eleven2go; the council missed simple on it.**
+> - opencoti #530 rerun: b203 host (2609281335001) with the b201 Win DLL, the `head` relief removed (`auto` residency, POSITION_WINDOW on), 4 live slots, unified KV.
+>   - The simple council ran 60 trips in 2028 s, 5 cycles, with no assert; log sent (#538).
+>   - eleven2go now runs b203 through `XOLLAMA_ENGINE_PATH`. Revert: clear it, and set `XOLLAMA_ENGINE_ARGS=--kv-residency-mode head`. The pin is unchanged.
+> - The council did not fix simple on d17af426: the same "missing )" for all 13 checks.
+>   - The planner moved off template literals to "unbalanced parentheses or brackets", but only ever counted `()`/`[]`, as the error names. `dDec`, which holds the stray `}`, was never edited.
+>   - This is one run against run 6's fix (34924cbe), with the engine and the prompt both changed and sampling varying, so it needs repeats before it says anything.
+> - Usage: the synthesizer took 66 % of the prompt (59 calls, 2.6M tokens), the researchers 22 %, the critic 10 %, the planner 0.7 %.
+> - opencoti #535: #528's 20 % loss was a bug (quantized drafter KV read in the wrong basis). It is fixed in b206, where an inheriting q8_0 drafter costs nothing; the pin is the owner's call.
+
+> **2026-09-28 — council 11.14 measured: medium 778 s (was 1101 s); first real per-role usage.**
+> - Medium on d17af426 (eleven2go): council **fixed**, 19 trips, 778 s (was 27 trips, 1101 s; plain: 11, 91 s). One batch of edits fixed the stray brace and every missing function at once.
+> - Per-role usage (`council_usage_v1`, tokens), as prompt share / output share:
+>   - synthesizer: 52 % / 22 %
+>   - researchers: 28 % / 54 %; they also spent the most decode time (310 s)
+>   - critic: 10 % / 13 %
+>   - front: 7 % / 5 %
+>   - planner: 2 % / 5 %
+>   - reviewer and builder: 2 % / 2 %
+> - About 45 % of the prompt came from cache.
+
+> **2026-09-28 — council 11.14: the synthesizer applies the proposals together.**
+> - The consultants council (csl-2026-09-28-1441-4bbf) traced medium's slowness to our own synthesizer prompt: "one at a time … after each change, run its check".
+> - Now the synthesizer makes every non-conflicting proposed edit in one reply and checks once. It fixes a next failure its check already shows, and hands back only what needs investigating. Researchers report every fault in their part.
+> - Hard on 032db6c2: **a cliff for both arms**.
+>   - Council: unfixed at the 60-trip cap, 4129 s; last error `Unexpected token ')'`.
+>   - Plain: unfixed at the cap, 538 s; last error `Unexpected token '{'`.
+>   - Both got past the first "missing )" and stalled on the misplaced braces further down.
+>   - Plain's usage (the first run recorded): 60 calls, 4.2M prompt tokens sent (2.06M cached), 21k written.
+> - Next: deploy, medium against plain's 91 s; then the role-upgrade matrix (follow-up csl-2026-09-28-1521-242f).
+
+> **2026-09-28 — council: medium fixed, 12× slower than plain; usage per role reported.**
+> - Medium on 032db6c2 (eleven2go): council **fixed**, 27 trips, 1101 s. Plain **fixed**, 11 trips, 91 s. It read the file once, fixed seven faults in four edits and checked once; the council paid a whole check cycle per fault.
+> - The consultants council has been asked for optimizations (brief: `/srv/ml/xollama-phase2/consult-council/BRIEF.md`).
+> - Built: `council_usage_v1`. Each council done chunk reports what each role spent (calls, prompt sent and cached, written, durations), and the manic harness records it per trip and per role (plan 11.13).
+>   - First reading, medium: the researchers take 45 % of the prompt and the synthesizer 43 %; the critic 7 % and the planner 2 %.
+>   - Prompts are about 68× the output.
+> - Hard is running (council, then plain).
+
+> **2026-09-28 — council: simple fixed for the first time; task ids keep the list's numbering.**
+> - Sixth simple run (34924cbe, eleven2go, `head` relief): **fixed**, 40 trips, 1401 s (plain: 27 trips).
+>   - Cycles 1–2 chased template literals (seven harmless edits) against the same check output.
+>   - The stuck note fired, and cycle 3 replaced the `dDec` method whole. The error moved to `sX`, then to `collide`, and the council followed each one to the fix: 11.10–11.12 working as designed.
+>   - The planner's re-plans numbered the task list from 0 again, so its updates landed on the wrong tasks.
+> - Fixed: plans are kept with the list's ids, tasks are matched by their words before their id, and the rule says never to renumber (`TestARenumberedListUpdatesTheTasksItNames`, checked by removal).
+> - Next: medium on 032db6c2 (running), plain medium for a baseline, hard once, then the b203 rerun for opencoti #533.
+
+> **2026-09-28 — council 11.10–11.12: a task list for the planner, stuck checks, reviews with verdicts.**
+> - Fifth simple run (b336b144): unfixed, 60 trips, 1619 s. Six reviews fired and were mostly right to refute, but only one carried its `REVIEW:` line. Every check returned the same "missing ) after argument list". The plain arm fixed the task in 27 trips, with a whole-file rewrite at trip 20, then followed the new errors.
+> - Built:
+>   - the planner keeps a task list in its plan (`tasks.go`, with rules the runtime enforces, carried across turns and dropped on a rebuild), and the builder writes its instruction as a coordinator's;
+>   - two checks in a row with the same output tell the council to change approach (`stuck.go`, topic-agnostic), a changed output counts as progress, and a whole-part replacement is allowed;
+>   - a review without its verdict is sent back once with the structure, then marked unclear.
+> - Tests were checked by removal; the full sweep, race, lint and hooks are clean.
+> - Next: deploy to eleven2go, rerun simple; if it passes, medium and hard once each.
+
+> **2026-09-28 — council: the builder reads only the user; unsent checks are sent; reviews stream.**
+> - Fourth simple run (5b331d1b) peeked mid-run: `n_slots = 4 (live = 4)`. The builder no longer names a place or a cause. The synthesizer never called `council_review`.
+> - Built: the builder reads the system prompt and the user's messages only, on its own session (`5b331d1b`). A check the synthesizer moves on from (its next call changes something) is sent for it, and the DONE's check reuses that id. Reviews stream as `Reviewer N` thinking at delivery (`b336b144`).
+
+> **2026-09-28 — council 11.9: the critics review the synthesizer's checks while it works.**
+> - Third simple run on eleven2go (311010f9, `--kv-residency-mode head` relief): unfixed, 60 trips, 3466 s, no engine fault. The synthesizer made 27 edits against 11 checks with no second reader.
+> - Built, as the owner designed it: `council_review` queues a check (the change plus what the calls returned). A per-conversation desk runs one reviewer per critic in the background, and each finished review reaches the synthesizer before its next step. Only DONE waits for the reviews still out, and sends its last check itself when it was never sent.
+> - Next: deploy, rerun simple on eleven2go.
+
+> **2026-09-28 — council 11.8: all the engine's parallel slots; cloud members counted apart.**
+> - The council ran with 2 live slots of eleven2go's 4, because xollama sized them to its widest step. It now starts with the engine's parallel ceiling (4 by default, `slots.max`), with its local width as the floor.
+> - Members on a cloud model take no engine slot: they run `council.cloud_parallel` at a time (default 3, `--council-cloud-parallel`), one count per council model.
+> - Next: 11.9, the critics reviewing the synthesizer's checks asynchronously (owner's design: queued, each finished review returned as it lands).
+
+> **2026-09-28 — council 11.7: every message names its writer; earlier turns attributed.**
+> - eleven2go simple rerun on b96e3c96: unfixed, 667 s / 24 trips. The engine asserted in cycle 3 (opencoti #530: position-window scatter, two sequences prefilling, kv-unified, `auto` residency). Cycle 2 had edited the right line and found both missing functions. The bounds held (front 3 steps, synthesizer 6 per cycle).
+> - The owner's points: the history should show the member; wrong claims must not stay in view; council messages must name their role and the user's stay plain; no anchoring. Built: `council.History` (calls split per member and headed, working notes dropped, repeats pointed at), source headers on every council message plus `sourcesNote`, and the front's report cut to its calls and results.
+> - Relief on eleven2go: `XOLLAMA_ENGINE_ARGS=--kv-residency-mode head` (user env) until #530 is fixed.
+> - Next: redeploy, simple on eleven2go, then medium and hard once each.
+
+> **2026-09-28 — council 11.6: ab-5 read, and the fixes it asked for.**
+> - ab-5 simple: plain fixed it on both hosts (solidPC 339 s / 30 trips capped, eleven2go 162 s / 20). The council did not (solidPC 3405 s / 60, unfixed; eleven2go 659 s / 24, declared done unfixed).
+> - Members are served exactly as a plain turn: same ChatHandler, template and options; 2 of 140 replies hit a cap. The delta is context. The client history carries every member's calls as one assistant, five copies of the file and the front's wrong claims. Findings arrived as user messages and were obeyed. The builder anchored every role on the front's theory. The synthesizer investigated for 16 trips instead of testing.
+> - Built (A–J): the builder never names a cause; failed checks are carried across turns (`Progress.Prior`, state field 10); the verdict is nudged once and never re-streamed; a synthesizer step budget (`MaxSteps` 6, builder `max_steps`, Build field 5); a test note that forbids investigating on its own; the front's attempts reach the council; localize-first coding example; critics told they cannot test; findings framed as claims; the front forwards before investigating (4 steps, then forced). Guards are in `internal/council/checks_test.go`, each checked by removal.
+> - #468 (opencoti) on the 3090, 70B q3_K_S, 32k: `--kv-residency-mode auto` beats `head`. Decode 2.45 vs 2.10 tok/s at 1k and 0.24 vs 0.16 at 24k: auto keeps 59 layers on the GPU against head's 48. Mailed as #529.
+> - Next: redeploy to eleven2go, rerun simple, then medium and hard once each.
+
+> **2026-09-28 — council Phase 11 opened: caps raised, a repeated call pointed out.**
+> - ab-4 simple on eleven2go (kvarn3, `-c 393216`, two live slots): the council was unfixed at 1463 s against plain's 233 s. The researchers could not test, were capped at 384 tokens, and read once each. The diagnosis went untested. The synthesizer repeated one failing edit 15 times, and each of its resumes re-prefilled about 18k tokens.
+> - 11.1: reply caps 2048/2048/1024/2048 (planner/researcher/critic/synthesizer) with terse prompts, evidence carried whole to 4000 characters and capped at 16000, notes 600 characters.
+> - 11.2: a result that repeats an earlier identical call's result gets a generic note (`TestARepeatedCallWithTheSameResultIsPointedOut`, checked by removal).
+> - 11.4 test loop: researchers propose, the synthesizer checks, and a failed check (`VERDICT: RETEST`, with its evidence) goes back to every member of the next cycle, up to 6 cycles, carried in the state (Progress field 7). Loop and prefix checked by removal.
+> - Owner's answers applied: the planner re-plans each cycle from the failed checks (`Replan`, state field 8). The user gets the synthesizer's brief status in the same response while the report after the verdict is held back for the council (`holdBack`).
+> - 11.5 builder built. On a request's first trip to the council it reads the system prompt, the requests and the tools, then writes per-role instructions, think budgets for the roles the user left unset, and the check bound (0..12), plus a target. The user's council stands. The build is kept across turns (state field 9), and the route decision can `rebuild`.
+> - 11.5 front: on a tool turn the synthesizer takes the request first, on the conversation's session. It answers, or calls `council_forward` (the builder runs first when there is no build) or `council_rebuild` (it is told the new setup, then forwards). Only it may route. Turns without tools keep the planner's route decision, with `rebuild`. Checked by removal.
+> - Preemption: a broadcast verdict (`kind` confirmed/refuted) interrupts the mates generating, who keep their partial text and read it before going on (at most twice). Ordinary notes still wait for the next call.
+> - 11.3: member sessions are no longer closed after a call. The council lives until its client leaves (the owner's ruling), and each member resumes from its own cache (opencoti #526, traced in code). They are closed only when the client drops mid-turn.
+> - ab-5 (simple, plain vs council) is running on the solidPC dev server (127.0.0.1:22440, b177, kvarn3, 131072 per slot). It was started before 11.3, so it measures 11.1–11.5 only. 11.5 (the builder) is designed in the plan. No live run yet.
+
+> **2026-09-28 — v0.34.4-xollama.2 published (pre-release) and installed on eleven2go; a council says --kv-unified once.**
+> - PR #4 merged as `ac1af15c` (23 checks green); release run 36356726357 published the pre-release, not promoted. Installed on eleven2go with `/SILENT` through the scheduled task: 22 s, exit 0, the think-budget Ollama untouched (same process, files, models and uninstall entry); `xollama.exe` byte-identical to the release, PAYLOAD_ID equal. Docker image dispatched on the tag.
+> - ab-4 simple on eleven2go: the council launched `-np 2` (live 2), both researchers in the engine at once (slots 0 and 1 interleaved, no "defer task"). The run was stopped at round 6: the model's `num_ctx 16384` gave the whole council one 16k pool; it is re-run with kvarn3 at the largest context that fits.
+> - The council launch carried `--kv-unified` twice (`councilSlotArgs` and `appendSlotArgs`); `appendSlotArgs` now writes it only when the argv lacks it. Guard `TestACouncilWithPoolsSaysKVUnifiedOnce`, checked by removing the fix.
+
 > **2026-09-28 — Engine pin moved to b177 for v0.34.4-xollama.2 (owner's ruling).**
 > - `llm/engine/pin.txt` → `opencoti-0.10.5-c7-2609272353001`, rev `7fc93cc8` (#515): fit growth-free (MTP reserve as it runs, no RS for idle slots), the KV-window sizer fix, the bundled dlopen helper, q6_0 mixed pairs served. sha256 of bin, DSO and CUDA 12 payload checked on download.
 > - Re-probed: every cache type and ring shape as on b171, except a KVarN key over a plain value with a ring, now accepted by the engine (promoted); xollama keeps refusing it. A/B vs b171: compat 8/8 (was 7/8), llama3 75.5 tok/s, multislot 142, gemma4 identical, 70B overflow 3.85 tok/s (was 3.05).
@@ -827,17 +1792,15 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
 ## Where we are
 
-`v0.34.2-xollama.1` is the latest release. The Agentic Council Chat has
-closed Phases 0–7, tested live on the b128 dev build, the cloud and
-eleven2go: PolyKV sizing, pressure and idle compaction with the conversation
-held once, `num_ctx 0`, `slots.live`, and roles on cloud models and other
-servers. The engine pin stays on b111 until a build with `pool_unowned_v1` is
-published and measured.
+`v0.34.4-xollama.2` is the latest pre-release; `v0.34.4-xollama.3` (engine
+b208) is being cut. The Agentic Council Chat is in Phase 11 (agentic tool
+turns, measured on the manic benchmark on eleven2go). The engine pin is b208
+(`2609281805001`), measured 2026-09-28.
 
 ## What exists today
 
-- Soft fork of ollama v0.34.2 with full upstream history. The engine seam is
-  opencoti-llamafile, pinned to b65 in `llm/engine/pin.txt`.
+- Soft fork of ollama v0.34.4 with full upstream history. The engine seam is
+  opencoti-llamafile, pinned to b208 in `llm/engine/pin.txt`.
 - Release protocol and hosted CI: `docs/protocols/RELEASE.md` and
   `.github/workflows/xollama-release.yaml`. The Windows CPU runtime is pinned
   in `llama/runtime-pin.txt`, and delta updates are keyed on `payload-id.txt`.
@@ -848,7 +1811,7 @@ published and measured.
 
 ## In flight / waiting on others
 
-- **opencoti:** the pin is on b111. The paired re-run (#336) did not
+- **opencoti:** the pin is on b208 (2026-09-28). Older, from b111: the paired re-run (#336) did not
   reproduce the overflow deficit, and multislot is at most −7.6 % median,
   inside the spread; no bisect, agreed with opencoti (#339). Also waiting
   on: an HF dev publish

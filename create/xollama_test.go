@@ -2,6 +2,7 @@ package create
 
 import (
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/ollama/ollama/manifest"
@@ -229,5 +230,91 @@ func TestApplyModelfileLayersWritesNothingWithoutConfig(t *testing.T) {
 				t.Fatalf("got %d xollama config layers, want 0", n)
 			}
 		})
+	}
+}
+
+func mediaLayers(layers []manifest.Layer) map[string]string {
+	out := map[string]string{}
+	for _, l := range layers {
+		if l.MediaType == xollama.MediaTypeMedia {
+			out[l.Name] = l.Digest
+		}
+	}
+	return out
+}
+
+func storeBlob(t *testing.T, content string) string {
+	t.Helper()
+	l, err := manifest.NewLayer(strings.NewReader(content), "application/octet-stream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return l.Digest
+}
+
+func TestEachMediaComponentBecomesANamedLayer(t *testing.T) {
+	t.Setenv("OLLAMA_MODELS", t.TempDir())
+	model, vae := storeBlob(t, "klein"), storeBlob(t, "vae")
+
+	layers, err := ApplyModelfileLayers(nil, ModelfileLayerOptions{Xollama: &xollama.Config{
+		Media: &xollama.Media{Image: &xollama.ImageMedia{Model: model, VAE: vae}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := mediaLayers(layers)
+	if len(got) != 2 || got["media/image.model"] != model || got["media/image.vae"] != vae {
+		t.Fatalf("media layers = %v", got)
+	}
+	if len(xollamaLayers(t, layers)) != 1 {
+		t.Fatal("the config naming the media was not written")
+	}
+}
+
+func TestStatingTheConfigReplacesTheMediaLayers(t *testing.T) {
+	t.Setenv("OLLAMA_MODELS", t.TempDir())
+	old, voice := storeBlob(t, "outetts"), storeBlob(t, "kokoro")
+	parent, err := ApplyModelfileLayers(nil, ModelfileLayerOptions{Xollama: &xollama.Config{
+		Media: &xollama.Media{Image: &xollama.ImageMedia{Model: old}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Saying nothing about the config inherits the parent's media with it.
+	kept, err := ApplyModelfileLayers(parent, ModelfileLayerOptions{System: "hi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mediaLayers(kept); got["media/image.model"] != old {
+		t.Fatalf("inherited media = %v", got)
+	}
+
+	swapped, err := ApplyModelfileLayers(parent, ModelfileLayerOptions{Xollama: &xollama.Config{
+		Media: &xollama.Media{TTS: &xollama.TTSMedia{Engine: "audiocpp", Model: voice}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mediaLayers(swapped); len(got) != 1 || got["media/tts.model"] != voice {
+		t.Fatalf("after replacing the media: %v; the old image layer must go", got)
+	}
+
+	cleared, err := ApplyModelfileLayers(parent, ModelfileLayerOptions{Xollama: &xollama.Config{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := mediaLayers(cleared); len(got) != 0 {
+		t.Fatalf("a cleared config left media layers: %v", got)
+	}
+}
+
+func TestAMediaComponentMissingFromTheStoreIsRefused(t *testing.T) {
+	t.Setenv("OLLAMA_MODELS", t.TempDir())
+	_, err := ApplyModelfileLayers(nil, ModelfileLayerOptions{Xollama: &xollama.Config{
+		Media: &xollama.Media{STT: &xollama.STTMedia{Model: "sha256:" + strings.Repeat("0", 64)}},
+	}})
+	if err == nil || !strings.Contains(err.Error(), "media/stt.model") {
+		t.Fatalf("err = %v, want a refusal naming the component", err)
 	}
 }

@@ -14,6 +14,8 @@
 # Optional:
 #   -DLOCAL_FILE=<path> stage this file instead of downloading (still verified)
 #   -DCACHE_DIR=<path>  keep the download here so a clean rebuild is free
+#   -DLOCAL_SIDECAR_DIR=<dir>  take the media sidecars from this directory, by
+#                       their published file names (still verified)
 #
 # The pinned SHA256 is enforced on every path, including -DLOCAL_FILE. A
 # mismatch is a hard error: shipping an unverified inference engine inside an
@@ -43,6 +45,11 @@ set(_asset_sha "")
 set(_dso_paths "")
 set(_dso_shas "")
 set(_dso_labels "")
+set(_sidecar_paths "")
+set(_sidecar_shas "")
+set(_sidecar_kinds "")
+# A sidecar has no GPU variant: the -gpu bin shares its platform's rows.
+string(REGEX REPLACE "-gpu$" "" _sidecar_arch "${ARCH}")
 
 file(STRINGS "${PIN_FILE}" _lines)
 foreach(_line IN LISTS _lines)
@@ -52,7 +59,14 @@ foreach(_line IN LISTS _lines)
     # silently leaves the tail of a comment containing one, and that tail then
     # fails to parse as a directive. Prose lives in whole-line comments, so
     # handling them first makes the parser indifferent to their contents.
-    if(_line MATCHES "^#")
+    #
+    # The one exception is "#! sidecar": opencoti's own pin parsers refuse an
+    # unknown directive, so the rows it adds for us ride inside a comment
+    # (llm/engine/pin.go, machineKeys). The other "#!" keys are routing-time
+    # facts only the Go side reads; this one names files that have to be staged.
+    if(_line MATCHES "^#![ \t]*sidecar[ \t]")
+        string(REGEX REPLACE "^#![ \t]*" "" _line "${_line}")
+    elseif(_line MATCHES "^#")
         continue()
     endif()
     string(REGEX REPLACE "#.*$" "" _line "${_line}")
@@ -106,6 +120,26 @@ foreach(_line IN LISTS _lines)
             list(APPEND _dso_paths "${_row_path}")
             list(APPEND _dso_shas "${_row_sha}")
             list(APPEND _dso_labels "${_row_arch}")
+        endif()
+    elseif(_key STREQUAL "sidecar" AND _n EQUAL 5)
+        # A media library the engine loads from its own directory under its
+        # published file name: the codec (mp3, opus, aac, mp4), audio.cpp
+        # (Kokoro, Supertonic, KittenTTS), and whatever kind a later snapshot
+        # adds. EVERY row of this arch is staged: the kinds are opencoti's, so
+        # the row is checked for its shape and never against a list here. An
+        # engine staged without them boots and refuses what they serve, so
+        # they are part of the artifact.
+        list(GET _fields 1 _row_arch)
+        list(GET _fields 2 _row_kind)
+        if(NOT _row_kind MATCHES "^[a-z0-9-]+$")
+            message(FATAL_ERROR "opencoti-fetch: sidecar kind '${_row_kind}' is not lowercase letters, digits and '-': ${_line}")
+        endif()
+        if(_row_arch STREQUAL "${_sidecar_arch}")
+            list(GET _fields 3 _row_path)
+            list(GET _fields 4 _row_sha)
+            list(APPEND _sidecar_paths "${_row_path}")
+            list(APPEND _sidecar_shas "${_row_sha}")
+            list(APPEND _sidecar_kinds "${_row_kind}")
         endif()
     else()
         message(FATAL_ERROR "opencoti-fetch: cannot parse pin line: ${_line}")
@@ -277,6 +311,70 @@ while(_dso_index LESS _dso_count)
         file(RENAME "${_dso_dest}.part" "${_dso_dest}")
     endif()
     message(STATUS "opencoti-llamafile ${_tag} (${_dso_label}) GPU payload staged at ${_dso_dest}")
+endwhile()
+
+# Stage the media sidecars beside the engine, each under the file name it was
+# published with: that name is what the engine's resolver looks for in its own
+# directory (opencoti #691), so nothing is renamed.
+list(LENGTH _sidecar_paths _sidecar_count)
+set(_sidecar_index 0)
+while(_sidecar_index LESS _sidecar_count)
+    list(GET _sidecar_paths ${_sidecar_index} _sidecar_path)
+    list(GET _sidecar_shas ${_sidecar_index} _sidecar_sha)
+    list(GET _sidecar_kinds ${_sidecar_index} _sidecar_kind)
+    math(EXPR _sidecar_index "${_sidecar_index} + 1")
+
+    get_filename_component(_sidecar_name "${_sidecar_path}" NAME)
+    set(_sidecar_dest "${DEST_DIR}/${_sidecar_name}")
+
+    set(_sidecar_have FALSE)
+    if(EXISTS "${_sidecar_dest}")
+        _opencoti_verify("${_sidecar_dest}" "${_sidecar_sha}" _sidecar_have)
+    endif()
+    if(NOT _sidecar_have AND DEFINED LOCAL_SIDECAR_DIR AND NOT "${LOCAL_SIDECAR_DIR}" STREQUAL "")
+        set(_sidecar_local "${LOCAL_SIDECAR_DIR}/${_sidecar_name}")
+        if(NOT EXISTS "${_sidecar_local}")
+            message(FATAL_ERROR "opencoti-fetch: LOCAL_SIDECAR_DIR=${LOCAL_SIDECAR_DIR} has no ${_sidecar_name}")
+        endif()
+        _opencoti_verify("${_sidecar_local}" "${_sidecar_sha}" _sidecar_ok)
+        if(NOT _sidecar_ok)
+            file(SHA256 "${_sidecar_local}" _sidecar_got)
+            message(FATAL_ERROR
+                "opencoti-fetch: ${_sidecar_local} does not match the ${_sidecar_kind} sidecar pin for ${_sidecar_arch}.\n"
+                "  expected ${_sidecar_sha}\n"
+                "  actual   ${_sidecar_got}")
+        endif()
+        file(COPY_FILE "${_sidecar_local}" "${_sidecar_dest}" ONLY_IF_DIFFERENT)
+        set(_sidecar_have TRUE)
+    endif()
+    if(NOT _sidecar_have)
+        set(_sidecar_url "https://huggingface.co/${_repo}/resolve/${_rev}/${_sidecar_path}")
+        message(STATUS "opencoti-llamafile ${_tag} (${_sidecar_arch}): fetching ${_sidecar_url}")
+        file(DOWNLOAD "${_sidecar_url}" "${_sidecar_dest}.part"
+            EXPECTED_HASH "SHA256=${_sidecar_sha}"
+            TLS_VERIFY ON
+            SHOW_PROGRESS
+            STATUS _sidecar_status)
+        list(GET _sidecar_status 0 _sidecar_code)
+        if(NOT _sidecar_code EQUAL 0)
+            list(GET _sidecar_status 1 _sidecar_message)
+            file(REMOVE "${_sidecar_dest}.part")
+            message(FATAL_ERROR
+                "opencoti-fetch: could not fetch ${_sidecar_url}\n"
+                "  ${_sidecar_message}\n"
+                "  Build offline with -DLOCAL_SIDECAR_DIR=<directory holding ${_sidecar_name}>.")
+        endif()
+        file(RENAME "${_sidecar_dest}.part" "${_sidecar_dest}")
+    endif()
+    # The macOS loader is the one sidecar that is run, not loaded: the engine is
+    # started through it, so its execute bit is part of the payload.
+    if(_sidecar_kind STREQUAL "ape")
+        file(CHMOD "${_sidecar_dest}" PERMISSIONS
+            OWNER_READ OWNER_WRITE OWNER_EXECUTE
+            GROUP_READ GROUP_EXECUTE
+            WORLD_READ WORLD_EXECUTE)
+    endif()
+    message(STATUS "opencoti-llamafile ${_tag} (${_sidecar_arch}) ${_sidecar_kind} sidecar staged at ${_sidecar_dest}")
 endwhile()
 
 message(STATUS "opencoti-llamafile ${_tag}${_chan_note} (${ARCH}) staged at ${_dest}")

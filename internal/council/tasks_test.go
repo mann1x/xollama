@@ -1,0 +1,352 @@
+package council
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/ollama/ollama/api"
+)
+
+// The runtime keeps the list's rules, whatever the planner writes.
+func TestTheTaskListKeepsItsRules(t *testing.T) {
+	prev := []Task{
+		{ID: 1, Task: "read the parser", Status: TaskAssigned, Researcher: 1},
+		{ID: 2, Task: "the brace theory", Status: TaskRefuted, Outcome: "the check did not move"},
+		{ID: 3, Task: "the loader", Status: TaskOpen},
+	}
+	next := []Task{
+		{ID: 1, Task: "read the parser", Status: TaskDone},                     // closed without an outcome
+		{ID: 2, Task: "the brace theory", Status: TaskAssigned, Researcher: 2}, // a refuted task again
+		{ID: 0, Task: "rewrite the draw loop", Status: TaskAssigned, Researcher: 7},
+		{ID: 9, Task: "", Status: TaskOpen}, // nothing to do
+		// task 3 left out
+	}
+	got := mergeTasks(prev, next, 2)
+	want := []Task{
+		{ID: 1, Task: "read the parser", Status: TaskOpen},
+		{ID: 2, Task: "the brace theory", Status: TaskRefuted, Outcome: "the check did not move"},
+		{ID: 3, Task: "the loader", Status: TaskOpen},
+		{ID: 4, Task: "rewrite the draw loop", Status: TaskOpen},
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("list\n%+v\nwant\n%+v", got, want)
+	}
+	got = mergeTasks(got, []Task{{ID: 1, Status: TaskDone, Outcome: "the check passed", Researcher: 1}}, 2)
+	if got[0].Status != TaskDone || got[0].Task != "read the parser" || got[0].Researcher != 0 {
+		t.Errorf("a task closed with its outcome: %+v", got[0])
+	}
+}
+
+// The planner keeps the list across cycles and turns: every member reads it,
+// the re-plan updates it, the next turn's planner starts from it, and new work
+// rebuilt starts without it.
+func TestThePlannerKeepsTheTaskList(t *testing.T) {
+	s := &retestStub{toolStub: toolStub{stub: stub{route: `{"route":"council"}`}}, fails: 1}
+	res, err := Run(t.Context(), toolCfg(), s, conv, func(Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Kept == nil || len(res.Kept.Tasks) != 2 || res.Kept.Tasks[0].Researcher != 1 {
+		t.Fatalf("kept %+v", res.Kept)
+	}
+	var replan Request
+	for _, c := range s.calls {
+		if c.Role == Planner && c.Round > 0 {
+			replan = c
+		}
+	}
+	if got := all(replan); !strings.Contains(got, header(tasksSource)+"- #1 [assigned, researcher 1] a") || !strings.Contains(got, ledgerRules) {
+		t.Errorf("the re-plan did not read the list and its rules:\n%s", got)
+	}
+
+	cfg := toolCfg()
+	cfg.Previous = res.Kept
+	s = &retestStub{toolStub: toolStub{stub: stub{route: `{"route":"council"}`}}}
+	if _, err := Run(t.Context(), cfg, s, conv, func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	if got := all(lastOf(s.calls, Researcher)); !strings.Contains(got, header(tasksSource)) {
+		t.Error("the next turn's council did not read the list it carried")
+	}
+
+	cfg = toolCfg()
+	cfg.Previous = res.Kept
+	s = &retestStub{toolStub: toolStub{stub: stub{route: `{"route":"rebuild"}`}}}
+	if _, err := Run(t.Context(), cfg, s, conv, func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	if got := all(lastOf(s.calls, Researcher)); strings.Contains(got, "] a\n") {
+		t.Errorf("a rebuilt council read the old work's list:\n%s", got)
+	}
+
+	cfg = frontCfg()
+	cfg.Previous = res.Kept
+	f := &frontStub{toolStub{stub: stub{route: `{"route":"rebuild"}`, build: codingBuild}}}
+	if _, err := Run(t.Context(), cfg, f, conv, func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	if got := all(lastOf(f.calls, Researcher)); strings.Contains(got, header(tasksSource)+"- #1") && strings.Contains(got, "] a\n") {
+		t.Errorf("new work read the old work's list:\n%s", got)
+	}
+}
+
+// checkStub's synthesizer runs one check per cycle and reports it failed.
+type checkStub struct{ toolStub }
+
+func (s *checkStub) StreamTools(ctx context.Context, req Request, onToken func(string)) (Reply, error) {
+	if req.Role != Synthesizer {
+		return s.toolStub.StreamTools(ctx, req, onToken)
+	}
+	s.mu.Lock()
+	s.calls = append(s.calls, req)
+	s.mu.Unlock()
+	for _, m := range req.Messages[len(req.Messages)-1:] {
+		if m.Role == "tool" {
+			return Reply{Content: fmt.Sprintf("still failing\n\n%s the check failed.", Retest)}, nil
+		}
+	}
+	return Reply{Calls: []api.ToolCall{readCall("", "check")}}, nil
+}
+
+func driveResults(t *testing.T, cfg Config, m Model, result func(trip int) string) Result {
+	t.Helper()
+	res, err := Run(t.Context(), cfg, m, conv, func(Event) {})
+	for trip := 0; err == nil && len(res.Calls) > 0; trip++ {
+		if trip > 200 {
+			t.Fatal("the council never stopped calling tools")
+		}
+		// Every result since the user's message, as councilToolTurn gives.
+		if cfg.Results == nil {
+			cfg.Results = map[string]string{}
+		}
+		for _, c := range res.Calls {
+			cfg.Results[c.ID] = result(trip)
+		}
+		res, err = RunFrom(t.Context(), cfg, m, conv, res.Progress, nil, func(Event) {})
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res
+}
+
+// Checks whose output does not move turn the council to another approach, in
+// words that name no topic; an output that moves is a lead to follow.
+func TestACouncilThatDoesNotMoveTheCheckChangesApproach(t *testing.T) {
+	build := `{"target":"t","planner":"","researcher":"","critic":"","synthesizer":"","max_tests":3}`
+	s := &checkStub{toolStub{stub: stub{route: `{"route":"council"}`, build: build}}}
+	driveResults(t, toolCfg(), s, func(int) string { return "SyntaxError: missing ) after argument list" })
+	var last Request
+	for _, c := range s.calls {
+		if c.Role == Planner && c.Round == 3 {
+			last = c
+		}
+	}
+	got := all(last)
+	if !strings.Contains(got, sameNote) || !strings.Contains(got, fmt.Sprintf(stuckNote, 3)) {
+		t.Fatalf("the council was not told the checks stopped moving:\n%s", got)
+	}
+	for _, topic := range []string{"code", "syntax", "brace", "file", "error"} {
+		if strings.Contains(strings.ToLower(stuckNote+sameNote+movedNote), topic) {
+			t.Errorf("the nudge names a topic: %q", topic)
+		}
+	}
+
+	s = &checkStub{toolStub{stub: stub{route: `{"route":"council"}`, build: build}}}
+	driveResults(t, toolCfg(), s, func(trip int) string { return fmt.Sprintf("failure %d", trip) })
+	for _, c := range s.calls {
+		if c.Role == Planner && c.Round == 3 {
+			got = all(c)
+		}
+	}
+	if !strings.Contains(got, movedNote) || strings.Contains(got, "checks returned the same output") {
+		t.Errorf("moving checks were not taken as progress:\n%s", got)
+	}
+}
+
+// A review without its verdict is sent back with the structure, once; a
+// second miss is marked unclear.
+func TestAReviewWithoutAVerdictIsSentBack(t *testing.T) {
+	for name, tc := range map[string]struct {
+		replies []string
+		want    string
+	}{
+		"fixed on the second try": {[]string{"looks fine to me", "CHANGE: x\nCHECK: y\n" + ReviewConfirmed}, ReviewConfirmed},
+		"never gives one":         {[]string{"looks fine", "still fine"}, ReviewUnclear + " (the critic gave no verdict)"},
+		"right the first time":    {[]string{"CHANGE: x\nCHECK: y\n" + ReviewRefuted}, ReviewRefuted},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var asked []Request
+			m := modelFunc(func(ctx context.Context, req Request, _ func(string)) (string, error) {
+				asked = append(asked, req)
+				return tc.replies[min(len(asked)-1, len(tc.replies)-1)], nil
+			})
+			d := NewDesk(t.Context(), m, toolCfg(), 1)
+			d.Submit(ReviewJob{ID: "a", Turn: "t", N: 1})
+			d.Wait(t.Context(), 0)
+			for d.Out() > 0 {
+				d.Wait(t.Context(), 1e9)
+			}
+			rs := d.Take("t")
+			if len(rs) != 1 || !strings.HasSuffix(rs[0].Text, tc.want) {
+				t.Fatalf("review %+v, want it to end %q", rs, tc.want)
+			}
+			if len(tc.replies) > 1 && (len(asked) != 2 || asked[1].Messages[len(asked[1].Messages)-1].Content != user(reviewFormatNudge).Content) {
+				t.Errorf("the review was not sent back with the structure")
+			}
+			if !strings.Contains(all(asked[0]), "CHANGE: <") {
+				t.Error("the reviewer was not given the structure up front")
+			}
+		})
+	}
+}
+
+// The builder tells the planner to keep the council's record.
+func TestTheBuilderMakesThePlannerTheCoordinator(t *testing.T) {
+	for _, want := range []string{"coordinator", "task list", "what evidence closes a task", "reads the task list and every failed check"} {
+		if !strings.Contains(builderPrompt, want) {
+			t.Errorf("the builder's instruction lacks %q", want)
+		}
+	}
+}
+
+// A planner that numbers its list afresh updates the tasks it names, never
+// the ones its numbers land on: the sixth simple run wrote 0, 1, 2 against the
+// list's #1, #2, #3. Every plan is kept with the list's ids, so no member
+// reads the planner's 0s.
+func TestARenumberedListUpdatesTheTasksItNames(t *testing.T) {
+	s := &retestStub{toolStub: toolStub{stub: stub{route: `{"route":"council"}`, plan: func(req Request) string {
+		if req.Round == 0 {
+			return `{"plan":"p","briefs":["a","b"],"tasks":[{"id":0,"task":"Run the check","status":"assigned","researcher":1},{"id":0,"task":"Read the code for errors","status":"assigned","researcher":2}]}`
+		}
+		return `{"plan":"p2","briefs":["a","b"],"tasks":[{"id":0,"task":"Run the check","status":"done","outcome":"it fails"},{"id":1,"task":"read the code for errors","status":"refuted","outcome":"nothing there"},{"id":2,"task":"Replace the failing part whole","status":"assigned","researcher":1}]}`
+	}}}, fails: 1}
+	res, err := Run(t.Context(), toolCfg(), s, conv, func(Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Task{
+		{ID: 1, Task: "Run the check", Status: TaskDone, Outcome: "it fails"},
+		{ID: 2, Task: "read the code for errors", Status: TaskRefuted, Outcome: "nothing there"},
+		{ID: 3, Task: "Replace the failing part whole", Status: TaskAssigned, Researcher: 1},
+	}
+	if fmt.Sprint(res.Kept.Tasks) != fmt.Sprint(want) {
+		t.Fatalf("list\n%+v\nwant\n%+v", res.Kept.Tasks, want)
+	}
+	for _, c := range s.calls {
+		if got := all(c); c.Role != Planner && strings.Contains(got, header(planSource)) && strings.Contains(got, `"id":0`) {
+			t.Fatalf("a %s read a plan with the planner's own numbering:\n%s", c.Role, got)
+		}
+	}
+	var replan Request
+	for _, c := range s.calls {
+		if c.Role == Planner && c.Round > 0 {
+			replan = c
+		}
+	}
+	if got := all(replan); strings.Contains(got, `"id":0`) || !strings.Contains(got, `"id":2,"task":"Read the code for errors"`) {
+		t.Errorf("the re-plan did not read its first plan in the list's numbering:\n%s", got)
+	}
+}
+
+// The check is the first read after the last change, not a read after it: a
+// search that answers something new each cycle is investigation, and taken
+// for the check it made six identical errors read as progress (eleven2go,
+// 2026-09-29).
+func TestTheCheckIsTheReadAfterTheLastChange(t *testing.T) {
+	cfg := toolCfg()
+	key := MemberKey(Synthesizer, 0, 0)
+	cfg.Results = map[string]string{
+		ForwardedID(key, "r0"): "before any change",
+		ForwardedID(key, "c1"): "SyntaxError",
+		ForwardedID(key, "s1"): "search results",
+		ForwardedID(key, "s2"): "more search results",
+	}
+	step := func(c api.ToolCall) []api.Message {
+		return []api.Message{{Role: "assistant", ToolCalls: []api.ToolCall{c}}, {Role: "tool", ToolCallID: c.ID}}
+	}
+	var turns []api.Message
+	for _, c := range []api.ToolCall{readCall("r0", "a"), editCall("e1", "x", "y"), readCall("c1", "check"), readCall("s1", "search"), readCall("s2", "search2")} {
+		turns = append(turns, step(c)...)
+	}
+	if got := cfg.lastCheck(key, turns); got != "SyntaxError" {
+		t.Errorf("check %q, want the read right after the change", got)
+	}
+	if got := cfg.lastCheck(key, turns[:2]); got != "before any change" {
+		t.Errorf("with no change, check %q, want the last read", got)
+	}
+}
+
+// The list is where a change of approach has to show: the plan the planner
+// wrote on eleven2go (hard, 5ce5f7e7, round 2) said it would replace the
+// failing part whole and kept all four tasks open, with none new.
+func TestAReplanThatKeepsTheRefutedApproachIsNamed(t *testing.T) {
+	prev := []Task{
+		{ID: 1, Task: "Run game and capture initial error output", Status: TaskOpen},
+		{ID: 2, Task: "Analyze HTML structure for syntax/load issues", Status: TaskOpen},
+		{ID: 3, Task: "Analyze JavaScript logic for runtime errors", Status: TaskOpen},
+		{ID: 4, Task: "Examine template literal syntax in countdown timer code", Status: TaskOpen},
+	}
+	kept := mergeTasks(prev, []Task{
+		{ID: 1, Task: "Run game and capture initial error output", Status: TaskOpen},
+		{ID: 2, Task: "Analyze HTML structure for syntax/load issues", Status: TaskOpen},
+		{ID: 3, Task: "Analyze JavaScript logic for runtime errors", Status: TaskOpen},
+		{ID: 4, Task: "Examine template literal syntax in countdown timer code", Status: TaskOpen},
+	}, 2)
+	if why := approachKept(prev, kept); why != "marks no task refuted and adds none" {
+		t.Errorf("round 2's plan: %q", why)
+	}
+	changed := mergeTasks(prev, []Task{
+		{ID: 4, Task: "Examine template literal syntax in countdown timer code", Status: TaskRefuted, Outcome: "the same error after every change"},
+		{ID: 0, Task: "Write the whole script section out again in full", Status: TaskAssigned, Researcher: 1},
+	}, 2)
+	if why := approachKept(prev, changed); why != "" {
+		t.Errorf("a plan that refutes a task and adds one was sent back: %q", why)
+	}
+	onlyRefuted := mergeTasks(prev, []Task{{ID: 4, Task: prev[3].Task, Status: TaskRefuted, Outcome: "same"}}, 2)
+	if why := approachKept(prev, onlyRefuted); why != "adds no task for a new approach" {
+		t.Errorf("refuted only: %q", why)
+	}
+}
+
+// Stuck, a re-plan that keeps every task as it was is asked again once, with
+// the note; while the checks move, it is not.
+func TestAStuckReplanIsAskedAgainOnce(t *testing.T) {
+	build := `{"target":"t","planner":"","researcher":"","critic":"","synthesizer":"","max_tests":3}`
+	s := &checkStub{toolStub{stub: stub{route: `{"route":"council"}`, build: build}}}
+	driveResults(t, toolCfg(), s, func(int) string { return "SyntaxError: missing ) after argument list" })
+	perRound := map[int]int{}
+	var again Request
+	for _, c := range s.calls {
+		if c.Role == Planner && c.Round > 0 {
+			perRound[c.Round]++
+			if strings.Contains(all(c), "it keeps the approach those checks refuted") {
+				again = c
+			}
+		}
+	}
+	if perRound[3] != 2 || again.Round != 3 {
+		t.Fatalf("planner calls per re-plan round %v; the stuck round-3 re-plan was not asked again once", perRound)
+	}
+	if perRound[1] != 1 {
+		t.Errorf("a re-plan before the checks were stuck was asked again: %v", perRound)
+	}
+	if got := all(again); !strings.Contains(got, "marks no task refuted and adds none") {
+		t.Errorf("the note does not say what the plan left undone:\n%s", got)
+	}
+	for _, topic := range []string{"code", "syntax", "brace", "file", "error"} {
+		if strings.Contains(strings.ToLower(keptNote), topic) {
+			t.Errorf("the note names a topic: %q", topic)
+		}
+	}
+
+	s = &checkStub{toolStub{stub: stub{route: `{"route":"council"}`, build: build}}}
+	driveResults(t, toolCfg(), s, func(trip int) string { return fmt.Sprintf("failure %d", trip) })
+	for _, c := range s.calls {
+		if c.Role == Planner && strings.Contains(all(c), "it keeps the approach those checks refuted") {
+			t.Fatal("a council whose checks moved was asked to change approach")
+		}
+	}
+}

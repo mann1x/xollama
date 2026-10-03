@@ -1,0 +1,184 @@
+---
+title: Images, speech and transcription
+---
+
+A model can carry opencoti's media engines: image generation and edit,
+text-to-speech and speech-to-text. They are served on OpenAI's routes, so any
+OpenAI client works, as do SurfSense and Cerebriline. How to attach engines to
+a model, or install a ready-made media model, is in
+[Attaching image, speech and transcription engines](/xollama/tweak#attaching-image-speech-and-transcription-engines).
+
+```shell
+xollama media create flux2-klein-4b klein
+curl http://localhost:22434/v1/images/generations \
+  -d '{"model": "klein", "prompt": "a lighthouse at dusk"}'
+```
+
+## Ready-made models
+
+These are published on ollama.com and pull like any model:
+
+| Model | What it does |
+|---|---|
+| `mannix/flux2-klein:4b` | Image generation and edits, 1024×1024 in four steps |
+| `mannix/z-image:turbo` | Photographic image generation in eight steps |
+| `mannix/whisper:large-v3-turbo` | Transcription in 99 languages, and translation to English |
+| `mannix/outetts:0.3` | Speech, OuteTTS with the WavTokenizer vocoder |
+| `mannix/kokoro:82m` | Speech, 54 voices, mp3 at 24 kHz (audio.cpp, on the CPU) |
+| `mannix/supertonic:3`, `:3-q8_0` | Speech, ten voices in 31 languages, mp3 at 44.1 kHz (audio.cpp, on the CPU) |
+| `mannix/kittentts:mini-0.8` | Speech, eight English voices (audio.cpp, on the CPU) |
+| `mannix/wan2.1:t2v-1.3b` | Video from text, 640×352×33 (2 s at 16 fps); peaks at about 17 GiB, so a 24 GB card |
+| `mannix/wan2.1:t2v-1.3b-fp16` | The same at full precision with the Q8_0 text encoder; peaks at about 20.4 GiB |
+| `mannix/wan2.2:ti2v-5b`, `:ti2v-5b-q8_0` | Video at 24 fps, 640×352×33; peaks at 20.3 GiB (Q4_K_M) or 22.2 GiB (Q8_0) |
+
+```shell
+xollama pull mannix/whisper:large-v3-turbo
+```
+
+`xollama media list` shows which catalog entries are published, in its `PULL`
+column. The mixed `media-kit` is not published yet; `xollama media create`
+builds it locally. Video needs an opencoti engine from M7 on (b103 and later).
+The audio.cpp voices (Kokoro, Supertonic, KittenTTS) need an engine that reads a
+model file by its contents, which xOllama passes as its blob: opencoti dev build
+`2610031022001` (b119) or later, advertising `audio_speech_content_format_v1`
+(on Windows `2610031112001` or later: b119's audio.cpp library crashes there).
+An older engine is refused at load with a message naming that feature.
+
+Three of the engine's abilities live in libraries beside it, which every xOllama
+package carries (they are pinned and fetched with the engine):
+
+| Library | What it serves | Without it |
+|---|---|---|
+| `oc-codec` | mp3, opus and aac speech, mp4 video | Speech is wav or pcm, video avi or webm. A model whose own default format needs the codec is refused at load, naming it. |
+| `oc-audiocpp` | Kokoro, Supertonic, KittenTTS | Those models are refused at load, naming it. |
+| `oc-espeak` | The phonemes Kokoro and KittenTTS speak from | Those two are refused at load, naming it, unless the host has its own eSpeak-ng. Supertonic does not use it. |
+
+Nothing has to be installed on the host. On a Mac with Apple silicon the three
+ship inside the app, as on Linux and Windows; speech and transcription are
+measured there, and image and video models are not yet. There is no
+opencoti engine for an Intel Mac, and so no media models.
+
+`oc-codec` contains ffmpeg n9.0.2 (LGPL 2.1 or later; built with
+`--disable-everything` plus mp4/mov, mp3, aac, wav and h264 decoding, no GPL or
+nonfree parts), openh264 v2.6.0 built from source (BSD 2-clause) as its only
+h264 encoder, and lame 3.100 (LGPL). `oc-audiocpp` contains audio.cpp.
+`oc-espeak` is eSpeak-ng 1.52.0 (GPL 3.0 or later), its phonemiser and data in
+one file that the engine loads at runtime; it is a separate file, never linked
+into the engine. Its licence text (`COPYING.espeak-ng`) and the source and
+build references of all three (`BUILD_INFO.md`) are installed beside the
+libraries in every package and in the container image.
+
+Stock ollama can pull these models, but cannot show or run a model that carries
+only media. A chat model with media attached still chats on stock ollama, which
+skips the media.
+
+## Keeping one copy of the models
+
+Media models are gigabytes. `xollama media fetch` downloads catalog entries
+(or any `hf.co/…` file) into a directory of your own, laid out
+`<owner>/<repo>/<file>`, and checks each one against the sha256 Hugging Face
+names. `xollama media create --dir` then uploads from that directory instead of
+having the server download again:
+
+```shell
+xollama media fetch --dir ~/media-models --all
+xollama media create whisper-large-v3-turbo whisper --dir ~/media-models
+```
+
+A file already in the directory with the right sha256 is never downloaded
+again. A `<file>.sha256` beside it records the check, so the next run only
+compares size and time.
+
+## Routes
+
+| Route | Needs | Notes |
+|---|---|---|
+| `POST /v1/images/generations` | `image_generation` | JSON. The reply is `b64_json`; `"response_format": "url"` answers a `data:` URL. Besides OpenAI's fields the engine takes `steps`, `cfg_scale`, `sampler`, `scheduler`, `seed` and `negative_prompt`. |
+| `POST /v1/images/edits` | `image_edit` | Multipart, `image[]` (one or more) and an optional `mask`. Without a `size` (or with `auto`) the edit comes back at its first image's size, scaled down to the template's pixel count when larger, in multiples of 16. |
+| `POST /v1/audio/speech` | `speech` | JSON `input`, `voice`, `response_format`, `speed`. The audio comes back as the engine encodes it. |
+| `POST /v1/audio/transcriptions` | `transcription` | Multipart `file`. A model without a speech-to-text engine is served as upstream serves it, through an audio-capable LLM. |
+| `POST /v1/audio/translations` | `transcription` | Multipart `file`, translated to English. |
+| `GET /api/xollama/media/voices?model=` | `speech` | The model's voices for a picker: the engine's own, the OpenAI names the template maps to each (`aliases`), the `default`, and the engine's `response_formats` and `sample_rate`. POST with `{"model": …}` works too. It starts the speech engine if it isn't running. `xollama media voices MODEL` prints the same. |
+| `POST /v1/videos` | `video` | JSON or multipart: `prompt`, `size` (`832x480`), `seconds` or `frames`, `fps`, `seed`, `steps`, `negative_prompt`, `output_format`, and `input_reference` (a starting image, for a model that takes one). The reply is a job: `{id, object: "video", status, progress}`. |
+| `GET /v1/videos/{id}` | | The job: `queued`, `in_progress`, `completed`, `failed` or `cancelled`, with `progress`. |
+| `GET /v1/videos/{id}/content` | | The clip, as the engine encodes it (mp4 with opencoti's codec sidecar). |
+| `DELETE /v1/videos/{id}` | | Cancels a running clip, or drops a finished one. |
+| `GET /v1/videos` | | This server's jobs, newest first. |
+| `GET /v1/models` | | Models with media also list `input_modalities`, `output_modalities` and `capabilities` (`image_generation`, `image_edit`, `speech`, `transcription`, `video`). `?output_modalities=image` (or `audio`, `text`, `video`) keeps only the models that produce it. A model that is the server's default for a kind also lists it in `default_for`. |
+
+A model's capabilities, from `xollama show` or `/api/show`, say which routes it
+answers. A request for media the model doesn't have is a 400 that names what is
+missing.
+
+## A default model per kind
+
+A server with two image models has no single answer for a client that wants
+"an image model", and a careful client won't guess. Name the default for each
+kind with `XOLLAMA_MEDIA_DEFAULTS`: comma-separated `kind=model` pairs.
+
+```shell
+xollama tweak envs XOLLAMA_MEDIA_DEFAULTS=image=mannix/flux2-klein:4b,speech=mannix/outetts:0.3
+```
+
+- The kinds are `image` (generation and edit), `image_generation`, `image_edit`,
+  `transcription` (or `stt`), `speech` (or `tts`) and `video`. A later pair for
+  the same kind wins, so `image=a,image_edit=b` generates with `a` and edits
+  with `b`.
+- `/v1/models` lists the kinds a model is the default for in `default_for`.
+  A pair that names a model without that kind marks nothing.
+- A media request that names no model is served by the default for its route.
+  Without one, it's still a 400.
+
+## The template decides what a client doesn't
+
+Clients such as SurfSense send only a prompt or a text: no size, steps, voice or
+format. The model's media `defaults` fill every field a request leaves out, and
+a field listed in the kind's `fixed` takes the template's value whatever the
+client sends. For example, a model trained at one size can fix `width` and
+`height`.
+
+- **Voices**: `voice_map` turns an OpenAI voice name (`alloy`, `nova`, …) into
+  one of the model's own. An OuteTTS model can also carry extra voices of its
+  own (`voices`, set with `xollama tweak model MODEL --tts-voices=name=file,…`): each
+  is one speaker file stored as its own layer and selected by its name.
+- **Transcription**: a template whose `task` is `translate` answers
+  `/v1/audio/transcriptions` in English as well. With `task` in `fixed` it
+  decides both routes.
+- **Edits**: a `strength` default is sent only to a model that edits as
+  img2img. On a reference-edit model such as FLUX.2 klein it would turn the edit
+  into img2img.
+
+## Video jobs
+
+A clip takes from tens of seconds to minutes, so it is a job, as in OpenAI's
+videos API: create it, poll it, then fetch the content.
+
+- The id is xollama's own (`video_…`), so a poll needs no model name.
+- The video engine stays loaded for as long as its job needs it: until the
+  clip is fetched (plus a minute, for a client that asks again), deleted, or
+  ten minutes after it finished, which is as long as the engine keeps it.
+  Fetch the content as soon as the job is `completed`.
+- **The template's clip is the largest one it serves.** Its `width x height x
+  frames` is the shape its memory reserve was sized for. A request for a bigger
+  clip is a 400 naming that shape, before anything is loaded. The same pixel
+  count in another shape (`480x832` for `832x480`) is fine, and so is a
+  smaller size with more frames. `seconds` counts as `seconds x fps + 1` frames
+  (2 s at 16 fps is 33).
+- A full engine queue is a 503 with `Retry-After`, like the other routes.
+
+## When the engine is busy
+
+Each engine (image, speech, transcription) works on one request at a time.
+xollama queues requests to it in arrival order. When 16 are already waiting,
+or a request has waited 10 minutes, the answer is `503` with `Retry-After`.
+
+The engines run in an opencoti process of their own, started by the first media
+request and unloaded after the model's keep-alive like any other model.
+
+## Audio formats
+
+xollama never re-encodes audio. With no `response_format` the engine's default
+applies: mp3 when its codec library is loaded, WAV when it is not (and on
+opencoti b97, which has none). SurfSense asks for no format and saves the
+reply as `.mp3`; the published speech templates state mp3 themselves, so on an
+engine without the codec they are refused at load rather than answered in WAV.

@@ -30,10 +30,10 @@ import (
 	"github.com/ollama/ollama/parser"
 	"github.com/ollama/ollama/template"
 	"github.com/ollama/ollama/thinking"
+	"github.com/ollama/ollama/transfer"
 	"github.com/ollama/ollama/types/model"
 	"github.com/ollama/ollama/types/xollama"
 	"github.com/ollama/ollama/version"
-	"github.com/ollama/ollama/x/transfer"
 )
 
 // Blobs newer than this may belong to another process that has not written its
@@ -171,10 +171,20 @@ const (
 // Capabilities returns the capabilities that the model supports
 func (m *Model) Capabilities() []model.Capability {
 	capabilities := m.capabilitiesForTemplate(templateCapabilitySelected)
+	capabilities = append(capabilities, mediaCapabilities(m)...) // xollama-hook: media
 	if len(capabilities) == 0 {
 		slog.Warn("unknown capabilities for model", "model", m.Name)
 	}
 
+	return capabilities
+}
+
+// publicCapabilities hides a decision model's other capabilities from show and
+// list so clients don't offer it for general chat. Serving still uses Capabilities.
+func publicCapabilities(capabilities []model.Capability) []model.Capability {
+	if slices.Contains(capabilities, model.CapabilityDecision) {
+		return []model.Capability{model.CapabilityDecision}
+	}
 	return capabilities
 }
 
@@ -213,10 +223,13 @@ func (m *Model) ggufCapabilities(capabilities []model.Capability, source templat
 	case templateCapabilityChat:
 		capabilities = chatTemplateCapabilities(capabilities, m.metadata.String("tokenizer.chat_template"))
 	}
-	if m.metadata.Valid("pooling_type") {
+	switch {
+	case m.metadata.String("decision.type") != "":
+		capabilities = appendCapability(capabilities, model.CapabilityDecision)
+	case m.metadata.Valid("pooling_type"):
 		capabilities = appendCapability(capabilities, model.CapabilityEmbedding)
-	} else {
-		// If no embedding is specified, we assume the model supports completion.
+	default:
+		// Otherwise, assume the model supports completion.
 		capabilities = appendCapability(capabilities, model.CapabilityCompletion)
 	}
 	if m.metadata.Valid("vision.block_count") {
@@ -473,6 +486,12 @@ func (m *Model) modelFamilyCapabilities(capabilities []model.Capability) []model
 }
 
 func (m *Model) filterUnsupportedCapabilities(capabilities []model.Capability, modelArch string) []model.Capability {
+	if m.metadata.String("decision.type") != "" {
+		capabilities = slices.DeleteFunc(capabilities, func(c model.Capability) bool {
+			return c == model.CapabilityCompletion || c == model.CapabilityInsert ||
+				c == model.CapabilityTools || c == model.CapabilityThinking
+		})
+	}
 	if suppressAudioCapability(m, modelArch) {
 		capabilities = slices.DeleteFunc(capabilities, func(c model.Capability) bool {
 			return c == model.CapabilityAudio
@@ -552,6 +571,7 @@ func (m *Model) CheckCapabilities(want ...model.Capability) error {
 		model.CapabilityEmbedding:  errCapabilityEmbedding,
 		model.CapabilityThinking:   errCapabilityThinking,
 		model.CapabilityImage:      errCapabilityImage,
+		model.CapabilityDecision:   errors.New("decision"),
 	}
 
 	for _, cap := range want {
@@ -610,19 +630,12 @@ func (m *Model) String() string {
 		})
 	}
 
-	// xollama-hook: modelfile-roundtrip — see docs/features/modelfile-roundtrip.md
-	//
-	// HasGoTemplate, not m.Template. GetModel seeds m.Template with
-	// template.DefaultTemplate so the serving path always has something to
-	// render with, which means m.Template is never nil and this emitted
-	// `TEMPLATE {{ .Prompt }}` for every model that defines no template at
-	// all. That is not a cosmetic difference: `show --modelfile` is how people
-	// derive a new Modelfile from an existing model, so the fabricated line
-	// gets fed back to `create` and bakes a real template layer into a model
-	// that had none -- permanently, and invisibly, changing how it is served.
-	// HasGoTemplate is true only where an actual template/prompt layer was
-	// read, so it is exactly "the model defines one".
-	if m.HasGoTemplate && m.Template != nil {
+	// Only a template the model carries. With no template layer m.Template
+	// is template.DefaultTemplate, and writing it out invented a
+	// `TEMPLATE {{ .Prompt }}` that a create from this Modelfile then stored
+	// as a real layer -- a Go template the model never had, which changes how
+	// it is prompted.
+	if m.Template != nil && m.HasGoTemplate {
 		modelfile.Commands = append(modelfile.Commands, parser.Command{
 			Name: "template",
 			Args: m.Template.String(),
@@ -647,6 +660,12 @@ func (m *Model) String() string {
 		modelfile.Commands = append(modelfile.Commands, parser.Command{
 			Name: "parser",
 			Args: m.Config.Parser,
+		})
+	}
+	for _, capability := range m.Config.Capabilities {
+		modelfile.Commands = append(modelfile.Commands, parser.Command{
+			Name: "capability",
+			Args: capability,
 		})
 	}
 

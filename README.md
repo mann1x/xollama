@@ -106,8 +106,8 @@ a rolling-KV window, shared KV pools, DCA long context, MTP speculative
 decode.
 
 Routing is by *tested* platform and backend — CUDA, Vulkan and CPU go to
-opencoti; ROCm and anything unvalidated stay on stock `llama-server`; macOS
-keeps ollama's MLX path untouched. `XOLLAMA_ENGINE=opencoti|llamacpp|auto`
+opencoti, as does Metal on Apple silicon; ROCm, Intel Macs and anything
+unvalidated stay on stock `llama-server`; MLX models keep ollama's MLX path. `XOLLAMA_ENGINE=opencoti|llamacpp|auto`
 overrides it, which also makes an honest A/B possible against vanilla.
 
 Design: [`docs/features/engine-opencoti-llamafile.md`](docs/features/engine-opencoti-llamafile.md).

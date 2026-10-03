@@ -9,6 +9,10 @@
 #
 # Run it by hand (`gh workflow run discord-announce.yaml -f tag=<tag>`) to
 # re-announce a tag. A Discord failure is reported but fails nothing.
+#
+# A release candidate (v<upstream>-rc.<k>.xollama) is never announced, even if
+# someone promotes it by mistake: candidates are dev builds, and the release
+# made from one is what gets announced (RELEASE.md, "Versions and tags").
 name: discord-announce
 
 on:
@@ -35,6 +39,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
+          if [[ "$TAG" =~ -rc\.[0-9]+\.xollama$ ]]; then
+            echo "::warning::$TAG is a release candidate and is never announced; if it was promoted by mistake, run: gh release edit $TAG --prerelease"
+            exit 0
+          fi
           if [ -z "$DISCORD_WEBHOOK" ]; then
             echo "::warning::Secret TECH_CORNER_DISCOWH is not set; skipping the Discord announcement"
             exit 0

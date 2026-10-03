@@ -13,10 +13,15 @@ package llm
 // mail #501, from the b145 log: "no slot is available, defer task"). ab-3's
 // two researchers ran back to back for that reason.
 //
-// So a council launches with -np at its widest parallel step. Live slots cost
-// nothing over the same --max-parallel (the engine sizes KV, output buffer and
-// batch for the ceiling at boot), and -c stays num_ctx x the model's own live
-// count: the workers are charged to the owner, so the pool does not grow.
+// So a council launches with every slot the engine allows live: its
+// --max-parallel ceiling (4 by default, slots.max or XOLLAMA_MAX_PARALLEL when
+// set), and never fewer than its widest local step. Live slots cost nothing
+// over the same --max-parallel (the engine sizes KV, output buffer and batch
+// for the ceiling at boot), and -c stays num_ctx x the model's own live count:
+// the workers are charged to the owner, so the pool does not grow. The owner's
+// ruling (2026-09-28): a council follows the engine's parallel slots; sizing
+// it to its widest step left the critics' reviews, which run beside the
+// synthesizer, waiting for a slot.
 
 import (
 	"slices"
@@ -24,18 +29,23 @@ import (
 )
 
 // councilLive is the live slot count a launch starts with: the scheduler's,
-// raised to the council's width where opencoti serves a council model. It is
-// never raised on stock llama.cpp, for a model held to one sequence, or for a
-// model that splits its cells per slot (kv.unified false), where more slots
-// would cut each one's share of -c.
+// raised to the engine's parallel ceiling -- and at least the council's local
+// width -- where opencoti serves a council model. It is never raised on stock
+// llama.cpp, for a model held to one sequence, or for a model that splits its
+// cells per slot (kv.unified false), where more slots would cut each one's
+// share of -c.
 func councilLive(cfg LlamaServerConfig, numParallel int, opencoti bool) int {
-	if !opencoti || cfg.CouncilSlots <= numParallel || cfg.singleSequence(opencoti) {
+	if !opencoti || cfg.CouncilSlots <= 0 || cfg.singleSequence(opencoti) {
 		return numParallel
 	}
 	if x := cfg.Xollama; x != nil && x.KV != nil && x.KV.Unified != nil && !*x.KV.Unified {
 		return numParallel
 	}
-	return cfg.CouncilSlots
+	live := max(numParallel, cfg.CouncilSlots)
+	if plan := resolveSlotPlan(cfg, live, false); plan.Max > live {
+		live = plan.Max
+	}
+	return live
 }
 
 // councilSlotArgs raises the argv's -np to live and makes the cells one

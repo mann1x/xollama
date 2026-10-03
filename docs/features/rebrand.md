@@ -76,6 +76,20 @@ routes, the data directory, the registry protocol, or anything in `LICENSE`.
 Upstream's MIT licence and copyright stay exactly as they are.
 
 
+## The desktop app
+
+A stock Ollama's tray usually runs beside xOllama's, so everything Windows
+shows names xOllama: the tray tooltip, its menu ("Open xOllama", "Quit
+xOllama"), the first-run and update notifications, the window title and the
+UI's text. The icons are xOllama's own. The tray window class is
+`xOllamaClass`: with upstream's `OllamaClass`, xOllama started after a stock
+tray took it for itself and exited.
+
+The UI's strings are rewritten at build time by `app/ui/app/xollama-brand.ts`,
+not edited, so an upstream merge of the UI does not conflict. "Ollama account"
+and "Ollama.com" stay: they are the ollama.com account the cloud models use.
+Registry row `app-brand`.
+
 ## What shipped
 
 | area | before | after |
@@ -85,6 +99,8 @@ Upstream's MIT licence and copyright stay exactly as they are.
 | Windows installer | `OllamaSetup.exe`, AppId `{44E83376-...}` | `xOllamaSetup.exe`, AppId `{F6F806B4-...}` |
 | macOS bundle | `Ollama.app`, `com.electron.ollama` | `xOllama.app`, `com.mann1x.xollama` |
 | macOS LaunchAgent | `com.ollama.ollama.plist` | `com.mann1x.xollama.plist` |
+| macOS CLI link | `/usr/local/bin/ollama` | `/usr/local/bin/xollama` |
+| macOS app state | `~/Library/Application Support/Ollama` | `~/Library/Application Support/xOllama` |
 | systemd unit | `ollama.service` | `xollama.service` |
 | release assets | `ollama-linux-amd64.tar.zst`, ... | `xollama-linux-amd64.tar.zst`, ... |
 | release source | `ollama.com/download` | `github.com/mann1x/xollama/releases` |

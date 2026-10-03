@@ -34,8 +34,8 @@ func TestCommittedPinParses(t *testing.T) {
 	seen := map[string]bool{}
 	bins := 0
 	for _, a := range p.Assets {
-		if a.Kind != "bin" && a.Kind != "dso" && a.Kind != kindCUDA12DSO {
-			t.Errorf("%s: kind = %q, want bin, dso or %s", a.Arch, a.Kind, kindCUDA12DSO)
+		if a.Kind != "bin" && a.Kind != "dso" && a.Kind != kindCUDA12DSO && a.Kind != kindSidecar {
+			t.Errorf("%s: kind = %q, want bin, dso, %s or %s", a.Arch, a.Kind, kindCUDA12DSO, kindSidecar)
 		}
 		if a.Kind == "bin" {
 			bins++
@@ -43,10 +43,10 @@ func TestCommittedPinParses(t *testing.T) {
 		if !sha256Re.MatchString(a.SHA256) {
 			t.Errorf("%s: sha256 = %q, want 64 lowercase hex", a.Arch, a.SHA256)
 		}
-		if seen[a.Kind+" "+a.Arch] {
+		if seen[a.Kind+" "+a.Arch+" "+a.Role] {
 			t.Errorf("%s: duplicate %s row; the lookup would return whichever came first", a.Arch, a.Kind)
 		}
-		seen[a.Kind+" "+a.Arch] = true
+		seen[a.Kind+" "+a.Arch+" "+a.Role] = true
 		if strings.HasPrefix(a.Path, "/") || strings.Contains(a.Path, "..") {
 			t.Errorf("%s: path %q must be a plain repo-relative path", a.Arch, a.Path)
 		}
@@ -98,8 +98,9 @@ func TestPackageArch(t *testing.T) {
 		// The GPU variant, not the bare one: an installer that needs a second
 		// download before it can use the GPU is not an installer.
 		{goos: "windows", goarch: "amd64", want: "win-x86_64-gpu"},
-		// macOS keeps ollama's MLX path and never routes here.
-		{goos: "darwin", goarch: "arm64", wantErr: true},
+		// Apple silicon only: opencoti publishes nothing for an Intel Mac.
+		{goos: "darwin", goarch: "arm64", want: "macos-aarch64"},
+		{goos: "darwin", goarch: "amd64", wantErr: true},
 		{goos: "windows", goarch: "arm64", wantErr: true},
 	}
 	for _, tt := range cases {

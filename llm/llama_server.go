@@ -225,6 +225,9 @@ type llamaServerLaunchConfig struct {
 	// relaunch when a server-wide XOLLAMA_K/V_CACHE_TYPE stock does not
 	// accept met a load stock serves (resolveKVCacheTypesOn).
 	stockKV bool
+	// xollama-hook: kv-fa-retry — forceF16V relaunches with the V half at f16
+	// after the engine refused a quantized V without flash attention.
+	forceF16V bool
 }
 
 func newLlamaServerHTTPClient() *http.Client {
@@ -456,7 +459,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	// The resolver keeps OLLAMA_KV_CACHE_TYPE as the default and lets the
 	// XOLLAMA_* variables and the model's own config override either half.
 	// See docs/xollama/kv-cache.mdx.
-	kvTypes := resolveKVCacheTypesOn(launch.config, launch.kvCacheType, launch.stockKV)
+	kvTypes := launch.withF16V(resolveKVCacheTypesOn(launch.config, launch.kvCacheType, launch.stockKV)) // xollama-hook: kv-fa-retry
 	params = appendKVCacheArgs(params, kvTypes)
 
 	params = appendFlashAttentionArgs(params, launch.config, launch.gpus)
@@ -552,6 +555,8 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	}
 	args = appendKVCacheRingArgs(args, kvTypes, usedOpencoti)
 	args = appendKVResidencyArgs(args, kvTypes, usedOpencoti)
+	// xollama-hook: system-settings — fit, rolling window, MTP policy.
+	args = appendEnginePolicyArgs(args, launch.config.Xollama, usedOpencoti)
 
 	// xollama-hook: launch-config — dynamic slots. See docs/xollama/slots.mdx.
 	// xollama-hook: council -- a council starts with a slot per parallel member.
@@ -612,7 +617,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	if usedOpencoti {
 		envs = launch.opencotiEnvsForStart() // xollama-hook: engine-fit -- no vision pad on the fit target; see llm/engine_fit_target.go
 		userHome, _ := os.UserHomeDir()
-		if payloadHome := engine.PreparePayloadHome(engine.ArtifactOf(name, args), engine.DefaultPayloadRoots(ml.LibOllamaPath, userHome)...); payloadHome != "" {
+		if payloadHome := engine.PayloadHome(engine.ArtifactOf(name, args), ml.LibOllamaPath, userHome); payloadHome != "" {
 			envs = cloneStringMap(envs)
 			envs["HOME"] = payloadHome
 		}
@@ -642,7 +647,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 // subprocess so discovery and real model runners use the same library search
 // paths and GPU backend selection.
 func SetupLlamaServerCommandEnv(cmd *exec.Cmd, exe string, gpuLibs []string, extraEnvs map[string]string) {
-	cmd.Env = os.Environ()
+	cmd.Env = envconfig.Environ() // xollama-hook: system-settings — the tweak file's envs reach the engine
 
 	envUpdates := make(map[string]string, len(extraEnvs)+2)
 	for k, v := range extraEnvs {
@@ -938,7 +943,7 @@ func (launch llamaServerLaunchConfig) extraEnvsForStart() map[string]string {
 		return envs
 	}
 
-	if _, ok := os.LookupEnv(llamaArgFitTargetEnv); ok {
+	if _, ok := envconfig.LookupEnv(llamaArgFitTargetEnv); ok { // xollama-hook: system-settings
 		// Preserve an inherited user override. SetupLlamaServerCommandEnv
 		// will pass it through unless extraEnvs overrides it.
 		return launch.extraEnvs
@@ -1210,6 +1215,12 @@ func NewLlamaServerRunner(
 		serverEnvs[k] = v
 	}
 	serverEnvs["LLAMA_MEDIA_MARKER"] = mediaMarker
+	// xollama-hook: system-settings — the server's GPU policy for these GPUs.
+	if DeviceEnvs != nil {
+		for k, v := range DeviceEnvs(gpus) {
+			serverEnvs[k] = v
+		}
+	}
 
 	launch := llamaServerLaunchConfig{
 		modelPath:      splitModel.modelPath,
@@ -1313,9 +1324,6 @@ func (s *llamaServerRunner) startProcess() error {
 	s.cmd = cmd
 	s.port = port
 	s.usedOpencoti = usedOpencoti
-	if s.status != nil { // xollama-hook: engine-select -- see llm/engine_status.go
-		s.status.opencoti.Store(usedOpencoti)
-	}
 	// xollama-hook: engine-session — the pool registry is sized to the same
 	// number the engine was given seats for, and is rebuilt per process: pool
 	// ids belong to the engine that issued them.
@@ -1352,6 +1360,9 @@ func (s *llamaServerRunner) startProcess() error {
 	// Reap subprocess when it exits.
 	go func(cmd *exec.Cmd, done chan struct{}) {
 		err := cmd.Wait()
+		if s.usedOpencoti {
+			engine.AdoptPayloadHome(engine.HomeOf(cmd.Env)) // xollama-hook: engine-payload -- a root run hands the engine's files to the service account
+		}
 		s.doneErr = err
 		if msg := s.lastErrMsg(); err != nil && msg != "" {
 			// xollama-hook: engine-select -- at load, opencoti prints a benign
@@ -1397,6 +1408,13 @@ func (s *llamaServerRunner) Load(ctx context.Context, systemInfo ml.SystemInfo, 
 		if retried {
 			if err := s.WaitUntilRunning(ctx); err != nil {
 				return nil, fmt.Errorf("llama-server startup failed after projector CPU offload retry: %w", err)
+			}
+		} else if kvRetried, kvErr := s.retryWithF16V(err); kvErr != nil || kvRetried { // xollama-hook: kv-fa-retry
+			if kvErr != nil {
+				return nil, kvErr
+			}
+			if err := s.WaitUntilRunning(ctx); err != nil {
+				return nil, fmt.Errorf("llama-server startup failed after retrying with an f16 V cache: %w", err)
 			}
 		} else {
 			stockRetried, stockErr := s.retryOnStockEngine(err)
@@ -1643,7 +1661,11 @@ func (s *llamaServerRunner) getServerStatusRetry(ctx context.Context) (ServerSta
 	for {
 		status, err := s.getServerStatus(ctx)
 		if err != nil {
-			return status, err
+			// xollama-hook: engine-health-retry — a dial that failed against a
+			// live opencoti is tried again (engine_health_retry.go).
+			if status, err = s.retryHealth(ctx, status, err); err != nil {
+				return status, err
+			}
 		}
 		if status == ServerStatusNoSlotsAvailable {
 			if retries >= 10 {
@@ -2252,6 +2274,9 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 		if errors.Is(err, ErrNeverFits) { // xollama-hook: context-window
 			return api.StatusError{StatusCode: http.StatusBadRequest, ErrorMessage: err.Error()}
 		}
+		if errors.Is(err, ErrOwnerFull) { // xollama-hook: context-window
+			return api.StatusError{StatusCode: http.StatusInsufficientStorage, ErrorMessage: err.Error()}
+		}
 		slog.Error("llama-server completion error", "error", err)
 		if msg := s.lastErrMsg(); msg != "" {
 			return fmt.Errorf("model runner has unexpectedly stopped, this may be due to resource limitations or an internal error, check xollama server logs for details: %s", msg)
@@ -2580,6 +2605,9 @@ func (s *llamaServerRunner) Chat(ctx context.Context, req ChatRequest, fn func(C
 		}
 		if errors.Is(err, ErrNeverFits) { // xollama-hook: context-window
 			return api.StatusError{StatusCode: http.StatusBadRequest, ErrorMessage: err.Error()}
+		}
+		if errors.Is(err, ErrOwnerFull) { // xollama-hook: context-window
+			return api.StatusError{StatusCode: http.StatusInsufficientStorage, ErrorMessage: err.Error()}
 		}
 		slog.Error("llama-server chat error", "error", err)
 		if msg := s.lastErrMsg(); msg != "" {

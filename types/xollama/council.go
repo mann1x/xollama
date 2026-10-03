@@ -32,12 +32,22 @@ type Council struct {
 	// conversation, not once per member.
 	Charter string `json:"charter,omitempty"`
 
+	// Instructions is text every role reads, after the charter: the model's
+	// owner's standing guidance for this council (plans/council-harness.md,
+	// Phase 1). Unlike Charter it replaces nothing.
+	Instructions string `json:"instructions,omitempty"`
+
 	// The roles. Count applies to researchers and critics only: there is one
 	// planner and one synthesizer.
 	Planner     *CouncilRole `json:"planner,omitempty"`
 	Researcher  *CouncilRole `json:"researcher,omitempty"`
 	Critic      *CouncilRole `json:"critic,omitempty"`
 	Synthesizer *CouncilRole `json:"synthesizer,omitempty"`
+
+	// Builder is the member that shapes the council for its work, once per
+	// new kind of work. There is one; unstated, it runs on the planner's
+	// model and host, as it did before it had a setting.
+	Builder *CouncilRole `json:"builder,omitempty"`
 
 	// TemperatureJitter is the relative spread drawn around the model's
 	// temperature for each researcher and critic: 0.02 draws from
@@ -48,6 +58,16 @@ type Council struct {
 	// Seed, when stated, makes a council reproducible: every member's seed is
 	// derived from it. Nil draws a fresh random seed per member per request.
 	Seed *int64 `json:"seed,omitempty"`
+
+	// MaxTokens is the council's output ceiling: the most one reply of a
+	// member on the council's own model may take, thinking included, when
+	// its role states no max_tokens. A member's reply cap is the least of
+	// three quarters of the council's window, this ceiling and the model's
+	// num_predict, Cerebriline's output budget with a lower ceiling (its
+	// 96,000 is a whole agent's reply; a member writes one part). Zero is
+	// DefaultCouncilMaxTokens. It needs no newer schema: a build that ignores
+	// it serves the council with that build's own caps.
+	MaxTokens int `json:"max_tokens,omitempty"`
 
 	// MaxRounds bounds the critic→researcher loop: a critic may send the
 	// research back this many times minus one. Zero means 1, no loop.
@@ -72,6 +92,12 @@ type Council struct {
 
 	// Context sizes the council's engine session and says when to compact.
 	Context *CouncilContext `json:"context,omitempty"`
+
+	// CloudParallel is how many members on a cloud model run at once. They
+	// take no engine slot here, so they are counted apart from the local
+	// members, which follow the engine's own parallel slots. Zero is the
+	// default, DefaultCouncilCloudParallel.
+	CloudParallel int `json:"cloud_parallel,omitempty"`
 }
 
 // CouncilRole is one role's settings. Unstated fields take the defaults.
@@ -98,16 +124,35 @@ type CouncilRole struct {
 	// Prompt replaces the role's built-in instruction.
 	Prompt string `json:"prompt,omitempty"`
 
-	// MaxTokens caps one member's reply. Zero means the role's default.
+	// Instructions is added after the role's instruction, built-in or
+	// Prompt, and replaces nothing. The builder's is how this council should
+	// be built: it shapes the choices inside the builder's reply, never its
+	// format.
+	Instructions string `json:"instructions,omitempty"`
+
+	// MaxTokens caps one member's reply, thinking included. Zero leaves the
+	// cap to the role's model: a role on the council's own model takes the
+	// council's output budget (Council.MaxTokens; the owner's window is
+	// booked for it); a role on another model, local or on another host, takes that
+	// model's own num_predict -- its Modelfile, or the remote endpoint's
+	// template -- and the council sends none.
 	MaxTokens int `json:"max_tokens,omitempty"`
 
+	// NumCtx is the context window of a role on another model (Model), sent
+	// as that model's num_ctx. Zero leaves it to that model's own template.
+	// A role on the council's own model runs in the council's window and
+	// cannot have one of its own: the window is the model's num_ctx, and on
+	// PolyKV the members' layers are carved from the owner's.
+	NumCtx int `json:"num_ctx,omitempty"`
+
 	// Think lets the role's members reason before they reply. Empty or "off"
-	// is the default: no reasoning. "on" is a budget of
-	// DefaultCouncilThinkBudget tokens. A level (minimal, low, medium, high,
-	// max) caps the reasoning at that share of the member's context window, as
-	// a think level does for a chat request; a positive integer is a token
-	// budget. The cap is added to max_tokens, so
-	// the reply keeps its own room. The reasoning is never shown: only the
+	// is the default: no reasoning. A level (minimal, low, medium, high,
+	// max) caps the reasoning at that share of the member's reply cap, which
+	// includes it, as Cerebriline maps a level onto its output budget; "on"
+	// is medium. A positive integer is a token budget, held to four fifths of
+	// the cap so the reply keeps room. A member whose cap its own model sets
+	// takes a level as a share of its window, and "on" as
+	// DefaultCouncilThinkBudget tokens. The reasoning is never shown: only the
 	// reply joins the deliberation. The planner's routing call never reasons.
 	// When the cap is reached, the model's own think_budget_message closes
 	// the reasoning.
@@ -149,11 +194,11 @@ type CouncilContext struct {
 	Compaction string `json:"compaction,omitempty"`
 
 	// Review has two critics rewrite the replay's halves and a synthesizer
-	// join them. Nil means on.
+	// join them. Nil means off: a fold is the writer's one pass.
 	Review *bool `json:"review,omitempty"`
 
 	// Retrospective writes a short judgement of the folded turns' reasoning
-	// beside the replay. Nil means on.
+	// beside the replay. Nil means off.
 	Retrospective *bool `json:"retrospective,omitempty"`
 }
 
@@ -174,6 +219,7 @@ const (
 	RoleResearcher  = "researcher"
 	RoleCritic      = "critic"
 	RoleSynthesizer = "synthesizer"
+	RoleBuilder     = "builder"
 )
 
 // PolyKV settings a council may state.
@@ -200,9 +246,10 @@ const (
 	DefaultCouncilIdleCompactAt = 0.75
 )
 
-// DefaultCouncilThinkBudget is what `think: on` gives a member. A level would
-// be a share of the council's context, and at 131k "medium" is 32,768 tokens
-// per member: measured live, a researcher looped past 29k of them.
+// DefaultCouncilThinkBudget is what `think: on` gives a member whose reply cap
+// the council does not know (its own model sets it). A level there is a share
+// of the window, and at 131k "medium" is 32,768 tokens per member: measured
+// live, a researcher looped past 29k of them.
 const DefaultCouncilThinkBudget = 2048
 
 var validCouncilThink = []string{CouncilThinkOff, CouncilThinkOn, "minimal", "low", "medium", "high", "max"}
@@ -230,6 +277,17 @@ func ValidCouncilPolyKV() []string { return slices.Clone(validCouncilPolyKV) }
 const (
 	MaxCouncilWidth  = 8
 	MaxCouncilRounds = 4
+	// DefaultCouncilCloudParallel is how many cloud members run at once
+	// when council.cloud_parallel is unset; MaxCouncilCloudParallel bounds it.
+	DefaultCouncilCloudParallel = 3
+	MaxCouncilCloudParallel     = 16
+	// DefaultCouncilMaxTokens is the output ceiling when council.max_tokens
+	// is unset (the owner's choice, 2026-09-30: 16k per member, kept low).
+	// MinCouncilMaxTokens leaves a thinking member room to answer;
+	// MaxCouncilMaxTokens is Cerebriline's own ceiling.
+	DefaultCouncilMaxTokens = 16384
+	MinCouncilMaxTokens     = 1024
+	MaxCouncilMaxTokens     = 96000
 	// MaxCouncilJitter keeps the spread a spread: past half the temperature
 	// the members are no longer the same model at slightly different heat.
 	MaxCouncilJitter = 0.5
@@ -249,6 +307,8 @@ func (c *Council) Role(name string) *CouncilRole {
 		return c.Critic
 	case RoleSynthesizer:
 		return c.Synthesizer
+	case RoleBuilder:
+		return c.Builder
 	}
 	return nil
 }
@@ -262,12 +322,25 @@ func (c *Council) IsZero() bool {
 		return true
 	}
 	return c.Enabled == nil && c.Charter == "" &&
-		c.Planner.isZero() && c.Researcher.isZero() && c.Critic.isZero() && c.Synthesizer.isZero() &&
-		c.TemperatureJitter == nil && c.Seed == nil && c.MaxRounds == 0 &&
-		c.ShowDeliberation == nil && c.Broadcast == nil && c.PolyKV == "" && c.Context.isZero()
+		c.Planner.isZero() && c.Researcher.isZero() && c.Critic.isZero() && c.Synthesizer.isZero() && c.Builder.isZero() &&
+		c.TemperatureJitter == nil && c.Seed == nil && c.MaxRounds == 0 && c.MaxTokens == 0 &&
+		c.ShowDeliberation == nil && c.Broadcast == nil && c.PolyKV == "" && c.Context.isZero() && c.CloudParallel == 0
 }
 
 func (r *CouncilRole) isZero() bool { return r == nil || *r == (CouncilRole{}) }
+
+// setsRoleWindow reports a role with a num_ctx of its own (schema v5).
+func (c *Council) setsRoleWindow() bool {
+	if c == nil {
+		return false
+	}
+	for _, r := range []*CouncilRole{c.Planner, c.Researcher, c.Critic, c.Synthesizer, c.Builder} {
+		if r != nil && r.NumCtx > 0 {
+			return true
+		}
+	}
+	return false
+}
 
 func (x *CouncilContext) isZero() bool { return x == nil || *x == (CouncilContext{}) }
 
@@ -290,15 +363,23 @@ func (c *Council) validate(engine string) error {
 	for _, r := range []struct {
 		name string
 		role *CouncilRole
-	}{{RolePlanner, c.Planner}, {RoleResearcher, c.Researcher}, {RoleCritic, c.Critic}, {RoleSynthesizer, c.Synthesizer}} {
+	}{{RolePlanner, c.Planner}, {RoleResearcher, c.Researcher}, {RoleCritic, c.Critic}, {RoleSynthesizer, c.Synthesizer}, {RoleBuilder, c.Builder}} {
 		if r.role == nil {
 			continue
 		}
-		if r.role.Count < 0 || r.role.MaxTokens < 0 {
-			return fmt.Errorf("xollama config: council.%s: count and max_tokens must not be negative", r.name)
+		if r.role.Count < 0 || r.role.MaxTokens < 0 || r.role.NumCtx < 0 {
+			return fmt.Errorf("xollama config: council.%s: count, max_tokens and num_ctx must not be negative", r.name)
 		}
-		if r.role.Count > 0 && (r.name == RolePlanner || r.name == RoleSynthesizer) {
+		if r.role.NumCtx > 0 && r.role.Model == "" {
+			return fmt.Errorf("xollama config: council.%s.num_ctx needs council.%s.model: a role on the council's own model runs in the council's window", r.name, r.name)
+		}
+		if r.role.Count > 0 && (r.name == RolePlanner || r.name == RoleSynthesizer || r.name == RoleBuilder) {
 			return fmt.Errorf("xollama config: council.%s.count: there is one %s; count applies to researchers and critics", r.name, r.name)
+		}
+		if r.name == RoleBuilder && r.role.Prompt != "" {
+			// The builder's reply is JSON the runtime reads; its prompt is the
+			// runtime's contract, not a persona to replace.
+			return fmt.Errorf("xollama config: council.builder.prompt: the builder's prompt is built in; state the charter or a role's prompt instead")
 		}
 		if r.role.Host != "" {
 			u, err := url.Parse(r.role.Host)
@@ -323,6 +404,12 @@ func (c *Council) validate(engine string) error {
 	}
 	if c.Seed != nil && *c.Seed < 0 {
 		return fmt.Errorf("xollama config: council.seed %d must not be negative", *c.Seed)
+	}
+	if c.CloudParallel < 0 || c.CloudParallel > MaxCouncilCloudParallel {
+		return fmt.Errorf("xollama config: council.cloud_parallel %d must be in [0, %d]", c.CloudParallel, MaxCouncilCloudParallel)
+	}
+	if c.MaxTokens != 0 && (c.MaxTokens < MinCouncilMaxTokens || c.MaxTokens > MaxCouncilMaxTokens) {
+		return fmt.Errorf("xollama config: council.max_tokens %d must be 0 or in [%d, %d]", c.MaxTokens, MinCouncilMaxTokens, MaxCouncilMaxTokens)
 	}
 	if c.MaxRounds < 0 || c.MaxRounds > MaxCouncilRounds {
 		return fmt.Errorf("xollama config: council.max_rounds %d must be in [0, %d]", c.MaxRounds, MaxCouncilRounds)
@@ -378,6 +465,7 @@ func (c *Council) Clone() *Council {
 	out.Researcher = clonePtr(c.Researcher)
 	out.Critic = clonePtr(c.Critic)
 	out.Synthesizer = clonePtr(c.Synthesizer)
+	out.Builder = clonePtr(c.Builder)
 	out.Context = clonePtr(c.Context)
 	if out.Context != nil {
 		out.Context.Review = clonePtr(c.Context.Review)
@@ -404,6 +492,9 @@ func (c *Council) Prune() *Council {
 	}
 	if c.Synthesizer.isZero() {
 		c.Synthesizer = nil
+	}
+	if c.Builder.isZero() {
+		c.Builder = nil
 	}
 	if c.Context.isZero() {
 		c.Context = nil

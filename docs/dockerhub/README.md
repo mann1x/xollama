@@ -241,12 +241,12 @@ needs only the NVIDIA Windows driver.
 3 is missing.
 
 Which engine serves a load depends on the card. With the currently pinned
-engine (opencoti build `2609272353001`):
+engine (opencoti build `2610031615001`):
 
 | The load's GPUs | Served by |
 |---|---|
 | all compute capability 8.6–8.9 or 12.x (RTX 30xx / 40xx / 50xx, A6000, L40…) | opencoti, CUDA 13 payload |
-| all compute capability 7.0 (Tesla V100, Titan V) | opencoti, CUDA 12 payload (host driver 570+) |
+| compute capability 7.0 (Tesla V100, Titan V) | stock `llama.cpp`: this engine build carries no CUDA 12 payload |
 | a mix of those two groups | stock `llama.cpp` |
 | anything else (7.5, 8.0, 9.0, 10.x, older) | stock `llama.cpp` on upstream's CUDA backends |
 

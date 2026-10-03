@@ -12,13 +12,17 @@ import (
 
 // stockAppState matches a path into a stock ollama's own Windows state: its
 // %LOCALAPPDATA%\Ollama directory, its install directory, or its login
-// shortcut. xOllama is installed beside a stock ollama the user depends on, and
+// shortcut, or its tray window's class. xOllama is installed beside a stock ollama the user depends on, and
 // each of these is a file the two would both claim. The first one found in the
 // field: a stock server holding %LOCALAPPDATA%\Ollama\server.log open kept the
 // xOllama app's server from starting at all.
 var stockAppState = regexp.MustCompile(`(?i)` +
 	`(LOCALAPPDATA"\)|localAppData)\s*,\s*("Programs"\s*,\s*)?"Ollama"` +
-	`|"(Startup|lib)"\s*,\s*"Ollama\.lnk"`)
+	`|"(Startup|lib)"\s*,\s*"Ollama\.lnk"` +
+	// The tray window's class is how the app finds a running instance
+	// (FindWindowW): a stock app's "OllamaClass" window made xOllama, started
+	// at logon after it, focus the stock app and exit (eleven2go, 2026-09-28).
+	`|"OllamaClass"`)
 
 // The paths live in Windows-only files that this platform does not compile, so
 // the guard reads the source. It covers every non-test Go file under app/ and

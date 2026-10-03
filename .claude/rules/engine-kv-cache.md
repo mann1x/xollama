@@ -2,8 +2,13 @@
 paths:
   - llm/engine_launch.go
   - llm/engine_ring_shape_test.go
+  - llm/engine_placement.go
+  - llm/engine_kv_fa.go
+  - llm/engine_kv_fa_test.go
   - llm/engine/capability.go
   - llm/llama_server.go
+  - server/placement_opencoti.go
+  - server/placement_opencoti_test.go
   - docs/xollama/kv-cache.mdx
 ---
 
@@ -19,6 +24,34 @@ paths:
   dropped (the ring always), so that half keeps the legacy base
   (`OLLAMA_KV_CACHE_TYPE` / `XOLLAMA_KV_CACHE_TYPE`) — `startLlamaServer`
   relaunches with `stockKV`. A model's own kv setting is still refused.
+- **A quantized V refused for lack of flash attention is relaunched once at
+  f16** (`kv-fa-retry` hook, `llm/engine_kv_fa.go`). llama.cpp decides
+  `--flash-attn auto` from the actual placement, then refuses the cache
+  (`quantizedVNeedsFlashAttention`, verbatim); a CPU-only load hits it.
+  `f16VRetryReason` fires only for a V xollama asked for (the model's `kv.v` or
+  `XOLLAMA_V_CACHE_TYPE`); a V from `OLLAMA_KV_CACHE_TYPE` alone keeps
+  upstream's failure. **Stock llama.cpp only:** opencoti resolves `-fa auto`
+  on whenever V is quantized (0523, in c8; opencoti bug-3887), so a refusal
+  from it is surfaced, never relaunched (`TestOpencotiIsNeverAnsweredWithAnF16VRelaunch`).
+  `withF16V` changes only the V half. The hook is three
+  marked lines in `llm/llama_server.go` (`forceF16V`, `startLlamaServer`, and
+  an `else if` in `Load` before the stock fallback). Guards:
+  `TestAQuantizedVTheModelAskedForIsRetriedAtF16`,
+  `TestUpstreamsKVCacheTypeAloneKeepsUpstreamsFailure`,
+  `TestTheRetryChangesOnlyTheVHalf`.
+- **Placement follows the same line** (`opencoti-placement` hook). A model whose
+  own `kv.k` / `kv.v` only opencoti runs (`llm.NeedsOpencoti`,
+  `llm/engine_placement.go`) is placed only on the GPU groups opencoti serves:
+  `opencotiPlacement` in `server/placement_opencoti.go` filters the GPU list
+  in `processPending`, right after the device pin, so `load` sees only those
+  GPUs. Never filter only at `selectLlamaServerPlacement`: `liveSlots` and the
+  deny-list ask `WouldUseOpencoti` of the list first, and on the mixed list
+  they drop `slots.live` to one slot. A server-wide
+  `XOLLAMA_K_CACHE_TYPE` does not count. No such setting, no opencoti group, or
+  `XOLLAMA_ENGINE=llamacpp`: the list is unchanged. Guard:
+  `TestAModelOnlyOpencotiServesIsPlacedWhereOpencotiRuns` and
+  `TestAModelOnlyOpencotiServesLoadsWithItsOwnSlots`; prose in
+  `docs/features/device-selection.md`.
 - `stockCacheTypes` is what stock llama.cpp's own parser accepts. Anything
   outside it — opencoti's `kvarn2`..`kvarn6`/`kvarn8` (**no `kvarn7`**: structural,
   per `llama_kvarn_valid_bits()`), the frozen `turbo*` / `*_tcq` tiers, `q6_0` — is

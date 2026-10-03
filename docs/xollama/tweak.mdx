@@ -179,6 +179,75 @@ short call.
   window and the pressure, and `endpoint=polykv/pools` the shared parts during
   a turn (see [Seeing what the engine did](/xollama/introspection)).
 
+## Attaching image, speech and transcription engines
+
+A model can carry opencoti's media engines beside its LLM: image generation and
+edit, speech-to-text, text-to-speech, and later video. Each kind's model is its
+switch, and the bare flag walks that kind's questions:
+
+```shell
+xollama tweak model qwen3:8b --image
+xollama tweak model qwen3:8b \
+  --tts=/srv/ml/media/kokoro-82m-q8_0.gguf --tts-engine=audiocpp \
+  --tts-voice=af_heart --tts-voice-map=alloy=af_heart,nova=af_bella \
+  --stt=/srv/ml/media/ggml-large-v3-turbo-q8_0.bin --stt-format=json
+```
+
+- **Components** (`--image`, `--image-vae`, `--image-llm`, `--tts`,
+  `--tts-vocoder`, `--stt`, `--video`, ...) take a file path, a sha256 digest,
+  or a Hugging Face file as `hf.co/<owner>/<repo>/<file>[@rev]`. The server
+  fetches a Hugging Face file itself.
+  A path is hashed when you give it and uploaded when the model is written,
+  only if the server does not already have it; `--dry-run` sends nothing.
+  The model then carries each one as a layer, so `push`, `pull` and `rm` handle
+  them like its weights.
+- **Extra voices** (`--tts-voices`) are `name=file` pairs, comma-separated:
+  `--tts-voices=narrator=~/voices/narrator.json,host=hf.co/<owner>/<repo>/<file>`.
+  Each file is one voice (an OuteTTS speaker JSON) and becomes its own layer;
+  a request selects it by its name. Names use letters, digits, `_`, `.` and
+  `-`, at most 64. The engine's own names (`default`, `alloy`, `nova`, ...) are
+  refused, and so is any extra voice on the `audiocpp` engine, whose models
+  (Kokoro, Supertonic, KittenTTS) serve only their built-in voices. It needs an
+  opencoti engine advertising `audio_speech_voice_files_v1`.
+- **Defaults** (`--image-width`, `--image-steps`, `--tts-voice`,
+  `--stt-format`, ...) are the template's settings for the engine. Clients such
+  as SurfSense send only a prompt or a text, so these decide the size, the steps,
+  the voice and the format. They are passed to the engine when it starts, and
+  xollama fills them into every request that leaves them out.
+- **`--<kind>-fixed`** lists defaults a request may not override, for example
+  `--image-fixed=width,height` for a model trained at one size.
+- A kind's settings without its model are dropped, each with its reason.
+  `tweak server` does not offer media: it belongs to one model, not to every
+  model.
+
+`xollama show` lists them under `media.*`, and the model's capabilities gain
+`image_generation`, `image_edit`, `speech`, `transcription` or `video`. The
+engines run in an opencoti process of their own, started on the first media
+request and unloaded like any model.
+
+### Ready-made media models
+
+`xollama media` finds and installs media models without assembling the files
+by hand:
+
+```shell
+xollama media list                         # the catalog, --kind image|stt|tts|video
+xollama media search tts kokoro            # GGUF repos on Hugging Face
+xollama media files cstr/kokoro-82m-GGUF   # the files in one repo
+xollama media create whisper-large-v3-turbo whisper:turbo
+xollama media create flux2-klein-4b --to qwen3:8b   # add to an existing model
+```
+
+`create` makes a media-only model, or with `--to` adds the entry's engine to a
+model you already have, keeping its other settings. `--dry-run` prints the
+config without fetching anything. `xollama media fetch --dir DIR` keeps a local
+copy of the files, and `create --dir DIR` uploads from it rather than download
+again ([Keeping one copy](/xollama/media#keeping-one-copy-of-the-models)). Catalog entries marked `opencoti M7` need an
+engine build that is not out yet.
+
+The routes that serve them (`/v1/images/*`, `/v1/audio/*`) are described in
+[Images, speech and transcription](/xollama/media).
+
 ## Pinning a drafter's driver
 
 A drafter is attached at build time with a `DRAFT` line, and its driver is
@@ -341,6 +410,145 @@ the running model was actually given.
 
 ## The server's own settings
 
-`xollama tweak server` sets what belongs to the server rather than to a model.
-Today that is the [local API key](/xollama/api-key):
-`--api-key=generate|set|remove|status`, or no flag to be asked.
+`xollama tweak server` sets what belongs to the server rather than to a model:
+defaults for every model's settings, and the
+[local API key](/xollama/api-key) (`--api-key=generate|set|remove|status`, or
+`--api-key` to be asked). With no flag it asks which part to change.
+
+### Defaults for every model
+
+Every `tweak model` setting that is not a model's own can be given a
+server-wide default: engine, flash attention, KV cache types, unified KV, the
+residency tactic, the KV rolling window, slots, session pooling, the drafter's
+speculative type, the MTP auto policy, and the engine's fit and VRAM target.
+The flags are those of `tweak model`, and the walk and the consistency pass are
+the same:
+
+```shell
+xollama tweak server --kv-k=q8_0 --kv-v=q8_0 --slots=on --slots-max=4
+xollama tweak server --slots          # walk only the slot settings
+xollama tweak server --clear          # remove every default
+```
+
+- **The model wins.** A model that states a setting keeps it; the server's
+  default fills only what the model leaves unset. Then come the environment and
+  the built-in default. Within the KV section a model's cache pair stays a pair:
+  a model that states `kv.k` does not get the server's `kv.v`.
+- **A default a model cannot use is left out.** A KVarN cache for a model
+  pinned to stock llama.cpp, for example. The server leaves that section out
+  for that model and logs it, rather than refusing to load the model.
+- **Not the model's own settings.** DCA, the device pin and the council
+  describe a model. They are not offered as server defaults.
+- A default applies at a model's next load. The command offers to unload the
+  running models (`-y` unloads them without asking).
+
+`xollama tweak show model NAME` lists the settings a model runs with and marks
+each one `model` or `server`, so you can see which ones come from the server.
+
+## Environment variables, without the environment
+
+Upstream configures a server through environment variables. Changing one means
+editing the global environment or a systemd override, looking up the name, and
+restarting. `xollama tweak envs` sets the same variables in the server's own
+settings file instead (`~/.ollama/xollama-settings.json` in the server's home):
+
+```shell
+xollama tweak envs OLLAMA_KV_CACHE_TYPE=q8_0 XOLLAMA_MAX_PARALLEL=4
+xollama tweak envs --unset OLLAMA_KV_CACHE_TYPE
+xollama tweak envs        # ask, one variable at a time
+```
+
+- **The settings file wins.** A value set here beats the same variable in the
+  environment, under either spelling (`OLLAMA_` or `XOLLAMA_`). `xollama tweak
+  show envs` names any environment value an override replaces, so nothing is
+  hidden. Remove the override, and the environment applies again.
+- **Most changes apply at once.** A variable read at load time, such as the
+  KV cache type or the slot settings, applies at the next model load. The
+  command offers to unload the running models (`-y` unloads without asking).
+  A few variables are read only when the server starts: the listen address,
+  the models directory, origins, GPU visibility and the proxies. For those the
+  command says that a restart is needed.
+- **Variables for the engines are passed on.** `LLAMA_ARG_*`, `OPENCOTI_*`,
+  `CUDA_VISIBLE_DEVICES` and the other GPU-runtime variables reach every engine
+  the server starts, as if they were in its environment.
+- **Not the API key.** `XOLLAMA_API_KEY` is refused: `tweak server --api-key`
+  keeps only the key's digest on disk.
+- **Only from the server's own machine.** Changes are accepted from the
+  server's own machine only, never through a proxy, and with the key while
+  one is set.
+
+## What is set, and where it comes from
+
+```shell
+xollama tweak show envs            # the variables with a value, and their source
+xollama tweak show envs --all      # every variable, at its default too
+xollama tweak show server          # the API key, the defaults and the variables
+xollama tweak show model qwen3:8b  # what the model runs with, model or server
+```
+
+## The server's GPUs
+
+`xollama tweak server gpu` sets which GPUs models may use, in what order,
+through which backend, at what link speed, and whether a model is split:
+
+```shell
+xollama tweak server gpu                                 # ask
+xollama tweak server gpu 0000:01:00.0 --priority 10      # first choice
+xollama tweak server gpu 0000:02:00.0 --disable          # keep models off it
+xollama tweak server gpu 0000:01:00.0 --backend CUDA     # it is also a Vulkan device
+xollama tweak server gpu 0000:01:00.0 --link 4x16        # plan with PCIe 4.0 x16
+xollama tweak server gpu --split single                  # never split a model
+```
+
+- **Priority is fill order.** A model that fits on one GPU goes to the
+  highest-priority GPU with room, instead of the one with the most free
+  memory. A split fills the GPUs in priority order.
+- **A model's own device pin wins.** A model that pins GPUs with
+  `tweak model --devices` keeps them, even a disabled one.
+- **Link speed.** opencoti plans the KV rolling window with the host link
+  speed, which it probes when a model loads. A host that is busy at that moment
+  gets a wrong reading for the whole session, and a forced figure skips the
+  probe. Set it as GB/s, as a PCIe generation and lane count (`4x16`, or the
+  generation and lanes wizard), or as `auto`. Each GPU keeps its own figure.
+  The engine plans a KV cache spread over several GPUs with the slowest of
+  them.
+- **Split** is `auto` (split only a model too large for one GPU, or follow
+  `OLLAMA_SCHED_SPREAD`), `spread` (always split) or `single` (never: what
+  does not fit stays on the CPU).
+- **Split mode** is `layer`, the default and the one validated on every
+  opencoti path, or `row`. `row` is CUDA only and not yet validated with
+  opencoti's KV paths; on Vulkan it becomes `layer`.
+
+When the menu opens, the engine measures every GPU's link (`opencoti
+--link-probe`, which needs opencoti b62 or later; it takes about a second per GPU).
+The table shows the PCIe generation and lanes the bus reports, and the
+host-to-device rate it measured. The link wizard starts from the detected
+generation and lanes. A backend with a model generating on it is not probed,
+because that engine shares the link and the reading would come out low. An
+idle loaded model does not matter.
+
+Changes apply at a model's next load. `xollama tweak show server` lists the
+GPUs with their settings.
+
+## The engine's automatic policies
+
+These settings are on `tweak model` and, as defaults, on `tweak server`:
+
+| Flag | Setting | Values (engine default first) |
+|---|---|---|
+| `--kv-residency` | `kv.residency_mode` | `auto`: the window when the cache overflows, else resident; `window`; `head` (legacy: every cell on the device, the window disabled) |
+| `--kv-rolling-window` | `kv.rolling_window` | `off`; `on` (the engine sizes it); a size in MiB |
+| `--fit` | `fit.enabled` | `on`; `off` |
+| `--vram-target` | `fit.vram_target_mib` | all free VRAM minus the compute reserve; a cap in MiB |
+| `--mtp-policy` | `draft.auto_mtp_policy` | `measured`; `allocator`; `taper`; `always`; `off` |
+
+With `kv.residency_mode` set to `window`, `kv.rolling_window` decides what
+happens when the cache overflows:
+
+- **off:** the overflow stays in host memory and is read every token.
+- **on, or a size:** the rolling window streams the overflow through VRAM. It
+  needs one stream (`kv.unified` on, or one slot) and a CUDA or Vulkan GPU.
+  Without them the engine falls back to the host tail.
+
+`head` disables the window, so a rolling window under `head` is refused.
+Everything except `--fit` is opencoti only.

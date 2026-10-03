@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -9,6 +10,10 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
+	"strings"
+	"sync"
 
 	"github.com/ollama/ollama/envconfig"
 	"github.com/ollama/ollama/internal/fsowner"
@@ -59,18 +64,65 @@ const payloadMarker = ".xollama-payload.json"
 // can never make xollama delete something it did not create.
 const payloadDirName = ".llamafile"
 
-// payloadOwner identifies the artifact that unpacked the current payload.
+// payloadLockName is the lock file in the root that two xollama processes take
+// before either reads the marker or purges the tree.
+const payloadLockName = ".xollama-payload.lock"
+
+// payloadMu serializes the payload preparation within the process: an LLM
+// engine and a media engine starting together would otherwise both read "no
+// marker", and one could purge the tree the other's engine is already
+// unpacking into. The root's file lock covers a second process.
+var payloadMu sync.Mutex
+
+// foreignWarned holds the roots already reported as holding another account's
+// files, so the warning is said once per server and not once per engine run.
+var foreignWarned sync.Map
+
+// payloadOwner identifies the bytes that unpacked the current payload.
 //
+// Identity is content, not path: the same bytes at two paths own one payload.
 // Size and modification time are the cheap half and carry the common case: a
 // re-cut downloaded over an old file changes both. SHA256 is the half that is
-// actually true, and it is computed only when the cheap half already disagrees
-// -- so the steady state costs one stat, and hashing 700 MB happens on the
-// launch after the artifact changed, not on every launch.
+// actually true, and it is computed only when no stat seen for these bytes
+// matches -- so the steady state costs one stat, and hashing 700 MB happens
+// once per new copy of the artifact, not on every launch.
 type payloadOwner struct {
 	Artifact string `json:"artifact"`
 	SHA256   string `json:"sha256"`
 	Size     int64  `json:"size"`
 	ModTime  int64  `json:"mtime_unix_nano"`
+	// Seen are the stats of every copy whose bytes hashed equal to SHA256,
+	// so another path to the same bytes is known by its stat from then on.
+	Seen []payloadStat `json:"seen,omitempty"`
+}
+
+// payloadStat is the cheap identity of one copy of the artifact.
+type payloadStat struct {
+	Size    int64 `json:"size"`
+	ModTime int64 `json:"mtime_unix_nano"`
+}
+
+// maxSeen bounds the stats one marker remembers.
+const maxSeen = 8
+
+// PayloadHome is PreparePayloadHome over the default roots: the HOME every
+// run of the engine gets, whether it serves a model, lists devices or probes a
+// link. One function, so a listing can never see a different HOME than the
+// launch it is listing for.
+func PayloadHome(artifact, libOllamaPath, home string) string {
+	return PreparePayloadHome(artifact, DefaultPayloadRoots(libOllamaPath, home)...)
+}
+
+// HomeOf is the HOME a command's environment ends up with: the last one, as
+// os/exec resolves duplicates.
+func HomeOf(env []string) string {
+	home := ""
+	for _, kv := range env {
+		if v, ok := strings.CutPrefix(kv, "HOME="); ok {
+			home = v
+		}
+	}
+	return home
 }
 
 // DefaultPayloadRoots returns the directories xollama will try to give the
@@ -88,15 +140,21 @@ type payloadOwner struct {
 // installed and removed with it, and in nobody's home directory.
 //
 // It is not always writable, and that is not a fault. A packaged Linux install
-// leaves that directory root-owned while the service runs as `ollama`; a macOS
-// install puts it inside a signed app bundle, where writing would be worse than
-// unhelpful. So `~/.ollama/engines/payload` follows as a fallback -- still
+// leaves that directory root-owned while the service runs as `ollama`. So `~/.ollama/engines/payload` follows as a fallback -- still
 // ours, and still never the user's `~/.llamafile`, which is the directory they
 // keep their own opencoti builds in and the one this whole file exists to stay
 // out of.
 func DefaultPayloadRoots(libOllamaPath, home string) []string {
+	return payloadRoots(runtime.GOOS, libOllamaPath, home)
+}
+
+// payloadRoots is DefaultPayloadRoots for one OS. macOS gets the home
+// directory only: its runtime directory is inside the signed app bundle, a
+// user-owned install leaves it writable, and a file written there breaks the
+// bundle's signature.
+func payloadRoots(goos, libOllamaPath, home string) []string {
 	var roots []string
-	if libOllamaPath != "" {
+	if libOllamaPath != "" && goos != "darwin" {
 		roots = append(roots, filepath.Join(libOllamaPath, "engines", "payload"))
 	}
 	if home != "" {
@@ -116,7 +174,7 @@ func DefaultPayloadRoots(libOllamaPath, home string) []string {
 // It is a var because that case cannot be built from a fixture: these tests run
 // as root on the host that found the bug, and root is not stopped by a mode bit.
 var ensureWritable = func(root string) error {
-	if err := os.MkdirAll(root, 0o755); err != nil {
+	if err := fsowner.MkdirAll(root, 0o755); err != nil {
 		return err
 	}
 	// On a packaged Linux install the server runs as an unprivileged account
@@ -127,7 +185,7 @@ var ensureWritable = func(root string) error {
 	if owner, ok := fsowner.Intended(envconfig.Models()); ok {
 		fsowner.AdoptQuietly(root, owner)
 	}
-	f, err := os.CreateTemp(root, ".xollama-probe-*")
+	f, err := fsowner.CreateTemp(root, ".xollama-probe-*")
 	if err != nil {
 		return err
 	}
@@ -169,11 +227,28 @@ func PreparePayloadHome(artifact string, roots ...string) string {
 			slog.Debug("cannot write to this engine payload directory; trying the next", "root", root, "error", err)
 			continue
 		}
+		// Files an earlier run left as another account make the root one the
+		// engine cannot work in, though the directory itself is writable.
+		if err := payloadForeign(root); err != nil {
+			// Once per root: every listing and every launch comes through here.
+			level := slog.LevelDebug
+			if _, told := foreignWarned.LoadOrStore(root, true); !told {
+				level = slog.LevelWarn
+			}
+			slog.Log(context.Background(), level, "the engine payload directory holds files this account cannot use; trying the next",
+				"root", root, "error", err,
+				"consequence", "with it as HOME the engine could not load its GPU library",
+				"fix", "as root: chown -R <the account xollama runs as> "+root)
+			continue
+		}
 		home, err := preparePayloadRoot(artifact, root, want)
 		if err != nil {
 			slog.Warn("could not prepare the engine payload directory; trying the next", "root", root, "error", err)
 			continue
 		}
+		// As root, hand over what an earlier root run left before this engine
+		// adds to it; the launch hands the rest over when the engine exits.
+		AdoptPayloadHome(home)
 		return home
 	}
 
@@ -183,25 +258,37 @@ func PreparePayloadHome(artifact string, roots ...string) string {
 	return ""
 }
 
-// preparePayloadRoot is PreparePayloadHome for one already-writable root.
+// preparePayloadRoot is PreparePayloadHome for one already-writable root. It
+// holds the process lock and the root's file lock throughout, so no other
+// launch reads the marker or purges the tree in between.
 func preparePayloadRoot(artifact, root string, want payloadOwner) (string, error) {
+	payloadMu.Lock()
+	defer payloadMu.Unlock()
+	unlock, err := lockPayloadRoot(filepath.Join(root, payloadLockName))
+	if err != nil {
+		return "", fmt.Errorf("locking the engine payload directory: %w", err)
+	}
+	defer unlock()
+
 	markerPath := filepath.Join(root, payloadMarker)
 	have, haveErr := readPayloadOwner(markerPath)
 
 	switch {
 	case haveErr == nil && have.sameFileAs(want):
-		// Same artifact, untouched since we last looked. Nothing to do, and
-		// nothing hashed.
+		// The same bytes, by a stat already seen. Nothing to do, and nothing
+		// hashed.
 		return root, nil
 	case haveErr == nil && have.SHA256 != "" && have.SHA256 == digestOf(artifact, want):
-		// Stat changed but the bytes did not -- a re-download of the same
-		// build, or a copy that moved the mtime. Keep the payload, refresh
-		// what we recorded about it.
+		// A stat not seen yet, but the same bytes -- a re-download of the
+		// same build, or the same bytes at another path. Keep the payload and
+		// remember this copy's stat.
 		want.SHA256 = have.SHA256
+		want.Seen = have.withSeen(want)
 	default:
 		// Either nothing is recorded, or a different artifact owns what is
 		// there. Take the payload out before the engine can find it.
 		want.SHA256 = digestOf(artifact, want)
+		want.Seen = []payloadStat{want.stat()}
 		tree := filepath.Join(root, payloadDirName)
 		if _, statErr := os.Stat(tree); statErr == nil {
 			if err := os.RemoveAll(tree); err != nil {
@@ -213,11 +300,6 @@ func preparePayloadRoot(artifact, root string, want payloadOwner) (string, error
 		}
 	}
 
-	if owner, ok := fsowner.Intended(envconfig.Models()); ok {
-		// The marker is read on the next launch, possibly by the service
-		// account rather than by whoever wrote it.
-		defer fsowner.AdoptQuietly(markerPath, owner)
-	}
 	if err := writePayloadOwner(markerPath, want); err != nil {
 		// The payload is correct; only the bookkeeping failed. Using the root
 		// still isolates this launch -- the next one just cannot prove the
@@ -227,11 +309,29 @@ func preparePayloadRoot(artifact, root string, want payloadOwner) (string, error
 	return root, nil
 }
 
-// sameFileAs reports whether nothing about the artifact has changed since the
-// payload was unpacked. Path is part of it: two artifacts of equal size and
-// timestamp in different places are still two artifacts.
+// sameFileAs reports whether other's stat is one already seen for the bytes
+// that own the payload. The path is not part of it: the same bytes may run
+// from two places, and that must neither purge nor re-hash.
 func (p payloadOwner) sameFileAs(other payloadOwner) bool {
-	return p.Artifact == other.Artifact && p.Size == other.Size && p.ModTime == other.ModTime
+	s := other.stat()
+	return p.stat() == s || slices.Contains(p.Seen, s)
+}
+
+func (p payloadOwner) stat() payloadStat { return payloadStat{Size: p.Size, ModTime: p.ModTime} }
+
+// withSeen is p's seen stats plus other's, newest last, at most maxSeen.
+func (p payloadOwner) withSeen(other payloadOwner) []payloadStat {
+	out := make([]payloadStat, 0, len(p.Seen)+2)
+	for _, s := range append([]payloadStat{p.stat()}, p.Seen...) {
+		if s != other.stat() && !slices.Contains(out, s) {
+			out = append(out, s)
+		}
+	}
+	out = append(out, other.stat())
+	if len(out) > maxSeen {
+		out = out[len(out)-maxSeen:]
+	}
+	return out
 }
 
 func describeArtifact(artifact string) (payloadOwner, error) {
@@ -288,7 +388,10 @@ func writePayloadOwner(path string, p payloadOwner) error {
 		return err
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, append(b, '\n'), 0o644); err != nil {
+	// The marker is read on the next launch, possibly by the service account
+	// rather than by whoever wrote it: the wrapper hands the file over, and
+	// the rename keeps its owner.
+	if err := fsowner.WriteFile(tmp, append(b, '\n'), 0o644); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)

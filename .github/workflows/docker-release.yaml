@@ -21,10 +21,11 @@
 # CHANNELS. `:dev` is the only thing a branch build can move. `:latest` moves
 # only from a tag whose GitHub release is a full release -- the pre-release
 # flag decides, as it does for the desktop updater, not the hyphen in the tag
-# (every `v<upstream>-xollama.<n>` tag has one). A release created by
+# (every xOllama tag has one: `v<upstream>-rc.<k>.xollama`, `-xollama`,
+# `-xollama.<n>`; a candidate is a pre-release and only ever moves `:dev`). A release created by
 # xollama-release.yaml with GITHUB_TOKEN triggers no workflow, so the image for
 # a release is a manual run on its tag: `gh workflow run docker-release.yaml
-# --ref v0.34.2-xollama.2`.
+# --ref v0.35.0-xollama`.
 #
 # amd64 only, for now (plans/docker-image.md); arm64 follows user testing.
 

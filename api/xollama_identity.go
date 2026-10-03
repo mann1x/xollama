@@ -39,6 +39,17 @@ const (
 	// FeatureCouncilCompaction: a council compacts its own conversation, so
 	// a client sends the history as the user sees it and does not compact it.
 	FeatureCouncilCompaction = "council_compaction_v1"
+	// FeatureCouncilUsage: a council turn's done chunk carries
+	// ChatResponse.CouncilUsage, what each role spent.
+	FeatureCouncilUsage = "council_usage_v1"
+	// FeatureCouncilDirective: ChatRequest.Council is honoured -- a harness
+	// states the turn's mode, instructions, build, evidence and check tool
+	// (plans/council-harness.md).
+	FeatureCouncilDirective = "council_directive_v1"
+	// FeatureCouncilCheckCall: a directive's check_call is the turn's check,
+	// and the council runs it after a synthesizer turn that changed something
+	// and ran no check.
+	FeatureCouncilCheckCall = "council_check_call_v1"
 	// FeatureCouncilTags: every thinking chunk of a council turn carries
 	// ChatResponse.Council, naming the one member it holds. Content chunks,
 	// the answer, carry none.

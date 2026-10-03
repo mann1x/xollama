@@ -48,13 +48,27 @@ paths:
   staged beside a second engine copy in `engines/cuda_v12` (`CUDA12Dirs`,
   `scripts/docker-assemble.sh`); `cudaPayload` in `llm/engine/policy.go` picks
   it per load in `Launch`, and a load spanning both payloads goes to llama.cpp.
-  An explicit `XOLLAMA_ENGINE_PATH` is used as given. Guard:
-  `llm/engine/pin_cuda12_test.go`.
+  An explicit `XOLLAMA_ENGINE_PATH` is used as given. Guards:
+  `llm/engine/pin_cuda12_test.go`,
+  `TestAVoltaCardGoesToLlamaCPPWhenThePinHasNoCUDA12Payload`.
+- Media sidecars are `#! sidecar <arch> <kind> <path> <sha256>` (`Pin.Sidecars`;
+  `SidecarCodec`, `SidecarAudioCpp`, the kind list is open and checked for shape
+  only, `isSidecarKind`). A `-gpu` bin shares its platform's rows; one row per
+  kind per arch. It is the one `#!` key `cmake/opencoti-fetch.cmake` reads too:
+  every row of the arch is staged beside the engine under its published file
+  name, never renamed (offline: `-DXOLLAMA_OPENCOTI_SIDECAR_DIR=<dir>`, still
+  verified), and `scripts/docker-assemble.sh` and
+  `.github/workflows/xollama-release.yaml` check the staged bytes against the
+  pin. Guards: `llm/engine/pin_sidecar_test.go`,
+  `llm/engine/pin_sidecar_cmake_test.go`.
 - Windows: `Pin.ArchFor` (used by `pinUncoveredIn`) falls back to the bare
   `bin win-x86_64` (+ `dso win-x86_64`) when no `win-x86_64-gpu` bin exists; the
   `-gpu` row wins when both do. `cmake/opencoti-engine.cmake` makes the same
   choice, stages an extensionless APE as `<name>.exe`, and puts it in
   `lib/ollama/engines` so stock `llama-server.exe` never loads its `ggml-cuda.dll`.
+  A dev snapshot's `dso win-x86_64` row can lag the build: without it Windows
+  CUDA is refused to llama.cpp for a stated reason
+  (`TestTheCommittedPinRoutesWindowsCUDAByItsDLLRow`).
 - A tested platform does **not** have to have an artifact — a dev pin ships a
   subset. It must be served by the pin or refused for a stated reason, which is
   what `TestEveryTestedPlatformIsServedOrRefused` in `llm/engine/pin_test.go`
@@ -63,11 +77,44 @@ paths:
   `bin <arch>` row is a STATUS line and a llama.cpp-only package, not a
   configure failure; more than one row is still fatal.
 - Asset rows are `bin` (the engine), `dso` (a side-loadable GPU payload staged
-  beside the binary) or `dso-cuda12`; release bins embed their payloads, a dev
+  beside the binary), `dso-cuda12` or `sidecar`; release bins embed their payloads, a dev
   snapshot is a bare APE that needs one. Address them with `pin.Asset` (bin rows
-  only), `pin.DSO` and `pin.CUDA12DSO`; build offline with
+  only), `pin.DSO`, `pin.CUDA12DSO` and `pin.Sidecars`; build offline with
   `-DLOCAL_DSO_FILE=<payload>`. One row per kind per arch and at least one
   `bin` — `TestCommittedPinParses` fails duplicates and dso-only pins.
+- **Media sidecars** are `#! sidecar <arch> <kind> <path> <sha256>` rows
+  (`Pin.Sidecars`, `kindSidecar`): libraries the engine loads from its own
+  directory under their PUBLISHED file name — `codec` (oc-codec: mp3, opus,
+  aac, mp4), `audiocpp` (oc-audiocpp: Kokoro, Supertonic, KittenTTS) and
+  `espeak` (oc-espeak: eSpeak-ng, the phonemiser Kokoro and KittenTTS use,
+  loaded by audio.cpp; the three are taken as a set from one `rev`). A
+  library whose licence obliges its text to travel with it has its own rows,
+  staged like any other: `espeak-licence` (`COPYING.espeak-ng`) and
+  `build-info` (`BUILD_INFO.md`, the codec's source references), one per arch
+  (`licensedSidecars`, `TestEveryLicensedSidecarShipsItsText` in
+  `llm/engine/pin_licence_test.go`). The
+  kinds are opencoti's and open-ended: `ParsePin`
+  and `cmake/opencoti-fetch.cmake` check a row's shape (`[a-z0-9-]+`, a
+  repo-relative path, a sha256, one row per kind per arch), never a list of
+  kinds, and the fetch stages EVERY row of the arch beside the engine, never
+  renamed. `arch` is a bin label; a `-gpu` bin takes its platform's rows. That
+  one script is the CMake build's, `scripts/docker-assemble.sh`'s and
+  `xollama-release.yaml`'s staging, so all three ship them; the Windows
+  installer takes `lib\ollama` recursively and `payloadId` hashes every file
+  under it. Build offline with `-DXOLLAMA_OPENCOTI_SIDECAR_DIR=<dir>`
+  (`-DLOCAL_SIDECAR_DIR` to the script). Never hand-place a sidecar: every
+  media test before 2026-10-03 ran on hand-placed copies, and no build
+  shipped them. Guards: `llm/engine/pin_sidecar_test.go`,
+  `TestCMakeStagesTheSidecarsThePinNames` (runs the real script).
+- **macOS** is the package `macos-aarch64` (`ArchMacOS`; Apple silicon only,
+  `darwin/amd64` has no label): a `bin` row naming the same APE as Linux, an
+  `accel macos-aarch64 Metal` row, and sidecar rows `ape` (the loader,
+  `MacLoader`), `metal` (the Metal library, a sidecar and not a `dso`) and the
+  media three. The engine is started as `<dir>/ape-macos-aarch64 <engine> …`
+  (`run` in `llm/engine/opencoti.go`), so `cmake/opencoti-fetch.cmake` stages
+  the `ape` kind executable (`TestCMakeStagesTheMacLoaderExecutable`) and
+  `ArtifactOf` skips the loader. Take the loader, the Metal library and the
+  engine from one snapshot. Guards: `llm/engine/macos_test.go`.
 - `Find` in `llm/engine/opencoti.go` knows **both** artifact names: release
   `opencoti-llamafile-<version>-<tag>-<arch>.llamafile[.exe]` and the dev bare APE
   `opencoti-<version>-<build>` (no extension; `filepath.Ext` sees the version's
@@ -77,7 +124,8 @@ paths:
   pin with `withPin` (`llm/engine/coverage_test.go`), which swaps `loadPin` and
   restores it in `t.Cleanup`. `TestSupportsDeviceHonoursTheCUDAComputeFloor` in
   `llm/engine/policy_test.go` routes against an all-payload pin so what it
-  measures is the compute floor, not the payloads the shipped pin happens to carry.
+  measures is the compute floor, not the payloads the shipped pin happens to carry;
+  `TestResolve` in `llm/engine/resolve_test.go` does the same with `allPayloadsPin`.
 - Moving to a new artifact is one commit: `repo`, `rev`, `tag`, `channel`, every
   `sha256`, the `feature`, `accel`, `cuda-sass` and `cuda12-sass` rows corrected
   to what the new bytes carry, and any `llm/engine_defects.go` row those bytes

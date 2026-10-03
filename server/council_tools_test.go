@@ -129,13 +129,44 @@ func TestACouncilSynthesizerWritesThroughTheClient(t *testing.T) {
 	}
 }
 
-// Tools from a client that carries no state stay a plain chat, as before 9.5.
-func TestToolsWithoutStateStayAPlainChat(t *testing.T) {
-	e := &councilEngine{route: `{"route":"council"}`}
+// A generic client -- tools, no council_chat_state -- is served by the
+// council all the same. The server keeps the resume point and sends none, and
+// the client's tool results bring the turn back where it stopped.
+func TestAGenericClientsToolTurnIsTheCouncilsAndResumes(t *testing.T) {
+	councilStateKeyIn(t, t.TempDir())
+	prev := councilHeld
+	councilHeld = &councilHeldStates{m: map[string]heldState{}}
+	t.Cleanup(func() { councilHeld = prev })
+	e := &councilEngine{route: `{"route":"council"}`, tools: map[string]string{"researcher": "read_files"}}
 	s := councilToolServer(t, e)
-	toolChat(t, s, api.ChatRequest{Model: "council", Tools: councilTestTools, Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}}})
-	if e.count("route") != 0 || e.count("chat") != 1 {
-		t.Fatalf("roles %v", e.roles)
+	q := api.Message{Role: "user", Content: "Why is the sky blue?"}
+	req := api.ChatRequest{Model: "council", Tools: councilTestTools, Messages: []api.Message{q}}
+	chunks := toolChat(t, s, req)
+	var calls []api.ToolCall
+	for _, c := range chunks {
+		calls = append(calls, c.Message.ToolCalls...)
+		if c.CouncilChatState != "" {
+			t.Fatal("a client that sent no state was sent one")
+		}
+	}
+	if e.count("planner") != 1 || len(calls) != 2 || !strings.HasPrefix(calls[0].ID, "r1:call_") {
+		t.Fatalf("roles %v, calls %+v: want the council, suspended on the researchers' reads", e.roles, calls)
+	}
+
+	e2 := &councilEngine{route: `{"route":"council"}`, tools: e.tools}
+	s2 := councilToolServer(t, e2)
+	req.Messages = []api.Message{
+		q,
+		{Role: "assistant", ToolCalls: calls},
+		{Role: "tool", ToolCallID: calls[0].ID, Content: "R1-RESULT"},
+		{Role: "tool", ToolCallID: calls[1].ID, Content: "R2-RESULT"},
+	}
+	_, content := joined(toolChat(t, s2, req))
+	if !strings.HasPrefix(content, "The sky is blue") {
+		t.Fatalf("resumed answer %q", content)
+	}
+	if e2.count("front") != 0 || e2.count("planner") != 0 || e2.count("researcher") != 2 {
+		t.Fatalf("not resumed from the held point: roles %v", e2.roles)
 	}
 }
 
@@ -240,6 +271,22 @@ func TestAResumedMemberReattachesToItsStage(t *testing.T) {
 	for _, c := range chunks {
 		calls = append(calls, c.Message.ToolCalls...)
 	}
+	// A researcher keeps its session, and its cache, across the client's trip
+	// and after it has answered: the council lives until its client leaves
+	// (opencoti #526; the owner's ruling 2026-09-28).
+	researchers := func() (n int) {
+		kv.mu.Lock()
+		defer kv.mu.Unlock()
+		for _, id := range kv.closed {
+			if strings.Contains(id, "~researcher-") {
+				n++
+			}
+		}
+		return n
+	}
+	if n := researchers(); n != 0 {
+		t.Errorf("%d suspended researcher sessions closed, want none", n)
+	}
 	state := chunks[len(chunks)-1].CouncilChatState
 	req.CouncilChatState = &state
 	req.Messages = append(slices.Clone(req.Messages), api.Message{Role: "assistant", ToolCalls: calls},
@@ -247,6 +294,9 @@ func TestAResumedMemberReattachesToItsStage(t *testing.T) {
 		api.Message{Role: "tool", ToolCallID: calls[1].ID, Content: "R2-RESULT"})
 	if _, content := joined(toolChat(t, s, req)); !strings.HasPrefix(content, "The sky is blue") {
 		t.Fatalf("answer %q", content)
+	}
+	if n := researchers(); n != 0 {
+		t.Errorf("%d researcher sessions closed after they answered, want none", n)
 	}
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
@@ -290,5 +340,112 @@ func TestAWorkerWithNoLayerRunsInsideTheOwner(t *testing.T) {
 	}
 	if workers != 5 || slices.Contains(closed, owner) {
 		t.Fatalf("%d workers; closed %v (the owner must stay)", workers, closed)
+	}
+}
+
+// On a tool turn the synthesizer takes the request on the conversation's
+// session, in place of the planner's route decision: a request it answers
+// is one call, one it forwards goes to the council. Its routing tools never
+// reach the client.
+func TestAToolTurnGoesThroughTheSynthesizerFirst(t *testing.T) {
+	for _, route := range []string{`{"route":"direct"}`, `{"route":"council"}`} {
+		councilStateKeyIn(t, t.TempDir())
+		e := &councilEngine{route: route}
+		s := councilToolServer(t, e)
+		empty := ""
+		req := api.ChatRequest{
+			Model: "council", Tools: councilTestTools, CouncilChatState: &empty, SessionID: "conv-front",
+			Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}},
+		}
+		var content string
+		for _, c := range toolChat(t, s, req) {
+			content += c.Message.Content
+			for _, call := range c.Message.ToolCalls {
+				t.Errorf("%s: a call reached the client: %+v", route, call)
+			}
+		}
+		if e.count("route") != 0 || e.count("front") != 1 || e.sessions[0] != "conv-front" {
+			t.Errorf("%s: roles %v sessions %v; want the front first, on the conversation's session, and no route call", route, e.roles, e.sessions)
+		}
+		want, members := "Hello there!", 1
+		if route == `{"route":"council"}` {
+			want, members = "The sky is blue because air scatters blue light most.", 8 // front, builder, planner, 2 researchers, 2 critics, synthesizer
+		}
+		if content != want || len(e.roles) != members {
+			t.Errorf("%s: content %q from %d calls %v", route, content, len(e.roles), e.roles)
+		}
+	}
+}
+
+// The client's record of an earlier council turn reaches every member with
+// each call under the member that made it, and without the member's own
+// working notes (internal/council History).
+func TestEarlierTurnsReachTheMembersAttributed(t *testing.T) {
+	councilStateKeyIn(t, t.TempDir())
+	e := &councilEngine{route: `{"route":"council"}`}
+	s := councilToolServer(t, e)
+	empty := ""
+	args := api.NewToolCallFunctionArguments()
+	args.Set("path", "notes.txt")
+	req := api.ChatRequest{
+		Model: "council", Tools: councilTestTools, CouncilChatState: &empty, SessionID: "conv-history",
+		Messages: []api.Message{
+			{Role: "user", Content: "Why is the sky blue?"},
+			{Role: "assistant", Content: "SURELY-THE-OZONE", ToolCalls: []api.ToolCall{{ID: "r1:call_1", Function: api.ToolCallFunction{Name: "read_files", Arguments: args}}}},
+			{Role: "tool", ToolCallID: "r1:call_1", Content: "NOTES-DATA"},
+			{Role: "assistant", Content: "Scattering."},
+			{Role: "user", Content: "Say more."},
+		},
+	}
+	toolChat(t, s, req)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if len(e.prompts) == 0 {
+		t.Fatal("no member ran")
+	}
+	for i, p := range e.prompts {
+		if strings.Contains(p, "SURELY-THE-OZONE") {
+			t.Errorf("%s read a member's working note from an earlier turn", e.roles[i])
+		}
+		if e.roles[i] == "builder" {
+			// The builder reads the user's messages only: no result to
+			// anchor on.
+			if strings.Contains(p, "NOTES-DATA") || !strings.Contains(p, "Say more.") {
+				t.Error("the builder read more than the user's messages")
+			}
+			continue
+		}
+		if !strings.Contains(p, "[COUNCIL · RESEARCHER 1 · TOOL CALLS]") || !strings.Contains(p, "NOTES-DATA") {
+			t.Errorf("%s did not read the earlier call under its member", e.roles[i])
+		}
+	}
+}
+
+// A writer's reply the engine ends at its cap reaches the council as cut, and
+// the member is asked again (internal/council cut.go); its cap on a tool turn
+// has room for an edit.
+func TestACutReplyReachesTheCouncil(t *testing.T) {
+	councilStateKeyIn(t, t.TempDir())
+	e := &councilEngine{route: `{"route":"direct"}`, cut: map[string]bool{"front": true}}
+	s := councilToolServer(t, e)
+	empty := ""
+	req := api.ChatRequest{Model: "council", Tools: councilTestTools, CouncilChatState: &empty, Messages: []api.Message{{Role: "user", Content: "Hello!"}}}
+	toolChat(t, s, req)
+	if n := e.count("front"); n != 2 {
+		t.Fatalf("front calls %d, want the cut one asked again", n)
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	var fronts []int
+	for i, r := range e.roles {
+		if r == "front" {
+			fronts = append(fronts, i)
+		}
+	}
+	if !strings.Contains(e.prompts[fronts[1]], "reached its length limit") {
+		t.Error("the second front call does not carry the note")
+	}
+	if p := e.predicts[fronts[0]]; p < 16384 {
+		t.Errorf("the front's cap on a tool turn is %d", p)
 	}
 }

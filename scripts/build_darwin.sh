@@ -27,7 +27,12 @@ usage() {
 
 mkdir -p dist
 
-ARCHS="arm64 amd64"
+# xollama-hook: macos-engine -- Apple silicon only by default (owner,
+# 2026-10-03). The Intel half is 22 x86_64-only llama.cpp libraries, which make
+# macOS 27 warn that the app has a component macOS 28 will not open, and the
+# opencoti engine and the media libraries are arm64 only anyway.
+# `-a "arm64 amd64"` still builds upstream's universal app.
+ARCHS="arm64"
 while getopts "a:h" OPTION; do
     case $OPTION in
         a) ARCHS=$OPTARG ;;
@@ -76,7 +81,7 @@ _build_darwin() {
             -DCMAKE_OSX_DEPLOYMENT_TARGET=14.0 \
             -DCMAKE_INSTALL_PREFIX=$INSTALL_PREFIX \
             -DOLLAMA_PAYLOAD_INSTALL_PREFIX=$INSTALL_PREFIX \
-            -DOLLAMA_GO_OUTPUT=$INSTALL_PREFIX/ollama \
+            -DOLLAMA_GO_OUTPUT=$INSTALL_PREFIX/xollama \
             -DOLLAMA_VERSION="$VERSION" \
             -DOLLAMA_MLX_BACKENDS="$MLX_BACKENDS" \
             -DOLLAMA_LLAMA_BACKENDS= \
@@ -95,7 +100,8 @@ _merge_darwin_payload() {
     rm -rf dist/darwin/lib
     mkdir -p dist/darwin/lib/ollama
 
-    for ROOT in dist/darwin-amd64/lib/ollama dist/darwin-arm64/lib/ollama; do
+    for ARCH in $ARCHS; do
+        ROOT=dist/darwin-$ARCH/lib/ollama
         [ -d "$ROOT" ] || continue
         for F in "$ROOT"/*; do
             [ -e "$F" ] || continue
@@ -113,6 +119,7 @@ _merge_darwin_payload() {
         DEST=dist/darwin/lib/ollama/$VNAME
         AMD_VARIANT=dist/darwin-amd64/lib/ollama/$VNAME
         [ -d "$AMD_VARIANT" ] || AMD_VARIANT=dist/darwin-amd64/lib/ollama
+        case "$ARCHS" in *amd64*) ;; *) AMD_VARIANT=/nonexistent ;; esac
         mkdir -p "$DEST"
 
         for LIB in libmlx.dylib libmlxc.dylib libollama_xgrammar.dylib; do
@@ -133,22 +140,92 @@ _merge_darwin_payload() {
             cp "$F" "$DEST/"
         done
     done
+
+    _stage_opencoti_engine
+}
+
+# xollama-hook: macos-engine
+# The opencoti engine for Apple silicon: the APE, its loader, the Metal library
+# and the media sidecars, every file verified against llm/engine/pin.txt by the
+# script every other package stages with. opencoti publishes nothing for Intel,
+# so the files are arm64 only and an Intel Mac stays on llama.cpp
+# (llm/engine/policy.go). They go in their own directory, which
+# llm/engine/opencoti.go (DefaultDirs) searches first.
+_stage_opencoti_engine() {
+    [ "${XOLLAMA_OPENCOTI_ENGINE:-ON}" = "OFF" ] && return 0
+    case "$ARCHS" in *arm64*) ;; *) return 0 ;; esac
+    status "Staging the opencoti engine (macos-aarch64)"
+    cmake -DPIN_FILE="$PWD/llm/engine/pin.txt" -DARCH=macos-aarch64 \
+        -DDEST_DIR="$PWD/dist/darwin/lib/ollama/engines" \
+        -DCACHE_DIR="${XOLLAMA_OPENCOTI_ENGINE_CACHE:-$PWD/build/opencoti-cache}" \
+        -DLOCAL_SIDECAR_DIR="${XOLLAMA_OPENCOTI_SIDECAR_DIR:-}" \
+        -P cmake/opencoti-fetch.cmake
+}
+
+# xollama-hook: macos-engine
+# Signs the engine's Mach-O files in a directory. The loader maps the engine's
+# code itself, so under the hardened runtime it needs the entitlement in
+# app/darwin/engine-loader.entitlements or it is killed at start; and library
+# validation makes it refuse a library signed by another team, so the loader
+# and its libraries are signed together. The engine file is not a Mach-O.
+_sign_opencoti_engine() {
+    ENGINE_DIR=$1
+    [ -d "$ENGINE_DIR" ] || return 0
+    for F in "$ENGINE_DIR"/*.dylib; do
+        [ -f "$F" ] || continue
+        codesign -f --timestamp -s "$APPLE_IDENTITY" --options=runtime "$F"
+    done
+    if [ -f "$ENGINE_DIR/ape-macos-aarch64" ]; then
+        codesign -f --timestamp -s "$APPLE_IDENTITY" --options=runtime \
+            --entitlements app/darwin/engine-loader.entitlements "$ENGINE_DIR/ape-macos-aarch64"
+    fi
+}
+
+# xollama-hook: macos-engine
+# Notarizes one file and waits. An App Store Connect API key
+# (APPLE_NOTARY_KEY, APPLE_NOTARY_KEY_ID, APPLE_NOTARY_ISSUER) is used when
+# given; otherwise upstream's Apple ID and app password.
+# XOLLAMA_NOTARIZE=off signs without submitting, for a build that is tested
+# before Apple has answered; such a build is not stapled.
+_notarize() {
+    if [ "${XOLLAMA_NOTARIZE:-on}" = "off" ]; then
+        status "Not notarizing $1 (XOLLAMA_NOTARIZE=off)"
+        return 0
+    fi
+    if [ -n "$APPLE_NOTARY_KEY" ]; then
+        xcrun notarytool submit "$1" --wait --timeout "${APPLE_NOTARY_TIMEOUT:-20m}" \
+            --key "$APPLE_NOTARY_KEY" --key-id "$APPLE_NOTARY_KEY_ID" --issuer "$APPLE_NOTARY_ISSUER"
+    else
+        xcrun notarytool submit "$1" --wait --timeout 20m --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID"
+    fi
+}
+
+_staple() {
+    [ "${XOLLAMA_NOTARIZE:-on}" = "off" ] && return 0
+    $(xcrun -f stapler) staple "$1"
+}
+
+# xollama-hook: macos-engine
+# One binary from the architectures in ARCHS: $1 is the output, $2 the path
+# under dist/darwin-<arch>/. With one architecture it is that file.
+_join_archs() {
+    INPUTS=
+    for ARCH in $ARCHS; do
+        INPUTS="$INPUTS dist/darwin-$ARCH/$2"
+    done
+    lipo -create -output "$1" $INPUTS
+    chmod +x "$1"
+    for ARCH in $ARCHS; do
+        case $ARCH in amd64) lipo "$1" -verify_arch x86_64 ;; *) lipo "$1" -verify_arch "$ARCH" ;; esac
+    done
 }
 
 _prepare_darwin_runtime() {
-    status "Creating universal binary..."
+    status "Creating the runtime for: $ARCHS"
     mkdir -p dist/darwin
-    lipo -create -output dist/darwin/xollama dist/darwin-amd64/xollama dist/darwin-arm64/xollama
-    chmod +x dist/darwin/xollama
-    lipo dist/darwin/xollama -verify_arch x86_64 arm64
-
-    lipo -create -output dist/darwin/llama-server dist/darwin-amd64/lib/ollama/llama-server dist/darwin-arm64/lib/ollama/llama-server
-    chmod +x dist/darwin/llama-server
-    lipo dist/darwin/llama-server -verify_arch x86_64 arm64
-
-    lipo -create -output dist/darwin/llama-quantize dist/darwin-amd64/lib/ollama/llama-quantize dist/darwin-arm64/lib/ollama/llama-quantize
-    chmod +x dist/darwin/llama-quantize
-    lipo dist/darwin/llama-quantize -verify_arch x86_64 arm64
+    _join_archs dist/darwin/xollama xollama
+    _join_archs dist/darwin/llama-server lib/ollama/llama-server
+    _join_archs dist/darwin/llama-quantize lib/ollama/llama-quantize
 
     _merge_darwin_payload
 }
@@ -174,11 +251,12 @@ _sign_darwin() {
             case "$F" in *_LICENSE|*_NOTICE) continue ;; esac
             codesign -f --timestamp -s "$APPLE_IDENTITY" --identifier com.mann1x.xollama --options=runtime "$F"
         done
+        _sign_opencoti_engine dist/darwin/lib/ollama/engines
 
         # create a temporary zip for notarization
         TEMP=$(mktemp -u).zip
         ditto -c -k --keepParent dist/darwin/xollama "$TEMP"
-        xcrun notarytool submit "$TEMP" --wait --timeout 20m --apple-id $APPLE_ID --password $APPLE_PASSWORD --team-id $APPLE_TEAM_ID
+        _notarize "$TEMP"
         rm -f "$TEMP"
     fi
 
@@ -212,11 +290,14 @@ _build_macapp() {
     touch dist/xOllama.app
 
     go clean -cache
-    GOARCH=amd64 CGO_ENABLED=1 GOOS=darwin go build -o dist/darwin-app-amd64 -ldflags="-s -w -X=github.com/ollama/ollama/app/version.Version=${VERSION}" ./app/cmd/app
-    GOARCH=arm64 CGO_ENABLED=1 GOOS=darwin go build -o dist/darwin-app-arm64 -ldflags="-s -w -X=github.com/ollama/ollama/app/version.Version=${VERSION}" ./app/cmd/app
+    APP_INPUTS=
+    for ARCH in $ARCHS; do
+        GOARCH=$ARCH CGO_ENABLED=1 GOOS=darwin go build -o dist/darwin-app-$ARCH -ldflags="-s -w -X=github.com/ollama/ollama/app/version.Version=${VERSION}" ./app/cmd/app
+        APP_INPUTS="$APP_INPUTS dist/darwin-app-$ARCH"
+    done
     mkdir -p dist/xOllama.app/Contents/MacOS
-    lipo -create -output dist/xOllama.app/Contents/MacOS/xOllama dist/darwin-app-amd64 dist/darwin-app-arm64
-    rm -f dist/darwin-app-amd64 dist/darwin-app-arm64
+    lipo -create -output dist/xOllama.app/Contents/MacOS/xOllama $APP_INPUTS
+    rm -f $APP_INPUTS
 
     # Create a mock Squirrel.framework bundle
     mkdir -p dist/xOllama.app/Contents/Frameworks/Squirrel.framework/Versions/A/Resources/
@@ -251,23 +332,26 @@ _build_macapp() {
             [ -f "$lib" ] || continue
             codesign -f --timestamp -s "$APPLE_IDENTITY" --identifier com.mann1x.xollama --options=runtime "$lib"
         done
+        _sign_opencoti_engine dist/xOllama.app/Contents/Resources/engines
         codesign -f --timestamp -s "$APPLE_IDENTITY" --identifier com.mann1x.xollama --deep --options=runtime dist/xOllama.app
     fi
 
     rm -f dist/xOllama-darwin.zip
     ditto -c -k --norsrc --keepParent dist/xOllama.app dist/xOllama-darwin.zip
-    (cd dist/xOllama.app/Contents/Resources/; tar -cf - xollama llama-server llama-quantize *.so *.dylib *.metallib *_LICENSE *_NOTICE mlx_metal_v*/ 2>/dev/null) | gzip -9vc > dist/xollama-darwin.tgz
+    (cd dist/xOllama.app/Contents/Resources/; tar -cf - xollama llama-server llama-quantize *.so *.dylib *.metallib *_LICENSE *_NOTICE mlx_metal_v*/ engines/ 2>/dev/null) | gzip -9vc > dist/xollama-darwin.tgz
 
     # Notarize and Staple
     if [ -n "$APPLE_IDENTITY" ]; then
-        $(xcrun -f notarytool) submit dist/xOllama-darwin.zip --wait --timeout 20m --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID"
+        _notarize dist/xOllama-darwin.zip
         rm -f dist/xOllama-darwin.zip
-        $(xcrun -f stapler) staple dist/xOllama.app
+        _staple dist/xOllama.app
         ditto -c -k --norsrc --keepParent dist/xOllama.app dist/xOllama-darwin.zip
 
         rm -f dist/xOllama.dmg
 
-        (cd dist && ../scripts/create-dmg.sh \
+        # The Finder styling is AppleScript against a logged-in desktop; a build
+        # over ssh has none and times out (XOLLAMA_DMG_HEADLESS=1 skips it).
+        (cd dist && ../scripts/create-dmg.sh ${XOLLAMA_DMG_HEADLESS:+--skip-jenkins} \
             --volname "${VOL_NAME}" \
             --volicon ../app/darwin/xOllama.app/Contents/Resources/icon.icns \
             --background ../app/assets/background.png \
@@ -284,8 +368,8 @@ _build_macapp() {
         rm -f dist/rw*.dmg
 
         codesign -f --timestamp -s "$APPLE_IDENTITY" --identifier com.mann1x.xollama --options=runtime dist/xOllama.dmg
-        $(xcrun -f notarytool) submit dist/xOllama.dmg --wait --timeout 20m --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID"
-        $(xcrun -f stapler) staple dist/xOllama.dmg
+        _notarize dist/xOllama.dmg
+        _staple dist/xOllama.dmg
     else
         echo "WARNING: Code signing disabled, this bundle will not work for upgrade testing"
     fi

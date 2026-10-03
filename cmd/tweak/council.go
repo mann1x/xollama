@@ -26,6 +26,7 @@ func councilRole(c *xollama.Config, name string) *xollama.CouncilRole {
 	slot := map[string]**xollama.CouncilRole{
 		xollama.RolePlanner: &k.Planner, xollama.RoleResearcher: &k.Researcher,
 		xollama.RoleCritic: &k.Critic, xollama.RoleSynthesizer: &k.Synthesizer,
+		xollama.RoleBuilder: &k.Builder,
 	}[name]
 	if *slot == nil {
 		*slot = &xollama.CouncilRole{}
@@ -171,10 +172,27 @@ func roleFields(name, what string) []field {
 			},
 		},
 		{
-			name:    flag + "-max-tokens",
-			path:    "council." + name + ".max_tokens",
-			title:   "Council " + name + " reply cap",
-			help:    "The most tokens one " + name + " may write. Unset keeps the role's default.",
+			name:  flag + "-instructions",
+			path:  "council." + name + ".instructions",
+			title: "Council " + name + " instructions — added after its instruction",
+			help: "Text the " + name + " reads after its own instruction, built-in or replaced,\n" +
+				"for " + what + ". It replaces nothing. A client can add its own for one\n" +
+				"request (the council directive).",
+			kind:    kindText,
+			quiet:   true,
+			blocked: councilOff,
+			get:     roleGet(name, func(r *xollama.CouncilRole) string { return r.Instructions }),
+			set: func(c *xollama.Config, v string) error {
+				return setText(v, &councilRole(c, name).Instructions)
+			},
+		},
+		{
+			name:  flag + "-max-tokens",
+			path:  "council." + name + ".max_tokens",
+			title: "Council " + name + " reply cap",
+			help: "The most tokens one " + name + " reply may take, thinking included. Unset: on\n" +
+				"the council's own model, the council's output budget (council.max_tokens);\n" +
+				"on another model (council." + name + ".model), that model's own template decides.",
 			kind:    kindInt,
 			unit:    "tokens",
 			quiet:   true,
@@ -185,13 +203,29 @@ func roleFields(name, what string) []field {
 			},
 		},
 		{
+			name:  flag + "-num-ctx",
+			path:  "council." + name + ".num_ctx",
+			title: "Council " + name + " context window, on its own model",
+			help: "The num_ctx a " + name + " on another model (council." + name + ".model) runs\n" +
+				"with. Unset leaves it to that model's template. A role on the council's own\n" +
+				"model runs in the council's window and cannot set one.",
+			kind:    kindInt,
+			unit:    "tokens",
+			quiet:   true,
+			blocked: councilOff,
+			get:     roleGet(name, func(r *xollama.CouncilRole) string { return showInt(r.NumCtx) }),
+			set: func(c *xollama.Config, v string) error {
+				return setInt(v, &councilRole(c, name).NumCtx)
+			},
+		},
+		{
 			name:  flag + "-think",
 			path:  "council." + name + ".think",
 			title: "Council " + name + " thinking — let it reason before it replies",
-			help: "Unset or off: no reasoning, the tested default. on is a 2048-token\n" +
-				"budget. A level (minimal, low, medium, high, max) caps the reasoning at\n" +
-				"that share of the council's context; a number is a token budget. The cap\n" +
-				"comes on top of the reply cap, the reasoning is never shown, and the\n" +
+			help: "Unset or off: no reasoning, the tested default. A level (minimal, low,\n" +
+				"medium, high, max) caps the reasoning at that share of the reply cap,\n" +
+				"which includes it; on is medium, a quarter. A number is a token budget,\n" +
+				"held to four fifths of the cap. The reasoning is never shown, and the\n" +
 				"model's own think_budget_message closes it at the cap. Every member\n" +
 				"takes longer.",
 			kind:    kindText,
@@ -228,7 +262,7 @@ func councilFields() []field {
 				"variable for this -- a council is a property of the model.",
 			kind:  kindTri,
 			head:  true,
-			group: []string{"council", "council-researchers", "council-critics", "council-jitter", "council-seed", "council-max-rounds", "council-show-deliberation", "council-broadcast", "council-polykv", "council-window", "council-floor", "council-compact-at", "council-idle-compact-at", "council-compaction", "council-compaction-review", "council-compaction-retrospective"},
+			group: []string{"council", "council-researchers", "council-critics", "council-jitter", "council-seed", "council-max-rounds", "council-cloud-parallel", "council-show-deliberation", "council-broadcast", "council-polykv", "council-window", "council-floor", "council-compact-at", "council-idle-compact-at", "council-compaction", "council-compaction-review", "council-compaction-retrospective"},
 			get: func(c *xollama.Config) string {
 				return councilGet(c, func(k *xollama.Council) string { return tri(k.Enabled) })
 			},
@@ -316,6 +350,37 @@ func councilFields() []field {
 				return councilGet(c, func(k *xollama.Council) string { return showInt(k.MaxRounds) })
 			},
 			set: func(c *xollama.Config, v string) error { return setInt(v, &council(c).MaxRounds) },
+		},
+		{
+			name:  "council-max-tokens",
+			path:  "council.max_tokens",
+			title: "Output ceiling — the most one member reply may take",
+			help: fmt.Sprintf("A member on the council's own model replies in at most three quarters of\n"+
+				"the council's window, this ceiling and the model's num_predict, thinking\n"+
+				"included; a role's own max_tokens replaces it. %d (unset) by default,\n"+
+				"between %d and %d.", xollama.DefaultCouncilMaxTokens, xollama.MinCouncilMaxTokens, xollama.MaxCouncilMaxTokens),
+			kind:    kindInt,
+			unit:    "tokens",
+			quiet:   true,
+			blocked: councilOff,
+			get: func(c *xollama.Config) string {
+				return councilGet(c, func(k *xollama.Council) string { return showInt(k.MaxTokens) })
+			},
+			set: func(c *xollama.Config, v string) error { return setInt(v, &council(c).MaxTokens) },
+		},
+		{
+			name:    "council-cloud-parallel",
+			path:    "council.cloud_parallel",
+			title:   "Cloud members at once",
+			help:    fmt.Sprintf("How many members on a cloud model run at the same time. They use no engine\nslot here; the local members follow the engine's parallel slots. %d (unset) by\ndefault, at most %d.", xollama.DefaultCouncilCloudParallel, xollama.MaxCouncilCloudParallel),
+			kind:    kindInt,
+			unit:    "members",
+			quiet:   true,
+			blocked: councilOff,
+			get: func(c *xollama.Config) string {
+				return councilGet(c, func(k *xollama.Council) string { return showInt(k.CloudParallel) })
+			},
+			set: func(c *xollama.Config, v string) error { return setInt(v, &council(c).CloudParallel) },
 		},
 		{
 			name:  "council-show-deliberation",
@@ -441,10 +506,10 @@ func councilFields() []field {
 			name:  "council-compaction",
 			path:  "council.context.compaction",
 			title: "Compaction — how a long conversation is shortened",
-			help: "agentic (unset) is Cerebriline's council compaction: the model replays the\n" +
-				"older turns in its own voice, two critics rewrite the replay's halves against\n" +
-				"the conversation, and a synthesizer joins them. basic makes no model call: it\n" +
-				"keeps your requests word for word and the newest answers that fit.",
+			help: "agentic (unset) is Cerebriline's agentic compaction: the model replays the\n" +
+				"older turns in its own voice, in one pass (turn the review on for two critics\n" +
+				"and a synthesizer). basic makes no model call: it keeps your requests word for\n" +
+				"word and the newest answers that fit.",
 			kind:    kindChoice,
 			choices: func(*xollama.Config) []string { return xollama.ValidCouncilCompaction() },
 			quiet:   true,
@@ -466,8 +531,8 @@ func councilFields() []field {
 			path:  "council.context.review",
 			title: "Compaction review — critics check the replay",
 			help: "Two critics each rewrite one half of the replay against the conversation, and\n" +
-				"a synthesizer joins the halves. Off ships the writer's replay unreviewed,\n" +
-				"which is faster. Unset is on.",
+				"a synthesizer joins the halves: three more calls per fold. Unset is off: the\n" +
+				"writer's replay ships as it is.",
 			kind:    kindTri,
 			quiet:   true,
 			blocked: councilOff,
@@ -482,7 +547,8 @@ func councilFields() []field {
 			title: "Compaction retrospective — a judgement kept beside the replay",
 			help: "Where the conversation carries the model's reasoning, a short assessment of\n" +
 				"it (what worked, what did not) is kept at the top of the compacted\n" +
-				"conversation and carried into the next compaction. Unset is on.",
+				"conversation and carried into the next compaction. One more call per fold.\n" +
+				"Unset is off.",
 			kind:    kindTri,
 			quiet:   true,
 			blocked: councilOff,
@@ -509,6 +575,21 @@ func councilFields() []field {
 			},
 			set: func(c *xollama.Config, v string) error { return setText(v, &council(c).Charter) },
 		},
+		{
+			name:  "council-instructions",
+			path:  "council.instructions",
+			title: "Council instructions — guidance every member reads after the charter",
+			help: "Your standing guidance for this council, such as the house style or what\n" +
+				"to check before answering. It follows the charter in the shared prefix and\n" +
+				"replaces nothing. A client can add its own for one request.",
+			kind:    kindText,
+			quiet:   true,
+			blocked: councilOff,
+			get: func(c *xollama.Config) string {
+				return councilGet(c, func(k *xollama.Council) string { return k.Instructions })
+			},
+			set: func(c *xollama.Config, v string) error { return setText(v, &council(c).Instructions) },
+		},
 	}
 	for _, r := range []struct{ name, what string }{
 		{xollama.RolePlanner, "deciding the route and writing the plan"},
@@ -517,6 +598,13 @@ func councilFields() []field {
 		{xollama.RoleSynthesizer, "writing the answer"},
 	} {
 		core = append(core, roleFields(r.name, r.what)...)
+	}
+	// The builder's prompt is the runtime's JSON contract, so it has every
+	// row but that one.
+	for _, f := range roleFields(xollama.RoleBuilder, "shaping the council for its work") {
+		if f.path != "council.builder.prompt" {
+			core = append(core, f)
+		}
 	}
 	return core
 }

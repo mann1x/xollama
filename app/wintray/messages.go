@@ -3,15 +3,15 @@
 package wintray
 
 const (
-	firstTimeTitle   = "Ollama is running"
+	firstTimeTitle   = AppName + " is running" // xollama-hook: app-brand
 	firstTimeMessage = "Click here to get started"
 	updateTitle      = "Update available"
-	updateMessage    = "Ollama version %s is ready to install"
+	updateMessage    = AppName + " version %s is ready to install" // xollama-hook: app-brand
 
-	quitMenuTitle            = "Quit Ollama"
+	quitMenuTitle            = "Quit " + AppName // xollama-hook: app-brand
 	updateAvailableMenuTitle = "An update is available"
 	updateMenuTitle          = "Restart to update"
 	diagLogsMenuTitle        = "View logs"
-	openAppsMenuTitle        = "Open Ollama"
+	openAppsMenuTitle        = "Open " + AppName // xollama-hook: app-brand
 	settingsUIMenuTitle      = "Settings"
 )

@@ -3,6 +3,7 @@ package discover
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -25,7 +26,7 @@ const opencotiEnumerateTimeout = 45 * time.Second
 
 // opencotiBackends are the backends opencoti can be asked to list, in the
 // order they are run.
-var opencotiBackends = []engine.Backend{engine.BackendCUDA, engine.BackendVulkan}
+var opencotiBackends = []engine.Backend{engine.BackendCUDA, engine.BackendVulkan, engine.BackendMetal}
 
 // opencotiListDevices runs one enumeration and returns its combined output.
 // It is a variable so tests can stand in for the artifact.
@@ -35,9 +36,42 @@ var opencotiListDevices = func(ctx context.Context, artifact string, b engine.Ba
 	name, args := engine.EnumerateCommand(artifact, b, runtime.GOOS)
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.WaitDelay = llamaServerDiscoveryWaitDelay
-	cmd.Env = os.Environ()
+	cmd.Env = envconfig.Environ()
+	// The HOME the launch will give this same artifact, so a listing and the
+	// load it places cannot disagree about what the engine finds there.
+	home, _ := os.UserHomeDir()
+	if payloadHome := engine.PayloadHome(artifact, ml.LibOllamaPath, home); payloadHome != "" {
+		cmd.Env = append(cmd.Env, "HOME="+payloadHome)
+		defer engine.AdoptPayloadHome(payloadHome)
+	}
 	out, err := cmd.CombinedOutput()
+	if err != nil {
+		err = fmt.Errorf("%w; engine output: %s", err, outputTail(string(out)))
+	}
 	return string(out), err
+}
+
+// outputTail is the end of an engine's output, short enough for one log line:
+// the last few non-empty lines, which is where a failing engine says why.
+func outputTail(out string) string {
+	const maxLines, maxBytes = 5, 512
+	var lines []string
+	for l := range strings.SplitSeq(out, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	if len(lines) == 0 {
+		return "(none)"
+	}
+	if len(lines) > maxLines {
+		lines = lines[len(lines)-maxLines:]
+	}
+	tail := strings.Join(lines, " | ")
+	if len(tail) > maxBytes {
+		tail = "..." + tail[len(tail)-maxBytes:]
+	}
+	return tail
 }
 
 // opencotiArtifact locates the engine the way a launch does, so discovery
@@ -135,8 +169,12 @@ func overlayOpencotiDevices(ctx context.Context, devices []ml.DeviceInfo) []ml.D
 		listed, err := opencotiListing(ctx, artifact, b) // xollama: CUDA 12 payload too
 		slog.Debug("opencoti device enumeration", "backend", b, "devices", len(listed), "duration", time.Since(start), "error", err)
 		if err != nil && len(listed) == 0 {
-			// Nothing to be authoritative with; the engine may simply have no
-			// payload for this backend on this host. llama.cpp's view stands.
+			// Nothing to be authoritative with, so llama.cpp's view stands. The
+			// pinned engine serves this backend here (Enumerates), so a failed
+			// listing is a fault: a later opencoti launch on these devices
+			// fails for the same reason, and this is the line that says why.
+			slog.Warn("opencoti could not list its devices; placement uses llama.cpp's view of them",
+				"backend", b, "artifact", artifact, "error", err)
 			continue
 		}
 		devices = mergeOpencotiBackend(devices, string(b), listed, selector)
