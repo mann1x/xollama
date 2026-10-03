@@ -172,10 +172,15 @@ channel  dev
 #   runs: the engine writes under ~/.ollama/engines/payload, never the app.
 #   The Intel half under Rosetta refuses opencoti by name and serves on stock
 #   llama.cpp.
-# NOT MEASURED on these bytes: Windows. eleven2go was not used (the owner's
-# pause); the Windows CUDA DLL and sidecars are the bytes measured with
-# 2610031319001, the engine is not. Image, video and edit models, vision,
-# MTP and models above 5 GB on macOS.
+# eleven2go (Windows 11, RTX 3090), a dev xollama.exe beside the installed
+# servers on its own port, no eSpeak-ng on the host: qwen2.5:1.5b 100 % GPU,
+# 512 tokens three times at 327.5 / 326.7 / 325.2 tok/s (322 on
+# 2610031319001); Kokoro (default and nova), Supertonic, KittenTTS and OuteTTS
+# answer mp3 and Whisper returns the sentence from each; two --tts-voices
+# files listed and spoken by name; Wan2.1 completes in 149 s, 21.8 GiB peak;
+# the four licence texts and BUILD_INFO.md staged beside the DLLs.
+# NOT MEASURED on these bytes: Wan2.2 and the installer on Windows; image,
+# video and edit models, vision, MTP and models above 5 GB on macOS.
 #
 # 2610031319001 (rev 26cd5645, mails #714, #715), the pin before it, is
 # 2610031112001 with three server fixes and nothing else that xollama ships

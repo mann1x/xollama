@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-03 — `2610031615001` measured on Windows; the Mac app's names confirmed at the screen.**
+> - eleven2go (Windows 11, RTX 3090), on the owner's word, side directory `xollama-b130` on port 22498, installed servers untouched: qwen2.5:1.5b three 512-token runs at 327.5 / 326.7 / 325.2 tok/s, 100 % GPU (322 on the previous pin); Kokoro (two voices), Supertonic, KittenTTS and OuteTTS mp3, each transcribed back; two custom voices listed and spoken; Wan2.1 in 149 s, 21.8 GiB peak; the four licence texts beside the DLLs. The pin is now measured on Linux, Windows and macOS.
+> - Mac mini, after the owner answered the authorization dialog: the app started its server, the CLI link is `/usr/local/bin/xollama` (the old `/usr/local/bin/ollama` removed by the owner), the login item registered under `com.mann1x.xollama`, state is in `~/Library/Application Support/xOllama`. Phase 4 of `plans/macos-build.md` closed.
+> - The hosted `test` workflow failed on the macOS runner after the macOS commit (two tests asserting llama.cpp or upstream names, one gofumpt line); fixed in `bdcaa7e30`, green.
+
 > **2026-10-03 — macOS: the app and its DMG are notarized.**
 > - Apple accepted the signed universal `xOllama.app` (submission `e793062d`) and the DMG (`c95ba8de`); both are stapled and Gatekeeper reports "Notarized Developer ID". The notarized app is installed on the Mac mini. `xOllama.dmg` sha256 `26a668e0…4560c` (272 MB), in `~/dev/xollama/dist` there; not published anywhere.
 > - The app is the build of commit `7997b42a9`'s tree made before that commit, so it names itself `0.35.1-dev.fb0ec3f5`. The DMG was made without the Finder styling (no desktop session over ssh).

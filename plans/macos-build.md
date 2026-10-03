@@ -43,7 +43,7 @@ Notarization uses an App Store Connect API key: `APPLE_NOTARY_KEY`,
 | 1 | universal runtime and app build on the Mac, unsigned | done 2026-10-03 |
 | 2 | opencoti on Metal through the loader: routing, launch, discovery, staging | done 2026-10-03, measured |
 | 3 | Developer ID signing, engine inside the bundle under the hardened runtime | done 2026-10-03, measured |
-| 4 | the app's macOS names: login item, CLI link, state directory, stock Ollama not an instance | built 2026-10-03; needs a run at the Mac's screen |
+| 4 | the app's macOS names: login item, CLI link, state directory, stock Ollama not an instance | done 2026-10-03: confirmed at the screen (server starts after the dialog, `/usr/local/bin/xollama`, login item registered, state in `Application Support/xOllama`) |
 | 5 | notarization, staple, DMG | done 2026-10-03: app (submission `e793062d`) and DMG (`c95ba8de`) accepted and stapled; Gatekeeper says "Notarized Developer ID" for both. Done by hand from the signed build (the DMG headless); a full `build_darwin.sh` run with notarization on has not been made |
 | 6 | hosted or scripted release of the macOS assets, updater feed for macOS | open |
 | 7 | image, video and edit models, vision, MTP on Metal | open: untested by opencoti and by us |
@@ -61,7 +61,5 @@ same Mac. The Intel half under Rosetta serves on llama.cpp (CPU).
 - The app waits at the system authorization dialog for its CLI link before it
   starts its server; over ssh nobody answers it. Upstream's behaviour, to be
   looked at with phase 4.
-- `/usr/local/bin/ollama` on the Mac mini was written by the first, unfixed
-  build and points into `xOllama.app`; it needs root to remove.
 - The DMG's Finder styling needs a logged-in desktop (`XOLLAMA_DMG_HEADLESS=1`
   skips it).
