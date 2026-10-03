@@ -1324,9 +1324,6 @@ func (s *llamaServerRunner) startProcess() error {
 	s.cmd = cmd
 	s.port = port
 	s.usedOpencoti = usedOpencoti
-	if s.status != nil { // xollama-hook: engine-select -- see llm/engine_status.go
-		s.status.opencoti.Store(usedOpencoti)
-	}
 	// xollama-hook: engine-session — the pool registry is sized to the same
 	// number the engine was given seats for, and is rebuilt per process: pool
 	// ids belong to the engine that issued them.
