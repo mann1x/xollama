@@ -129,7 +129,7 @@ Routing is the tested matrix intersected with what the pinned artifact actually
 ships — see `pinUncovered`. A dev snapshot is a bare APE that accelerates only
 what its `dso` rows provide, so Vulkan reached opencoti for the first time with
 snapshot `2609242056001`, the first to publish `ggml-vulkan-x86_64.so`.
-The current pin, `2610031112001` (rev `50f953bd`), carries CUDA for Linux
+The current pin, `2610031319001` (rev `26cd5645`), carries CUDA for Linux
 x86_64 and Windows x86_64; Vulkan loads route to llama.cpp until a snapshot
 publishes the Vulkan payload.
 

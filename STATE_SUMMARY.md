@@ -5,6 +5,13 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-03 — Engine pin moved to opencoti `2610031319001` (rev `26cd5645`), on the owner's word; measured on solidPC and on Windows.**
+> - What it adds over `2610031112001` (opencoti #714, #715): a request cancelled while queued no longer keeps its KV reservation for 600 s and a queued stream gets its keepalive (0546); `--dca on` no longer aborts on a CPU-only run (0542). Only the engine (`1e6e30cb`) and `BUILD_INFO.md` changed among what xollama ships; CUDA payloads and all libraries are the same bytes. The snapshot's new macOS files have no pin rows.
+> - solidPC as `ollama`, one run (`pin-b128`; `2610031112001` in brackets): compat 8/8 (8/8), llama3 77.1 tok/s (76.4), four slots 302 tok/s (302), gemma4 identical, 70B overflow 4.1 tok/s (3.8). Speech: all five models and two custom voices mp3, Whisper returns the sentence. Wan2.1 33/33 frames (223 s), Wan2.2 Q4_K_M 33/33 (114 s).
+> - eleven2go (Windows 11, RTX 3090), side directory on port 22498, installed servers untouched: qwen2.5:1.5b three 512-token runs at 322 tok/s, 100 % GPU; Kokoro, Supertonic, KittenTTS, OuteTTS mp3 and transcribed back; two custom voices; Wan2.1 33/33 frames in 149 s; licence text and `BUILD_INFO.md` beside the DLLs.
+> - CPU-only gap: opencoti decodes about 12 % under stock on CPU (36.9 vs 41.8 tok/s). opencoti: structural (only the matmul kernels are built per ISA), their c9 stage 17. No tuning on our side.
+> - Left: the queueing faults 0546 fixes were not exercised here; Wan2.2 and the installer on Windows; the Docker assembly and the hosted workflows on this pin.
+>
 > **2026-10-03 — Linux runtime pin moved to the fork's `v0.35.1-thinkbudget` (b11232); the Docker assembly runs unmodified again.**
 > - `llama/runtime-pin-linux.txt`: runtime `2334fe35…` built at fork `1040f03d` (inputs `57004c3c…`, this tree's), upstream `v0.35.1` GPU archives `9fcd79ac…` and `15ee9a52…` (upstream's own `sha256sum.txt`). The runtime's sha256 was checked on a download of my own, not taken from the fork's mail (#708).
 > - `scripts/docker-assemble.sh`, as CI runs it, exit 0: both llama checks pass; the image carries the runtime, the engine, the three libraries and both licence files. In a container (no compiler, no eSpeak-ng, CPU only): Kokoro, KittenTTS, Supertonic mp3; qwen2.5:1.5b answers on stock `llama-server` and on opencoti. Measured afterwards at 256 tokens, six warm runs, host load 12-14: stock 41.8 tok/s, opencoti 36.9, a consistent ~12 % CPU-only gap (opencoti mail #712); the 47 / 38 first quoted here came from a 10-token smoke and is withdrawn.
