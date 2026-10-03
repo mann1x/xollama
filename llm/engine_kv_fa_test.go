@@ -16,21 +16,21 @@ func TestAQuantizedVTheModelAskedForIsRetriedAtF16(t *testing.T) {
 	t.Setenv("XOLLAMA_V_CACHE_TYPE", "")
 	cfg := LlamaServerConfig{Xollama: &xollama.Config{Version: 4, KV: &xollama.KV{K: "f16", V: "q8_0"}}}
 
-	why := f16VRetryReason(refusedV, cfg, "", false, false)
+	why := f16VRetryReason(refusedV, cfg, "", false, false, false)
 	if !strings.Contains(why, "q8_0") || !strings.Contains(why, "the model's kv.v") {
 		t.Fatalf("reason = %q, want it to name q8_0 and the model's kv.v", why)
 	}
-	if why := f16VRetryReason(refusedV, cfg, "", false, true); why != "" {
+	if why := f16VRetryReason(refusedV, cfg, "", false, true, false); why != "" {
 		t.Errorf("a second retry was offered: %q", why)
 	}
-	if why := f16VRetryReason(errors.New("CUDA error: out of memory"), cfg, "", false, false); why != "" {
+	if why := f16VRetryReason(errors.New("CUDA error: out of memory"), cfg, "", false, false, false); why != "" {
 		t.Errorf("an unrelated failure was retried: %q", why)
 	}
 }
 
 func TestAQuantizedVFromXollamasEnvironmentIsRetriedAtF16(t *testing.T) {
 	t.Setenv("XOLLAMA_V_CACHE_TYPE", "q4_0")
-	if why := f16VRetryReason(refusedV, LlamaServerConfig{}, "", false, false); !strings.Contains(why, "XOLLAMA_V_CACHE_TYPE") {
+	if why := f16VRetryReason(refusedV, LlamaServerConfig{}, "", false, false, false); !strings.Contains(why, "XOLLAMA_V_CACHE_TYPE") {
 		t.Fatalf("reason = %q, want it to name XOLLAMA_V_CACHE_TYPE", why)
 	}
 }
@@ -39,8 +39,18 @@ func TestAQuantizedVFromXollamasEnvironmentIsRetriedAtF16(t *testing.T) {
 // only from OLLAMA_KV_CACHE_TYPE keeps upstream's failure: off means off.
 func TestUpstreamsKVCacheTypeAloneKeepsUpstreamsFailure(t *testing.T) {
 	t.Setenv("XOLLAMA_V_CACHE_TYPE", "")
-	if why := f16VRetryReason(refusedV, LlamaServerConfig{}, "q8_0", false, false); why != "" {
+	if why := f16VRetryReason(refusedV, LlamaServerConfig{}, "q8_0", false, false, false); why != "" {
 		t.Fatalf("OLLAMA_KV_CACHE_TYPE alone was retried: %q", why)
+	}
+}
+
+func TestOpencotiIsNeverAnsweredWithAnF16VRelaunch(t *testing.T) {
+	t.Setenv("XOLLAMA_V_CACHE_TYPE", "")
+	cfg := LlamaServerConfig{Xollama: &xollama.Config{Version: 4, KV: &xollama.KV{K: "f16", V: "q8_0"}}}
+	// opencoti resolves -fa auto on whenever V is quantized (0523, c8): its
+	// refusal is a defect to surface, not a reason for a second load.
+	if why := f16VRetryReason(refusedV, cfg, "", false, false, true); why != "" {
+		t.Fatalf("opencoti was offered an f16 V relaunch: %q", why)
 	}
 }
 
