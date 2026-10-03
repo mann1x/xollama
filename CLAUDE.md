@@ -45,7 +45,8 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   `llama/compat` (README included) change in the fork first, never here —
   enforced by `.github/workflows/compat-origin.yaml` running
   `scripts/check-compat-origin.sh origin/main..HEAD` (needs `git fetch fork`
-  and `git fetch upstream` locally).
+  and `git fetch upstream` locally); `llama/clef` is upstream's and outside
+  that set.
 - `docs/protocols/RELEASE.md` — how a release is cut: a PR `dev`→`main` titled
   `release: v<upstream>-rc.<k>.xollama` (a candidate, never promoted), then
   `release: v<upstream>-xollama` (the last candidate's tree, short check), and
@@ -134,6 +135,13 @@ opencoti's granted window (`X-Context-Window`) reaches the client through the
 `llm.ContextWindow` collector (`llm/engine_context_window.go`) and
 `server/context_window.go`; stock llama.cpp stays header-free — see
 `.claude/rules/context-window.md`.
+**Decision scoring** (upstream v0.35.1): `/v1/systemone` (`SystemOneHandler` in
+`server/routes.go`) compiles typed questions with `decision/` (`systemone.go`,
+`clef.go`, `types.go`) and scores them through `llm.Scorer` (`llm/score.go`,
+`llm/llama_server_score.go`); a model whose GGUF carries `decision.type` gets the
+`decision` capability (`types/model/capability.go`), and the CLEF head in
+`llama/clef/` is compiled into `llama-server` by `llama/server/CMakeLists.txt` —
+see `docs/capabilities/decision.mdx`.
 **Prompting**: `model/renderers/` (per-model `Render`) ↔ `model/parsers/`
 (streaming output), plus `template/`, `thinking/`, `harmony/`; a model's named
 thinking efforts are `types/model/thinking.go`.

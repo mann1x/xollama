@@ -8,6 +8,7 @@ paths:
   - discover/**
   - fs/**
   - middleware/**
+  - decision/**
 ---
 
 # Upstream tree — additive files or marked hooks
