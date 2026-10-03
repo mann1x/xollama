@@ -82,6 +82,18 @@
 #   is the one outcome that cannot be diagnosed from the outside. So routing is
 #   the tested matrix INTERSECTED with these rows (see pinUncovered).
 #
+#   Sidecar rows, written "#! sidecar <arch> <kind> <hf-path> <sha256>":
+#     a media library the engine loads from its OWN directory, under the file
+#     name it was published with. kind is codec (mp3, opus and aac speech, mp4
+#     video) or audiocpp (audio.cpp: Kokoro, Supertonic, KittenTTS). arch is a
+#     bin label; a -gpu bin takes its platform's rows. cmake/opencoti-fetch.cmake
+#     stages them beside the engine, sha256-enforced, and pin.go reads them
+#     (Pin.Sidecars). They ride in a comment because opencoti's own pin parsers
+#     refuse an unknown directive (#692). An engine without them boots and
+#     refuses what they serve; the engine says which are loaded in its
+#     features (media_codec_v1, audio_speech_audiocpp_v1), and a media model
+#     that needs one is refused at load (llm/engine_media.go).
+#
 #   Asset rows (4 whitespace-separated fields):
 #     <kind> <arch> <hf-path> <sha256>
 #       kind   bin  the engine itself; every packaged arch needs one
@@ -99,8 +111,8 @@
 # ---------------------------------------------------------------------------
 
 repo     ManniX-ITA/opencoti-llamafile-dev
-rev      f8fc1116122957c2cb42ef7aa813f5a0593412e4
-tag      opencoti-0.10.5-c7-2609281805001
+rev      a542184f36c016ae3f1639a139fb7828bec673e1
+tag      opencoti-0.10.5-c7-2610031022001
 channel  dev
 
 # THIS BRANCH PINS A DEVELOPMENT SNAPSHOT. It is not a release and must not be
@@ -109,7 +121,7 @@ channel  dev
 #
 # The tag is a DEV BUILD ID, not a claim about which cut these bytes are. A dev
 # build carries the PREVIOUS release tag in its version string, so this one
-# reads c7 while its patch chain runs to 0417 -- far past the c7 chain end at
+# reads c7 while its patch chain runs to 0538 -- far past the c7 chain end at
 # 0244, and past 0288. That is exactly why capability is declared below rather
 # than read out of the tag: inferring it would refuse the flags this snapshot
 # was pinned to test.
@@ -121,47 +133,93 @@ channel  dev
 # commit one second later that moves the repo's own pointer. Both hold the same
 # bytes; naming the snapshot is what the two pins before this one did.
 #
-# WHY THIS BUILD. 2609281805001 (b208; opencoti dev e26d855af5, source
-# a2949a2603, chain head 0451, mail #540) is the owner's pick for the
-# v0.34.4-xollama.3 pre-release: it fixes most of what the V100 tester hit.
-# Over b177 it carries 0434-0447 (the fit and alloc-under-cap work of #517,
-# the CUDA 12 payload picked by the engine itself below cc 7.5 (0437), the
-# /slots and /kv JSON no longer rebuilt per token (0438), prefill and decode
-# at llama.cpp parity (0439-0444), the V100 KVarN collapse fixed (0447)),
-# 0448 (the #530 scatter assert, bug-3723), 0449/0450 (a quantized drafter KV
-# at f16 speed, inheriting the target's plain type) and 0451 (a wider
-# tensor-core TinyBLAS GEMM, bug-3726: V100 prefill +25 %, 3090 F16 +38 %).
+# WHY THIS BUILD. 2610031022001 (b119; mails #689, #692, #697, #698) is the
+# first snapshot that carries the media engines as xollama drives them, with
+# nothing left for a host to install:
+#   bug-3880  audio.cpp tells a model file by its bytes, never its name, so a
+#             blob path loads as it is (feature audio_speech_content_format_v1);
+#             --tts-voice NAME=PATH, one file per extra voice (feature
+#             audio_speech_voice_files_v1, OuteTTS only).
+#   bug-3881  an mp4 keeps its last frame (the codec sidecar).
+#   eSpeak-ng Kokoro and KittenTTS phonemise with it. It ships as a third
+#             sidecar, one file with its data inside, loaded at runtime from
+#             beside the engine (feature audio_speech_espeak_v1); a system
+#             libespeak-ng is a fallback, never required (owner, #696). The
+#             oc-audiocpp sidecars were rebuilt for it: the older ones ignore
+#             the library path, so the three are taken as a set from this rev.
+#   the media sidecars are IN the snapshot and on "#! sidecar" rows below, so
+#             a build from this pin stages them. Before, they existed only as
+#             hand-placed files on bs2.
+# It also carries what opencoti listed as fixed in the c8 tree (#678): 0523
+# (-fa auto never resolves off with a quantized V cache), 0427/0437 (the CUDA
+# payload picked by compute capability), 0379 (the loaders accept the
+# published arch-qualified payload names), a slot context above n_ctx_train
+# with --dca on, and the graph-reserve line at debug; plus 0534 (bug-3750) and
+# bug-3879 for KVarN on Gemma-4 at -ub 1024, and 0539 (a missing sidecar is
+# refused naming the file and the directories tried).
 #
-# The rev is the commit that carries the CUDA 12 payload (f8fc1116), one after
-# the "dev snapshot" commit (267a896d) that its BUILD_INFO names: it holds the
-# snapshot's files and the cu12 DSO, as 7fc93cc8 did for b177.
+# WHAT IT DOES NOT CARRY, against b208:
+#   - no CUDA 12 payload (no "#! dso-cuda12", no "#! cuda12-sass"): stated
+#     absent in its BUILD_INFO, so Volta 7.0 goes to llama.cpp. The owner
+#     accepted the gap (2026-10-03); the row returns when opencoti publishes it.
+#   - the win-x86_64 and aarch64 sidecars and the Windows CUDA DLL are built
+#     from the same sources as the Linux x86_64 ones and were NOT run on their
+#     platforms by opencoti. eleven2go is their first run.
+#   - no macOS sidecar of any kind: on macOS the engine serves OuteTTS and
+#     wav / avi only.
 #
-# WHAT IT ADDS, unchanged from b177: the CUDA 12 payload
-# (ggml-cuda-cu12-x86_64.so, CUDA 12.8, SASS sm_70 only, driver >= 570) on
-# "#! dso-cuda12" / "#! cuda12-sass" lines, staged beside a second engine copy
-# in lib/ollama/engines/cuda_v12 and chosen per load (cudaPayload in
-# llm/engine/policy.go).
+# WHAT IT COSTS, unchanged. The CUDA 13 payload carries SASS for sm_86 and
+# sm_120f only, so Turing 7.5, A100/A30 8.0, Hopper 9.0 and datacenter
+# Blackwell 10.x go to llama.cpp.
 #
-# WHAT IT COSTS. The CUDA 13 payloads still carry SASS for sm_86 and sm_120f
-# only, so Turing 7.5, A100/A30 8.0, Hopper 9.0 and datacenter Blackwell 10.x
-# go to llama.cpp.
-#
-# MEASURED against THESE bytes on 2026-09-28 (phase2-engine-ab.py as ollama on
-# solidPC, /srv/ml/xollama-phase2/as-ollama/b208-ab), against b177:
-#   compat      8/8 (b177 8/8)
-#   throughput  llama3 76.8 tok/s gen, 3932 tok/s prompt (b177 75.5 / 3963)
-#   multislot   144.2 tok/s (b177 142.0); the queued REFUSED lines of the
-#               -np 1 launch are b177's too (12 there)
-#   gemma4      tool call and thinking split correct, identical to b177
-#   overflow    70B q3_K_S 3.32 tok/s at 58.5% in VRAM; b177's 3.85 did not
-#               reproduce today -- paired reruns, alternating, read b177 3.28
-#               and 3.34 against b208 3.36 and 3.29 (b208-ov/)
-#   /api/chat   two-turn conversation held on qwen2.5:1.5b and gemma4:e4b,
-#               zero REFUSED (b208-ab/logs/chat2.log)
-#   No row in llm/engine_defects.go accuses a dev build, so none is retired.
+# MEASURED against THESE bytes on solidPC (RTX 3090, 2026-10-03), the engine
+# and its three sidecars fetched from this rev by sha256 and placed beside it:
+# scripts/phase2-engine-ab.py as ollama, paired with b208 run the same hour on
+# the same xollama (results in /srv/ml/xollama-phase2/as-ollama/pin-b119 and
+# pin-b119-baseline-b208), one run each:
+#   compat      8/8 load                      (b208: 8/8)
+#   throughput  llama3 77.3 tok/s             (b208: 77.6)
+#   multislot   qwen2.5:1.5b x4, 300 tok/s aggregate, 6.8 s wall
+#                                             (b208: 144 tok/s, 14.2 s)
+#   gemma4      one tool call, thinking separated, nothing leaked: identical
+#   overflow    llama3.1:70b q3_K_S loads, 60 % in VRAM, 3.0 tok/s
+#                                             (b208: 58 %, 3.2 tok/s)
+# Media through xollama dev on a host with NO system eSpeak-ng, every model
+# from its blob path: mannix/kokoro:82m, supertonic:3, supertonic:3-q8_0 and
+# kittentts:mini-0.8 answer mp3 and Whisper returns the sentence word for word;
+# OuteTTS with two --tts-voice files speaks as each by name.
+# Video on the 3090, frames counted by decoding the mp4 (ffprobe):
+#   mannix/wan2.1:t2v-1.3b   640x352, 33/33 frames at 16 fps, 221 s, 17.2 GiB peak
+#   mannix/wan2.2:ti2v-5b    640x352, 33/33 frames at 24 fps, 113 s, 20.6 GiB peak
+# The c8-tree items, each against b208 on the engine binaries themselves:
+#   0523  -fa auto with -ctv q8_0 on the CPU: b208 refuses ("quantized V cache
+#         was requested, but this requires Flash Attention"), this build boots
+#         ("-fa auto resolved to ON").
+#   DCA   --dca on -c 49152 on a model trained at 32768, no --override-kv:
+#         boots and generates ("allowed: DCA extends context"); so does b208.
+#         On the CPU --dca on aborts in ggml (mask_intra F16 assert) on both
+#         builds: reported to opencoti, not a regression.
+#   the graph-reserve line: absent from every load of both runs.
+#   Rows in llm/engine_defects.go retired by this move: none. Its one row
+#   accuses the c7 r2 release bytes that main pins, which this pin never was.
+#   opencoti's own gates on these bytes (#698) are not this measurement.
 #
 # ---------------------------------------------------------------------------
 # HISTORY. The snapshots this replaces.
+#
+# 2609281805001 (b208, rev f8fc1116, bin dc22b379, dso d01c62fa, dll 5839c2d3,
+# cu12 911ea8e7; opencoti dev e26d855af5, chain head 0451, mail #540) was the
+# v0.34.4-xollama.3 pin. Over b177 it carried 0434-0447 (the fit and
+# alloc-under-cap work of #517, the CUDA 12 payload picked by the engine itself
+# below cc 7.5 (0437), /slots and /kv JSON no longer rebuilt per token (0438),
+# prefill and decode at llama.cpp parity (0439-0444), the V100 KVarN collapse
+# fixed (0447)), 0448 (bug-3723), 0449/0450 (a quantized drafter KV at f16
+# speed) and 0451 (a wider tensor-core TinyBLAS GEMM, bug-3726). It carried the
+# CUDA 12 payload (sm_70) and the Windows CUDA DLL, both absent above. Its A/B
+# against b177 on 2026-09-28: compat 8/8, llama3 76.8 tok/s gen and 3932 tok/s
+# prompt, multislot 144.2 tok/s, gemma4 identical, overflow 70B q3_K_S inside
+# paired reruns (3.36 and 3.29 against b177's 3.28 and 3.34), a two-turn
+# /api/chat held with zero REFUSED.
 #
 # 2609272353001 (b177, rev 7fc93cc8, bin 0f090f8c, dso 7e59d358, dll 03f3e796,
 # cu12 4bbae8a8) was the v0.34.4-xollama.2 pin; its A/B against b171: compat
@@ -303,11 +361,12 @@ feature  swa-cache-types
 # and "offloaded N/M layers" print at 4 with it (llm/engine/opencoti.go).
 feature  log-memory-plan
 
-# CUDA on Linux x86_64 and Windows x86_64, from the dso rows (pin.go derives
-# accel from them; opencoti's dev publisher states no accel rows, #242). The
-# host binary is a bare cosmocc APE with no GPU payload of its own: Vulkan
-# (Linux and Windows) and aarch64 sbsa CUDA are absent from these bytes, so
-# those route to llama.cpp instead of being served on the CPU without saying so.
+# CUDA on Linux x86_64, from the dso row (pin.go derives accel from the dso
+# rows; opencoti's dev publisher states no accel rows, #242). The host binary
+# is a bare cosmocc APE with no GPU payload of its own: Windows CUDA (no DLL
+# in this rev yet), Vulkan (Linux and Windows) and aarch64 sbsa CUDA are absent
+# from these bytes, so those route to llama.cpp instead of being served on the
+# CPU without saying so.
 accel    x86_64  CUDA
 
 # The compute capabilities the CUDA payloads carry SASS for (BUILD_INFO: "sm_86
@@ -316,15 +375,35 @@ accel    x86_64  CUDA
 # snapshot on (mail #449): their own pin parsers skip '#' lines and refuse a
 # bare directive, so this row can be copied verbatim either way.
 #! cuda-sass 86 120
-#! dso-cuda12 x86_64 builds/opencoti-0.10.5-c7-2609281805001/ggml-cuda-cu12-x86_64.so 911ea8e7c60f7a146cb8dd8ef0d68f134999ad524a2c0a042b445d04ff17fac2
-#! cuda12-sass 70
+# No "#! dso-cuda12" / "#! cuda12-sass" rows: this snapshot has no CUDA 12
+# payload, so Pin.CoversCUDA12 covers nothing and Volta goes to llama.cpp.
 
 # One APE serves every host; the arch label selects who may package it. There
-# is no win-x86_64-gpu bin on this channel: Windows packages the bare APE and
-# its dso (Pin.ArchFor).
-bin  x86_64      builds/opencoti-0.10.5-c7-2609281805001/opencoti-0.10.5-c7-2609281805001  dc22b3798deb231df1d81eeb63468208f272586864a7a9acd7605ef1c4bd46bc
-bin  aarch64     builds/opencoti-0.10.5-c7-2609281805001/opencoti-0.10.5-c7-2609281805001  dc22b3798deb231df1d81eeb63468208f272586864a7a9acd7605ef1c4bd46bc
-bin  win-x86_64  builds/opencoti-0.10.5-c7-2609281805001/opencoti-0.10.5-c7-2609281805001  dc22b3798deb231df1d81eeb63468208f272586864a7a9acd7605ef1c4bd46bc
+# is no win-x86_64-gpu bin on this channel: Windows packages the bare APE
+# (Pin.ArchFor) with the "dso win-x86_64" payload below.
+bin  x86_64      builds/opencoti-0.10.5-c7-2610031022001/opencoti-0.10.5-c7-2610031022001  7bd91cb67a7285cfa8c32398b0c6466c5b71343d72e6982c40924bc54aeb4d04
+bin  aarch64     builds/opencoti-0.10.5-c7-2610031022001/opencoti-0.10.5-c7-2610031022001  7bd91cb67a7285cfa8c32398b0c6466c5b71343d72e6982c40924bc54aeb4d04
+bin  win-x86_64  builds/opencoti-0.10.5-c7-2610031022001/opencoti-0.10.5-c7-2610031022001  7bd91cb67a7285cfa8c32398b0c6466c5b71343d72e6982c40924bc54aeb4d04
 
-dso  x86_64      builds/opencoti-0.10.5-c7-2609281805001/ggml-cuda.so               d01c62fa07323b34b4e07128310dae9188733c813452f974313cf6e5d9b7c742
-dso  win-x86_64  builds/opencoti-0.10.5-c7-2609281805001/ggml-cuda-win-x86_64.dll   5839c2d351b20a835e04b99dbcc970ab68a39072c2e83d7b676fe89c94d207c3
+dso  x86_64      builds/opencoti-0.10.5-c7-2610031022001/ggml-cuda.so              7d129e822271342d24511ae7e9feff4148f000e49f08ac1e52bd43951a312b80
+dso  win-x86_64  builds/opencoti-0.10.5-c7-2610031022001/ggml-cuda-win-x86_64.dll  32de1a88d54ba3d20fe87fc920d5ea76fc58b9146a35b0f304e165e1e48cc634
+
+# The media sidecars, staged beside the engine under these file names. What is
+# inside them, for the release notes: oc-codec is ffmpeg n9.0.2 (LGPL 2.1+,
+# built --disable-everything with mp4/mov, mp3, aac, wav and h264 decode; no
+# GPL or nonfree parts), openh264 v2.6.0 built from source (BSD-2) as the only
+# h264 encoder, and lame 3.100 (LGPL); oc-audiocpp is audio.cpp at 3b68e0e.
+# oc-espeak is eSpeak-ng 1.52.0 (GPL-3.0-or-later), phonemiser only, its
+# compiled data appended to the library: a separate file, dlopened by
+# audio.cpp, never linked into the engine or another sidecar. COPYING.espeak-ng
+# and the source refs are in the snapshot's directory and BUILD_INFO.md
+# (opencoti #691, #697).
+#! sidecar  x86_64      codec     builds/opencoti-0.10.5-c7-2610031022001/oc-codec-linux-x86_64.so        9bb61aae811e8a36d859c08832a92322da402e4d00c701786f9c42e0358f734e
+#! sidecar  x86_64      audiocpp  builds/opencoti-0.10.5-c7-2610031022001/oc-audiocpp-linux-x86_64.so     0ce759e9af3a0372f095b1fe5e39f35d7c14dbcbe02b4e1972095885d82812ff
+#! sidecar  x86_64      espeak    builds/opencoti-0.10.5-c7-2610031022001/oc-espeak-linux-x86_64.so       0e6c185dfca5dbda6c0be06d5578e645f057cc01d7eefc781a2e32bccf511365
+#! sidecar  win-x86_64  codec     builds/opencoti-0.10.5-c7-2610031022001/oc-codec-win-x86_64.dll         02ed077e02325b2f7e1645626dc7b2b2fa4f814902ca0050c3235ea934b70f2f
+#! sidecar  win-x86_64  audiocpp  builds/opencoti-0.10.5-c7-2610031022001/oc-audiocpp-win-x86_64.dll      58b34eb8d0e2eb75f06fdb33e25d0e727981072124fe1089de9df3e102e2615e
+#! sidecar  win-x86_64  espeak    builds/opencoti-0.10.5-c7-2610031022001/oc-espeak-win-x86_64.dll        2f556d69aa27e4e0fc037430799696a28ea9a7dff8d534a36960b82efd62d896
+#! sidecar  aarch64     codec     builds/opencoti-0.10.5-c7-2610031022001/oc-codec-linux-aarch64.so       7daf2e8c1e83e8186e5916c3f3e156478c3f11b47a8e998475067a0784021d73
+#! sidecar  aarch64     audiocpp  builds/opencoti-0.10.5-c7-2610031022001/oc-audiocpp-linux-aarch64.so    b320b9b7264e29b6b34e76b8d1d394b16606d5333763081abf089e7eb4de12c1
+#! sidecar  aarch64     espeak    builds/opencoti-0.10.5-c7-2610031022001/oc-espeak-linux-aarch64.so      47d6e5fd8d52ab6520c7a6bc707bf0165947cd79b81c5401bfb9bdd4dd27b764

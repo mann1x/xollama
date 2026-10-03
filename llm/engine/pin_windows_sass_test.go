@@ -30,14 +30,24 @@ func TestArchForTakesTheBareWindowsBinOnlyWithoutAGPUOne(t *testing.T) {
 	}
 }
 
-func TestTheCommittedPinServesWindowsCUDA(t *testing.T) {
+// A dev snapshot's Windows CUDA payload is a row of its own and can lag the
+// build (2610030921001 was published before its DLL had linked; 2610031022001 has it). With the row
+// Windows CUDA is the engine's; without it, it is refused to llama.cpp for a
+// stated reason, never served by the engine on the CPU.
+func TestTheCommittedPinRoutesWindowsCUDAByItsDLLRow(t *testing.T) {
 	p, err := DefaultPin()
 	if err != nil {
 		t.Fatal(err)
 	}
 	win := Platform{OS: "windows", Arch: "amd64"}
-	if reason := pinUncoveredIn(p, win, BackendCUDA); reason != "" {
-		t.Errorf("windows CUDA: %s", reason)
+	_, hasDLL := p.DSO("win-x86_64")
+	_, hasGPUBin := p.Asset("win-x86_64-gpu")
+	reason := pinUncoveredIn(p, win, BackendCUDA)
+	switch {
+	case (hasDLL || hasGPUBin) && reason != "":
+		t.Errorf("windows CUDA is refused although the pin carries its payload: %s", reason)
+	case !hasDLL && !hasGPUBin && reason == "":
+		t.Error("windows CUDA is routed to a pin that carries no Windows CUDA payload; the engine would serve it on the CPU")
 	}
 	if reason := pinUncoveredIn(p, win, BackendVulkan); reason == "" {
 		t.Error("windows Vulkan is routed to a pin that carries no Vulkan payload")

@@ -2,7 +2,31 @@ package engine
 
 import "testing"
 
+// allPayloadsPin carries every payload the Linux x86_64 cases below route on,
+// so they measure the policy and not what this branch happens to pin: a dev
+// snapshot ships a subset (the one pinned today has no CUDA 12 payload).
+func allPayloadsPin() Pin {
+	return Pin{
+		Repo: "o/r", Channel: ChannelDev, Tag: "test", CUDASASS: []int{86, 120}, CUDA12SASS: []int{70},
+		Assets: []Asset{{Kind: "bin", Arch: "x86_64"}, {Kind: "dso", Arch: "x86_64"}, {Kind: kindCUDA12DSO, Arch: "x86_64"}},
+		Accels: []Accel{{Arch: "x86_64", Backend: BackendCUDA}},
+	}
+}
+
+// Without a CUDA 12 payload on the pin, a Volta card is not the engine's: it
+// goes to llama.cpp for a stated reason, never to the engine on the CPU.
+func TestAVoltaCardGoesToLlamaCPPWhenThePinHasNoCUDA12Payload(t *testing.T) {
+	p := allPayloadsPin()
+	p.Assets, p.CUDA12SASS = p.Assets[:2], nil
+	withPin(t, p)
+	got := Resolve(Platform{OS: "linux", Arch: "amd64"}, []Device{{BackendCUDA, 7, 0}}, "")
+	if got.Kind != KindLlamaCpp || got.Reason == "" {
+		t.Fatalf("Resolve = %s (%q), want llama.cpp with a reason", got.Kind, got.Reason)
+	}
+}
+
 func TestResolve(t *testing.T) {
+	withPin(t, allPayloadsPin())
 	linux := Platform{OS: "linux", Arch: "amd64"}
 	mac := Platform{OS: "darwin", Arch: "arm64"}
 

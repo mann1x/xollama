@@ -39,9 +39,31 @@ xollama pull mannix/whisper:large-v3-turbo
 column. The mixed `media-kit` is not published yet; `xollama media create`
 builds it locally. Video needs an opencoti engine from M7 on (b103 and later).
 The audio.cpp voices (Kokoro, Supertonic, KittenTTS) need an engine that reads a
-model file by its contents, which xOllama passes as its blob: opencoti c8 or
-later, advertising `audio_speech_content_format_v1`. An older engine is refused
-at load with a message naming that feature.
+model file by its contents, which xOllama passes as its blob: opencoti dev build
+`2610031022001` (b119) or later, advertising `audio_speech_content_format_v1`.
+An older engine is refused at load with a message naming that feature.
+
+Three of the engine's abilities live in libraries beside it, which every xOllama
+package carries (they are pinned and fetched with the engine):
+
+| Library | What it serves | Without it |
+|---|---|---|
+| `oc-codec` | mp3, opus and aac speech, mp4 video | Speech is wav or pcm, video avi or webm. A model whose own default format needs the codec is refused at load, naming it. |
+| `oc-audiocpp` | Kokoro, Supertonic, KittenTTS | Those models are refused at load, naming it. |
+| `oc-espeak` | The phonemes Kokoro and KittenTTS speak from | Those two are refused at load, naming it, unless the host has its own eSpeak-ng. Supertonic does not use it. |
+
+Nothing has to be installed on the host. On macOS the engine has none of the
+three yet: it serves OuteTTS, and wav or avi.
+
+`oc-codec` contains ffmpeg n9.0.2 (LGPL 2.1 or later; built with
+`--disable-everything` plus mp4/mov, mp3, aac, wav and h264 decoding, no GPL or
+nonfree parts), openh264 v2.6.0 built from source (BSD 2-clause) as its only
+h264 encoder, and lame 3.100 (LGPL). `oc-audiocpp` contains audio.cpp.
+`oc-espeak` is eSpeak-ng 1.52.0 (GPL 3.0 or later), its phonemiser and data in
+one file that the engine loads at runtime; it is a separate file, never linked
+into the engine. Its licence text (`COPYING.espeak-ng`) and the source and
+build references of all three are published with the engine build
+(`BUILD_INFO.md`).
 
 Stock ollama can pull these models, but cannot show or run a model that carries
 only media. A chat model with media attached still chats on stock ollama, which
@@ -153,6 +175,7 @@ request and unloaded after the model's keep-alive like any other model.
 ## Audio formats
 
 xollama never re-encodes audio. With no `response_format` the engine's default
-applies: WAV on opencoti b97, mp3 from M7, which also brings the audio.cpp voices
-(Kokoro, Supertonic, KittenTTS). SurfSense asks for no format and saves the
-reply as `.mp3`, so serve it speech from an M7 engine.
+applies: mp3 when its codec library is loaded, WAV when it is not (and on
+opencoti b97, which has none). SurfSense asks for no format and saves the
+reply as `.mp3`; the published speech templates state mp3 themselves, so on an
+engine without the codec they are refused at load rather than answered in WAV.
