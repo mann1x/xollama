@@ -87,12 +87,7 @@ paths:
   directory under their PUBLISHED file name — `codec` (oc-codec: mp3, opus,
   aac, mp4), `audiocpp` (oc-audiocpp: Kokoro, Supertonic, KittenTTS) and
   `espeak` (oc-espeak: eSpeak-ng, the phonemiser Kokoro and KittenTTS use,
-  loaded by audio.cpp; the three are taken as a set from one `rev`). A
-  library whose licence obliges its text to travel with it has its own rows,
-  staged like any other: `espeak-licence` (`COPYING.espeak-ng`) and
-  `build-info` (`BUILD_INFO.md`, the codec's source references), one per arch
-  (`licensedSidecars`, `TestEveryLicensedSidecarShipsItsText` in
-  `llm/engine/pin_licence_test.go`). The
+  loaded by audio.cpp; the three are taken as a set from one `rev`). The
   kinds are opencoti's and open-ended: `ParsePin`
   and `cmake/opencoti-fetch.cmake` check a row's shape (`[a-z0-9-]+`, a
   repo-relative path, a sha256, one row per kind per arch), never a list of
