@@ -84,10 +84,16 @@ func forkRefresh(ctx context.Context, devices []ml.DeviceInfo, updated []bool) *
 		if len(listed) == 0 {
 			// No payload for this backend (b111 has no Vulkan), or no answer
 			// in time: nothing to be authoritative with, and asking again on
-			// every load would change neither.
+			// every load would change neither. The devices are waiting for
+			// this refresh (pendingIn), so placement now runs on stale free
+			// memory: said once per cooldown, at Warn.
 			refreshSkippedUntil[key] = refreshNow().Add(refreshCooldown)
-			slog.Debug("opencoti free-memory refresh found nothing; not asking again for a while",
-				"backend", b, "duration", time.Since(start), "error", err, "retry_after", refreshCooldown)
+			reason := "the engine listed no devices"
+			if err != nil {
+				reason = err.Error()
+			}
+			slog.Warn("opencoti free-memory refresh found nothing; free memory stays stale until the cooldown ends",
+				"backend", b, "reason", reason, "duration", time.Since(start), "retry_after", refreshCooldown)
 			continue
 		}
 		n := 0

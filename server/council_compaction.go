@@ -1182,7 +1182,7 @@ func (t *councilTree) reviewLayer(ctx context.Context, reviewed []api.Message) (
 			rctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			if err := t.kv.ReleasePool(rctx, l.id); err != nil {
-				slog.Debug("council: could not release the review's pool", "pool", l.id, "error", err)
+				unreleased("the review's pool", l.id, err)
 			}
 		}
 	}, l.err == nil

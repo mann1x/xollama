@@ -264,7 +264,8 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		// The planner runs attached to the conversation's root, so the
 		// conversation is held once (guide §6.2, arm C). An engine that
 		// answers "compact the session" gets exactly that, once.
-		if err := tree.buildRoot(ctx, conv); errors.Is(err, llm.ErrSessionFull) && compactor != nil {
+		err := tree.buildRoot(ctx, conv)
+		if errors.Is(err, llm.ErrSessionFull) && compactor != nil {
 			before := councilCompactions.get(compactor.key)
 			// The members' view (hist), as the fold above and every later
 			// request's apply: a record of the raw messages never matches it,
@@ -272,8 +273,17 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 			if short := compactor.compact(ctx, hist, "refused", false, pressure); councilCompactions.get(compactor.key) != before {
 				conv = councilMembersView(short)
 				members.setConvTokens(compactor.sentTokens(ctx, sent))
-				_ = tree.buildRoot(ctx, conv)
+				err = tree.buildRoot(ctx, conv)
+			} else {
+				err = fmt.Errorf("%w, and the conversation did not fold", err)
 			}
+		}
+		if err != nil {
+			// The turn still runs, but without the shared root: every member
+			// prefills its own copy of the conversation, and a full owner
+			// refuses them sooner. Said where it is decided, at Warn.
+			slog.Warn("council: no conversation root for this turn; each member holds its own copy",
+				"session", members.session, "error", err)
 		}
 	}
 	defer func() {
@@ -364,7 +374,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 				conv = councilMembersView(short)
 				members.setConvTokens(compactor.sentTokens(c.Request.Context(), sent))
 				if rerr := tree.buildRoot(c.Request.Context(), conv); rerr != nil {
-					slog.Info("council: no root after the fold; members hold their own copies", "error", rerr)
+					slog.Warn("council: no root after the fold; members hold their own copies", "session", members.session, "error", rerr)
 				}
 				latestMu.Lock()
 				resume := latest
@@ -372,7 +382,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 				slog.Info("council: owner was full; compacted and resuming the turn", "session", members.session, "error", err)
 				res, err = council.RunFrom(c.Request.Context(), cfg, members, conv, resume, settled, emit)
 			} else {
-				slog.Info("council: owner full and the conversation did not fold", "session", members.session)
+				slog.Warn("council: owner full and the conversation did not fold; the turn fails with the refusal", "session", members.session, "error", err)
 			}
 		}
 		if err != nil {
