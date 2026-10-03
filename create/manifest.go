@@ -33,11 +33,12 @@ type SafetensorsManifestOptions struct {
 	MinVersion string
 	DraftDir   string
 
-	Template   string
-	System     string
-	License    any
-	Parameters map[string]any
-	Messages   []api.Message
+	Template     string
+	System       string
+	License      any
+	Parameters   map[string]any
+	Messages     []api.Message
+	Capabilities []string
 
 	BeforeWriteManifest func()
 }
@@ -67,6 +68,7 @@ func NewSafetensorsManifestWriter(opts SafetensorsManifestOptions) ManifestWrite
 		}
 
 		config := info.ModelConfig
+		config.AddCapabilities(opts.Capabilities...)
 		config.ModelFormat = "safetensors"
 		if config.Requires == "" {
 			config.Requires = opts.MinVersion
