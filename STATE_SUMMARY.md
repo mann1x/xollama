@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-03 — The macOS app is Apple silicon only (owner's choice); built, notarized and installed in one script run.**
+> - Why: the owner saw macOS 27's popup that xOllama "includes a component that will not open in macOS 28". The universal bundle carried 22 x86_64-only llama.cpp libraries (the Intel runtime is shared libraries, the arm64 one is static). `scripts/build_darwin.sh` now takes its architecture list for the merge, the payload copy and the app binary, and defaults to `arm64` (`7870ebef3`); `-a "arm64 amd64"` builds the universal app.
+> - The build of `7870ebef` ran `build sign app` in one pass with notarization on: app and DMG accepted and stapled, 17 Mach-O files, all arm64. `xOllama.dmg` 219 MB, sha256 `2e0e4e90…7b1bf`, in `~/dev/xollama/dist` on the Mac mini; not published.
+> - Installed on the Mac mini and run through the app's own server on 22434: qwen2.5:1.5b 129.5 tok/s, gemma3:4b-it-qat 43.9 tok/s (512 tokens, warm), speech 7/7, signature valid after the runs, no authorization dialog on this start.
+
 > **2026-10-03 — `2610031615001` measured on Windows; the Mac app's names confirmed at the screen.**
 > - eleven2go (Windows 11, RTX 3090), on the owner's word, side directory `xollama-b130` on port 22498, installed servers untouched: qwen2.5:1.5b three 512-token runs at 327.5 / 326.7 / 325.2 tok/s, 100 % GPU (322 on the previous pin); Kokoro (two voices), Supertonic, KittenTTS and OuteTTS mp3, each transcribed back; two custom voices listed and spoken; Wan2.1 in 149 s, 21.8 GiB peak; the four licence texts beside the DLLs. The pin is now measured on Linux, Windows and macOS.
 > - Mac mini, after the owner answered the authorization dialog: the app started its server, the CLI link is `/usr/local/bin/xollama` (the old `/usr/local/bin/ollama` removed by the owner), the login item registered under `com.mann1x.xollama`, state is in `~/Library/Application Support/xOllama`. Phase 4 of `plans/macos-build.md` closed.

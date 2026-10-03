@@ -6,17 +6,19 @@ notarized with the setup opencoti already has there.
 
 ## What is built
 
-- **Universal app and runtime** (`arm64` + `x86_64`), from upstream's
-  `scripts/build_darwin.sh` with Go 1.26.8 (`GOTOOLCHAIN`), Xcode 27, the Metal
-  toolchain component and Rosetta 2 (the x86_64 half is cross-built and run
-  under it).
+- **An Apple silicon app and runtime** (`arm64`), from upstream's
+  `scripts/build_darwin.sh` with Go 1.26.8 (`GOTOOLCHAIN`), Xcode 27 and the
+  Metal toolchain component. The first build was universal; the owner chose
+  Apple silicon only on 2026-10-03, because the Intel half is 22 x86_64-only
+  llama.cpp libraries and macOS 27 then warns that the app "includes a
+  component that will not open in macOS 28". `-a "arm64 amd64"` still builds
+  the universal app (it needs Rosetta 2 to test).
 - **The opencoti engine on Apple silicon**, package `macos-aarch64`: the APE,
   its signed loader, the Metal library and the three media libraries, staged
   from `llm/engine/pin.txt` into `Contents/Resources/engines`. Design and
   limits: `docs/features/engine-opencoti-llamafile.md`, "macOS".
-- **An Intel Mac gets stock llama.cpp only.** opencoti publishes no Intel
-  files; the consequence of "universal" is that the same app is smaller in
-  function there, never broken.
+- **No Intel Mac app by default.** opencoti publishes no Intel files, so a
+  universal build serves an Intel Mac on stock llama.cpp only.
 
 ## Build host
 
@@ -30,7 +32,7 @@ ssh `PATH`.
 export PATH=/opt/homebrew/bin:$PATH GOTOOLCHAIN=go1.26.8
 export APPLE_IDENTITY="Developer ID Application: <name> (<team>)"
 security unlock-keychain -p "$(cat ~/dev/signing/keychain.pass)" oc-signing.keychain
-XOLLAMA_NOTARIZE=off XOLLAMA_DMG_HEADLESS=1 sh scripts/build_darwin.sh build sign app
+XOLLAMA_DMG_HEADLESS=1 sh scripts/build_darwin.sh build sign app   # XOLLAMA_NOTARIZE=off to sign only
 ```
 
 Notarization uses an App Store Connect API key: `APPLE_NOTARY_KEY`,
@@ -44,7 +46,7 @@ Notarization uses an App Store Connect API key: `APPLE_NOTARY_KEY`,
 | 2 | opencoti on Metal through the loader: routing, launch, discovery, staging | done 2026-10-03, measured |
 | 3 | Developer ID signing, engine inside the bundle under the hardened runtime | done 2026-10-03, measured |
 | 4 | the app's macOS names: login item, CLI link, state directory, stock Ollama not an instance | done 2026-10-03: confirmed at the screen (server starts after the dialog, `/usr/local/bin/xollama`, login item registered, state in `Application Support/xOllama`) |
-| 5 | notarization, staple, DMG | done 2026-10-03: app (submission `e793062d`) and DMG (`c95ba8de`) accepted and stapled; Gatekeeper says "Notarized Developer ID" for both. Done by hand from the signed build (the DMG headless); a full `build_darwin.sh` run with notarization on has not been made |
+| 5 | notarization, staple, DMG | done 2026-10-03: app (submission `e793062d`) and DMG (`c95ba8de`) accepted and stapled; Gatekeeper says "Notarized Developer ID" for both. The Apple silicon build of `7870ebef` went through `build_darwin.sh build sign app` in one pass, notarization on (14 minutes) |
 | 6 | hosted or scripted release of the macOS assets, updater feed for macOS | open |
 | 7 | image, video and edit models, vision, MTP on Metal | open: untested by opencoti and by us |
 
