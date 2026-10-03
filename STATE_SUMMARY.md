@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-03 — Linux runtime pin moved to the fork's `v0.35.1-thinkbudget` (b11232); the Docker assembly runs unmodified again.**
+> - `llama/runtime-pin-linux.txt`: runtime `2334fe35…` built at fork `1040f03d` (inputs `57004c3c…`, this tree's), upstream `v0.35.1` GPU archives `9fcd79ac…` and `15ee9a52…` (upstream's own `sha256sum.txt`). The runtime's sha256 was checked on a download of my own, not taken from the fork's mail (#708).
+> - `scripts/docker-assemble.sh`, as CI runs it, exit 0: both llama checks pass; the image carries the runtime, the engine, the three libraries and both licence files. In a container (no compiler, no eSpeak-ng, CPU only): Kokoro, KittenTTS, Supertonic mp3; qwen2.5:1.5b answers on stock `llama-server` (47 tok/s) and on opencoti (38 tok/s).
+> - Left: a GPU run of the image (solidPC's Docker has no NVIDIA runtime), the hosted `docker-release` run.
+>
 > **2026-10-03 — A root-run server no longer costs the service its GPU (xo-17); licence text ships with the libraries (xo-18); the Docker assembly is blocked on the fork's Linux runtime.**
 > - xo-17. The engine writes `.cosmo/` (dlopen helper), `.nv/` and `.cache/` into the HOME xollama gives it, as whoever it runs as. After one `sudo xollama serve`, the `ollama` service failed every GPU load with "dlopen() isn't supported on this platform". Fix: `engine.AdoptPayloadHome` hands the tree to the store's owner when the engine exits and when the HOME is prepared (root only, only a directory with the payload marker); an unprivileged server that finds unusable foreign files warns once and takes the next root; launch, device listing and link probe all get their HOME from `engine.PayloadHome`.
 > - Measured on solidPC with one install run as root, then as `ollama` (`/srv/ml/xo17/run.sh`, qwen2.5:1.5b): unfixed binary, root ok then `ollama` fails with the dlopen error; fixed binary, both fully on the GPU and every file `ollama`-owned; fixed binary as `ollama` in the directory the unfixed root run spoiled, one Warn naming the path and the fix, fallback to `~/.ollama/engines/payload`, GPU ok.

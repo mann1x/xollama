@@ -18,8 +18,8 @@ script.
 
 | Layer | Source | Pinned by |
 |---|---|---|
-| llama.cpp CPU runtime (`llama-server`, CPU `ggml`, built with `llama/compat`) | the fork's release `v0.34.4-thinkbudget`, `ollama-linux-amd64-runtime.tgz` | `llama/runtime-pin-linux.txt`: sha256, plus the inputs digest |
-| CUDA v12, CUDA v13, Vulkan, MLX CUDA v13 | upstream `v0.34.4`: `ollama-linux-amd64.tar.zst`, `ollama-linux-amd64-mlx.tar.zst` | `llama/runtime-pin-linux.txt`: sha256; upstream's `LLAMA_CPP_VERSION` must equal ours |
+| llama.cpp CPU runtime (`llama-server`, CPU `ggml`, built with `llama/compat`) | the fork's release `v0.35.1-thinkbudget`, `ollama-linux-amd64-runtime.tgz` | `llama/runtime-pin-linux.txt`: sha256, plus the inputs digest |
+| CUDA v12, CUDA v13, Vulkan, MLX CUDA v13 | upstream `v0.35.1`: `ollama-linux-amd64.tar.zst`, `ollama-linux-amd64-mlx.tar.zst` | `llama/runtime-pin-linux.txt`: sha256; upstream's `LLAMA_CPP_VERSION` must equal ours |
 | opencoti engine | HF, whatever `llm/engine/pin.txt` names | `llm/engine/pin.txt` via `cmake/opencoti-fetch.cmake` |
 | opencoti media sidecars (`oc-codec`: mp3, opus, aac, mp4; `oc-audiocpp`: Kokoro, Supertonic, KittenTTS) | HF, the pin's `#! sidecar` rows, staged beside the engine under their published names | `llm/engine/pin.txt` via `cmake/opencoti-fetch.cmake`, re-checked by `scripts/docker-assemble.sh` |
 | opencoti CUDA 12 payload (older cards, e.g. V100) | HF, the pin's `#! dso-cuda12` row, staged with a copy of the engine in `lib/ollama/engines/cuda_v12` | `llm/engine/pin.txt` (sha256 checked by `scripts/docker-assemble.sh`) |
