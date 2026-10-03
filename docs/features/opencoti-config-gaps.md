@@ -162,7 +162,9 @@ env twins cannot help: the explicit flag wins.
 > hatch, `appendDCAArgs` writes the specific override the recipe calls for —
 > `--dca on`, plus `--rope-scaling yarn` and
 > `--override-kv <arch>.context_length=int:N` when and only when the request is
-> past native. Four planes as promised: `XOLLAMA_DCA` /
+> past native. (2026-10-03: the override is gone. With `--dca on` the c8 engine
+> allows a context above `n_ctx_train` itself, opencoti bug-3894, so
+> `appendDCAArgs` writes `--dca on` and the chunk only.) Four planes as promised: `XOLLAMA_DCA` /
 > `XOLLAMA_DCA_CHUNK_SIZE`, a `dca` block in `xollama.json` that overrides them,
 > and no request field or CLI switch because DCA is a property of the runner and
 > the context length is already the per-request knob.

@@ -30,7 +30,10 @@ paths:
   (`quantizedVNeedsFlashAttention`, verbatim); a CPU-only load hits it.
   `f16VRetryReason` fires only for a V xollama asked for (the model's `kv.v` or
   `XOLLAMA_V_CACHE_TYPE`); a V from `OLLAMA_KV_CACHE_TYPE` alone keeps
-  upstream's failure. `withF16V` changes only the V half. The hook is three
+  upstream's failure. **Stock llama.cpp only:** opencoti resolves `-fa auto`
+  on whenever V is quantized (0523, in c8; opencoti bug-3887), so a refusal
+  from it is surfaced, never relaunched (`TestOpencotiIsNeverAnsweredWithAnF16VRelaunch`).
+  `withF16V` changes only the V half. The hook is three
   marked lines in `llm/llama_server.go` (`forceF16V`, `startLlamaServer`, and
   an `else if` in `Load` before the stock fallback). Guards:
   `TestAQuantizedVTheModelAskedForIsRetriedAtF16`,

@@ -17,14 +17,19 @@ import (
 // costs memory and nothing else. Only for a quantized V that xollama itself
 // asked for (the model's kv.v or XOLLAMA_V_CACHE_TYPE): a V that came only from
 // upstream's OLLAMA_KV_CACHE_TYPE keeps upstream's failure (kv-fa-retry hook).
+//
+// Stock llama.cpp only. opencoti resolves -fa auto ON whenever V is quantized
+// (0523, bug-3559, in c8; opencoti bug-3887), so it never refuses this way,
+// and a refusal from it is a defect to surface, not to answer with a second
+// load.
 
 // quantizedVNeedsFlashAttention is llama.cpp's refusal, verbatim.
 const quantizedVNeedsFlashAttention = "quantized V cache was requested, but this requires Flash Attention"
 
 // f16VRetryReason says why a failed load should be relaunched with an f16 V
 // cache, or "" when it should not.
-func f16VRetryReason(loadErr error, cfg LlamaServerConfig, base string, stock, retried bool) string {
-	if loadErr == nil || retried || !strings.Contains(loadErr.Error(), quantizedVNeedsFlashAttention) {
+func f16VRetryReason(loadErr error, cfg LlamaServerConfig, base string, stock, retried, opencoti bool) string {
+	if loadErr == nil || retried || opencoti || !strings.Contains(loadErr.Error(), quantizedVNeedsFlashAttention) {
 		return ""
 	}
 	fromModel := cfg.Xollama != nil && cfg.Xollama.KV != nil && cfg.Xollama.KV.V != ""
@@ -55,7 +60,7 @@ func (launch llamaServerLaunchConfig) withF16V(kv kvCacheTypes) kvCacheTypes {
 // retryWithF16V relaunches a load the engine refused for a quantized V cache
 // without flash attention, once.
 func (s *llamaServerRunner) retryWithF16V(loadErr error) (bool, error) {
-	why := f16VRetryReason(loadErr, s.launch.config, s.launch.kvCacheType, s.launch.stockKV, s.launch.forceF16V)
+	why := f16VRetryReason(loadErr, s.launch.config, s.launch.kvCacheType, s.launch.stockKV, s.launch.forceF16V, s.usedOpencoti)
 	if why == "" {
 		return false, nil
 	}

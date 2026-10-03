@@ -115,10 +115,9 @@ func TestAppendDCAArgs(t *testing.T) {
 			want:         []string{"--dca", "on"},
 		},
 		{
-			// The chunk is NOT left on auto here. Auto resolves to n_ctx_train,
-			// which the override rewrites to num_ctx -- one chunk, and DCA
-			// silently does nothing. The derived chunk is the native context,
-			// read before the override changes it.
+			// The chunk is the native context, explicit; the engine allows the
+			// longer context itself with --dca on (opencoti bug-3894, c8), so
+			// no --override-kv rewrites the model's context_length.
 			name:         "past the trained context pins the chunk to the native window",
 			plan:         dcaPlan{Enabled: true},
 			arch:         "qwen3",
@@ -129,7 +128,6 @@ func TestAppendDCAArgs(t *testing.T) {
 			want: []string{
 				"--dca", "on",
 				"--dca-chunk-size", "32768",
-				"--override-kv", "qwen3.context_length=int:131072",
 			},
 		},
 		{
@@ -143,7 +141,6 @@ func TestAppendDCAArgs(t *testing.T) {
 			want: []string{
 				"--dca", "on",
 				"--dca-chunk-size", "8192",
-				"--override-kv", "qwen3.context_length=int:131072",
 			},
 		},
 		{
@@ -158,9 +155,9 @@ func TestAppendDCAArgs(t *testing.T) {
 		},
 		{
 			// A file that does not declare its trained context gives nothing to
-			// compare against and nothing to derive a chunk from, so neither
-			// the override nor a chunk is invented.
-			name:         "no declared training context, no override",
+			// compare against and nothing to derive a chunk from, so no chunk
+			// is invented.
+			name:         "no declared training context, no chunk",
 			plan:         dcaPlan{Enabled: true},
 			arch:         "qwen3",
 			numCtx:       131072,
@@ -183,7 +180,6 @@ func TestAppendDCAArgs(t *testing.T) {
 			want: []string{
 				"--dca", "on",
 				"--dca-chunk-size", "39936",
-				"--override-kv", "qwen3.context_length=int:131072",
 			},
 		},
 		{
@@ -218,10 +214,9 @@ func TestAppendDCAArgs(t *testing.T) {
 	}
 }
 
-// TestDCANeverLeavesTheChunkOnAutoPastNative is the regression guard for the
-// trap that made this whole path inert: auto-chunk resolves to n_ctx_train, the
-// override rewrites n_ctx_train to the requested context, and the result is one
-// chunk covering everything -- DCA doing nothing while the log says it is on.
+// TestDCANeverLeavesTheChunkOnAutoPastNative keeps the chunk explicit and
+// native past the trained context: one chunk covering everything is DCA doing
+// nothing while the log says it is on.
 func TestDCANeverLeavesTheChunkOnAutoPastNative(t *testing.T) {
 	args, err := appendDCAArgs(nil, dcaPlan{Enabled: true}, "qwen3", 131072, 32768, 512, true)
 	if err != nil {
@@ -230,7 +225,7 @@ func TestDCANeverLeavesTheChunkOnAutoPastNative(t *testing.T) {
 
 	i := slices.Index(args, "--dca-chunk-size")
 	if i < 0 {
-		t.Fatal("no --dca-chunk-size on a past-native launch: auto resolves to the overridden context and DCA becomes a no-op")
+		t.Fatal("no --dca-chunk-size on a past-native launch")
 	}
 	if args[i+1] == "0" || args[i+1] == "131072" {
 		t.Errorf("--dca-chunk-size %s covers the whole context, which is one chunk and no chunked attention", args[i+1])
@@ -353,5 +348,18 @@ func TestDCAUnlocksContext(t *testing.T) {
 	}
 	if DCAUnlocksContext(enabled, nil, nil) {
 		t.Error("a nil model unlocks nothing")
+	}
+}
+
+// TestDCADoesNotRewriteTheTrainedContext pins the removal of --override-kv:
+// with --dca on the engine allows a context above n_ctx_train itself
+// (opencoti bug-3894, c8), so the model's own metadata is left alone.
+func TestDCADoesNotRewriteTheTrainedContext(t *testing.T) {
+	args, err := appendDCAArgs(nil, dcaPlan{Enabled: true}, "qwen3", 131072, 32768, 512, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(args, "--override-kv") {
+		t.Errorf("rewrote the trained context: %v", args)
 	}
 }
