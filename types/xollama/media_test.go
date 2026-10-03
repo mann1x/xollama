@@ -209,8 +209,10 @@ func TestMapComponentsReachesEveryComponent(t *testing.T) {
 }
 
 func TestEachVoiceIsItsOwnLayerNamedByItsVoice(t *testing.T) {
-	m := &Media{TTS: &TTSMedia{Model: digest('a'), Vocoder: digest('b'),
-		Voices: map[string]string{"narrator": digest('c'), "host": digest('d')}}}
+	m := &Media{TTS: &TTSMedia{
+		Model: digest('a'), Vocoder: digest('b'),
+		Voices: map[string]string{"narrator": digest('c'), "host": digest('d')},
+	}}
 	var names []string
 	for _, c := range m.Components() {
 		names = append(names, c.Name+"="+c.Digest[7:8])

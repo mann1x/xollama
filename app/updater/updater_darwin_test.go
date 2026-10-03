@@ -363,7 +363,7 @@ func TestAlreadyMoved(t *testing.T) {
 		t.Fatal("failed to create Contents dir")
 	}
 	SystemWidePath = testApp
-	testBinary := filepath.Join(testApp, "Contents", "MacOS", "Ollama")
+	testBinary := filepath.Join(testApp, "Contents", "MacOS", "xOllama") // xollama-hook: app-brand
 	if err := os.Symlink(exe, testBinary); err != nil {
 		t.Fatalf("failed to create symlink to executable: %s", err)
 	}
@@ -379,7 +379,7 @@ func TestAlreadyMoved(t *testing.T) {
 	if err != nil {
 		t.Fatal("failed to create Contents dir")
 	}
-	testBinary = filepath.Join(testApp, "Contents", "MacOS", "Ollama")
+	testBinary = filepath.Join(testApp, "Contents", "MacOS", "xOllama") // xollama-hook: app-brand
 	if err := os.Symlink(exe, testBinary); err != nil {
 		t.Fatalf("failed to create symlink to executable: %s", err)
 	}

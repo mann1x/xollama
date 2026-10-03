@@ -1382,6 +1382,9 @@ func TestSchedLlamaServerPredictionUsesTotalParallelContext(t *testing.T) {
 	ctx, done := context.WithTimeout(t.Context(), 500*time.Millisecond)
 	defer done()
 	t.Setenv("OLLAMA_NUM_PARALLEL", "2")
+	// xollama-hook: macos-engine -- this is llama.cpp's per-slot context; on
+	// Apple silicon a Metal device now routes to opencoti, which shares one.
+	t.Setenv("XOLLAMA_ENGINE", "llamacpp")
 
 	s := InitScheduler(ctx)
 	s.waitForRecovery = 10 * time.Millisecond
