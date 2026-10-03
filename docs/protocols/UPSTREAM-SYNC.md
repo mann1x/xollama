@@ -77,6 +77,21 @@ xollama's. The import path is upstream's. See
 Sync on a branch, never on `main` — a half-resolved merge on the trunk is
 hard to back out of.
 
+**First, check that no branch is checked out in two worktrees.** This must
+print nothing:
+
+```bash
+git worktree list --porcelain | awk '/^branch /{print $2}' | sort | uniq -d
+```
+
+Moving a branch from one worktree leaves every other checkout of it on the old
+tree. `git status` there then shows the branch's recent commits as staged
+reversals, and a commit there silently undoes them. This happened to the fork's
+`think-budget` on 2026-10-03. The rule, the check, and how to tell a stale
+worktree from real uncommitted work are in
+[`FORK-SYNC.md` — One branch, one worktree](./FORK-SYNC.md#one-branch-one-worktree).
+That rule applies to this repo's `main`, `dev` and `sync/*` branches too.
+
 ```bash
 git fetch upstream --tags
 git rev-list --count upstream/main..main    # ours they do not have

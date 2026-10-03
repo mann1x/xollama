@@ -147,6 +147,64 @@ never a base anyone reasons about.
 > the mirror was safe to do, so this verification is load-bearing in both
 > directions.
 
+## One branch, one worktree
+
+**A branch the sync moves is checked out in at most one worktree.** That covers
+`think-budget`, `main`, every `up-*` and PR-head branch, and `thinkbudget-*`.
+
+When a branch is checked out in two worktrees, moving it from one of them by
+commit, cherry-pick, reset or merge moves the shared ref. It does **not** touch
+the other worktree's index or files. From then on, `git status` there compares
+the new `HEAD` with the old tree and shows every change since as **staged**,
+reversing it. Two things follow:
+
+- **It looks like someone's work in progress, and it is not.** Nothing was
+  edited. The "changes" are the branch's own recent commits, shown backwards.
+- **A commit there reverts patches silently.** Any `git commit` in that
+  worktree, including `-a` or after an unrelated `git add`, records the old tree
+  and undoes every commit since, with no conflict and no warning.
+
+> **Measured 2026-10-03, during the v0.35.1 sync.** `ollama-pr` and
+> `ollama-wt-tb` both had `think-budget` checked out. On 2026-09-29 the branch
+> advanced from `ollama-wt-tb` by `64f1ae1c` + `23a43c77` (adding
+> `up-modelfile-roundtrip`). `ollama-pr` then showed five staged files
+> (`PATCHES.json`, `parser/parser.go`, `parser/swallowed_directive_test.go`
+> deleted, `server/images.go`, `server/images_test.go`) that removed that patch.
+> The sync reported them as someone's staged work. `git write-tree` in
+> `ollama-pr` was exactly the tree of `ec8b675d`, the commit before the patch
+> landed.
+
+`git worktree add` refuses a branch that is already checked out, so a duplicate
+was made with `--force`. Don't use it for these branches.
+
+**Before every sync**, in both repos:
+
+```sh
+git worktree list --porcelain | awk '/^branch /{print $2}' | sort | uniq -d
+```
+
+It must print nothing. If it prints a branch, detach every extra checkout before
+moving that branch (`git -C <worktree> switch --detach`), or remove the
+worktree. Do sync work in a worktree created for the sync and remove it
+afterwards.
+
+**When a worktree shows staged changes you did not make**, find out what they
+are before reporting or acting on them:
+
+```sh
+idx=$(git write-tree)
+for c in $(git rev-list -n 50 <branch>); do
+  [ "$(git rev-parse "$c^{tree}")" = "$idx" ] && git log -1 --oneline "$c"
+done
+git diff --stat        # unstaged
+git status --porcelain # untracked shows as ??
+```
+
+If the index matches a commit and there are no unstaged changes, the worktree is
+stale, not modified. `git reset --hard HEAD` brings it up to date and loses
+nothing, because the old tree is that commit. If nothing matches, the changes
+are real and belong to whoever made them: report them and leave them alone.
+
 ## llama.cpp comes from the fork — enforced
 
 Ruled 2026-09-25 by the repository owner: the fork **supplies** llama.cpp.
