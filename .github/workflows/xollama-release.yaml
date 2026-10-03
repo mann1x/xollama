@@ -302,12 +302,24 @@ jobs:
       # Into lib/ollama/engines, not beside llama-server.exe: ggml's loader
       # falls back to ggml-cuda.dll in the exe's directory, and a dev pin's
       # engine dso has exactly that name (cmake/opencoti-engine.cmake).
+      # The same fetch stages the pin's media sidecars ("#! sidecar": the
+      # codec and audio.cpp DLLs) beside the engine, which is where it looks
+      # for them. The installer takes lib\ollama recursively and payloadId
+      # hashes every file under it, so they ship and a changed one is a
+      # payload change.
       - name: stage the opencoti engine
         if: env.ENGINE == 'yes'
         working-directory: repo
         run: |
           cmake -DPIN_FILE=llm/engine/pin.txt -DARCH=$ENGINE_ARCH \
             -DDEST_DIR=dist/windows-amd64/lib/ollama/engines -P cmake/opencoti-fetch.cmake
+          awk '$1=="#!" && $2=="sidecar" && $3=="win-x86_64" {print $4, $5, $6}' llm/engine/pin.txt \
+            | while read -r kind path sum; do
+                f="dist/windows-amd64/lib/ollama/engines/$(basename "$path")"
+                [ "$(sha256sum "$f" 2>/dev/null | cut -c1-64)" = "$sum" ] \
+                  || { echo "::error::$kind sidecar $(basename "$path") is not staged beside the engine as the pin names it"; exit 1; }
+                echo "$kind sidecar: $(basename "$path")"
+              done
 
       - name: payload
         working-directory: repo

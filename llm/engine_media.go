@@ -53,7 +53,56 @@ const (
 	// FeatureSpeechVoiceFiles is --tts-voice NAME=PATH: one extra voice per
 	// flag, each a file read by its contents from its blob path.
 	FeatureSpeechVoiceFiles = "audio_speech_voice_files_v1"
+
+	// The two below are advertised in /health only while the engine has the
+	// sidecar loaded (opencoti #691; read off b117): the libraries the pin's
+	// "#! sidecar" rows name and the build stages beside the engine. The
+	// engine is asked, never the directory: a file that is there and did not
+	// load serves nothing.
+
+	// FeatureSpeechAudioCpp is an audio.cpp model loaded through its sidecar
+	// (oc-audiocpp): Kokoro, Supertonic, KittenTTS.
+	FeatureSpeechAudioCpp = "audio_speech_audiocpp_v1"
+	// FeatureMediaCodec is the codec sidecar (oc-codec): mp3, opus and aac
+	// speech, mp4 video.
+	FeatureMediaCodec = "media_codec_v1"
 )
+
+// featureHints says what a missing feature means for the operator, for the
+// features whose cause is not simply an older engine.
+var featureHints = map[string]string{
+	FeatureSpeechAudioCpp: "its audio.cpp sidecar (oc-audiocpp) is not loaded beside the engine",
+	FeatureMediaCodec:     "its codec sidecar (oc-codec) is not loaded beside the engine, and this model's default format needs it",
+}
+
+// needsCodec reports whether the template's own default format is one the
+// engine can only write with its codec sidecar. Without the sidecar the
+// engine writes wav and pcm speech and avi and webm video, and refuses a
+// request that states any other format with a 501 (measured on b117; opencoti
+// #691), so a template that defaults to one of those is refused once, at
+// load. A template that states no format leaves the choice to the engine,
+// which then answers wav or avi, and needs nothing.
+//
+// The lists are the formats opencoti named as served WITHOUT the codec;
+// everything else is taken to need it. flac speech and webp video were not
+// named either way, so they are on the needing side.
+func needsCodec(m *xollama.Media) bool {
+	if t := m.TTS; t != nil && t.Defaults != nil {
+		switch t.Defaults.ResponseFormat {
+		case "", "wav", "pcm":
+		default:
+			return true
+		}
+	}
+	if v := m.Video; v != nil && v.Defaults != nil {
+		switch v.Defaults.OutputFormat {
+		case "", "avi", "webm":
+		default:
+			return true
+		}
+	}
+	return false
+}
 
 // Default reserves, the engine's own (handover 2026-09-26), used for the
 // estimate when the template states none.
@@ -65,6 +114,12 @@ const (
 )
 
 // MediaFeatures lists the engine features the media needs.
+//
+// Not gated yet: audio_speech_espeak_v1. The audio.cpp families that
+// phonemise with eSpeak-ng (Kokoro, KittenTTS; not Supertonic) need it, but
+// the engine does not advertise it yet and a template says only "audiocpp",
+// not which family. Until the engine reports the family, it refuses such a
+// boot itself, naming eSpeak-ng.
 func MediaFeatures(m *xollama.Media) []string {
 	if m.IsZero() {
 		return nil
@@ -82,7 +137,7 @@ func MediaFeatures(m *xollama.Media) []string {
 	if t := m.TTS; t != nil {
 		out = append(out, FeatureSpeech)
 		if t.Engine == "audiocpp" {
-			out = append(out, FeatureSpeechContentFormat)
+			out = append(out, FeatureSpeechContentFormat, FeatureSpeechAudioCpp)
 		}
 		if len(t.Voices) > 0 {
 			out = append(out, FeatureSpeechVoiceFiles)
@@ -90,6 +145,9 @@ func MediaFeatures(m *xollama.Media) []string {
 	}
 	if m.Video != nil {
 		out = append(out, FeatureVideos)
+	}
+	if needsCodec(m) {
+		out = append(out, FeatureMediaCodec)
 	}
 	return out
 }
@@ -500,6 +558,18 @@ func (r *mediaRunner) health(ctx context.Context) (mediaHealth, int, error) {
 	return h, resp.StatusCode, nil
 }
 
+// refusal names what the engine lacks, and why when the cause is known.
+func refusal(missing []string) error {
+	parts := make([]string, len(missing))
+	for i, f := range missing {
+		parts[i] = f
+		if hint := featureHints[f]; hint != "" {
+			parts[i] += " (" + hint + ")"
+		}
+	}
+	return fmt.Errorf("the opencoti engine does not offer %s, which this model's media needs; update the engine", strings.Join(parts, ", "))
+}
+
 // missingFeatures is what the media needs and the engine does not offer.
 func missingFeatures(need, have []string) []string {
 	var out []string
@@ -533,7 +603,7 @@ func (r *mediaRunner) WaitUntilRunning(ctx context.Context) error {
 		if err == nil && code == http.StatusOK {
 			if missing := missingFeatures(r.need, h.Features); len(missing) > 0 {
 				_ = r.Close()
-				return fmt.Errorf("the opencoti engine does not offer %s, which this model's media needs; update the engine", strings.Join(missing, ", "))
+				return refusal(missing)
 			}
 			r.mu.Lock()
 			r.features = h.Features

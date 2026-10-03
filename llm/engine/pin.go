@@ -21,10 +21,13 @@ var pinText string
 
 // Asset is one published engine artifact.
 type Asset struct {
-	Kind   string // "bin" (the engine) or "dso" (a side-loaded GPU payload)
+	Kind   string // "bin" (the engine), "dso" (a side-loaded GPU payload) or "sidecar"
 	Arch   string // x86_64 | aarch64 | win-x86_64 | win-x86_64-gpu | universal
 	Path   string // path within the Hugging Face repo
 	SHA256 string
+	// Role is what a sidecar is for (SidecarCodec, SidecarAudioCpp, or a
+	// kind a later snapshot adds). Empty on every other asset kind.
+	Role string
 }
 
 // Pin is the parsed pin file: where the artifacts live, which bytes are the
@@ -131,13 +134,50 @@ func (p Pin) CUDA12DSO(arch string) (Asset, bool) {
 // kindCUDA12DSO is the asset kind of a `#! dso-cuda12` row.
 const kindCUDA12DSO = "dso-cuda12"
 
+// kindSidecar is the asset kind of a `#! sidecar` row: a media library the
+// engine loads from its own directory, under the file name it was published
+// with (opencoti #691, #692). Without them the engine still runs, and refuses
+// what they serve.
+const kindSidecar = "sidecar"
+
+// What a sidecar serves. The kinds are opencoti's and the list is open: a
+// later snapshot may add one (eSpeak-ng is announced), and a row of a kind
+// this build has never heard of is still a file the engine wants beside it.
+// So a row is checked for its shape, never against these names.
+const (
+	// SidecarCodec encodes and decodes: mp3, opus and aac speech, mp4 video.
+	SidecarCodec = "codec"
+	// SidecarAudioCpp is audio.cpp: Kokoro, Supertonic and KittenTTS.
+	SidecarAudioCpp = "audiocpp"
+)
+
+// isSidecarKind reports whether s is shaped like a sidecar kind: lowercase
+// letters, digits and '-'.
+func isSidecarKind(s string) bool {
+	return s != "" && strings.TrimLeft(s, "abcdefghijklmnopqrstuvwxyz0123456789-") == ""
+}
+
+// Sidecars returns the media libraries the pin carries for an arch label, in
+// file order. A -gpu bin label shares its platform's: a sidecar has no GPU
+// variant.
+func (p Pin) Sidecars(arch string) []Asset {
+	arch = strings.TrimSuffix(arch, "-gpu")
+	var out []Asset
+	for _, a := range p.Assets {
+		if a.Kind == kindSidecar && a.Arch == arch {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 // HasFeature reports whether the pinned artifact declares a capability.
 func (p Pin) HasFeature(name string) bool {
 	return slices.Contains(p.Features, name)
 }
 
 // machineKeys are the directives a "#!" line may carry (see ParsePin).
-var machineKeys = []string{"cuda-sass", "cuda12-sass", kindCUDA12DSO}
+var machineKeys = []string{"cuda-sass", "cuda12-sass", kindCUDA12DSO, kindSidecar}
 
 // DefaultPin is the pin compiled into this binary.
 func DefaultPin() (Pin, error) { return ParsePin(pinText) }
@@ -210,6 +250,27 @@ func ParsePin(text string) (Pin, error) {
 				return Pin{}, fmt.Errorf("pin.txt:%d: asset row needs <kind> <arch> <path> <sha256>, got %d fields", n+1, len(fields))
 			}
 			p.Assets = append(p.Assets, Asset{Kind: fields[0], Arch: fields[1], Path: fields[2], SHA256: fields[3]})
+		case kindSidecar:
+			if len(fields) != 5 {
+				return Pin{}, fmt.Errorf("pin.txt:%d: sidecar row needs <arch> <kind> <path> <sha256>, got %d fields", n+1, len(fields)-1)
+			}
+			if !isSidecarKind(fields[2]) {
+				return Pin{}, fmt.Errorf("pin.txt:%d: sidecar kind %q is not lowercase letters, digits and '-'", n+1, fields[2])
+			}
+			// The file is staged under this name and found by it, so a row
+			// whose path or digest is off ships an engine that refuses media.
+			if strings.HasPrefix(fields[3], "/") || strings.Contains(fields[3], "..") {
+				return Pin{}, fmt.Errorf("pin.txt:%d: sidecar path %q must be a plain repo-relative path", n+1, fields[3])
+			}
+			if !isSHA256(fields[4]) {
+				return Pin{}, fmt.Errorf("pin.txt:%d: sidecar sha256 %q is not 64 lowercase hex characters", n+1, fields[4])
+			}
+			for _, a := range p.Assets {
+				if a.Kind == kindSidecar && a.Arch == fields[1] && a.Role == fields[2] {
+					return Pin{}, fmt.Errorf("pin.txt:%d: a second %s sidecar for %s", n+1, fields[2], fields[1])
+				}
+			}
+			p.Assets = append(p.Assets, Asset{Kind: kindSidecar, Arch: fields[1], Role: fields[2], Path: fields[3], SHA256: fields[4]})
 		default:
 			return Pin{}, fmt.Errorf("pin.txt:%d: unknown directive %q", n+1, fields[0])
 		}
@@ -296,6 +357,10 @@ func splitDSOLabel(label string) (arch string, backend Backend) {
 		}
 	}
 	return label, BackendCUDA
+}
+
+func isSHA256(s string) bool {
+	return len(s) == 64 && strings.TrimLeft(s, "0123456789abcdef") == ""
 }
 
 func isCommitRev(rev string) bool {

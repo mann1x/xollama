@@ -19,6 +19,8 @@
 #   XOLLAMA_OPENCOTI_ENGINE_FILE  stage this local artifact instead of fetching
 #   XOLLAMA_OPENCOTI_ENGINE_CACHE where downloads are kept between builds
 #   XOLLAMA_OPENCOTI_ENGINE_ARCH  override the artifact arch label
+#   XOLLAMA_OPENCOTI_SIDECAR_DIR  take the media sidecars (the pin's
+#                                 "#! sidecar" rows) from this directory
 #
 # Iterating on Go code with no network, or without paying for the artifact:
 #   cmake -B build . -DXOLLAMA_OPENCOTI_ENGINE=OFF
@@ -33,6 +35,9 @@ set(XOLLAMA_OPENCOTI_ENGINE_CACHE "${CMAKE_BINARY_DIR}/opencoti-engine" CACHE PA
     "Where the fetched engine artifact is cached between builds")
 set(XOLLAMA_OPENCOTI_ENGINE_ARCH "" CACHE STRING
     "Artifact arch label to stage; empty means derive it from the target platform")
+
+set(XOLLAMA_OPENCOTI_SIDECAR_DIR "" CACHE PATH
+    "Directory holding the pinned media sidecars under their published names, staged instead of downloading (verified against llm/engine/pin.txt)")
 
 set(XOLLAMA_ENGINE_PIN "${CMAKE_CURRENT_SOURCE_DIR}/llm/engine/pin.txt")
 
@@ -150,6 +155,7 @@ add_custom_command(
         "-DDEST_DIR=${_engine_dir}"
         "-DLOCAL_FILE=${XOLLAMA_OPENCOTI_ENGINE_FILE}"
         "-DCACHE_DIR=${XOLLAMA_OPENCOTI_ENGINE_CACHE}"
+        "-DLOCAL_SIDECAR_DIR=${XOLLAMA_OPENCOTI_SIDECAR_DIR}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/opencoti-fetch.cmake"
     DEPENDS
         "${XOLLAMA_ENGINE_PIN}"

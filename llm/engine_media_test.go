@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -75,8 +76,8 @@ func TestVideoArgs(t *testing.T) {
 
 func TestAudioCppSpeechNeedsAnEngineThatReadsBlobsAsTheyAre(t *testing.T) {
 	kokoro := &xollama.Media{TTS: &xollama.TTSMedia{Engine: "audiocpp", Model: d('a')}}
-	if got := strings.Join(MediaFeatures(kokoro), ","); got != "audio_speech_v1,audio_speech_content_format_v1" {
-		t.Fatalf("audiocpp features = %s; an engine that judges a file by its name must be refused", got)
+	if got := strings.Join(MediaFeatures(kokoro), ","); got != "audio_speech_v1,audio_speech_content_format_v1,audio_speech_audiocpp_v1" {
+		t.Fatalf("audiocpp features = %s; an engine that judges a file by its name, or has no audio.cpp sidecar loaded, must be refused", got)
 	}
 	voiced := &xollama.Media{TTS: &xollama.TTSMedia{Model: d('a'), Vocoder: d('b'), Voices: map[string]string{"narrator": d('c')}}}
 	if got := strings.Join(MediaFeatures(voiced), ","); got != "audio_speech_v1,audio_speech_voice_files_v1" {
@@ -231,5 +232,74 @@ func TestAFailedLoadReportsTheCauseNotOnlyTheLastLine(t *testing.T) {
 	}
 	if (&tailWriter{}).last() != "no output" {
 		t.Fatal("an engine that said nothing is not reported as such")
+	}
+}
+
+func TestATemplateWhoseDefaultFormatNeedsTheCodecAsksForIt(t *testing.T) {
+	tts := func(format string) *xollama.Media {
+		return &xollama.Media{TTS: &xollama.TTSMedia{Model: d('a'), Vocoder: d('b'), Defaults: &xollama.TTSDefaults{ResponseFormat: format}}}
+	}
+	video := func(format string) *xollama.Media {
+		return &xollama.Media{Video: &xollama.VideoMedia{Model: d('a'), Defaults: &xollama.VideoDefaults{OutputFormat: format}}}
+	}
+	cases := []struct {
+		name  string
+		m     *xollama.Media
+		codec bool
+	}{
+		// What the engine writes on its own (opencoti #691).
+		{"speech, no format stated", tts(""), false},
+		{"speech wav", tts("wav"), false},
+		{"speech pcm", tts("pcm"), false},
+		{"video, no format stated", video(""), false},
+		{"video avi", video("avi"), false},
+		{"video webm", video("webm"), false},
+		// What only the codec sidecar writes.
+		{"speech mp3", tts("mp3"), true},
+		{"speech opus", tts("opus"), true},
+		{"speech aac", tts("aac"), true},
+		{"speech flac", tts("flac"), true},
+		{"video mp4", video("mp4"), true},
+		{"video webp", video("webp"), true},
+		// No defaults at all, and kinds that write neither.
+		{"speech without defaults", &xollama.Media{TTS: &xollama.TTSMedia{Model: d('a'), Vocoder: d('b')}}, false},
+		{"transcription", &xollama.Media{STT: &xollama.STTMedia{Model: d('a'), Defaults: &xollama.STTDefaults{ResponseFormat: "json"}}}, false},
+		{"image", &xollama.Media{Image: &xollama.ImageMedia{Model: d('a'), Defaults: &xollama.ImageDefaults{OutputFormat: "png"}}}, false},
+	}
+	for _, c := range cases {
+		if got := slices.Contains(MediaFeatures(c.m), FeatureMediaCodec); got != c.codec {
+			t.Errorf("%s: asks for the codec = %v, want %v", c.name, got, c.codec)
+		}
+	}
+}
+
+func TestAMissingSidecarIsNamed(t *testing.T) {
+	r := fakeEngine(t, []string{FeatureSpeech, FeatureSpeechContentFormat})
+	r.need = []string{FeatureSpeech, FeatureSpeechContentFormat, FeatureSpeechAudioCpp, FeatureMediaCodec}
+	err := r.WaitUntilRunning(context.Background())
+	if err == nil {
+		t.Fatal("an engine with neither sidecar loaded was accepted")
+	}
+	for _, want := range []string{FeatureSpeechAudioCpp, "oc-audiocpp", FeatureMediaCodec, "oc-codec"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %v, want it to name %s", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), FeatureSpeechContentFormat) {
+		t.Errorf("err = %v; a feature the engine has is not missing", err)
+	}
+}
+
+func TestAnEngineWithItsSidecarsLoadedServesAnAudioCppTemplate(t *testing.T) {
+	// The /health list of an audio.cpp boot on b117 with both sidecars.
+	r := fakeEngine(t, []string{FeatureSpeech, FeatureSpeechContentFormat, FeatureSpeechAudioCpp, FeatureMediaCodec})
+	r.need = MediaFeatures(&xollama.Media{TTS: &xollama.TTSMedia{
+		Engine: "audiocpp", Model: d('a'), Defaults: &xollama.TTSDefaults{ResponseFormat: "mp3"},
+	}})
+	if len(r.need) != 4 {
+		t.Fatalf("need = %v", r.need)
+	}
+	if err := r.WaitUntilRunning(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }
