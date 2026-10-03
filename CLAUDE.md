@@ -28,6 +28,11 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   phase.
 - `docs/protocols/UPSTREAM-SYNC.md` — every change is either an additive file or
   a marked surgical hook, and hooks go in the Registry in the same commit.
+  Before any sync, `git worktree list --porcelain | awk '/^branch /{print $2}'
+  | sort | uniq -d` must print nothing: a branch checked out in two worktrees
+  shows its own commits as staged reversals in the stale one, and a commit
+  there undoes them silently (`think-budget`, 2026-10-03; one branch, one
+  worktree in `docs/protocols/FORK-SYNC.md`).
 - `docs/protocols/CARRIED-PATCHES.md` — the open upstream PRs this fork carries.
   Each is its own `--no-ff` merge, retired the day upstream takes it.
 - `docs/protocols/FORK-SYNC.md` — how patches reach this repo from
