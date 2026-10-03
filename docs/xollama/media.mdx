@@ -40,7 +40,8 @@ column. The mixed `media-kit` is not published yet; `xollama media create`
 builds it locally. Video needs an opencoti engine from M7 on (b103 and later).
 The audio.cpp voices (Kokoro, Supertonic, KittenTTS) need an engine that reads a
 model file by its contents, which xOllama passes as its blob: opencoti dev build
-`2610031022001` (b119) or later, advertising `audio_speech_content_format_v1`.
+`2610031022001` (b119) or later, advertising `audio_speech_content_format_v1`
+(on Windows `2610031112001` or later: b119's audio.cpp library crashes there).
 An older engine is refused at load with a message naming that feature.
 
 Three of the engine's abilities live in libraries beside it, which every xOllama
@@ -136,7 +137,7 @@ client sends. For example, a model trained at one size can fix `width` and
 
 - **Voices**: `voice_map` turns an OpenAI voice name (`alloy`, `nova`, …) into
   one of the model's own. An OuteTTS model can also carry extra voices of its
-  own (`voices`, set with `xollama tweak model --tts-voices name=file,…`): each
+  own (`voices`, set with `xollama tweak model MODEL --tts-voices=name=file,…`): each
   is one speaker file stored as its own layer and selected by its name.
 - **Transcription**: a template whose `task` is `translate` answers
   `/v1/audio/transcriptions` in English as well. With `task` in `fixed` it

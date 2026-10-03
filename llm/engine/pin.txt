@@ -111,8 +111,8 @@
 # ---------------------------------------------------------------------------
 
 repo     ManniX-ITA/opencoti-llamafile-dev
-rev      a542184f36c016ae3f1639a139fb7828bec673e1
-tag      opencoti-0.10.5-c7-2610031022001
+rev      50f953bdaf0abf0e8944a1efb9e4b45af7cf010f
+tag      opencoti-0.10.5-c7-2610031112001
 channel  dev
 
 # THIS BRANCH PINS A DEVELOPMENT SNAPSHOT. It is not a release and must not be
@@ -133,7 +133,17 @@ channel  dev
 # commit one second later that moves the repo's own pointer. Both hold the same
 # bytes; naming the snapshot is what the two pins before this one did.
 #
-# WHY THIS BUILD. 2610031022001 (b119; mails #689, #692, #697, #698) is the
+# WHY THIS BUILD. 2610031112001 (rev 50f953bd, mail #701) is 2610031022001
+# (b119, rev a542184f, the pin for one hour) with the Windows audio.cpp fix,
+# bug-3899: on Windows b119 died at the first audio.cpp model load, every
+# family, because the engine's Cosmopolitan runtime took a C++ throw inside the
+# mingw DLL for a crash, and it handed the DLL the model path as /C/dir/file.
+# The fix has a half in each file (audio.cpp patch 0004 in oc-audiocpp, engine
+# patch 0541), so the engine and the three oc-audiocpp files are taken from
+# this rev together. The CUDA payloads, oc-codec and oc-espeak are b119's
+# bytes. Linux was not affected.
+#
+# b119 (mails #689, #692, #697, #698) was the
 # first snapshot that carries the media engines as xollama drives them, with
 # nothing left for a host to install:
 #   bug-3880  audio.cpp tells a model file by its bytes, never its name, so a
@@ -162,9 +172,7 @@ channel  dev
 #   - no CUDA 12 payload (no "#! dso-cuda12", no "#! cuda12-sass"): stated
 #     absent in its BUILD_INFO, so Volta 7.0 goes to llama.cpp. The owner
 #     accepted the gap (2026-10-03); the row returns when opencoti publishes it.
-#   - the win-x86_64 and aarch64 sidecars and the Windows CUDA DLL are built
-#     from the same sources as the Linux x86_64 ones and were NOT run on their
-#     platforms by opencoti. eleven2go is their first run.
+#   - the aarch64 sidecars have never run on hardware (opencoti says so).
 #   - no macOS sidecar of any kind: on macOS the engine serves OuteTTS and
 #     wav / avi only.
 #
@@ -172,7 +180,27 @@ channel  dev
 # sm_120f only, so Turing 7.5, A100/A30 8.0, Hopper 9.0 and datacenter
 # Blackwell 10.x go to llama.cpp.
 #
-# MEASURED against THESE bytes on solidPC (RTX 3090, 2026-10-03), the engine
+# MEASURED against THESE bytes (2610031112001), 2026-10-03:
+# solidPC (RTX 3090), scripts/phase2-engine-ab.py as ollama, one run
+# (/srv/ml/xollama-phase2/as-ollama/pin-b120), b119's figure in brackets:
+#   compat 8/8 (8/8), llama3 76.4 tok/s (77.3), qwen2.5:1.5b x4 302 tok/s
+#   aggregate (300), gemma4 identical, 70B overflow loads, 3.8 tok/s (3.0).
+#   Through xollama, no system eSpeak-ng: Kokoro, Supertonic f16 and q8_0,
+#   KittenTTS and OuteTTS (default and two --tts-voice files) answer mp3, and
+#   Whisper returns the sentence from each; Wan2.1 33/33 decoded frames (270 s,
+#   18.1 GiB peak), Wan2.2 Q4_K_M 33/33 (116 s, 21.6 GiB).
+# eleven2go (Windows 11, RTX 3090), a dev xollama.exe beside the installed
+# servers on its own port and store, the engine directory staged by
+# cmake/opencoti-fetch.cmake from this pin (engine, ggml-cuda.dll, the three
+# win sidecars, sha256 checked on the host), no eSpeak-ng on the host:
+#   qwen2.5:1.5b 100 % GPU, 322 tok/s, ggml-cuda.dll loaded from engines\;
+#   Kokoro (default and nova), Supertonic, KittenTTS, OuteTTS answer mp3 with
+#   oc-codec, oc-audiocpp and oc-espeak mapped in the engine process, Whisper
+#   returns the sentence from each; --tts-voices with two files, each listed
+#   and spoken by name; Wan2.1 640x352, 33/33 frames decoded (ffprobe), 149 s,
+#   20.3 GiB peak. Not run there: Wan2.2, the installer, a Radeon.
+#
+# MEASURED on b119's bytes on solidPC (RTX 3090, 2026-10-03), the engine
 # and its three sidecars fetched from this rev by sha256 and placed beside it:
 # scripts/phase2-engine-ab.py as ollama, paired with b208 run the same hour on
 # the same xollama (results in /srv/ml/xollama-phase2/as-ollama/pin-b119 and
@@ -381,12 +409,12 @@ accel    x86_64  CUDA
 # One APE serves every host; the arch label selects who may package it. There
 # is no win-x86_64-gpu bin on this channel: Windows packages the bare APE
 # (Pin.ArchFor) with the "dso win-x86_64" payload below.
-bin  x86_64      builds/opencoti-0.10.5-c7-2610031022001/opencoti-0.10.5-c7-2610031022001  7bd91cb67a7285cfa8c32398b0c6466c5b71343d72e6982c40924bc54aeb4d04
-bin  aarch64     builds/opencoti-0.10.5-c7-2610031022001/opencoti-0.10.5-c7-2610031022001  7bd91cb67a7285cfa8c32398b0c6466c5b71343d72e6982c40924bc54aeb4d04
-bin  win-x86_64  builds/opencoti-0.10.5-c7-2610031022001/opencoti-0.10.5-c7-2610031022001  7bd91cb67a7285cfa8c32398b0c6466c5b71343d72e6982c40924bc54aeb4d04
+bin  x86_64      builds/opencoti-0.10.5-c7-2610031112001/opencoti-0.10.5-c7-2610031112001  9f7b8637a9b9775f4d055236ed98a77c8940c95b4992deb66b327a7dc4c67a32
+bin  aarch64     builds/opencoti-0.10.5-c7-2610031112001/opencoti-0.10.5-c7-2610031112001  9f7b8637a9b9775f4d055236ed98a77c8940c95b4992deb66b327a7dc4c67a32
+bin  win-x86_64  builds/opencoti-0.10.5-c7-2610031112001/opencoti-0.10.5-c7-2610031112001  9f7b8637a9b9775f4d055236ed98a77c8940c95b4992deb66b327a7dc4c67a32
 
-dso  x86_64      builds/opencoti-0.10.5-c7-2610031022001/ggml-cuda.so              7d129e822271342d24511ae7e9feff4148f000e49f08ac1e52bd43951a312b80
-dso  win-x86_64  builds/opencoti-0.10.5-c7-2610031022001/ggml-cuda-win-x86_64.dll  32de1a88d54ba3d20fe87fc920d5ea76fc58b9146a35b0f304e165e1e48cc634
+dso  x86_64      builds/opencoti-0.10.5-c7-2610031112001/ggml-cuda.so              7d129e822271342d24511ae7e9feff4148f000e49f08ac1e52bd43951a312b80
+dso  win-x86_64  builds/opencoti-0.10.5-c7-2610031112001/ggml-cuda-win-x86_64.dll  32de1a88d54ba3d20fe87fc920d5ea76fc58b9146a35b0f304e165e1e48cc634
 
 # The media sidecars, staged beside the engine under these file names. What is
 # inside them, for the release notes: oc-codec is ffmpeg n9.0.2 (LGPL 2.1+,
@@ -398,12 +426,12 @@ dso  win-x86_64  builds/opencoti-0.10.5-c7-2610031022001/ggml-cuda-win-x86_64.dl
 # audio.cpp, never linked into the engine or another sidecar. COPYING.espeak-ng
 # and the source refs are in the snapshot's directory and BUILD_INFO.md
 # (opencoti #691, #697).
-#! sidecar  x86_64      codec     builds/opencoti-0.10.5-c7-2610031022001/oc-codec-linux-x86_64.so        9bb61aae811e8a36d859c08832a92322da402e4d00c701786f9c42e0358f734e
-#! sidecar  x86_64      audiocpp  builds/opencoti-0.10.5-c7-2610031022001/oc-audiocpp-linux-x86_64.so     0ce759e9af3a0372f095b1fe5e39f35d7c14dbcbe02b4e1972095885d82812ff
-#! sidecar  x86_64      espeak    builds/opencoti-0.10.5-c7-2610031022001/oc-espeak-linux-x86_64.so       0e6c185dfca5dbda6c0be06d5578e645f057cc01d7eefc781a2e32bccf511365
-#! sidecar  win-x86_64  codec     builds/opencoti-0.10.5-c7-2610031022001/oc-codec-win-x86_64.dll         02ed077e02325b2f7e1645626dc7b2b2fa4f814902ca0050c3235ea934b70f2f
-#! sidecar  win-x86_64  audiocpp  builds/opencoti-0.10.5-c7-2610031022001/oc-audiocpp-win-x86_64.dll      58b34eb8d0e2eb75f06fdb33e25d0e727981072124fe1089de9df3e102e2615e
-#! sidecar  win-x86_64  espeak    builds/opencoti-0.10.5-c7-2610031022001/oc-espeak-win-x86_64.dll        2f556d69aa27e4e0fc037430799696a28ea9a7dff8d534a36960b82efd62d896
-#! sidecar  aarch64     codec     builds/opencoti-0.10.5-c7-2610031022001/oc-codec-linux-aarch64.so       7daf2e8c1e83e8186e5916c3f3e156478c3f11b47a8e998475067a0784021d73
-#! sidecar  aarch64     audiocpp  builds/opencoti-0.10.5-c7-2610031022001/oc-audiocpp-linux-aarch64.so    b320b9b7264e29b6b34e76b8d1d394b16606d5333763081abf089e7eb4de12c1
-#! sidecar  aarch64     espeak    builds/opencoti-0.10.5-c7-2610031022001/oc-espeak-linux-aarch64.so      47d6e5fd8d52ab6520c7a6bc707bf0165947cd79b81c5401bfb9bdd4dd27b764
+#! sidecar  x86_64      codec     builds/opencoti-0.10.5-c7-2610031112001/oc-codec-linux-x86_64.so        9bb61aae811e8a36d859c08832a92322da402e4d00c701786f9c42e0358f734e
+#! sidecar  x86_64      audiocpp  builds/opencoti-0.10.5-c7-2610031112001/oc-audiocpp-linux-x86_64.so     b2abd02cb1967c43b8181168d352224b84e4df63f1e2175512dec6c9122a7226
+#! sidecar  x86_64      espeak    builds/opencoti-0.10.5-c7-2610031112001/oc-espeak-linux-x86_64.so       0e6c185dfca5dbda6c0be06d5578e645f057cc01d7eefc781a2e32bccf511365
+#! sidecar  win-x86_64  codec     builds/opencoti-0.10.5-c7-2610031112001/oc-codec-win-x86_64.dll         02ed077e02325b2f7e1645626dc7b2b2fa4f814902ca0050c3235ea934b70f2f
+#! sidecar  win-x86_64  audiocpp  builds/opencoti-0.10.5-c7-2610031112001/oc-audiocpp-win-x86_64.dll      a4931b653066a9389f0f3a6c875bc63deb86130631c1f190c57bf7e23a9da269
+#! sidecar  win-x86_64  espeak    builds/opencoti-0.10.5-c7-2610031112001/oc-espeak-win-x86_64.dll        2f556d69aa27e4e0fc037430799696a28ea9a7dff8d534a36960b82efd62d896
+#! sidecar  aarch64     codec     builds/opencoti-0.10.5-c7-2610031112001/oc-codec-linux-aarch64.so       7daf2e8c1e83e8186e5916c3f3e156478c3f11b47a8e998475067a0784021d73
+#! sidecar  aarch64     audiocpp  builds/opencoti-0.10.5-c7-2610031112001/oc-audiocpp-linux-aarch64.so    0b599637d4d3ab1c8c4a673b4657d330490df725884a4b13c5ab80393c77cba1
+#! sidecar  aarch64     espeak    builds/opencoti-0.10.5-c7-2610031112001/oc-espeak-linux-aarch64.so      47d6e5fd8d52ab6520c7a6bc707bf0165947cd79b81c5401bfb9bdd4dd27b764
