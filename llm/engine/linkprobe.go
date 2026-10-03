@@ -6,8 +6,5 @@ package engine
 // patch 0499; builds from b62 on).
 func LinkProbeCommand(artifact string, b Backend, goos string) (string, []string) {
 	args := []string{"--server", "--link-probe", "--gpu", gpuFlag([]Device{{Backend: b}})}
-	if goos == "windows" {
-		return artifact, args
-	}
-	return "sh", append([]string{artifact}, args...)
+	return run(artifact, args, goos)
 }

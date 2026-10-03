@@ -99,6 +99,8 @@ Registry row `app-brand`.
 | Windows installer | `OllamaSetup.exe`, AppId `{44E83376-...}` | `xOllamaSetup.exe`, AppId `{F6F806B4-...}` |
 | macOS bundle | `Ollama.app`, `com.electron.ollama` | `xOllama.app`, `com.mann1x.xollama` |
 | macOS LaunchAgent | `com.ollama.ollama.plist` | `com.mann1x.xollama.plist` |
+| macOS CLI link | `/usr/local/bin/ollama` | `/usr/local/bin/xollama` |
+| macOS app state | `~/Library/Application Support/Ollama` | `~/Library/Application Support/xOllama` |
 | systemd unit | `ollama.service` | `xollama.service` |
 | release assets | `ollama-linux-amd64.tar.zst`, ... | `xollama-linux-amd64.tar.zst`, ... |
 | release source | `ollama.com/download` | `github.com/mann1x/xollama/releases` |

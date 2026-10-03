@@ -8,7 +8,7 @@ import "testing"
 // source and build references are in the engine build's BUILD_INFO.md.
 var licensedSidecars = map[string][]string{
 	"espeak": {"espeak-licence", "build-info"},
-	"codec":  {"build-info"},
+	"codec":  {"build-info", "ffmpeg-licence", "lame-licence", "openh264-licence"},
 }
 
 // A package is staged from the pin's rows for its arch and from nothing else,
@@ -18,7 +18,7 @@ func TestEveryLicensedSidecarShipsItsText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, arch := range []string{"x86_64", "win-x86_64", "aarch64"} {
+	for _, arch := range []string{"x86_64", "win-x86_64", "aarch64", ArchMacOS} {
 		have := map[string]bool{}
 		for _, s := range p.Sidecars(arch) {
 			have[s.Role] = true

@@ -147,6 +147,10 @@ const kindSidecar = "sidecar"
 const (
 	// SidecarCodec encodes and decodes: mp3, opus and aac speech, mp4 video.
 	SidecarCodec = "codec"
+	// SidecarAPE is the macOS loader the engine is started through
+	// (MacLoader); SidecarMetal is its Metal backend library.
+	SidecarAPE   = "ape"
+	SidecarMetal = "metal"
 	// SidecarAudioCpp is audio.cpp: Kokoro, Supertonic and KittenTTS.
 	SidecarAudioCpp = "audiocpp"
 )
@@ -399,6 +403,11 @@ func (p Pin) URL(a Asset) string {
 	return "https://huggingface.co/" + p.Repo + "/resolve/" + p.Rev + "/" + a.Path
 }
 
+// ArchMacOS is the arch label of the macOS arm64 package. Its bin row is the
+// same APE file as the Linux ones; what makes it a package of its own is its
+// sidecar rows.
+const ArchMacOS = "macos-aarch64"
+
 // PackageArch maps a build host onto the arch label packaged for it.
 //
 // Windows takes the -gpu variant deliberately. The bare win-x86_64 artifact is
@@ -406,8 +415,9 @@ func (p Pin) URL(a Asset) string {
 // a second download to use the GPU is not an installer. Linux needs no such
 // choice: those artifacts embed their payloads already.
 //
-// darwin is absent on purpose, not by omission: macOS keeps ollama's MLX path
-// and never routes to this engine, so nothing is packaged for it.
+// macOS is Apple silicon only: opencoti publishes its loader, Metal library and
+// media sidecars for arm64 and nothing for Intel, so darwin/amd64 has no label
+// and stays on llama.cpp.
 func PackageArch(goos, goarch string) (string, error) {
 	switch {
 	case goos == "linux" && goarch == "amd64":
@@ -416,6 +426,8 @@ func PackageArch(goos, goarch string) (string, error) {
 		return "aarch64", nil
 	case goos == "windows" && goarch == "amd64":
 		return "win-x86_64-gpu", nil
+	case goos == "darwin" && goarch == "arm64":
+		return ArchMacOS, nil
 	}
 	return "", fmt.Errorf("no opencoti-llamafile artifact is packaged for %s/%s", goos, goarch)
 }

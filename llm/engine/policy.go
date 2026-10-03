@@ -63,8 +63,8 @@ type support struct {
 // on. It is data, and adding a row is a line here plus a line in the test.
 //
 // What is NOT here matters as much as what is. ROCm has no tested opencoti
-// backend, and macOS keeps ollama's own MLX path, which this package never
-// sees. Untested is not "probably fine" — it is llama.cpp.
+// backend, and an Intel Mac has no opencoti files at all. Untested is not
+// "probably fine" — it is llama.cpp. (MLX models never reach this package.)
 var tested = []support{
 	{Platform{OS: "linux", Arch: "amd64"}, BackendCUDA},
 	{Platform{OS: "linux", Arch: "amd64"}, BackendVulkan},
@@ -74,6 +74,8 @@ var tested = []support{
 	{Platform{OS: "windows", Arch: "amd64"}, BackendCUDA},
 	{Platform{OS: "windows", Arch: "amd64"}, BackendVulkan},
 	{Platform{OS: "windows", Arch: "amd64"}, BackendCPU},
+	{Platform{OS: "darwin", Arch: "arm64"}, BackendMetal},
+	{Platform{OS: "darwin", Arch: "arm64"}, BackendCPU},
 }
 
 // Supports reports whether opencoti-llamafile is validated for this platform

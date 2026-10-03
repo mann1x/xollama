@@ -2003,7 +2003,7 @@ func setOnboardingWindowStyle(ptr unsafe.Pointer, enabled bool) {
 }
 
 func runInBackground() {
-	cmd := exec.Command(filepath.Join(updater.BundlePath, "Contents", "MacOS", "Ollama"), "hidden")
+	cmd := exec.Command(filepath.Join(updater.BundlePath, "Contents", "MacOS", "xOllama"), "hidden") // xollama-hook: app-brand
 	if cmd != nil {
 		err := cmd.Run()
 		if err != nil {

@@ -98,8 +98,9 @@ func TestPackageArch(t *testing.T) {
 		// The GPU variant, not the bare one: an installer that needs a second
 		// download before it can use the GPU is not an installer.
 		{goos: "windows", goarch: "amd64", want: "win-x86_64-gpu"},
-		// macOS keeps ollama's MLX path and never routes here.
-		{goos: "darwin", goarch: "arm64", wantErr: true},
+		// Apple silicon only: opencoti publishes nothing for an Intel Mac.
+		{goos: "darwin", goarch: "arm64", want: "macos-aarch64"},
+		{goos: "darwin", goarch: "amd64", wantErr: true},
 		{goos: "windows", goarch: "arm64", wantErr: true},
 	}
 	for _, tt := range cases {

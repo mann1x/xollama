@@ -195,10 +195,10 @@ Every GGUF load is named before the engine starts (`load-log` hook in
 **Internal-only packages** under `internal/`: `internal/cloud` (cloud host
 policy), `internal/modelref` (model reference parsing), `internal/onboarding`
 (first-run app state; on Windows it, the app/server logs, `ollama.pid` and the
-settings database live under `%LOCALAPPDATA%\xOllama`, not upstream's `Ollama`,
+settings database live under `%LOCALAPPDATA%\xOllama`, on macOS under `~/Library/Application Support/xOllama`, not upstream's `Ollama`,
 and the tray's window class is `xOllamaClass` —
 `app-state` hook, also in `app/store/store.go`, `app/wintray/menus.go`,
-`app/wintray/tray.go`, `app/cmd/app/app_windows.go` and `app/server/server_windows.go`),
+`app/wintray/tray.go`, `app/cmd/app/app_windows.go`, `app/server/server_windows.go` and `app/server/server_unix.go`),
 `internal/orderedmap` (insertion-ordered maps behind the
 tool schemas), `internal/fsowner` (hands files a root run creates to the owner
 of the model store; `create.go` wrappers, `preflight.go` warning — see
@@ -343,7 +343,7 @@ orchestrated by `CMakeLists.txt` / `CMakePresets.json`; the opencoti engine
 artifact is pinned by `llm/engine/pin.txt` (`repo`, `rev` commit sha, `tag`,
 `channel`, `feature`, `accel`, `cuda-sass`, `cuda12-sass`, plus `bin` / `dso` /
 `dso-cuda12` asset rows and `#! sidecar` rows: the engine's media libraries,
-oc-codec, oc-audiocpp and oc-espeak, staged beside it under their published names), read by both
+oc-codec, oc-audiocpp and oc-espeak, staged beside it under their published names; on Apple silicon (`macos-aarch64`, `accel` Metal) also the loader the engine is started through (`ape`) and the Metal library, staged and signed by `scripts/build_darwin.sh` with `app/darwin/engine-loader.entitlements` (`macos-engine` hook)), read by both
 `llm/engine/pin.go` and `cmake/opencoti-fetch.cmake`. Moving that pin retires
 only the rows in `llm/engine_defects.go` the new bytes are *measured* to fix —
 a changelog is not a measurement; the measurement is `scripts/phase2-engine-ab.py`,

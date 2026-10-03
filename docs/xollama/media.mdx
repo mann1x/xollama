@@ -53,8 +53,10 @@ package carries (they are pinned and fetched with the engine):
 | `oc-audiocpp` | Kokoro, Supertonic, KittenTTS | Those models are refused at load, naming it. |
 | `oc-espeak` | The phonemes Kokoro and KittenTTS speak from | Those two are refused at load, naming it, unless the host has its own eSpeak-ng. Supertonic does not use it. |
 
-Nothing has to be installed on the host. On macOS the engine has none of the
-three yet: it serves OuteTTS, and wav or avi.
+Nothing has to be installed on the host. On a Mac with Apple silicon the three
+ship inside the app, as on Linux and Windows; speech and transcription are
+measured there, and image and video models are not yet. An Intel Mac has no
+opencoti engine and so no media models.
 
 `oc-codec` contains ffmpeg n9.0.2 (LGPL 2.1 or later; built with
 `--disable-everything` plus mp4/mov, mp3, aac, wav and h264 decoding, no GPL or

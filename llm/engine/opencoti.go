@@ -231,8 +231,24 @@ func Command(artifact string, params []string, devices []Device, goos string) (s
 		args = append(args, "--gpu", gpu)
 	}
 
-	if goos == "windows" {
+	return run(artifact, args, goos)
+}
+
+// MacLoader is the file name of the macOS APE loader, staged beside the
+// engine (pin row `#! sidecar macos-aarch64 ape`).
+const MacLoader = "ape-macos-aarch64"
+
+// run is the program and argv that start the artifact with args.
+//
+// Windows runs the APE as an exe and Linux through sh. macOS goes through
+// opencoti's prebuilt loader: started any other way the engine compiles a
+// loader with cc on first use, which a Mac without the Xcode tools cannot do.
+func run(artifact string, args []string, goos string) (string, []string) {
+	switch goos {
+	case "windows":
 		return artifact, args
+	case "darwin":
+		return filepath.Join(filepath.Dir(artifact), MacLoader), append([]string{artifact}, args...)
 	}
 	return "sh", append([]string{artifact}, args...)
 }
@@ -317,6 +333,8 @@ func gpuFlag(devices []Device) string {
 			return "nvidia"
 		case BackendVulkan:
 			return "vulkan"
+		case BackendMetal:
+			return "apple"
 		case BackendCPU:
 			sawCPU = true
 		}
@@ -362,6 +380,13 @@ func Launch(stockExe string, params []string, devices []Device, libOllamaPath st
 	}
 
 	name, args := Command(artifact, params, devices, runtime.GOOS)
+	if runtime.GOOS == "darwin" {
+		if _, err := os.Stat(name); err != nil {
+			slog.Warn("falling back to stock llama-server: the engine's macOS loader is not beside it",
+				"loader", name, "error", err)
+			return stockExe, params, false
+		}
+	}
 	slog.Info("using opencoti-llamafile", "artifact", artifact, "reason", decision.Reason)
 	return name, args, true
 }
@@ -380,12 +405,12 @@ func FallbackOnLoadFailure() bool {
 
 // ArtifactOf returns the engine artifact a launch built by Command runs.
 //
-// Off Windows the artifact is an APE run through sh, so the program is "sh"
-// and the artifact is its first argument. Anything that needs the artifact
-// itself -- hashing it, finding its payload -- must ask here rather than use
-// the program name, which on Linux names the shell.
+// Off Windows the artifact is an APE run through sh, or on macOS through
+// MacLoader, so the artifact is the first argument. Anything that needs the
+// artifact itself -- hashing it, finding its payload -- must ask here rather
+// than use the program name, which there names the shell or the loader.
 func ArtifactOf(name string, args []string) string {
-	if name == "sh" && len(args) > 0 {
+	if (name == "sh" || filepath.Base(name) == MacLoader) && len(args) > 0 {
 		return args[0]
 	}
 	return name

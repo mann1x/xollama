@@ -26,7 +26,7 @@ const opencotiEnumerateTimeout = 45 * time.Second
 
 // opencotiBackends are the backends opencoti can be asked to list, in the
 // order they are run.
-var opencotiBackends = []engine.Backend{engine.BackendCUDA, engine.BackendVulkan}
+var opencotiBackends = []engine.Backend{engine.BackendCUDA, engine.BackendVulkan, engine.BackendMetal}
 
 // opencotiListDevices runs one enumeration and returns its combined output.
 // It is a variable so tests can stand in for the artifact.

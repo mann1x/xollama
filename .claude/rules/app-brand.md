@@ -22,6 +22,17 @@ paths:
   `quitMenuTitle`, `openAppsMenuTitle` (`app/wintray/messages.go`), and the
   window title (`app/cmd/app/webview.go`, plus its `wintray` import). Never
   write the literal again.
+- **macOS** has no constant: `app/cmd/app/app_darwin.m` holds its strings as
+  Objective-C literals, edited in place (menu, alerts, the CLI authorization
+  prompt), each line marked. Three of its names are behaviour, not wording, and
+  were wrong until 2026-10-03: the login item must be the plist the bundle
+  ships (`com.mann1x.xollama.plist`), the CLI link is `/usr/local/bin/xollama`
+  (the app wrote `/usr/local/bin/ollama`, a stock install's own path), and
+  `isOllamaApplication` matches this bundle id only, so a running stock Ollama
+  is never treated as another instance of xOllama. The app relaunches itself
+  as `Contents/MacOS/xOllama` (`app/cmd/app/app_darwin.go`,
+  `app/updater/updater_darwin.go`); its state is under
+  `~/Library/Application Support/xOllama` (`app-state`).
 - **The UI's ~170 strings are never edited.** `xollamaBrand()` in
   `app/ui/app/xollama-brand.ts` (one plugin line plus its import in
   `app/ui/app/vite.config.ts`) rewrites `Ollama` → `xOllama` at build time

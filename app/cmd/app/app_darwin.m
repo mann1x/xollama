@@ -38,19 +38,19 @@ static void configureChatGPTRestartAlert(NSAlert *alert,
                                          ChatGPTRestartAction action) {
     switch (action) {
     case ChatGPTRestartActionAddModels:
-        [alert setMessageText:@"Restart ChatGPT to add Ollama models?"];
+        [alert setMessageText:@"Restart ChatGPT to add xOllama models?"]; // xollama-hook: app-brand
         [alert setInformativeText:
-            @"ChatGPT must restart to add Ollama models. Any running task will stop."];
+            @"ChatGPT must restart to add xOllama models. Any running task will stop."]; // xollama-hook: app-brand
         break;
     case ChatGPTRestartActionUpdateModels:
-        [alert setMessageText:@"Restart ChatGPT to update Ollama models?"];
+        [alert setMessageText:@"Restart ChatGPT to update xOllama models?"]; // xollama-hook: app-brand
         [alert setInformativeText:
-            @"ChatGPT must restart to update Ollama models. Any running task will stop."];
+            @"ChatGPT must restart to update xOllama models. Any running task will stop."]; // xollama-hook: app-brand
         break;
     case ChatGPTRestartActionRemoveModels:
-        [alert setMessageText:@"Restart ChatGPT to remove Ollama models?"];
+        [alert setMessageText:@"Restart ChatGPT to remove xOllama models?"]; // xollama-hook: app-brand
         [alert setInformativeText:
-            @"ChatGPT must restart to remove Ollama models. Any running task will stop."];
+            @"ChatGPT must restart to remove xOllama models. Any running task will stop."]; // xollama-hook: app-brand
         break;
     }
     [alert addButtonWithTitle:@"Restart ChatGPT"];
@@ -223,7 +223,7 @@ static NSImage *integrationAppIcon(NSString *appName,
         self.integrationSwitch = [[MenuSwitch alloc] initWithFrame:NSZeroRect];
         [self.integrationSwitch setTarget:target];
         [self.integrationSwitch setAction:toggleAction];
-        [self.integrationSwitch setAccessibilityLabel:[NSString stringWithFormat:@"Use Ollama with %@", title]];
+        [self.integrationSwitch setAccessibilityLabel:[NSString stringWithFormat:@"Use xOllama with %@", title]]; // xollama-hook: app-brand
         [self.integrationSwitch setTranslatesAutoresizingMaskIntoConstraints:NO];
 
         [self addSubview:self.controlSurface];
@@ -319,8 +319,8 @@ static NSImage *integrationAppIcon(NSString *appName,
         : [NSColor clearColor];
     self.controlSurface.layer.backgroundColor = surfaceColor.CGColor;
     self.integrationTitleLabel.textColor = [NSColor labelColor];
-    NSString *status = active ? (self.activeStatusText ?: @"Using Ollama")
-                              : (self.inactiveStatusText ?: @"Use Ollama models");
+    NSString *status = active ? (self.activeStatusText ?: @"Using xOllama") // xollama-hook: app-brand
+                              : (self.inactiveStatusText ?: @"Use xOllama models"); // xollama-hook: app-brand
     BOOL hasStatus = status.length > 0;
     self.titleWithStatusConstraint.active = hasStatus;
     self.titleCenteredConstraint.active = !hasStatus;
@@ -412,8 +412,8 @@ static NSBundle *OllamaResourceBundle(void) {
 
     NSString *cwdPath = [[NSFileManager defaultManager] currentDirectoryPath];
     NSArray<NSString *> *bundlePaths = @[
-        [cwdPath stringByAppendingPathComponent:@"darwin/Ollama.app"],
-        [cwdPath stringByAppendingPathComponent:@"app/darwin/Ollama.app"],
+        [cwdPath stringByAppendingPathComponent:@"darwin/xOllama.app"], // xollama-hook: app-brand
+        [cwdPath stringByAppendingPathComponent:@"app/darwin/xOllama.app"], // xollama-hook: app-brand
     ];
     for (NSString *bundlePath in bundlePaths) {
         if ([[NSFileManager defaultManager] fileExistsAtPath:bundlePath]) {
@@ -514,7 +514,7 @@ static NSImage *ollamaApplicationIcon(void) {
     [self applyShowAppsInMenu:shouldShowAppsInMenu()];
 
     NSMenuItem *appsMenuItem =
-        [[NSMenuItem alloc] initWithTitle:@"Open Ollama"
+        [[NSMenuItem alloc] initWithTitle:@"Open xOllama" // xollama-hook: app-brand
                                    action:@selector(appsUI)
                             keyEquivalent:@""];
     [appsMenuItem setTarget:self];
@@ -543,7 +543,7 @@ static NSImage *ollamaApplicationIcon(void) {
 
     [menu addItem:[NSMenuItem separatorItem]];
 
-    [menu addItemWithTitle:@"Quit Ollama"
+    [menu addItemWithTitle:@"Quit xOllama" // xollama-hook: app-brand
                     action:@selector(requestQuit)
              keyEquivalent:@"q"];
 
@@ -559,7 +559,7 @@ static NSImage *ollamaApplicationIcon(void) {
     [self refreshStatusItem];
 
     // Application menu
-    NSString *appName = @"Ollama";
+    NSString *appName = @"xOllama"; // xollama-hook: app-brand
 
     NSMenu *mainMenu = [[NSMenu alloc] init];
     NSMenuItem *appMenuItem = [[NSMenuItem alloc] initWithTitle:appName
@@ -706,7 +706,7 @@ static NSImage *ollamaApplicationIcon(void) {
     BOOL configured = installed && IsClaudeGatewayConfigured();
     NSString *failureStatus = portConflict
         ? [NSString stringWithFormat:@"Port %d is in use", ClaudeGatewayPort()]
-        : (startFailed ? @"Unable to use Ollama" : nil);
+        : (startFailed ? @"Unable to use xOllama" : nil); // xollama-hook: app-brand
     self.claudeAppEnabled = configured;
     self.claudeAppReady = configured && !startFailed;
     [self.claudeAppRow setActiveStatusText:configured ? failureStatus : nil];
@@ -730,7 +730,7 @@ static NSImage *ollamaApplicationIcon(void) {
         ? activeStatus
         : nil];
     [self.codexAppRow setInactiveStatusText:installed
-        ? @"Use Ollama models in ChatGPT"
+        ? @"Use xOllama models in ChatGPT" // xollama-hook: app-brand
         : @"Not installed"];
     [self.codexAppRow setIntegrationActive:connected];
     [self.codexAppRow setIntegrationReady:installed && connected];
@@ -965,8 +965,8 @@ static NSImage *ollamaApplicationIcon(void) {
                        code:3
                    userInfo:@{NSLocalizedDescriptionKey:
                        chatGPT
-                           ? @"Ollama could not prepare the ChatGPT download."
-                           : @"Ollama could not authenticate the download request."}];
+                           ? @"xOllama could not prepare the ChatGPT download." // xollama-hook: app-brand
+                           : @"xOllama could not authenticate the download request."}]; // xollama-hook: app-brand
         if (chatGPT) {
             [self showChatGPTDownloadFailure:error];
         } else {
@@ -1206,7 +1206,7 @@ didCompleteWithError:(NSError *)error {
         [installAlert setIcon:ollamaApplicationIcon()];
         [installAlert setMessageText:@"Installing ChatGPT"];
         [installAlert setInformativeText:
-            @"Ollama is verifying and copying the ChatGPT app."];
+            @"xOllama is verifying and copying the ChatGPT app."]; // xollama-hook: app-brand
         NSButton *installingButton =
             [installAlert addButtonWithTitle:@"Installing…"];
         [installingButton setEnabled:NO];
@@ -1285,7 +1285,7 @@ didCompleteWithError:(NSError *)error {
         [installAlert setIcon:ollamaApplicationIcon()];
         [installAlert setMessageText:@"Claude is not installed"];
         [installAlert setInformativeText:
-            @"Download Claude to add Ollama models to the Claude app."];
+            @"Download Claude to add xOllama models to the Claude app."]; // xollama-hook: app-brand
         [installAlert addButtonWithTitle:@"Download Claude"];
         [installAlert addButtonWithTitle:@"Cancel"];
         if ([installAlert runModal] == NSAlertFirstButtonReturn) {
@@ -1302,11 +1302,11 @@ didCompleteWithError:(NSError *)error {
         [restartAlert setAlertStyle:NSAlertStyleWarning];
         [restartAlert setIcon:ollamaApplicationIcon()];
         [restartAlert setMessageText:enabled
-            ? @"Restart Claude Desktop to use Ollama?"
-            : @"Restart Claude Desktop to remove Ollama?"];
+            ? @"Restart Claude Desktop to use xOllama?" // xollama-hook: app-brand
+            : @"Restart Claude Desktop to remove xOllama?"]; // xollama-hook: app-brand
         [restartAlert setInformativeText:enabled
-            ? @"Claude Desktop must restart to use Ollama. Any running task will stop."
-            : @"Claude Desktop must restart to remove Ollama. Any running task will stop."];
+            ? @"Claude Desktop must restart to use xOllama. Any running task will stop." // xollama-hook: app-brand
+            : @"Claude Desktop must restart to remove xOllama. Any running task will stop."]; // xollama-hook: app-brand
         [restartAlert addButtonWithTitle:@"Restart Claude Desktop"];
         [restartAlert addButtonWithTitle:@"Cancel"];
         if ([restartAlert runModal] != NSAlertFirstButtonReturn) {
@@ -1334,13 +1334,13 @@ didCompleteWithError:(NSError *)error {
                 [alert setMessageText:portConflict
                     ? [NSString stringWithFormat:@"Port %d is already in use", ClaudeGatewayPort()]
                     : (enabled
-                        ? @"Unable to use Ollama with Claude"
-                        : @"Unable to remove Ollama from Claude")];
+                        ? @"Unable to use xOllama with Claude" // xollama-hook: app-brand
+                        : @"Unable to remove xOllama from Claude")]; // xollama-hook: app-brand
                 [alert setInformativeText:portConflict
                     ? [NSString stringWithFormat:@"Change OLLAMA_HOST or quit the app using port %d, then try again.", ClaudeGatewayPort()]
                     : (gatewayError.length > 0
                         ? gatewayError
-                        : @"Ollama could not update Claude. Check the Ollama log for details.")];
+                        : @"xOllama could not update Claude. Check the xOllama log for details.")]; // xollama-hook: app-brand
                 [alert runModal];
                 return;
             }
@@ -1368,7 +1368,7 @@ didCompleteWithError:(NSError *)error {
         [installAlert setIcon:ollamaApplicationIcon()];
         [installAlert setMessageText:@"ChatGPT is not installed"];
         [installAlert setInformativeText:
-            @"Download ChatGPT to add Ollama models to the ChatGPT app."];
+            @"Download ChatGPT to add xOllama models to the ChatGPT app."]; // xollama-hook: app-brand
         [installAlert addButtonWithTitle:@"Download ChatGPT"];
         [installAlert addButtonWithTitle:@"Cancel"];
         if ([installAlert runModal] == NSAlertFirstButtonReturn) {
@@ -1406,10 +1406,10 @@ didCompleteWithError:(NSError *)error {
                 [alert setAlertStyle:NSAlertStyleWarning];
                 [alert setIcon:ollamaApplicationIcon()];
                 [alert setMessageText:enabled
-                    ? @"Unable to add Ollama models to ChatGPT"
-                    : @"Unable to remove Ollama models from ChatGPT"];
+                    ? @"Unable to add xOllama models to ChatGPT" // xollama-hook: app-brand
+                    : @"Unable to remove xOllama models from ChatGPT"]; // xollama-hook: app-brand
                 [alert setInformativeText:
-                    @"ChatGPT could not complete the model update. Check the Ollama log for details, then try again."];
+                    @"ChatGPT could not complete the model update. Check the xOllama log for details, then try again."]; // xollama-hook: app-brand
                 [alert runModal];
                 return;
             }
@@ -1518,7 +1518,7 @@ didCompleteWithError:(NSError *)error {
         self.statusItem.button.image = statusImage;
     } else {
         self.statusItem.button.image = nil;
-        self.statusItem.button.title = @"Ollama";
+        self.statusItem.button.title = @"xOllama"; // xollama-hook: app-brand
     }
 }
 
@@ -1548,9 +1548,9 @@ didCompleteWithError:(NSError *)error {
         NSAlert *alert = [[NSAlert alloc] init];
         [alert setAlertStyle:NSAlertStyleWarning];
         [alert setIcon:ollamaApplicationIcon()];
-        [alert setMessageText:@"Restart Claude before quitting Ollama?"];
+        [alert setMessageText:@"Restart Claude before quitting xOllama?"]; // xollama-hook: app-brand
         [alert setInformativeText:
-            @"Claude must restart before Ollama quits. Any running task will stop."];
+            @"Claude must restart before xOllama quits. Any running task will stop."]; // xollama-hook: app-brand
         [alert addButtonWithTitle:@"Restart Claude and Quit"];
         [alert addButtonWithTitle:@"Cancel"];
         if ([alert runModal] != NSAlertFirstButtonReturn) {
@@ -1579,9 +1579,9 @@ didCompleteWithError:(NSError *)error {
             NSAlert *alert = [[NSAlert alloc] init];
             [alert setAlertStyle:NSAlertStyleWarning];
             [alert setIcon:ollamaApplicationIcon()];
-            [alert setMessageText:@"Unable to quit Ollama"];
+            [alert setMessageText:@"Unable to quit xOllama"]; // xollama-hook: app-brand
             [alert setInformativeText:
-                @"Ollama couldn’t update Claude, so it is still running. Check the Ollama log and try again."];
+                @"xOllama couldn’t update Claude, so it is still running. Check the xOllama log and try again."]; // xollama-hook: app-brand
             [alert runModal];
         });
     });
@@ -1605,10 +1605,10 @@ didCompleteWithError:(NSError *)error {
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 - (void)registerSelfAsLoginItem:(BOOL)firstTimeRun {
     appLogInfo(@"using v13+ SMAppService for login registration");
-    // Maps to the file Ollama.app/Contents/Library/LaunchAgents/com.ollama.ollama.plist
-    SMAppService* service = [SMAppService agentServiceWithPlistName:@"com.ollama.ollama.plist"];
+    // Maps to the file Ollama.app/Contents/Library/LaunchAgents/com.mann1x.xollama.plist // xollama-hook: app-brand
+    SMAppService* service = [SMAppService agentServiceWithPlistName:@"com.mann1x.xollama.plist"]; // xollama-hook: app-brand
     if (!service) {
-        appLogInfo(@"SMAppService failed to find service for com.ollama.ollama.plist");
+        appLogInfo(@"SMAppService failed to find service for com.mann1x.xollama.plist"); // xollama-hook: app-brand
         return;
     }
     SMAppServiceStatus status = [service status];
@@ -1672,7 +1672,7 @@ didCompleteWithError:(NSError *)error {
             CFStringRef displayName = LSSharedFileListItemCopyDisplayName((LSSharedFileListItemRef)item);
             if (displayName) {
                 NSString *name = (__bridge NSString *)displayName;
-                if ([name hasPrefix:@"Ollama"]) {
+                if ([name hasPrefix:@"xOllama"]) { // xollama-hook: app-brand
                     LSSharedFileListItemRemove(loginItems, (LSSharedFileListItemRef)item);
                     appLogInfo([NSString stringWithFormat:@"removing dangling login item %@", displayName]);
                 }
@@ -1754,14 +1754,14 @@ decidePolicyForNavigationAction:(WKNavigationAction *)action
     [alert setIcon:ollamaApplicationIcon()];
 
     if ([message isEqualToString:@"Restart Claude Desktop to use Ollama? Any running task will stop."]) {
-        [alert setMessageText:@"Restart Claude Desktop to use Ollama?"];
+        [alert setMessageText:@"Restart Claude Desktop to use xOllama?"]; // xollama-hook: app-brand
         [alert setInformativeText:
-            @"Claude Desktop must restart to use Ollama. Any running task will stop."];
+            @"Claude Desktop must restart to use xOllama. Any running task will stop."]; // xollama-hook: app-brand
         [alert addButtonWithTitle:@"Restart Claude Desktop"];
     } else if ([message isEqualToString:@"Restart Claude Desktop to remove Ollama? Any running task will stop."]) {
-        [alert setMessageText:@"Restart Claude Desktop to remove Ollama?"];
+        [alert setMessageText:@"Restart Claude Desktop to remove xOllama?"]; // xollama-hook: app-brand
         [alert setInformativeText:
-            @"Claude Desktop must restart to remove Ollama. Any running task will stop."];
+            @"Claude Desktop must restart to remove xOllama. Any running task will stop."]; // xollama-hook: app-brand
         [alert addButtonWithTitle:@"Restart Claude Desktop"];
     } else if ([message hasPrefix:@"Restart ChatGPT to add Ollama models?"]) {
         configureChatGPTRestartAlert(alert, ChatGPTRestartActionAddModels);
@@ -1892,9 +1892,7 @@ static BOOL isOllamaApplication(NSRunningApplication *app) {
     if (bundleId == nil || bundleId.length == 0) {
         return NO;
     }
-    return [bundleId isEqualToString:[[NSBundle mainBundle] bundleIdentifier]] ||
-        [bundleId isEqualToString:@"ai.ollama.ollama"] ||
-        [bundleId isEqualToString:@"com.electron.ollama"];
+    return [bundleId isEqualToString:[[NSBundle mainBundle] bundleIdentifier]]; // xollama-hook: app-brand (a stock Ollama app is not an instance of this one)
 }
 
 bool otherOllamaProcesses(AppProcessIdentity **processes, size_t *count) {
@@ -2024,7 +2022,7 @@ bool moveToApplications(const char *src) {
 }
 
 AuthorizationRef getSymlinkAuthorization() {
-    return getAuthorization(@"Ollama is trying to install its command line "
+    return getAuthorization(@"xOllama is trying to install its command line " // xollama-hook: app-brand
                             @"interface (CLI) tool.",
                             @"symlink");
 }
@@ -2176,7 +2174,7 @@ enum AppMove askToMoveToApplications() {
     NSAlert *alert = [[NSAlert alloc] init];
     [alert setMessageText:@"Move to Applications?"];
     [alert setInformativeText:
-               @"Ollama works best when run from the Applications directory."];
+               @"xOllama works best when run from the Applications directory."]; // xollama-hook: app-brand
     [alert addButtonWithTitle:@"Move to Applications"];
     [alert addButtonWithTitle:@"Don't move"];
 
@@ -2225,7 +2223,7 @@ void launchApp(const char *appPath) {
 }
 
 int installSymlink(const char *cliPath) {
-    NSString *linkPath = @"/usr/local/bin/ollama";
+    NSString *linkPath = @"/usr/local/bin/xollama"; // xollama-hook: app-brand
     NSString *dirPath = @"/usr/local/bin";
     NSError *error = nil;
 
@@ -2274,7 +2272,7 @@ int installSymlink(const char *cliPath) {
     // Create the symlink using the same authorization
     const char *toolPath = "/bin/ln";
     const char *args[] = {"-s", "-F", [resPath UTF8String],
-                          "/usr/local/bin/ollama", NULL};
+                          "/usr/local/bin/xollama", NULL}; // xollama-hook: app-brand
     FILE *pipe = NULL;
 
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"

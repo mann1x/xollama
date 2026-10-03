@@ -106,6 +106,15 @@ paths:
   media test before 2026-10-03 ran on hand-placed copies, and no build
   shipped them. Guards: `llm/engine/pin_sidecar_test.go`,
   `TestCMakeStagesTheSidecarsThePinNames` (runs the real script).
+- **macOS** is the package `macos-aarch64` (`ArchMacOS`; Apple silicon only,
+  `darwin/amd64` has no label): a `bin` row naming the same APE as Linux, an
+  `accel macos-aarch64 Metal` row, and sidecar rows `ape` (the loader,
+  `MacLoader`), `metal` (the Metal library, a sidecar and not a `dso`) and the
+  media three. The engine is started as `<dir>/ape-macos-aarch64 <engine> …`
+  (`run` in `llm/engine/opencoti.go`), so `cmake/opencoti-fetch.cmake` stages
+  the `ape` kind executable (`TestCMakeStagesTheMacLoaderExecutable`) and
+  `ArtifactOf` skips the loader. Take the loader, the Metal library and the
+  engine from one snapshot. Guards: `llm/engine/macos_test.go`.
 - `Find` in `llm/engine/opencoti.go` knows **both** artifact names: release
   `opencoti-llamafile-<version>-<tag>-<arch>.llamafile[.exe]` and the dev bare APE
   `opencoti-<version>-<build>` (no extension; `filepath.Ext` sees the version's

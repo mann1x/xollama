@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -139,15 +140,21 @@ func HomeOf(env []string) string {
 // installed and removed with it, and in nobody's home directory.
 //
 // It is not always writable, and that is not a fault. A packaged Linux install
-// leaves that directory root-owned while the service runs as `ollama`; a macOS
-// install puts it inside a signed app bundle, where writing would be worse than
-// unhelpful. So `~/.ollama/engines/payload` follows as a fallback -- still
+// leaves that directory root-owned while the service runs as `ollama`. So `~/.ollama/engines/payload` follows as a fallback -- still
 // ours, and still never the user's `~/.llamafile`, which is the directory they
 // keep their own opencoti builds in and the one this whole file exists to stay
 // out of.
 func DefaultPayloadRoots(libOllamaPath, home string) []string {
+	return payloadRoots(runtime.GOOS, libOllamaPath, home)
+}
+
+// payloadRoots is DefaultPayloadRoots for one OS. macOS gets the home
+// directory only: its runtime directory is inside the signed app bundle, a
+// user-owned install leaves it writable, and a file written there breaks the
+// bundle's signature.
+func payloadRoots(goos, libOllamaPath, home string) []string {
 	var roots []string
-	if libOllamaPath != "" {
+	if libOllamaPath != "" && goos != "darwin" {
 		roots = append(roots, filepath.Join(libOllamaPath, "engines", "payload"))
 	}
 	if home != "" {

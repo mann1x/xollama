@@ -366,6 +366,14 @@ while(_sidecar_index LESS _sidecar_count)
         endif()
         file(RENAME "${_sidecar_dest}.part" "${_sidecar_dest}")
     endif()
+    # The macOS loader is the one sidecar that is run, not loaded: the engine is
+    # started through it, so its execute bit is part of the payload.
+    if(_sidecar_kind STREQUAL "ape")
+        file(CHMOD "${_sidecar_dest}" PERMISSIONS
+            OWNER_READ OWNER_WRITE OWNER_EXECUTE
+            GROUP_READ GROUP_EXECUTE
+            WORLD_READ WORLD_EXECUTE)
+    endif()
     message(STATUS "opencoti-llamafile ${_tag} (${_sidecar_arch}) ${_sidecar_kind} sidecar staged at ${_sidecar_dest}")
 endwhile()
 

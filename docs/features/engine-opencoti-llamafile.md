@@ -57,8 +57,9 @@ Everything above those — scheduling, memory estimation, the `/api/*` surface,
 parsers, templates — is engine-agnostic. **Replacing the engine is replacing
 a binary path and an argv, not rewriting ollama.**
 
-macOS/MLX is a separate path entirely (`server/sched.go:588` →
-`x/mlxrunner.NewClient`) and is not touched.
+MLX is a separate path entirely (`server/sched.go:588` →
+`x/mlxrunner.NewClient`) and is not touched. GGUF models on Apple silicon go
+through this seam like any other: see "macOS" below.
 
 ## Compatibility — measured, not assumed
 
@@ -153,7 +154,9 @@ llama.cpp.
 | Windows x86_64 + CUDA/Vulkan | **opencoti** | `-win-gpu` artifact |
 | **NVIDIA below compute 7.5** | `llama-server` | engine has no code for it; see below |
 | **ROCm / Radeon** | `llama-server` | no tested opencoti backend |
-| macOS (Metal / MLX) | untouched | MLX path, `x/mlxrunner` |
+| macOS arm64 + Metal / CPU | **opencoti** | started through `ape-macos-aarch64`; see "macOS" |
+| macOS x86_64 | `llama-server` | opencoti publishes no Intel Mac files |
+| MLX models | untouched | MLX path, `x/mlxrunner` |
 | anything else | `llama-server` | default deny |
 
 The matrix lives in `policy.go` as data, with a test. Adding a backend to
@@ -332,7 +335,7 @@ ollama's own library directory, beside `llama-server` and the ggml backends.
 |---|---|
 | Windows | `%LOCALAPPDATA%\Programs\Ollama\lib\ollama\engines\payload` |
 | Linux | `/usr/local/lib/ollama/engines/payload` |
-| macOS | `Ollama.app/Contents/Resources/lib/ollama/engines/payload` |
+| macOS | `~/.ollama/engines/payload` (never the app bundle) |
 
 giving, in full:
 
@@ -342,7 +345,9 @@ giving, in full:
 
 It is not always writable, and that is expected rather than an error. A packaged
 Linux install leaves that directory owned by `root` while the service runs as
-`ollama`; a macOS install puts it inside a signed application bundle. Where the
+`ollama`. On macOS the runtime directory is inside the signed application
+bundle, which a user-owned install leaves writable and which a write would
+break, so it is not offered at all (`payloadRoots`). Where the
 preferred root cannot be written, xollama falls back to
 `~/.ollama/engines/payload` — still its own directory, never your `~/.llamafile`.
 Whether a root is writable is **checked before any work**, so a root that cannot
@@ -463,3 +468,36 @@ What the A/B settled about the engines themselves: single-stream throughput is
 parity (within 2%), concurrency at `-np 4` is 27% slower on opencoti, and the
 VRAM-overflow path aborts rather than spilling. See
 [`docs/evaluations/phase2-engine-ab.md`](../evaluations/phase2-engine-ab.md).
+
+## macOS
+
+Apple silicon only. opencoti publishes its macOS files for arm64 and nothing
+for Intel, so `PackageArch` has `darwin/arm64` → `macos-aarch64` and no label
+for `darwin/amd64`, which stays on llama.cpp in a universal app.
+
+- **The package** is the pin's `bin macos-aarch64` row (the same APE file as
+  Linux) and its `#! sidecar macos-aarch64` rows: `ape` (the loader), `metal`
+  (`ggml-metal-aarch64.dylib`), `codec`, `audiocpp`, `espeak` and the licence
+  texts. Metal is a sidecar, not a `dso`: the `accel macos-aarch64 Metal` row
+  is what routes it.
+- **The launch** is `<dir>/ape-macos-aarch64 <engine> --server …` (`run` in
+  `llm/engine/opencoti.go`, shared by the launch, the device listing and the
+  link probe). Started any other way the engine compiles a loader with `cc`
+  on first use, which a Mac without the Xcode tools cannot do. A missing
+  loader is a Warn and stock llama.cpp, never a failed load.
+- **`--gpu apple`** selects Metal (`gpuFlag`). Discovery takes the engine's
+  own device line (`MTL0`), as it does for CUDA and Vulkan.
+- **The build** stages the files with `cmake/opencoti-fetch.cmake` from
+  `scripts/build_darwin.sh` (`_stage_opencoti_engine`) into
+  `Contents/Resources/engines`; the loader is staged executable. The same
+  script signs them (`_sign_opencoti_engine`): the loader with
+  `app/darwin/engine-loader.entitlements`
+  (`com.apple.security.cs.allow-unsigned-executable-memory`; without it the
+  hardened runtime kills it at start), and the libraries with the same
+  identity, because library validation refuses another team's. The engine
+  file is not a Mach-O and is sealed as a resource.
+- **Limits on Metal** (opencoti's, not xollama's): KVarN cache types are
+  refused by name, DCA attention runs on the host, and the rolling KV window
+  has no meaning on unified memory.
+
+Registry row `macos-engine`.

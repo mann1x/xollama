@@ -49,8 +49,10 @@ set(XOLLAMA_ENGINE_PIN "${CMAKE_CURRENT_SOURCE_DIR}/llm/engine/pin.txt")
 # the size but carries no GPU payload, and an installer that needs a second
 # download before it can use the GPU is not an installer.
 #
-# APPLE is absent by design, not by omission. macOS keeps ollama's MLX path and
-# never routes to this engine, so nothing is staged there.
+# APPLE stages nothing HERE: scripts/build_darwin.sh configures once per
+# architecture and merges the two into a universal payload, so it stages the
+# arm64-only engine once, after the merge (_stage_opencoti_engine), with the
+# same cmake/opencoti-fetch.cmake.
 function(_xollama_engine_arch out)
     if(XOLLAMA_OPENCOTI_ENGINE_ARCH)
         set(${out} "${XOLLAMA_OPENCOTI_ENGINE_ARCH}" PARENT_SCOPE)

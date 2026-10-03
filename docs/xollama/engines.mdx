@@ -8,7 +8,9 @@ xollama can serve a GGUF model on either of two engines:
 - **`opencoti`** — opencoti-llamafile, a llamafile fork carrying extra KV-capacity
   and long-context work. See [Tuning opencoti](/xollama/opencoti-tuning).
 
-macOS MLX models are a separate path and are never routed here.
+On a Mac with Apple silicon, opencoti serves GGUF models on Metal; an Intel Mac
+has no opencoti build and stays on `llamacpp`. MLX models are a separate path
+and are never routed here.
 
 ## Selecting one
 

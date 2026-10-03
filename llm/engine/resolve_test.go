@@ -28,7 +28,7 @@ func TestAVoltaCardGoesToLlamaCPPWhenThePinHasNoCUDA12Payload(t *testing.T) {
 func TestResolve(t *testing.T) {
 	withPin(t, allPayloadsPin())
 	linux := Platform{OS: "linux", Arch: "amd64"}
-	mac := Platform{OS: "darwin", Arch: "arm64"}
+	mac := Platform{OS: "darwin", Arch: "amd64"}
 
 	cases := []struct {
 		name     string

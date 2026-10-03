@@ -20,9 +20,9 @@ func TestSupportsRefusesWhatIsNotTested(t *testing.T) {
 		// backend, on any platform.
 		{"rocm on linux amd64", Platform{"linux", "amd64"}, BackendROCm},
 		{"rocm on windows", Platform{"windows", "amd64"}, BackendROCm},
-		// macOS keeps ollama's own MLX path; this package never routes there.
-		{"metal on darwin", Platform{"darwin", "arm64"}, BackendMetal},
-		{"cpu on darwin", Platform{"darwin", "arm64"}, BackendCPU},
+		// opencoti publishes no files for an Intel Mac.
+		{"metal on an intel mac", Platform{"darwin", "amd64"}, BackendMetal},
+		{"cpu on an intel mac", Platform{"darwin", "amd64"}, BackendCPU},
 		// Published artifacts are x86_64 and aarch64 only.
 		{"cuda on linux 386", Platform{"linux", "386"}, BackendCUDA},
 		// No aarch64 Windows artifact.
