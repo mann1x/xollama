@@ -145,11 +145,11 @@ func (t *councilTree) dropForCompaction(ctx context.Context) {
 	t.mu.Unlock()
 	for i := len(ls) - 1; i >= 0; i-- {
 		if err := t.kv.ReleasePool(ctx, ls[i].id); err != nil {
-			slog.Debug("council: could not release a pool before compacting", "pool", ls[i].id, "error", err)
+			unreleased("a pool before compacting", ls[i].id, err)
 		}
 		for j := len(ls[i].chain) - 1; j >= 0; j-- {
 			if err := t.kv.ReleasePool(ctx, ls[i].chain[j]); err != nil {
-				slog.Debug("council: could not release an older root before compacting", "pool", ls[i].chain[j], "error", err)
+				unreleased("an older root before compacting", ls[i].chain[j], err)
 			}
 		}
 	}

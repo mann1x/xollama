@@ -3,6 +3,7 @@ package discover
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -37,7 +38,33 @@ var opencotiListDevices = func(ctx context.Context, artifact string, b engine.Ba
 	cmd.WaitDelay = llamaServerDiscoveryWaitDelay
 	cmd.Env = envconfig.Environ()
 	out, err := cmd.CombinedOutput()
+	if err != nil {
+		err = fmt.Errorf("%w; engine output: %s", err, outputTail(string(out)))
+	}
 	return string(out), err
+}
+
+// outputTail is the end of an engine's output, short enough for one log line:
+// the last few non-empty lines, which is where a failing engine says why.
+func outputTail(out string) string {
+	const maxLines, maxBytes = 5, 512
+	var lines []string
+	for l := range strings.SplitSeq(out, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			lines = append(lines, l)
+		}
+	}
+	if len(lines) == 0 {
+		return "(none)"
+	}
+	if len(lines) > maxLines {
+		lines = lines[len(lines)-maxLines:]
+	}
+	tail := strings.Join(lines, " | ")
+	if len(tail) > maxBytes {
+		tail = "..." + tail[len(tail)-maxBytes:]
+	}
+	return tail
 }
 
 // opencotiArtifact locates the engine the way a launch does, so discovery
@@ -135,8 +162,12 @@ func overlayOpencotiDevices(ctx context.Context, devices []ml.DeviceInfo) []ml.D
 		listed, err := opencotiListing(ctx, artifact, b) // xollama: CUDA 12 payload too
 		slog.Debug("opencoti device enumeration", "backend", b, "devices", len(listed), "duration", time.Since(start), "error", err)
 		if err != nil && len(listed) == 0 {
-			// Nothing to be authoritative with; the engine may simply have no
-			// payload for this backend on this host. llama.cpp's view stands.
+			// Nothing to be authoritative with, so llama.cpp's view stands. The
+			// pinned engine serves this backend here (Enumerates), so a failed
+			// listing is a fault: a later opencoti launch on these devices
+			// fails for the same reason, and this is the line that says why.
+			slog.Warn("opencoti could not list its devices; placement uses llama.cpp's view of them",
+				"backend", b, "artifact", artifact, "error", err)
 			continue
 		}
 		devices = mergeOpencotiBackend(devices, string(b), listed, selector)

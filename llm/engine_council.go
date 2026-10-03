@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -372,14 +373,29 @@ func isPathSafe(id string) bool {
 	}) < 0
 }
 
+// engineQueueBudget bounds how long engineRequestQueued waits out the engine's
+// 429s: the same budget as a request waiting to be seated
+// (admissionRetryBudget). A variable so tests can shorten it.
+var engineQueueBudget = admissionRetryBudget
+
 // engineRequestQueued is engineRequest with the engine's 429 read as a queue:
-// it waits Retry-After and asks again, until ctx ends.
+// it waits Retry-After and asks again, until ctx ends or engineQueueBudget is
+// spent. Spent, it fails with errNoAdmission and the engine's last refusal,
+// said at Warn: an engine that refuses a pool for minutes is a fault to name,
+// not a wait to sit through until the client gives up.
 func (s *llamaServerRunner) engineRequestQueued(ctx context.Context, method, path string, body []byte) (int, []byte, error) {
-	for {
+	deadline := time.Now().Add(engineQueueBudget)
+	for attempt := 1; ; attempt++ {
 		status, out, retry, err := s.engineRequestRetry(ctx, method, path, body)
 		if err != nil || status != http.StatusTooManyRequests {
 			return status, out, err
 		}
+		last := string(bytes.TrimSpace(out))
+		if time.Now().Add(retry).After(deadline) {
+			slog.Warn("engine kept refusing; giving up", "method", method, "path", path, "attempts", attempt, "budget", engineQueueBudget, "refusal", last)
+			return 0, nil, fmt.Errorf("%w (%s %s, last refusal: %s)", errNoAdmission, method, path, last)
+		}
+		slog.Debug("engine has no room yet, waiting", "method", method, "path", path, "attempt", attempt, "wait", retry, "refusal", last)
 		select {
 		case <-ctx.Done():
 			return 0, nil, ctx.Err()

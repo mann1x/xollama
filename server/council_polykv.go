@@ -347,8 +347,14 @@ func (t *councilTree) rootText(ctx context.Context, conv []api.Message) (string,
 // compacting when it is llm.ErrSessionFull.
 func (t *councilTree) buildRoot(ctx context.Context, conv []api.Message) error {
 	text, err := t.rootText(ctx, conv)
-	if err != nil || text == "" {
-		slog.Debug("council: no conversation root", "error", err)
+	if err != nil {
+		// Not the engine's refusal (the caller compacts on that): the root's
+		// text could not be made, so no member shares the conversation.
+		slog.Warn("council: could not render the conversation root; each member holds its own copy", "error", err)
+		return nil
+	}
+	if text == "" {
+		slog.Debug("council: no conversation root")
 		return nil
 	}
 	t.mu.Lock()
@@ -442,10 +448,18 @@ func (t *councilTree) releaseRoot(ctx context.Context, r *councilRoot) {
 	ids := append(slices.Clone(r.chain), r.id)
 	for i := len(ids) - 1; i >= 0; i-- {
 		if err := t.kv.ReleasePool(ctx, ids[i]); err != nil {
-			slog.Debug("council: could not release the last turn's root", "pool", ids[i], "error", err)
+			unreleased("the last turn's root", ids[i], err)
 			return
 		}
 	}
+}
+
+// unreleased names a pool the engine did not let go. Its cells stay booked in
+// the owner's allocation until the session ends, and a later stage or the
+// synthesizer may then not be seated (bug-118), so it is said at Warn: the
+// line that explains a refusal minutes later.
+func unreleased(what string, pool int, err error) {
+	slog.Warn("council: could not release "+what+"; its cells stay booked in the owner", "pool", pool, "error", err)
 }
 
 // dropKept lets the kept root go before the conversation is compacted from
@@ -540,7 +554,7 @@ func (t *councilTree) workerPlacement(ctx context.Context, msgs []api.Message, s
 	}
 	l, err := t.layer(ctx, text, layerMsgs)
 	if err != nil {
-		slog.Info("council: pool not built, member runs unpooled", "error", err)
+		slog.Warn("council: pool not built, member runs unpooled and prefills its own copy", "session", session, "error", err)
 		return nil
 	}
 	t.mu.Lock()
@@ -692,7 +706,7 @@ func (t *councilTree) hasChildLocked(p *councilLayer) bool {
 func (t *councilTree) releaseLayers(ctx context.Context, ls []*councilLayer) {
 	for _, l := range ls {
 		if err := t.kv.ReleasePool(ctx, l.id); err != nil {
-			slog.Debug("council: could not release a finished layer", "pool", l.id, "error", err)
+			unreleased("a finished layer", l.id, err)
 			continue
 		}
 		slog.Debug("council: released a finished layer", "pool", l.id)
@@ -747,7 +761,7 @@ func (t *councilTree) release() {
 	t.mu.Unlock()
 	for i := len(order) - 1; i >= 0; i-- {
 		if err := t.kv.ReleasePool(ctx, order[i].id); err != nil {
-			slog.Debug("council: could not release a pool", "pool", order[i].id, "error", err)
+			unreleased("a pool", order[i].id, err)
 		}
 	}
 }
@@ -796,7 +810,7 @@ func (t *councilTree) promoteRoot(ctx context.Context) {
 		// sessions).
 		slog.Info("council: the owner's root came back unowned; releasing it", "session", t.owner, "pool", p.ID, "warning", p.Warn)
 		if err := t.kv.ReleasePool(ctx, p.ID); err != nil {
-			slog.Debug("council: could not release an unowned root", "pool", p.ID, "error", err)
+			unreleased("an unowned root", p.ID, err)
 		}
 		return
 	}

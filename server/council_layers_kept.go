@@ -49,7 +49,7 @@ type councilStash struct {
 func (s *councilStash) release(ctx context.Context) {
 	for i := len(s.layers) - 1; i >= 0; i-- {
 		if err := s.kv.ReleasePool(ctx, s.layers[i].id); err != nil {
-			slog.Debug("council: could not release a kept layer", "pool", s.layers[i].id, "error", err)
+			unreleased("a kept layer", s.layers[i].id, err)
 		}
 	}
 }
@@ -221,7 +221,7 @@ func (t *councilTree) dropAdopted(ctx context.Context) {
 	t.mu.Unlock()
 	for i := len(ls) - 1; i >= 0; i-- {
 		if err := t.kv.ReleasePool(ctx, ls[i].id); err != nil {
-			slog.Debug("council: could not release an adopted layer", "pool", ls[i].id, "error", err)
+			unreleased("an adopted layer", ls[i].id, err)
 		}
 	}
 }
