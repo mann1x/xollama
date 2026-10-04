@@ -251,6 +251,17 @@ loopback dial to a live engine timed out, the engine answered three seconds
 later, and a council turn was lost. Stock llama.cpp keeps upstream's single
 failure.
 
+On Windows an opencoti engine is tied to the server that started it
+(`engine-lifetime` hook, `engine.BindLifetime` in
+`llm/engine/lifetime_windows.go`): every engine, LLM or media, goes into one
+job object with kill-on-close, so a server that is killed or crashes takes its
+engines with it. Windows does not do that by itself, and an orphaned engine
+holding a model on an AMD discrete card through Vulkan hung the display driver
+within seconds (eleven2go, 2026-10-04: watchdog dump `0x141`, once the card
+gone until a reboot, once the machine frozen), while an engine terminated at
+once left the card fine. A binding that fails is a Warn, never a failed load.
+Stock llama.cpp is started as upstream starts it.
+
 ## Packaging
 
 The pin is opencoti's **pin format 2**, in `llm/engine/pin/`. The engine and

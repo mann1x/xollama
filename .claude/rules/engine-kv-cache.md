@@ -80,8 +80,8 @@ paths:
   `<artifact> --server <flags> --model /nonexistent.gguf`, and read reaching
   `failed to load model` as accepted, anything earlier as refused. Every row of
   `TestRingShapeMatchesWhatTheEngineAccepts` in `llm/engine_ring_shape_test.go`
-  is one such run; the probe date and artifact tag are recorded there and above
-  the `feature swa-cache-types` row in `llm/engine/pin/xollama.txt`.
+  is one such run; the probe date and artifact tag are recorded there. The
+  feature itself is the `feature cache_type_swa_v1` row in `llm/engine/pin/engine.txt`.
 - The report against opencoti's `docs/llamafile-flags.md` is **closed**
   (2026-09-20); do not re-file it — see `docs/features/opencoti-config-gaps.md`.
 - Prose: `docs/xollama/kv-cache.mdx`; numbers: `docs/evaluations/phase2-engine-ab.md`.

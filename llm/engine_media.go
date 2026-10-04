@@ -514,6 +514,7 @@ func (r *mediaRunner) start(gpus []ml.DeviceInfo) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+	bindEngineLifetime(cmd)
 
 	r.mu.Lock()
 	r.cmd, r.port, r.gpus, r.onGPU = cmd, port, gpus, len(gpus) > 0

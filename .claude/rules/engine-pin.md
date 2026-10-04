@@ -37,9 +37,9 @@ paths:
   `ggml-cuda-cu12-x86_64.so`, `ggml-vulkan-win-x86_64.dll`,
   `oc-codec-linux-x86_64.so`), which is the name the engine looks for. The
   engine is `file any bin` for every platform plus `file win-x86_64 bin
-  ....exe` for Windows; a platform takes its own row when there is one. The
-  one exception is not a file the engine reads: every component publishes a
-  `BUILD_INFO.md`, staged as `BUILD_INFO.<component>.md` (`Asset.StagedName`).
+  ....exe` for Windows; a platform takes its own row when there is one. A
+  name is unique across the components of an index (`Asset.StagedName`): both
+  parsers refuse two components that stage one name.
   The fetch removes what the classic pin staged under other names
   (`ggml-cuda.so`, `engines/cuda_v12`): a left-over library is one the engine
   may load instead of the pinned one.
@@ -73,10 +73,8 @@ paths:
   `llm/engine/pin_cuda_test.go`, `discover/opencoti_cuda12_test.go`.
 - Engine capabilities come from `feature` rows and are never inferred from the
   cut number in the engine's name: the engine pin's own rows
-  (`Pin.HasFeature`; `Pin.HasFeatureOn` for one limited to some platforms),
-  plus xollama's measured ones in `llm/engine/pin/xollama.txt`
-  (`swa-cache-types`, `log-memory-plan`), which only Go reads. A row there is
-  dropped once the engine's pin states it.
+  (`cache_type_swa_v1`, `log_memory_plan_v1`; `Pin.HasFeature`;
+  `Pin.HasFeatureOn` for one limited to some platforms).
 - `channel` is `release` or `dev`, declared in the index, never guessed.
   Never assert which Hugging Face repo is pinned: tests check the
   `<owner>/<name>` shape only.
