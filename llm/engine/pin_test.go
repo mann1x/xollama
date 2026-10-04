@@ -20,8 +20,13 @@ func TestCommittedPinParses(t *testing.T) {
 	if strings.Count(p.Repo, "/") != 1 || strings.HasPrefix(p.Repo, "/") || strings.HasSuffix(p.Repo, "/") {
 		t.Errorf("Repo = %q, want an <owner>/<name> path", p.Repo)
 	}
-	if !isCommitRev(p.Rev) || p.Tag == "" || !isBuildID(p.Version) || !strings.HasSuffix(p.Tag, p.Version) {
+	if !isCommitRev(p.Rev) || p.Tag == "" || !isBuildID(p.Version) {
 		t.Errorf("Rev = %q, Tag = %q, Version = %q; all three are provenance and must be set", p.Rev, p.Tag, p.Version)
+	}
+	// A dev build's file name ends in its build id; a release's names the cut
+	// (opencoti-llamafile-0.10.5-c8-bare.llamafile) and the id is Version alone.
+	if p.Channel == ChannelDev && !strings.HasSuffix(p.Tag, p.Version) {
+		t.Errorf("Tag = %q on the dev channel, want it to end in the build id %q", p.Tag, p.Version)
 	}
 	if p.Channel != ChannelRelease && p.Channel != ChannelDev {
 		t.Errorf("Channel = %q, want %q or %q", p.Channel, ChannelRelease, ChannelDev)

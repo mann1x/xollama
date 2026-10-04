@@ -15,48 +15,53 @@
 # Moving a component is one line here plus its pin file, on a MEASUREMENT
 # (scripts/phase2-engine-ab.py, as the `ollama` user), never on a changelog.
 #
-# THIS PIN (2026-10-04, opencoti mail #782, index ad2b7db1, pins 08990a5c,
-# payload 771ce08f): engine 2610041714001 = patches 0555 to 0557. The engine
-# ends cleanly (graceful_shutdown_v1: loopback POST /shutdown; parent_watch_v1;
-# shutdown_gpu_policy_v1, OPENCOTI_SHUTDOWN_GPU auto = full everywhere), prints
-# a stable id per device (list_device_ids_v1: a PCI ID or uuid:<32 hex> with
-# OPENCOTI_LIST_DEVICE_IDS=1) and no longer dies on /props or /kv with Vulkan
-# on a glibc older than 2.34 (bug-3921, 0557). vulkan 2610041656001 is rebuilt
-# and states its abi ("abi ggml 41ba479c24d7 matches this engine"). cuda,
-# cuda12, macos and media keep their versions; their pin text changed.
+# THIS PIN (2026-10-05, opencoti mail #795, index 7d7e774b, pins 8855c5c2,
+# payload 1523ea1e): opencoti's c8 RELEASE, repo ManniX-ITA/opencoti-llamafile,
+# channel release. engine 2610042347001 is new bytes: the source of
+# 2610041714001 (xollama v0.35.1-rc.1) plus patch 0558 (bug-3922: on hybrid
+# models a planned KV rolling window cost speed before any cell left VRAM)
+# and 0559 (the boot line names c8). Its file is now named in the release
+# form, opencoti-llamafile-0.10.5-c8-bare.llamafile (.exe on Windows). The
+# abi digests are unchanged. cuda, cuda12, vulkan, macos and media are the
+# SAME FILES as the dev pin before (every sha256 unchanged); only their repo
+# and rev moved.
 #
 # MEASURED with these bytes, staged by cmake/opencoti-fetch.cmake under their
-# published names (/srv/ml/xb140):
-#   solidPC, RTX 3090, as `ollama` (results pin-b140): compat 8/8, llama3
-#     77.4 tok/s, 4 slots 301 tok/s, overflow 3.1 tok/s; speech 8/8
-#     transcribed back; video 33/33 frames; Vulkan on the Renoir iGPU
-#     33.5 tok/s, /props and /kv 200 (502, the engine dead, on 2610040950001);
-#     six chat turns, an OpenAI stream and a tool call with its result, 0
-#     refusals; the council gate of docs/protocols/RELEASE.md on three tags.
-#   Raspberry Pi 5 (dietpi5), aarch64, in an image: engine 9.8-9.9 tok/s,
-#     llama.cpp 10.8-10.9, 512 tokens each; speech 5/5 transcribed back.
+# published names (/srv/ml/xc8, 2026-10-05):
+#   solidPC, RTX 3090, as `ollama` (results pin-c8): compat 8/8, llama3
+#     77.3 tok/s, 4 slots 304 tok/s; the 70B model that overflows the card
+#     loads at 32k with POSITION_WINDOW mode ON, 62/81 layers, which retired
+#     the last row of llm/engine_defects.go; speech 8/8 transcribed back;
+#     video 33/33 frames on both models; Vulkan on the Renoir iGPU 34.7
+#     tok/s, /props and /kv 200; six chat turns, an OpenAI stream, a tool
+#     call and its result, 0 refusals; the council gate on three tags (the
+#     PolyKV tag 4 runs of 4 after the grammar-window fix).
+#   Raspberry Pi 5 (dietpi5), aarch64, in an image: engine 10.0-10.2 tok/s,
+#     llama.cpp 11.1, 512 tokens each; speech 5/5 transcribed back.
 #   Windows 11 (eleven2go, AMD Software 26.9.2), a side server, qwen3:8b:
-#     RTX 3090 CUDA 123.4-123.8 tok/s; RX 9070 XT Vulkan 100.8 cold,
-#     103.1-103.3 warm, /props and /kv 200, idle clean; a killed server's
-#     engine gone in 848 ms; ten POST /shutdown and reopen cycles of ten
-#     clean; Radeon iGPU Vulkan 5.3 tok/s, 37/37 layers; speech 4/4. Device
-#     ids: 3090 0000:11:00.0, 9070 XT and iGPU uuid:<32 hex>.
-# NOT MEASURED: macOS on this engine (the Mac mini run of the candidate); the
-#   eSpeak path limit of 259 on Windows; the CUDA 12 library on a card older
-#   than 7.5 (legacy: it ships and is tested on opportunity).
+#     RTX 3090 CUDA 123.3-123.5 tok/s; RX 9070 XT Vulkan 100.6 cold, 103.2
+#     warm, /props and /kv 200, clean after 120 s idle; a killed server's
+#     engine gone in 830 ms; Radeon iGPU Vulkan 5.4-5.5 tok/s, 37/37 layers;
+#     speech 4/4; "vulkan: abi ggml 41ba479c24d7 matches this engine".
+#   macOS (Mac mini, Apple silicon), a Developer ID signed, notarized
+#     bundle: the engine through ape on Metal, "metal: abi ggml 41ba479c24d7
+#     matches this engine"; qwen2.5:1.5b 125.0-127.9 tok/s, llama3 31.5-31.7;
+#     speech 7/7 answered (one OuteTTS voice read back with one wrong word).
+# NOT MEASURED: the eSpeak path limit of 259 on Windows; the CUDA 12 library
+#   on a card older than 7.5 (legacy: it ships and is tested on opportunity).
 # NOT USED YET: xollama still ends an engine with Process.Kill and does not
-#   read the uuid: ids; both are follow-ups, neither is needed by this pin.
-# The RX 9070 XT hang recorded here before was AMD's driver 32.0.31041.1004,
-#   fixed by 32.0.32015.2008 (AMD Software 26.9.2); see README.md.
+#   read the uuid: device ids; both are follow-ups.
+# AMD Radeon on Windows needs AMD Software 26.9.2 or later for Vulkan; see
+#   README.md.
 # `sbsa` is absent: nothing here routes CUDA on an arm64 server.
 
 format   2
-channel  dev
-tag      c8-dev
-engine   pin/engine.txt  rev 08990a5c051bd853ac45bc6bf132716d7cb5cb5b  sha256 9a3fc4d65616eed2da7ebbeec33b3fe9a5d0b299a98bd12de88e79d886b6657e  version 2610041714001
-cuda     pin/cuda.txt  rev 08990a5c051bd853ac45bc6bf132716d7cb5cb5b  sha256 cce6b8babe7ca55446155bd6e833ba06801e2b23a6751feb0f23a27a415d6e9e  version 2610040656001
-cuda12   pin/cuda12.txt  rev 08990a5c051bd853ac45bc6bf132716d7cb5cb5b  sha256 a4a344ceac8f820fbd9a9c10ad01d8329fffac842b7b9420ea220cec86846061  version 2610040730001
+channel  release
+tag      c8
+engine   pin/engine.txt  rev 8855c5c25038b8e8dd618321c401d8ce432eac10  sha256 ddefcccd569d38d2141b192aebfc5d79eb1730d3f2872152afcab9beecbe54c8  version 2610042347001
+cuda     pin/cuda.txt  rev 8855c5c25038b8e8dd618321c401d8ce432eac10  sha256 6db08adfab1f9048a5c605badad1762b85af6ab407c394b2206123bd4fee0292  version 2610040656001
+cuda12   pin/cuda12.txt  rev 8855c5c25038b8e8dd618321c401d8ce432eac10  sha256 610e25feeba38af16f3add0616923e55909e21d4d0cd5205443e6d652fb8dc1e  version 2610040730001
 sbsa     absent
-vulkan   pin/vulkan.txt  rev 08990a5c051bd853ac45bc6bf132716d7cb5cb5b  sha256 3dd6979ee6cd7c4fb61b7b2a4b72c9a19103db69cac74e7fff0e56804068ea70  version 2610041656001
-macos    pin/macos.txt  rev 08990a5c051bd853ac45bc6bf132716d7cb5cb5b  sha256 160c69acbbebe765d0a9e7c01ca218e6b6fb5dfe01f39cfa517aa3c6c78af4f1  version 2610041000001
-media    pin/media.txt  rev 08990a5c051bd853ac45bc6bf132716d7cb5cb5b  sha256 2a4bd40bfd98b70b81a3068145cc4ad3139735a75527de477f55159b0014d74c  version 2610040945001
+vulkan   pin/vulkan.txt  rev 8855c5c25038b8e8dd618321c401d8ce432eac10  sha256 a40b4ebf5afd6e4dcf330740d9e2496dbb453d133910ad47490312b768218d45  version 2610041656001
+macos    pin/macos.txt  rev 8855c5c25038b8e8dd618321c401d8ce432eac10  sha256 bee3e557f909662318286152d556c9149b39d8b02fe449b54c4d628a2b2e4348  version 2610041000001
+media    pin/media.txt  rev 8855c5c25038b8e8dd618321c401d8ce432eac10  sha256 cc98ec62c1fc763813140f935dd8414b84faea6b3ff6ed7ecfbae6aff070bfd6  version 2610040945001

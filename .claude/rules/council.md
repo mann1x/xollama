@@ -815,3 +815,14 @@ paths:
   `TestAnUnstatedFloorDoesNotAskForTheWholeWindow`. The release's council gate
   is `scripts/council-gate.py` on the tags named in
   `docs/protocols/RELEASE.md`.
+- **A schema conversion has a window of its own.** A thinking member with a
+  format (the planner, when the builder gives it a think level) has its schema
+  converted to a grammar by an empty completion first (`schemaGrammar`,
+  `llm/llama_server.go`), once per server process. On opencoti that request
+  states `llm.GrammarWindow` (512, `llm/engine_grammar.go`); unstated it asked
+  for a default window and was refused with the owners holding the pool ("largest
+  admissible 185 < this request's minimum window 258", a 429, 4 runs of 7 on
+  `gate/council-kv3-384k`, on two engines, 2026-10-05). The council asks the
+  owner for that room before the call (`grammarRoom`, `server/council_room.go`).
+  A gate that passes once does not clear this kind of fault: it depends on what
+  the builder writes, so run the PolyKV tag several times.

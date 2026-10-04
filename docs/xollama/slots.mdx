@@ -241,49 +241,12 @@ Ollama's own, unchanged.
   physical copy under the split. You do not have to choose.
 </Note>
 
-<Warning>
-  **A model too large for your VRAM still aborts on the engine xollama ships.**
-  Measured 2026-09-20 on `opencoti-llamafile-0.10.5-c7` r2: a 39.2 GiB model on
-  a 24 GiB card fails in under three seconds with
-  `ggml_new_object: not enough space in the context's memory pool`, while the
-  engine is placing KV cache layers on the CPU. Stock llama.cpp loads the same
-  model on the same card, and the same engine serves a model that *fits* at
-  full speed — so it is the partial offload specifically.
-
-  It is the rolling-KV **position-window** tactic specifically, which
-  `--kv-residency-mode auto` picks only under real VRAM pressure. Forcing the
-  other tactic is measured to work, and is the fix to reach for first:
-
-  ```shell
-  LLAMA_ARG_KV_RESIDENCY_MODE=head xollama serve
-  ```
-
-  That loaded the same 39.2 GiB model on the same 24 GiB card at 2.85 tok/s —
-  faster than stock llama.cpp managed on the same arm.
-
-  **This applies to the released engine. On the development line the abort is
-  gone, so there is nothing to work around.** Re-measured 2026-09-23 on dev
-  builds `2609230556001` and `2609230917001`, with `POSITION_WINDOW mode ON`
-  confirmed in the log: both load the model that the released engine aborts on.
-  If you are running a build from the development channel, you do not need this
-  setting.
-
-  An earlier version of this page claimed `head` had *inverted* into the slower
-  arm on those bytes, at 5.04 tok/s against 7.70. That was wrong and is
-  withdrawn: the figures came from two-token generations, where warm-up cost
-  dominates and no decode rate can be read at all. Measured properly — 256
-  tokens, `ignore_eos`, quiet card — `auto` and `head` are within a few percent
-  of each other on the dev line, as are builds 21, 24 and 29. Neither arm is
-  meaningfully faster, so pick on whether the model loads, not on throughput.
-
-  Failing that, keep the load resident: a smaller model or quantisation, a lower `num_ctx`, or a
-  compressed [KV cache type](/xollama/kv-cache); `XOLLAMA_ENGINE=llamacpp`
-  serves it too. xollama recognises this abort and says all of this rather than
-  leaving you the raw message.
-
-  A *second*, separate crash — a failed assertion in the attention kernel as
-  soon as the rolling-KV window spilled to host RAM — was real in the first c7
-  cut and **is** fixed in the r2 build that ships (opencoti's patch 0253). The
-  two were reported to us as one bug; retaking the measurement is what showed
-  they are not. Numbers for both: [Phase 2](https://github.com/mann1x/xollama/blob/main/docs/evaluations/phase2-engine-ab.md).
-</Warning>
+<Note>
+  **A model too large for your VRAM loads on the engine xollama ships.** On the
+  engine before (`opencoti-llamafile-0.10.5-c7` r2) a 39.2 GiB model on a
+  24 GiB card aborted with
+  `ggml_new_object: not enough space in the context's memory pool`. Measured
+  2026-10-05 on opencoti c8 (engine `2610042347001`): the same model on the
+  same card loads at a 32k context, 62 of 81 layers on the GPU, with no
+  setting. `LLAMA_ARG_KV_RESIDENCY_MODE=head` is no longer needed for it.
+</Note>

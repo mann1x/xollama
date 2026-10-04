@@ -888,3 +888,23 @@ This is the last open item from [the observation reported to
 opencoti](#one-new-observation-not-a-regression-reported-to-opencoti); it needs
 no workaround in this tree, because `resolveDraftType` only lets a pin override
 an inferred driver and `xollama show` now prints the resolved one.
+
+## 2026-10-05: the overflow axis on opencoti c8, and the defect row retired
+
+Engine `2610042347001` (opencoti's c8 release, `opencoti-llamafile-0.10.5-c8-bare.llamafile`),
+solidPC, RTX 3090, as the `ollama` user, `scripts/phase2-engine-ab.py --engine opencoti --axis all`
+(results `/srv/ml/xollama-phase2/as-ollama/pin-c8`).
+
+| Axis | Result |
+|---|---|
+| compat | 8 of 8 load |
+| throughput, `llama3` | 77.3 tok/s (median of 3) |
+| 4 slots, `qwen2.5:1.5b` | 304 tok/s in aggregate |
+| overflow, `llama3.1:70b-instruct-q3_K_S` (39.2 GiB on 24 GiB) | **loads**, 57.1% in VRAM, 62/81 layers offloaded, 64 tokens generated |
+
+The overflow load's log has `rolling-kv POSITION_WINDOW mode ON (--kv-residency-mode auto)` at
+`n_ctx_slot = 32768`, the tactic and the context the c7 r2 bytes aborted on above. So the row in
+`llm/engine_defects.go` is retired with this pin, together with the
+`LLAMA_ARG_KV_RESIDENCY_MODE=head` advice in `docs/xollama/slots.mdx`. The 3.7 tok/s the axis
+reports comes from 64 tokens and is not a decode rate; the claim is the load. Nothing above is
+deleted: it is what the c7 r2 bytes did.
