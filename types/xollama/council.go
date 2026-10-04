@@ -169,8 +169,10 @@ type CouncilContext struct {
 	// pressure is gone (kv_resize_v1).
 	Window int `json:"window,omitempty"`
 
-	// Floor is the smallest window the council accepts (num_ctx_min). Zero
-	// means all or nothing.
+	// Floor is the smallest window the council accepts (num_ctx_min), all of
+	// it or nothing. Zero states none: the first booking then takes the
+	// largest window the engine has, down to the room the roles need, and the
+	// window is the floor for everything after it.
 	Floor int `json:"floor,omitempty"`
 
 	// CompactAt is the owner session's /kv pressure (PolyKV) at which the

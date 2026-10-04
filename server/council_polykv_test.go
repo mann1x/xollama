@@ -172,6 +172,15 @@ func (f *fakeKV) Resize(_ context.Context, id string, numCtx int, deferred bool)
 func polykvCouncil(t *testing.T, e *councilEngine, kv *fakeKV, c *xollama.Council) *Server {
 	t.Helper()
 	kv.councilRunner = &councilRunner{mockRunner: &mockRunner{contextLength: 32768}, e: e}
+	// These fixtures hold a default council in 16384 or 4096 tokens, less
+	// than its roles may write. A council left on auto runs such a turn
+	// without the tree (councilOutgrowsContext), so the fixtures state the
+	// tree they are about.
+	if c != nil && c.PolyKV == "" {
+		on := *c
+		on.PolyKV = xollama.CouncilPolyKVOn
+		c = &on
+	}
 	return councilServerOn(t, kv, c, nil)
 }
 
@@ -588,7 +597,7 @@ func TestThePlannerAttachesTheConversationRoot(t *testing.T) {
 		if r != "route" && r != "planner" {
 			continue
 		}
-		if pl == nil || pl.PoolID == nil || *pl.PoolID != 0 || pl.NumCtx != 16384 || pl.NumCtxMin != min(16384, max(4096, roundUp(reserve, 256))) {
+		if pl == nil || pl.PoolID == nil || *pl.PoolID != 0 || pl.NumCtx != 16384 || pl.NumCtxMin != min(16384, max(4096, roundUp(reserve, 256)), 8192) {
 			t.Errorf("%s: placement %+v, want the root, a 16384 window and its own part as the floor", r, pl)
 		}
 	}

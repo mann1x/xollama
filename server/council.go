@@ -27,6 +27,7 @@ import (
 	"github.com/ollama/ollama/internal/council"
 	"github.com/ollama/ollama/llm"
 	"github.com/ollama/ollama/types/model"
+	"github.com/ollama/ollama/types/xollama"
 )
 
 // councilMemberKey marks a chat request the council itself made. A member is
@@ -199,6 +200,24 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	cfg.Window = members.window
 	members.budgetMessage = councilBudgetMessage(m, req)
 	reserve := councilReserve(cfg)
+	if councilOutgrowsContext(reserve, members.window) {
+		// The model's context should hold at least what its council's roles
+		// may write. A smaller one still runs, but not on a pool tree: the
+		// owner's window takes the whole context and nothing can be booked
+		// beside it (measured on a 16,384 model: the builder needed 14,336
+		// cells, 185 were free, and every call waited out admission).
+		if tree != nil && m.Xollama.Council.PolyKV != xollama.CouncilPolyKVOn {
+			tree = nil
+			members.window = councilMemberWindow(m, req, nil)
+			cfg.Window = members.window
+			reserve = councilReserve(cfg)
+			slog.Warn("council: the roles' output room is larger than the model's context, so this turn runs without PolyKV, each member on its own copy. Raise num_ctx or lower council.max_tokens to share the conversation's KV",
+				"model", m.ShortName, "roles_room", reserve, "context", members.window)
+		} else {
+			slog.Warn("council: the roles' output room is larger than the model's context; the turn runs in what the engine grants. Raise num_ctx or lower council.max_tokens",
+				"model", m.ShortName, "roles_room", reserve, "context", members.window, "polykv", tree != nil)
+		}
+	}
 	sent := conv // and kept so, for the size the done chunk reports
 	// answer is set by the turn and read once the response is written; a
 	// client that left may leave the turn still running, hence atomic.
@@ -453,6 +472,10 @@ func councilMemberWindow(m *Model, req api.ChatRequest, tree *councilTree) int {
 	_ = opts.FromMap(req.Options)
 	return opts.NumCtx
 }
+
+// councilOutgrowsContext reports a council whose roles may write more than
+// the model's context holds.
+func councilOutgrowsContext(reserve, window int) bool { return window > 0 && reserve > window }
 
 func councilTemperature(m *Model, req api.ChatRequest) float64 {
 	opts := api.DefaultOptions()

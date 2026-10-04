@@ -88,7 +88,11 @@ type councilTree struct {
 	tokenize func(ctx context.Context, s string) ([]int, error)
 	owner    string
 	// window and floor are the ask; grant is what the engine gave, once known.
+	// floorStated is whether the model's settings name a floor: an unstated
+	// one is the window for every later decision (the owner is never shrunk
+	// below it), but the first booking does not insist on it (firstFloor).
 	window, floor int
+	floorStated   bool
 	compactAt     float64
 	idleCompactAt float64
 	// unowned is the whole-pool council (num_ctx 0, pool_unowned_v1): the
@@ -272,10 +276,7 @@ func (t *councilTree) ownerPlacement(ctx context.Context, msgs []api.Message) *l
 	case t.grant > 0:
 		p = &llm.Placement{NumCtx: t.grant, NumCtxMin: t.grant}
 	default:
-		p = &llm.Placement{NumCtx: t.window, NumCtxMin: t.floor}
-		if root != nil && !root.keep {
-			p.NumCtxMin = min(t.floor, max(4096, roundUp(t.reserve, 256)))
-		}
+		p = &llm.Placement{NumCtx: t.window, NumCtxMin: t.firstFloor(root != nil && !root.keep)}
 	}
 	if root != nil {
 		id := root.id
@@ -292,7 +293,32 @@ func (t *councilTree) ownerWindow() *llm.Placement {
 	if t.grant > 0 {
 		return &llm.Placement{NumCtx: t.grant, NumCtxMin: t.grant}
 	}
-	return &llm.Placement{NumCtx: t.window, NumCtxMin: t.floor}
+	return &llm.Placement{NumCtx: t.window, NumCtxMin: t.firstFloor(false)}
+}
+
+// firstFloor is the least window the owner's first booking accepts.
+//
+// A floor the model states is kept: the operator asked for all of it or
+// nothing. Unstated, it used to be the whole window, and a model whose context
+// is no larger than what its council asks for could then never be booked: the
+// conversation's root pool is cut from the same cells, so the largest window
+// the engine can give is the context less the pool (measured: a 16,384 model,
+// a 13-cell root, "largest admissible 16371 < num_ctx_min 16384", refused
+// every 2 s until the turn failed with a 503). An unstated floor is now the
+// turn's reserve, never more than half the window nor less than 4096, and
+// the engine grants the largest window it has above that.
+//
+// rootUnowned is a root no session owns yet (the first turn): it sits outside
+// the window, so a stated floor comes down to the reserve too.
+func (t *councilTree) firstFloor(rootUnowned bool) int {
+	room := max(4096, roundUp(t.reserve, 256))
+	if !t.floorStated {
+		return min(t.window, room, max(4096, roundUp(t.window/2, 256)))
+	}
+	if rootUnowned {
+		return min(t.floor, room)
+	}
+	return t.floor
 }
 
 // rootFor is the root pool msgs can attach to: this turn's, else the one kept
@@ -925,8 +951,9 @@ func (t *councilTree) finish(reserve int) {
 func roundUp(n, to int) int { return (n + to - 1) / to * to }
 
 // councilWindow resolves the owner's ask from the model's council settings:
-// the window defaults to the request's context, the floor to the window (all
-// or nothing), compaction to 0.85.
+// the window defaults to the request's context, the floor to the window (the
+// owner is never shrunk below it; see firstFloor for the first booking),
+// compaction to 0.85.
 func councilWindow(cc *xollama.CouncilContext, numCtx int) (window, floor int, compactAt float64) {
 	window, floor, compactAt = numCtx, 0, defaultCompactAt
 	if cc != nil {
@@ -1014,6 +1041,7 @@ func (s *Server) councilTreeFor(ctx context.Context, m *Model, req api.ChatReque
 		owner:         session,
 		window:        window,
 		floor:         floor,
+		floorStated:   cc.Context != nil && cc.Context.Floor > 0 && cc.Context.Floor <= window,
 		compactAt:     compactAt,
 		idleCompactAt: councilIdleCompactAt(cc.Context, compactAt),
 		layers:        map[string]*councilLayer{},

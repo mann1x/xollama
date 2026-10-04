@@ -53,7 +53,10 @@ When the runner implements `llm.PolyKV` (opencoti with `polykv_subpools_v1`
 and `kv_status_v1`, `CouncilPools > 0`, affinity on) a turn builds one tree:
 
 - the planner is the **owner**: it books the window on the conversation's
-  session (`num_ctx`, `num_ctx_min` = the floor), **attached to P1**, the
+  session (`num_ctx`, `num_ctx_min` = the floor; an unstated floor asks for
+  the turn's reserve, at most half the window and at least 4096, `firstFloor`,
+  because P1 is cut from the same cells and the whole window is then never
+  admissible), **attached to P1**, the
   conversation's root, so the conversation is held once (guide §6.2, arm C).
   `buildRoot` makes P1 before the planner's first call. On the first turn the
   owner has no allocation yet: P1 is unowned (`pool_unowned_v1`, else no root

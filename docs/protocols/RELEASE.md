@@ -225,6 +225,8 @@ source to this table in the same commit.
 The usual rules apply (UPSTREAM-SYNC hooks, FORK-SYNC merges, tests). Push
 `origin/dev`.
 
+Before a candidate, run [the council gate](#the-council-gate) on that tree.
+
 ### 2. Open the release PR
 
 ```sh
@@ -435,6 +437,69 @@ next candidate. A release or re-release that fails step 7 stays a pre-release
 too; fix it on `dev` and cut the next re-release, `xollama.<n+1>`. A published tag is never moved or reused. If the bad
 pre-release should not stay on offer, delete the release (`gh release delete`,
 which leaves the tag) so the updater stops seeing it.
+
+## The council gate
+
+A candidate is not cut before a council has answered on the tree it is cut
+from, with PolyKV and without. It is a gate of step 1, run on solidPC as the
+`ollama` user against a side server on port 22498, and it is written down here
+so the tags and the expectations do not live in one session's memory.
+
+**What it must show.** A model's context should hold at least what its
+council's roles may write (`councilReserve`: every local seat's `max_tokens`
+plus 1024), with PolyKV or without. That is not enforced: a smaller context
+still has to answer, loudly. So the gate runs the sized case both ways and the
+undersized case.
+
+**The tags** live in the council store
+(`/srv/dev-disk-by-uuid-92295e2c-12bd-4d15-a50c-1d80e1a33ee8/spool/xollama-council-store`,
+set as `OLLAMA_MODELS`), all on one blob, the 27B dense IQ2_M GGUF
+(`sha256:918202d6bd81…`, 9.54 GiB) that `omni-council-ab5` carries:
+
+| Tag | What it is | Why |
+|---|---|---|
+| `gate/council-kv3-384k` | `num_ctx 196608`, `kv.k`/`kv.v` `kvarn3`, `slots.live 2` (a 384k pool: two windows), council on, broadcast on, PolyKV left at auto | the sized case with PolyKV; the configuration the council has always been measured with |
+| `gate/council-kv3-nopolykv` | the same, `council.polykv off` | the sized case, every member on its own copy |
+| `omni-council-idle` | an old tag: `num_ctx 16384`, default council (roles' room 62464) | the undersized case |
+
+If they are lost, with a server on that store:
+
+```sh
+printf 'FROM omni-council-ab5\nPARAMETER num_ctx 196608\n' > Modelfile.gate
+xollama create gate/council-kv3-384k -f Modelfile.gate
+xollama tweak model gate/council-kv3-384k --kv-k=kvarn3 --kv-v=kvarn3 --slots-live=2 --council=on --council-broadcast=on
+xollama cp gate/council-kv3-384k gate/council-kv3-nopolykv
+xollama tweak model gate/council-kv3-nopolykv --council-polykv=off
+```
+
+**The steps.** Build the tree (`go build -o xollama .`), stage the pinned
+engine, start a side server as `ollama` with `OLLAMA_DEBUG=1` and its log
+kept, then:
+
+```sh
+scripts/council-gate.py --host 127.0.0.1:22498 --timeout 600 \
+    gate/council-kv3-384k gate/council-kv3-nopolykv omni-council-idle
+```
+
+For each tag it makes three `/api/chat` calls, not streamed: `Hello!` (the
+direct path), a tank question whose answer is 26.67 minutes (convened), and a
+follow-up in the same conversation whose answer is 30. Between tags, unload
+(`keep_alive: 0`). Count in the server log, per tag, `polykv: created pool`
+and `kv-reservation: REFUSED`. `/srv/ml/xb140/council3.sh` is the wrapper last
+used.
+
+**Expected**, with what 2026-10-04 measured (engine `2610041714001`, RTX 3090):
+
+| Tag | Gate lines | Server log | Measured |
+|---|---|---|---|
+| `gate/council-kv3-384k` | three PASS; the convened turn reports planner, researcher, critic and synthesizer in `council_usage` | pools created at least 1 (5), **0** refusals, no council Warn | 8 s / 33 s / 32 s |
+| `gate/council-kv3-nopolykv` | three PASS, the same roles | **0** pools, 0 refusals | 9 s / 43 s / 40 s |
+| `omni-council-idle` | three PASS | the Warn `council: the roles' output room is larger than the model's context, so this turn runs without PolyKV …` with `roles_room=62464 context=16384`, 0 pools; refusals are expected (19), each one waited out | 7 s / 357 s / 7 s |
+
+The script ends with `COUNCIL-GATE-PASS` and exit 0. A 503 (`the engine has had
+no room for this request`), a missing role, an empty answer or a refusal on a
+sized tag is a failure of the candidate, not of the tag. The undersized case is
+slow by design; its time is not a criterion, its answer is.
 
 ## Rollback
 

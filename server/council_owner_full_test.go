@@ -13,6 +13,7 @@ import (
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/internal/council"
 	"github.com/ollama/ollama/llm"
+	"github.com/ollama/ollama/types/xollama"
 )
 
 // ownerFullKV refuses the synthesizer's first request as the engine does a
@@ -45,7 +46,11 @@ func TestAFullOwnerCompactsAndTheTurnResumes(t *testing.T) {
 	e := &councilEngine{route: `{"route":"council"}`}
 	kv := &ownerFullKV{fakeKV: &fakeKV{grant: 16384, used: 900, session: "conv-1"}}
 	kv.councilRunner = &councilRunner{mockRunner: &mockRunner{contextLength: 32768}, e: e}
-	s := councilServerOn(t, kv, councilOn(), nil)
+	// A 4096 context is smaller than what a default council writes: polykv on
+	// keeps the pool tree this test is about (councilOutgrowsContext).
+	onTree := *councilOn()
+	onTree.PolyKV = xollama.CouncilPolyKVOn
+	s := councilServerOn(t, kv, &onTree, nil)
 	_, content := joined(chatChunks(t, s, longCouncilReq("conv-1", "Why is the sky blue?")))
 	councilIdle.Wait()
 	if !strings.HasPrefix(content, "The sky is blue") {
