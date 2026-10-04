@@ -2,7 +2,7 @@
 title: Running in Docker
 ---
 
-xollama publishes a container image for **linux/amd64**, to two registries:
+xollama publishes a container image for **linux/amd64** and **linux/arm64**, to two registries:
 
 | Registry | Image |
 |---|---|
@@ -31,7 +31,7 @@ docker exec -it xollama xollama run qwen3.6
 | `latest` | The newest **full release**. Moves only when a release is promoted. |
 | `dev` | The newest **pre-release**, or the newest build from the `dev` branch. Moves often. |
 | `<version>` | One build, never moved: `0.34.4-xollama.1` for a release tag, `0.34.4-dev.86de2b7d` for a branch build (upstream version, `dev`, commit). |
-| `<version>-amd64` | The same image under an architecture-specific name, so a multi-architecture manifest can later be assembled from it. |
+| `<version>-amd64`, `<version>-arm64` | One architecture of that build. `<version>`, `dev` and `latest` are a manifest over both, so `docker pull` takes the one for your machine. |
 
 A build moves `latest` or `dev`, never both. Which one depends on the GitHub
 release of the tag it was built from: a full release moves `latest`; a
@@ -43,8 +43,13 @@ pre-release, a draft, a tag with no release or any branch build moves `dev`.
   [tag list](https://hub.docker.com/r/mannixita/xollama/tags).
 </Note>
 
-Only amd64 is published. There is no arm64 image yet, and no ROCm build: the
-pinned engine declares no ROCm acceleration.
+arm64 starts with the 0.35.1 builds: `dev` has it, and `latest` gets it with
+the first 0.35.1 release. On arm64 the image carries CUDA 12, CUDA 13 and
+JetPack 5/6 payloads for NVIDIA hardware; everything else runs on the CPU. A
+Raspberry Pi 5 with 8 GB serves a 1.5B model at about 10 tokens per second,
+and speech and transcription work there. The NVIDIA payloads on arm64 have
+not been run by us. There is no ROCm build: the pinned engine declares no
+ROCm acceleration.
 
 ## What is in the image
 

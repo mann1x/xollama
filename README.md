@@ -50,8 +50,9 @@ and [`docs/xollama/default-port.mdx`](docs/xollama/default-port.mdx).
 
 ## Docker
 
-An amd64 image with the CUDA v12, CUDA v13 and Vulkan backends and the
-opencoti engine is published to Docker Hub and GHCR. `:latest` is the newest
+An image for amd64 and arm64 (a Raspberry Pi 5 runs it on the CPU) with the
+CUDA v12, CUDA v13 and Vulkan backends and the opencoti engine is published
+to Docker Hub and GHCR. `:latest` is the newest
 full release, `:dev` the newest pre-release or `dev` build, and every build
 also has its own version tag.
 

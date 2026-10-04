@@ -118,9 +118,14 @@ the fork delivers all of the following, in this order:
    the manifest republished with the new `base` and shas.
 2. **The fork release for that tag**, `v<X>-thinkbudget`, cut from
    `think-budget` by `thinkbudget-release.yaml` (`--ref think-budget`). It
-   carries `ollama-linux-amd64-runtime.tgz`, the Linux CPU runtime xollama pins
-   in `llama/runtime-pin-linux.txt`. Without it `scripts/docker-assemble.sh`
-   refuses and xollama cannot build its Docker image.
+   carries `ollama-linux-amd64-runtime.tgz` and `ollama-linux-arm64-runtime.tgz`
+   (since 2026-10-04, built in the same run from the same commit), the Linux
+   CPU runtimes xollama pins in `llama/runtime-pin-linux.txt` and
+   `llama/runtime-pin-linux-arm64.txt`. Without either,
+   `scripts/docker-assemble.sh` refuses that architecture, and
+   `xollama-release.yaml` refuses the release. The fork publishes binaries
+   only; the container image, both architectures, is xollama's (owner,
+   2026-10-04).
    - A release is required on **every** sync, even when `LLAMA_CPP_VERSION`,
      `llama/server` and `llama/compat` did not change. That keeps the pin's
      tag in step with the base and leaves nothing to decide per sync.
@@ -338,8 +343,10 @@ of working around it.
    PR number, the branch, and **our** merge sha.
 3. Reply with those merge shas, so the fork's manifest and this registry can be
    reconciled from either end.
-4. Move `llama/runtime-pin-linux.txt` to the release the mail names, checking
-   the asset's sha256 and that the pin's inputs digest equals this tree's.
+4. Move `llama/runtime-pin-linux.txt` and `llama/runtime-pin-linux-arm64.txt`
+   to the release the mail names, in one commit, checking each asset's sha256
+   and that each pin's inputs digest equals this tree's. The release workflow
+   refuses two pins on different fork releases.
 5. Never hand-copy a hunk from `think-budget`. If something is needed before the
    manifest exists, ask for the branch and sha.
 

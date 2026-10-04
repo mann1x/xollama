@@ -2,9 +2,10 @@
 
 How a commit on `dev` becomes an xOllama release that people can install and
 that installed copies update to. This covers the Windows installer, the
-standalone binaries, the checksums and the channels. The container image has its
-own workflow, `docs/features/docker-release.md`, and is **not yet** part of this
-cycle (see *Known gaps*).
+standalone binaries for Windows and for Linux on amd64 and arm64, the checksums,
+the channels, and the container image for both Linux architectures. The image
+has its own workflow (`docs/features/docker-release.md`), which the release
+starts on the tag it creates.
 
 Written 2026-09-25, when the fork had never cut a release: origin had no tags, no
 runners and no release workflow of its own, and installs were exes copied onto
@@ -26,8 +27,8 @@ it an update, stop. That is the procedure this replaces.**
 3. **Never push a `v*` tag.** The workflow creates the tag when it publishes, on
    the merge commit. A hand-pushed tag names a commit no release was built from.
    It also wakes upstream's `release.yaml`, which the `fork-release` hook now
-   skips, and `docker-release.yaml`, which waits for a runner that does not
-   exist.
+   skips, and `docker-release.yaml`, which would publish an image for a tag
+   that has no release.
 4. **Merge the PR with a merge commit.** Do not squash or rebase it. The workflow
    refuses to release if the PR's head is not an ancestor of what landed on
    `main`. A squash would leave `main` without `dev`'s history, and the next
@@ -116,7 +117,8 @@ rebuild of a checked candidate's tree.
 | `payload-id.txt` | `payloadId` in `scripts/build_windows.ps1` | the updater, to pick between the two installers |
 | `xollama-windows-amd64.exe` | `go build`, static | anyone replacing only the CLI/server |
 | `xollama-linux-amd64`, `xollama-linux-arm64` | `go build` inside AlmaLinux 8 (glibc 2.28), each on a runner of its architecture | Linux hosts that already have a runtime |
-| `sha256sum.txt` | every asset above | the updater verifies the installer against it before running it |
+| container image `mannixita/xollama:<version>`, `ghcr.io/mann1x/xollama:<version>` | `docker-release.yaml` on the tag: assembled from pins, one image per architecture joined in a manifest | Linux amd64 and arm64 (a Raspberry Pi 5 included), the only Linux delivery that carries a runtime |
+| `sha256sum.txt` | every asset above except the image | the updater verifies the installer against it before running it |
 
 The asset names are a contract with `app/updater/fork.go`. It matches
 `xOllamaSetup.exe` / `xOllamaUpdate.exe` exactly and ignores everything else. A
@@ -143,8 +145,19 @@ changes when one of these three pins moves.
 | `cuda_v13\`, `vulkan\` | upstream's `ollama-windows-amd64.zip` from ollama/ollama release `v<upstream>` | upstream's `LLAMA_CPP_VERSION` at that tag must equal ours, or the run fails |
 | opencoti-llamafile | `llm/engine/pin.txt` through `cmake/opencoti-fetch.cmake`, SHA-256 enforced | added only when the pin has a Windows `bin` row: `win-x86_64-gpu` when present, else a dev snapshot's bare `win-x86_64` APE with its `dso win-x86_64` CUDA DLL (`Pin.ArchFor`), staged in `lib\ollama\engines` as `<name>.exe` + `ggml-cuda.dll`, apart from `llama-server.exe` |
 
-The Go binaries (`xollama.exe`, the tray app, `xollama-linux-amd64`) are
-compiled, and they get one pinned toolchain too. `plan` reads the `go` line of
+The container image has its own two pins, one per architecture, and the same
+kind of check. `plan` refuses a release whose Linux pins would not assemble, so
+the image cannot fail after the release is out for a reason known before it:
+
+| image part | source | the check |
+|---|---|---|
+| CPU `llama-server` and `ggml` libraries | `llama/runtime-pin-linux.txt` (amd64) and `llama/runtime-pin-linux-arm64.txt`: `ollama-linux-<arch>-runtime.tgz` of the fork's release `v<upstream>-thinkbudget` | each asset's sha256; each pin's `inputs` digest (`llama/compat/README.md` left out) must equal the release commit's; both pins must name the same fork release and be published |
+| CUDA, Vulkan, MLX, JetPack | upstream's `ollama-linux-<arch>*.tar.zst`, the `gpu` rows of the same pins | each sha256; upstream's `LLAMA_CPP_VERSION` must equal ours |
+| opencoti-llamafile and its media libraries | `llm/engine/pin.txt`, the `x86_64` and `aarch64` rows | SHA-256 enforced by `cmake/opencoti-fetch.cmake`; arm64 has no GPU library, so the engine serves the CPU there |
+
+The Go binaries (`xollama.exe`, the tray app, `xollama-linux-amd64`,
+`xollama-linux-arm64`) are compiled, the arm64 one with clang (AlmaLinux 8's
+gcc lacks a header the MLX bindings include), and they get one pinned toolchain too. `plan` reads the `go` line of
 `go.mod` (upstream's, `go 1.26.0`) and takes the **newest patch release on that
 line** from go.dev (`go1.26.8` on 2026-09-25). Both build jobs use exactly that,
 each checks `go version` on what it built, and the notes record it. Upstream
@@ -268,10 +281,18 @@ Use the **Create a merge commit** button, or
 2. `windows` builds the runtime, borrows the GPU backends, fetches the engine,
    builds the Go binary, the UI, the tray app and both installers, and uploads
    them.
-3. `linux` builds the Linux binary in AlmaLinux 8 and uploads it.
+3. `linux` builds the Linux binary in AlmaLinux 8, once per architecture on a
+   runner of that architecture (`ubuntu-latest`, `ubuntu-24.04-arm`), runs it
+   there and uploads `xollama-linux-amd64` and `xollama-linux-arm64`.
 4. `publish` checks the exact asset set and sizes, writes `sha256sum.txt`, and
    only then turns the draft into a **pre-release**. That also creates the tag
    `v<version>` on the merge commit.
+5. `publish` then starts `docker-release.yaml` on that tag. It assembles and
+   smoke-tests one image per architecture and joins them as `:<version>` and
+   `:dev` (a pre-release never moves `:latest`). A dry run starts no image:
+   a draft has no tag. Test an unreleased image with
+   `gh workflow run docker-release.yaml --ref dev` (`-f push=false` builds and
+   smoke-tests without publishing).
 
 Until that last step nothing is visible. A failed run leaves a draft behind,
 and a re-run replaces it:
@@ -291,6 +312,8 @@ mkdir -p "$d" && cd "$d"
 gh release download "$tag" --repo mann1x/xollama --clobber
 sha256sum -c sha256sum.txt                       # every line OK
 ./xollama-linux-amd64 --version                  # names $tag without the v
+scp xollama-linux-arm64 root@dietpi5.local:/root/xollama-arm64/ && ssh root@dietpi5.local /root/xollama-arm64/xollama-linux-arm64 --version   # the same, on arm64
+docker buildx imagetools inspect mannixita/xollama:${tag#v} | grep Platform   # linux/amd64 and linux/arm64
 strings xOllamaSetup.exe | grep -c 'repos/mann1x/xollama/releases'   # not 0 (Inno compresses; if 0, check the installed app in step 7)
 ```
 
@@ -326,6 +349,19 @@ scp "$d/xOllamaSetup.exe" 'eleven2go:C:/Users/ManniX/Downloads/xOllamaSetup.exe'
 
 It installs per user into `%LOCALAPPDATA%\Programs\xOllama` (no elevation).
 
+The Linux arm64 test host is **dietpi5** (`ssh root@dietpi5.local`, a
+Raspberry Pi 5 with 8 GB, Debian 13, 16K pages, Docker). It runs the owner's
+containers, a stock `ollama` on 11434 among them: never stop or change those.
+The image is what is deployed there, on its own port mapping and its own model
+directory:
+
+```sh
+ssh root@dietpi5.local 'docker pull mannixita/xollama:<version> && docker run -d --name xollama-test \
+  -p 127.0.0.1:22434:22434 -v /root/xollama-arm64/models:/root/.ollama/models mannixita/xollama:<version>'
+```
+
+Remove the test container when the check is done (`docker rm -f xollama-test`).
+
 ### 7. Verify the install
 
 A candidate and a re-release take the **full check**. The release made from a
@@ -349,6 +385,20 @@ not enough.
 - Anything else on the host is untouched (see below). On eleven2go that means
   the think-budget ollama still answers on **11434**.
 
+The image on dietpi5 (candidates and re-releases; the release made from a
+candidate needs only the first two):
+
+- `docker image inspect` says `arm64/linux`, and `GET /api/xollama` on 22434
+  names the version.
+- `/usr/lib/ollama/PAYLOAD` in the container names the fork's runtime and the
+  engine tag of the pins.
+- A generation of at least 512 tokens on the opencoti engine and one on
+  llama.cpp (a tag with `xollama tweak model --engine=llamacpp`), tok/s
+  recorded. Baseline, `qwen2.5:1.5b`: about 10 tok/s on both.
+- One speech model answered as mp3 and transcribed back by Whisper: the image
+  has no compiler, so this is what proves the engine's media libraries load.
+- The owner's containers are still up and the stock ollama answers on 11434.
+
 Record the result in `.wolf/memory.md` and pgvector (host, tag, tok/s, anything
 odd).
 
@@ -363,6 +413,14 @@ gh release edit v0.35.0-xollama --repo mann1x/xollama --prerelease=false --lates
 
 From that point every installed xOllama on the stable channel is offered the
 release. Nothing is rebuilt.
+
+The image is the exception: its channel was read when it was built, as a
+pre-release, so `:latest` has not moved. Run the image workflow on the tag
+again after promoting; it now sees a full release and moves `:latest`:
+
+```sh
+gh workflow run docker-release.yaml --repo mann1x/xollama --ref v0.35.0-xollama
+```
 
 The promotion also announces the release on Discord:
 `.github/workflows/discord-announce.yaml` runs on the `released` event, posts
@@ -407,16 +465,14 @@ installed release passes step 7, never before. They are the fallback until then.
 - **Unsigned.** There is no code-signing certificate, so SmartScreen warns on
   the first run of the installer. Upstream's signing step (`KEY_CONTAINER`,
   Google KMS) is not wired up. The release notes should say so until it is.
-- **Container image.** `docker-release.yaml` needs the bs2 runner, which has not
-  been registered. Its automatic channel rule ("any hyphen is a pre-release")
-  would also send every `-xollama.<n>` tag to `:dev`. Before the image joins
-  this cycle, the channel has to come from the GitHub pre-release flag, the way
-  it does here. Tags created by the workflow's `GITHUB_TOKEN` do not trigger
-  other workflows, so this cycle cannot start it by accident.
+- **Container image.** Part of the cycle since 2026-10-04, for amd64 and arm64.
+  Promotion does not move `:latest` by itself (step 8). The image's CUDA and
+  JetPack payloads on arm64 have never been run on such hardware.
 - **Inno `AppVersion`** is the numeric `<upstream>` (`0.35.0`), because
   `VersionInfoVersion` must be numeric. Every candidate, release and re-release on one base shows
   the same version in Add/Remove Programs. Upgrades still work. Use
   `xollama --version` to tell them apart.
-- **No macOS, no Windows arm64, no Linux runtime archive.** Linux hosts
-  (solidPC) are still deployed from a local build with the full deployment
-  script.
+- **No macOS download, no Windows arm64, no Linux runtime archive.** On Linux
+  the image is the delivery with a runtime; `xollama-linux-<arch>` is the
+  binary alone. Bare Linux hosts (solidPC) are still deployed from a local
+  build with the full deployment script.

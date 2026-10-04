@@ -18,7 +18,7 @@ script.
 
 | Layer | Source | Pinned by |
 |---|---|---|
-| llama.cpp CPU runtime (`llama-server`, CPU `ggml`, built with `llama/compat`) | the fork's release `v0.35.1-thinkbudget`, `ollama-linux-amd64-runtime.tgz` | `llama/runtime-pin-linux.txt`: sha256, plus the inputs digest |
+| llama.cpp CPU runtime (`llama-server`, CPU `ggml`, built with `llama/compat`) | the fork's release `v0.35.1-thinkbudget`, `ollama-linux-amd64-runtime.tgz` and `ollama-linux-arm64-runtime.tgz` | `llama/runtime-pin-linux.txt` and `llama/runtime-pin-linux-arm64.txt`: sha256, plus the inputs digest |
 | CUDA v12, CUDA v13, Vulkan, MLX CUDA v13 | upstream `v0.35.1`: `ollama-linux-amd64.tar.zst`, `ollama-linux-amd64-mlx.tar.zst` | `llama/runtime-pin-linux.txt`: sha256; upstream's `LLAMA_CPP_VERSION` must equal ours |
 | opencoti engine | HF, whatever `llm/engine/pin.txt` names | `llm/engine/pin.txt` via `cmake/opencoti-fetch.cmake` |
 | opencoti media sidecars (`oc-codec`: mp3, opus, aac, mp4; `oc-audiocpp`: Kokoro, Supertonic, KittenTTS) | HF, the pin's `#! sidecar` rows, staged beside the engine under their published names | `llm/engine/pin.txt` via `cmake/opencoti-fetch.cmake`, re-checked by `scripts/docker-assemble.sh` |
@@ -97,9 +97,11 @@ pre-release, so it only ever moves `:dev`; so under the old hyphen rule every re
 unless the run is on a tag. A tag with no release, or with a draft, counts as a
 pre-release.
 
-A release that `xollama-release.yaml` creates with `GITHUB_TOKEN` triggers no
-other workflow, so a release's image is a manual run on its tag, made after
-promotion:
+A tag that `xollama-release.yaml` creates with `GITHUB_TOKEN` raises no push
+event, so its `publish` job starts this workflow on the tag itself: every
+candidate and release gets its image, on `:dev` because it is a pre-release
+at that moment. Promotion rebuilds nothing, so `:latest` moves with one more
+run on the tag, made after promotion:
 
 ```shell
 gh workflow run docker-release.yaml --ref v0.34.2-xollama.2
@@ -134,8 +136,9 @@ library, so on arm64 the engine serves the CPU and llama.cpp serves CUDA).
 `libatomic1` is in the image for the engine's arm64 audio library.
 
 Measured on a Raspberry Pi 5 (8 GB, Debian 13, 16K pages), 2026-10-04, in the
-image built from the pins: `qwen2.5:1.5b`, 512 tokens, four runs, 9.8-9.9
-tok/s on the engine and 9.7-10.1 on llama.cpp; Kokoro, Supertonic and
+published `:dev` image: `qwen2.5:1.5b`, 512 tokens, the two engines
+interleaved over four rounds, 9.8-10.0 tok/s on the engine and 10.9-11.0 on
+llama.cpp; Kokoro, Supertonic and
 KittenTTS each transcribed back by Whisper. The CUDA and JetPack payloads
 have not been run on arm64 hardware. `ALLOW_UPSTREAM_RUNTIME=1` (local only,
 refused in CI) assembles with upstream's CPU runtime when a pin has no runtime

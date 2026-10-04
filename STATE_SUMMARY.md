@@ -5,9 +5,15 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-04 — `:dev` published for amd64 and arm64; the release now carries Linux arm64 and starts the image; protocols updated (owner's instruction).**
+> - Published: `docker-release` from `dev` at `e90f26fa4`, run 37178934906, all four jobs green, the first real run of `manifest`. `mannixita/xollama:dev` and `ghcr.io/mann1x/xollama:dev` (and `:0.35.1-dev.e90f26fa`) are manifest lists over `linux/amd64` and `linux/arm64`; `-amd64` and `-arm64` tags beside them. `:latest` not touched.
+> - The published image pulled and run on dietpi5: `arm64/linux`, `/api/xollama` names `0.35.1-dev.e90f26fa`, `PAYLOAD` names the fork's runtime `096e5e43…`. `qwen2.5:1.5b`, 512 tokens, the two engines interleaved over four rounds: llama.cpp 10.9 / 10.9 / 10.9 / 11.0 tok/s, the engine 9.9 / 10.0 / 9.8 / 9.9. The engine is about 10 % behind on a Cortex-A76 (its CPU build has no dot-product or FP16 path); the Pi reports past thermal throttling (`0xe0000`), which is the spread between earlier sessions. Kokoro answered mp3, transcribed back. The owner's containers untouched.
+> - `xollama-release.yaml`: `plan` refuses a release whose two Linux runtime pins would not assemble (a pin without a runtime, other llama inputs, an unpublished asset, another upstream, or the two on different fork releases); `publish` starts `docker-release.yaml` on the tag it created (`actions: write`; a failure is a warning with the command to run by hand) and the notes gain a Linux row and a container image row. The guard was run locally against this tree. Not run on hosted runners yet: the release workflow's arm64 `linux` job, the guard and the dispatch; the next candidate's dry run is their first.
+> - Protocols: `docs/protocols/RELEASE.md` (the image is part of the cycle; assets, sources and checks for Linux and the image; dietpi5 as the arm64 test host with its check list; `:latest` needs one image run after promotion; known gaps rewritten), `docs/protocols/FORK-SYNC.md` (the fork delivers both runtimes, both pins move in one commit, the image is xollama's). User pages: `docs/xollama/docker.mdx`, `docs/dockerhub/README.md`, `README.md`, `docs/features/docker-release.md`.
+>
 > **2026-10-04 — The fork's arm64 runtime is pinned; the arm64 image is built from pins alone and measured on the Raspberry Pi 5.**
 > - The fork published `ollama-linux-arm64-runtime.tgz` on `v0.35.1-thinkbudget` (mail #746: sha256 `096e5e43…570b`, built at `1040f03d`, the amd64 runtime's inputs `57004c3c…`; a native arm64 runner, AlmaLinux 8, CPU variants armv8.0–9.2 chosen at load). Pinned in `llama/runtime-pin-linux-arm64.txt` (`4a17d2114`); the assembly passes for arm64 with no test switch. The owner ruled the fork ships binaries only: the arm64 image is xollama's.
-> - Image built on dietpi5 from that context, `qwen2.5:1.5b`, 512 tokens, four runs: llama.cpp (the fork's runtime) 10.1 / 9.8 / 9.7 / 9.7 tok/s, the engine 9.8 / 9.8 / 9.9 / 9.9. Kokoro, Supertonic and KittenTTS each transcribed back by Whisper, 3/3. The 10 % gap seen against upstream's stand-in runtime is not there against the fork's on this run; it is within what a Pi's run-to-run spread gives.
+> - Image built on dietpi5 from that context, `qwen2.5:1.5b`, 512 tokens, four runs: llama.cpp (the fork's runtime) 10.1 / 9.8 / 9.7 / 9.7 tok/s, the engine 9.8 / 9.8 / 9.9 / 9.9. Kokoro, Supertonic and KittenTTS each transcribed back by Whisper, 3/3. (That run showed no gap between the two; the interleaved run in the entry above does.)
 > - Hosted run 37177604018 (`docker-release`, push off): amd64 green; arm64 failed in the Go build, `mlx/include/mlx/c/half.h: arm_bf16.h: No such file` with AlmaLinux 8's gcc 8. Fixed as upstream builds it: clang on arm64, in `scripts/docker-assemble.sh` and the `linux` job of `xollama-release.yaml`; the same container build run natively on the Pi gives a binary that needs glibc 2.28.
 >
 > **2026-10-04 — Linux arm64: wired into the release and the image, measured on a Raspberry Pi 5; eleven2go runs the shipped engine; PR #5 is not merged.**
@@ -1861,12 +1867,12 @@ turns, measured on the manic benchmark on eleven2go). The engine pin is b208
 
 ## Known gaps
 
-- **Linux arm64 is built but not published.** The fork's arm64 runtime is
-  pinned (2026-10-04), the image and `xollama-linux-arm64` build for it, and
-  both were run on a Raspberry Pi 5. No arm64 image or asset is published
-  until the next candidate. No Linux archive with a runtime exists for either
-  architecture, and the JetPack and CUDA payloads of the arm64 image have
-  never run on such hardware.
+- **Linux arm64** is in `:dev` (2026-10-04) and in the next release as
+  `xollama-linux-arm64`. `:latest` is still an amd64-only image of the last
+  release. The arm64 image's CUDA and JetPack payloads have never run on such
+  hardware; the release workflow's arm64 job, its Linux pin guard and its
+  start of the image workflow have not run on hosted runners yet. No Linux
+  archive with a runtime exists for either architecture.
 - **The engine crashes on an AMD integrated GPU through Vulkan on Windows**
   (eleven2go, 2026-10-04, `0xc0000028`); stock llama.cpp serves it. Reported
   to opencoti. A machine with a discrete GPU is unaffected by default.

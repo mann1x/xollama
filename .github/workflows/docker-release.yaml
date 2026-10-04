@@ -9,8 +9,8 @@
 # published, sha256-pinned artifact, so the image is ASSEMBLED on a
 # GitHub-hosted runner (plans/docker-image.md):
 #
-#   llama.cpp CPU runtime  the fork's release tgz        llama/runtime-pin-linux.txt
-#   CUDA / Vulkan / MLX    upstream's release tarballs   llama/runtime-pin-linux.txt
+#   llama.cpp CPU runtime  the fork's release tgz        llama/runtime-pin-linux[-arm64].txt
+#   CUDA / Vulkan / MLX    upstream's release tarballs   llama/runtime-pin-linux[-arm64].txt
 #   opencoti engine        HF, whatever the pin names    llm/engine/pin.txt
 #   xollama                Go-only build, AlmaLinux 8    this commit
 #
@@ -22,10 +22,12 @@
 # only from a tag whose GitHub release is a full release -- the pre-release
 # flag decides, as it does for the desktop updater, not the hyphen in the tag
 # (every xOllama tag has one: `v<upstream>-rc.<k>.xollama`, `-xollama`,
-# `-xollama.<n>`; a candidate is a pre-release and only ever moves `:dev`). A release created by
-# xollama-release.yaml with GITHUB_TOKEN triggers no workflow, so the image for
-# a release is a manual run on its tag: `gh workflow run docker-release.yaml
-# --ref v0.35.0-xollama`.
+# `-xollama.<n>`; a candidate is a pre-release and only ever moves `:dev`). A tag created by
+# xollama-release.yaml with GITHUB_TOKEN triggers no push event, so that
+# workflow's publish job starts this one on the tag (workflow_dispatch). A
+# promotion changes the flag and rebuilds nothing: run this by hand on the
+# tag afterwards to move :latest, `gh workflow run docker-release.yaml --ref
+# v0.35.0-xollama` (RELEASE.md step 8).
 #
 # amd64 always; arm64 as soon as llama/runtime-pin-linux-arm64.txt names the
 # fork's arm64 CPU runtime (the plan job reads it). Each architecture is

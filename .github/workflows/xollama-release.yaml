@@ -45,6 +45,8 @@ on:
 permissions:
   contents: write
   pull-requests: read
+  # publish starts docker-release.yaml on the tag it has just created.
+  actions: write
 
 concurrency:
   group: xollama-release-${{ github.event.pull_request.number || inputs.pr }}
@@ -76,6 +78,7 @@ jobs:
       runtime_tag: ${{ steps.plan.outputs.runtime_tag }}
       runtime_asset: ${{ steps.plan.outputs.runtime_asset }}
       runtime_sha256: ${{ steps.plan.outputs.runtime_sha256 }}
+      linux_runtime_tag: ${{ steps.plan.outputs.linux_runtime_tag }}
     steps:
       - name: plan
         id: plan
@@ -199,6 +202,35 @@ jobs:
             || fail "the pinned runtime $rtag/$rasset is not published"
           out runtime_tag "$rtag"; out runtime_asset "$rasset"; out runtime_sha256 "$rsum"
           echo "CPU runtime: $rtag (inputs match)"
+
+          # The container image is built from this tag once it exists
+          # (docker-release.yaml, started by publish), from the two Linux
+          # runtime pins. Refuse here what would only fail there, after the
+          # release is out: a pin without its runtime, built from other llama
+          # inputs, not published, or the two architectures on different fork
+          # releases. The fork's llama/compat/README.md is not a build input,
+          # so the digest leaves it out, as scripts/docker-assemble.sh does.
+          lnow=$(git ls-tree -r "$sha" -- LLAMA_CPP_VERSION llama/server llama/compat \
+            | grep -v '[[:space:]]llama/compat/README\.md$' | sha256sum | cut -c1-64)
+          ltags=
+          for lf in llama/runtime-pin-linux.txt llama/runtime-pin-linux-arm64.txt; do
+            lpin=$(git show "$sha:$lf") || fail "no $lf at $sha; the image cannot be assembled"
+            lfield() { awk -v k="$1" '$1==k {print $2; exit}' <<< "$lpin"; }
+            lrepo=$(lfield repo); ltag=$(lfield tag); lasset=$(lfield asset); linputs=$(lfield inputs)
+            [ -n "$lrepo" ] && [ -n "$ltag" ] && [ -n "$lasset" ] && [ -n "$(lfield sha256)" ] \
+              || fail "$lf names no runtime; move it to the fork's release (FORK-SYNC.md)"
+            [ "$lnow" = "$linputs" ] \
+              || fail "$lf was built from inputs $linputs, but this commit's are $lnow; move both Linux runtime pins to the fork release built from them"
+            gh release view "$ltag" --repo "$lrepo" --json assets --jq '.assets[].name' | grep -qx "$lasset" \
+              || fail "$lf: $lrepo $ltag publishes no $lasset"
+            [ "$(lfield upstream)" = "v$upstream" ] \
+              || fail "$lf takes its GPU backends from $(lfield upstream), this release is on v$upstream"
+            ltags="$ltags $ltag"
+          done
+          [ "$(tr ' ' '\n' <<< "$ltags" | sort -u | grep -c .)" = 1 ] \
+            || fail "the two Linux runtime pins name different fork releases ($ltags); they move together"
+          out linux_runtime_tag "${ltags##* }"
+          echo "Linux CPU runtimes: fork ${ltags##* }, amd64 and arm64 (inputs match)"
 
           # The Go toolchain: upstream's LINE, the newest PATCH. go.mod stays
           # upstream's (`go 1.26.0`, what upstream builds its releases with);
@@ -483,6 +515,8 @@ jobs:
       UPSTREAM: ${{ needs.plan.outputs.upstream }}
       ENGINE: ${{ needs.plan.outputs.engine }}
       RUNTIME_TAG: ${{ needs.plan.outputs.runtime_tag }}
+      LINUX_RUNTIME_TAG: ${{ needs.plan.outputs.linux_runtime_tag }}
+      VERSION: ${{ needs.plan.outputs.version }}
       GO_TOOLCHAIN: ${{ needs.plan.outputs.gotoolchain }}
       GO_MOD: ${{ needs.plan.outputs.gomod }}
     steps:
@@ -533,6 +567,8 @@ jobs:
             echo "| Go | \`$GO_TOOLCHAIN\` (go.mod: \`go $GO_MOD\`, upstream's line with its newest patch release) |"
             echo "| llama.cpp | \`$llama\`: CPU runtime \`$RUNTIME_TAG\`, CUDA 13 and Vulkan backends from upstream v$UPSTREAM |"
             echo "| engine | $engine |"
+            echo "| Linux | \`xollama-linux-amd64\`, \`xollama-linux-arm64\` (glibc 2.28 and newer; the binary alone, no runtime) |"
+            echo "| container image | \`mannixita/xollama:$VERSION\` and \`ghcr.io/mann1x/xollama:$VERSION\`, amd64 and arm64; CPU runtime \`mann1x/ollama $LINUX_RUNTIME_TAG\`. Built from this tag after the release is published |"
             echo "| payload id | \`$id\` |"
             echo "| update | $delta |"
             echo
@@ -553,6 +589,16 @@ jobs:
           else
             echo "published $TAG as a pre-release; promote after the test-host check (RELEASE.md step 8)"
           fi
+
+      # A tag made with GITHUB_TOKEN starts no workflow on its own, but a
+      # workflow_dispatch does. The image reads the release's pre-release flag:
+      # a pre-release moves :dev, never :latest. A failure here is a warning:
+      # the release is out, and the image can be run by hand on the tag.
+      - name: start the container image
+        if: env.MODE == 'release'
+        run: |
+          gh workflow run docker-release.yaml --ref "$TAG" \
+            || echo "::warning::could not start docker-release.yaml on $TAG; run it by hand: gh workflow run docker-release.yaml --ref $TAG"
 
       - name: dry run
         if: env.MODE == 'draft'

@@ -1,4 +1,4 @@
-<!-- short: Soft fork of Ollama with the opencoti engine, per-model settings and dynamic slots. CUDA, amd64 -->
+<!-- short: Soft fork of Ollama with the opencoti engine, per-model settings and dynamic slots. CUDA, amd64 and arm64 -->
 
 # xollama
 
@@ -26,12 +26,12 @@ xollama is not affiliated with or endorsed by Ollama.
 | `latest` | The newest full release. Moves only when a release is promoted. |
 | `dev` | The newest pre-release, or the newest build of the `dev` branch. Moves often. |
 | `<version>` | One build, never moved. A release looks like `0.34.4-xollama.1`; a branch build like `0.34.4-dev.86de2b7d` (upstream version, `dev`, commit). |
-| `<version>-amd64` | The same image under an architecture-specific name. |
+| `<version>-amd64`, `<version>-arm64` | One architecture of that build. `<version>`, `dev` and `latest` are a manifest over both: Docker picks yours. |
 
 A build moves `latest` or `dev`, never both. If `latest` does not exist yet, no
 full release has been published as an image: use `dev` or a version tag.
 
-**Architecture:** `linux/amd64` only. No arm64 image and no ROCm build yet.
+**Architectures:** `linux/amd64` and `linux/arm64`. arm64 starts with the 0.35.1 builds: `dev` has it now, `latest` gets it with the first 0.35.1 release. On arm64 the image carries CUDA 12, CUDA 13 and JetPack 5/6 payloads for NVIDIA hardware and runs on the CPU everywhere else, a Raspberry Pi 5 included (about 10 tok/s on a 1.5B model). No ROCm build.
 
 ## What is inside
 
