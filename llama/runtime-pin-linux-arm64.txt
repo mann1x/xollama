@@ -4,18 +4,22 @@
 # llama/runtime-pin-linux.txt (which documents every directive) and read by
 # the same script: ARCH=arm64 scripts/docker-assemble.sh.
 #
-# NOT COMPLETE. The fork, which supplies llama.cpp, publishes no arm64 CPU
-# runtime yet (asked 2026-10-04, mail #741). Until the rows
-#
-#   repo / tag / asset / sha256 / inputs / built
-#
-# are here, the assembly refuses linux/arm64 and docker-release.yaml builds
-# amd64 only. They move with llama/runtime-pin-linux.txt: one fork release,
-# one commit, both architectures.
+# The CPU runtime is the fork's, built in the same run as the amd64 one from
+# the same commit (fork run 37176344596: a native arm64 runner, AlmaLinux 8,
+# upstream's cpu preset; glibc 2.27, 64K-aligned segments, CPU variants
+# armv8.0 to armv9.2 chosen at load). It moves with
+# llama/runtime-pin-linux.txt: one fork release, one commit, both
+# architectures.
 #
 # The gpu rows are upstream's arm64 tarballs, as its own arm64 image carries
 # them: CUDA 12 and 13 for arm servers, and the two JetPack payloads. A
 # Raspberry Pi uses none of them and runs on the CPU.
+repo      mann1x/ollama
+tag       v0.35.1-thinkbudget
+asset     ollama-linux-arm64-runtime.tgz
+sha256    096e5e43c25d9ba54e0e7a1757e595c26e35a147d09fa0c1e080ef75c5b1570b
+inputs    57004c3cf4266c4c1649add853a7ba0499d02a7b10faf98efa5617391cd2c0ec
+built     1040f03db004aa1c4aa2648d75237bc97de11a55
 upstream  v0.35.1
 gpu       ollama-linux-arm64.tar.zst           b1b1c85d25136b256d3740f6ecd2f7c0105e8ca71642fd6ff2fc199f3cefd69d
 gpu       ollama-linux-arm64-jetpack5.tar.zst  78a9c11b5c30c1f8632646e8187f1a3da6ff4c499c47f63f55e9ab68ca18161a
