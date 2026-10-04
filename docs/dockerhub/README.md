@@ -245,10 +245,10 @@ engine (opencoti build `2610031615001`):
 
 | The load's GPUs | Served by |
 |---|---|
-| all compute capability 8.6–8.9 or 12.x (RTX 30xx / 40xx / 50xx, A6000, L40…) | opencoti, CUDA 13 payload |
-| compute capability 7.0 (Tesla V100, Titan V) | stock `llama.cpp`: this engine build carries no CUDA 12 payload |
-| a mix of those two groups | stock `llama.cpp` |
-| anything else (7.5, 8.0, 9.0, 10.x, older) | stock `llama.cpp` on upstream's CUDA backends |
+| all compute capability 7.5–9.0 or 12.x (RTX 20xx to 50xx, A-series, L40, H100…) | opencoti, CUDA 13 payload |
+| all compute capability 5.2–7.0 (Maxwell, Pascal, Tesla V100, Titan V) | opencoti, CUDA 12 payload: legacy, shipped without a run on such a card. `XOLLAMA_ENGINE=llamacpp` puts them on stock `llama.cpp` |
+| a mix of the two groups above | stock `llama.cpp` |
+| any other card (10.x) | stock `llama.cpp`, on upstream's CUDA backends |
 
 The engine chosen for each load, and why, is in `docker logs xollama`.
 
@@ -257,8 +257,8 @@ The engine chosen for each load, and why, is in `docker logs xollama`.
 Upstream's Vulkan backend and the Vulkan loader are in the image, as in
 upstream's own image; pass the devices with `--device /dev/dri`.
 `OLLAMA_VULKAN=0` turns Vulkan off and `GGML_VK_VISIBLE_DEVICES` selects
-devices. The pinned engine has no Vulkan payload, so Vulkan loads are served
-by stock `llama.cpp`.
+devices. The pinned engine carries its own Vulkan payload, so a Vulkan load is
+served by opencoti; `XOLLAMA_ENGINE=llamacpp` keeps it on upstream's backend.
 
 ## Configuring slots and KV cache
 

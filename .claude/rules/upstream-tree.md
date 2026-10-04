@@ -31,6 +31,9 @@ paths:
   the cause, never Debug: a device listing that fails carries the engine's last
   lines (`outputTail`, `discover/opencoti.go`), a refresh that finds nothing
   names the cooldown (`discover/refresh_opencoti.go`). Guard:
-  `discover/opencoti_loud_test.go`.
+  `discover/opencoti_loud_test.go`. A backend is only listed where it can exist
+  (`existsOn`, `discover/opencoti.go`: Metal on macOS only, and nothing else
+  there), even with `XOLLAMA_ENGINE=opencoti`. Guard:
+  `discover/opencoti_backends_test.go`.
 - Run `golangci-lint run` before pushing — `.golangci.yaml` uses `gofumpt` and a
   `depguard` rule denying `internal/testutil` outside `_test.go` files.

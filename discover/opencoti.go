@@ -28,6 +28,14 @@ const opencotiEnumerateTimeout = 45 * time.Second
 // order they are run.
 var opencotiBackends = []engine.Backend{engine.BackendCUDA, engine.BackendVulkan, engine.BackendMetal}
 
+// existsOn reports whether a backend can exist on an OS at all: Metal is
+// macOS's and macOS has no other. XOLLAMA_ENGINE=opencoti skips the policy,
+// not this: asking the engine for Metal devices on Linux is a certain failure,
+// and a failed listing is a Warn.
+func existsOn(b engine.Backend, goos string) bool {
+	return (b == engine.BackendMetal) == (goos == "darwin")
+}
+
 // opencotiListDevices runs one enumeration and returns its combined output.
 // It is a variable so tests can stand in for the artifact.
 var opencotiListDevices = func(ctx context.Context, artifact string, b engine.Backend) (string, error) {
@@ -151,7 +159,7 @@ func overlayOpencotiDevices(ctx context.Context, devices []ml.DeviceInfo) []ml.D
 	host := engine.Host()
 	var backends []engine.Backend
 	for _, b := range opencotiBackends {
-		if engine.Enumerates(host, b, selector) {
+		if existsOn(b, host.OS) && engine.Enumerates(host, b, selector) {
 			backends = append(backends, b)
 		}
 	}

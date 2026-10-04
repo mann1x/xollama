@@ -39,7 +39,7 @@ paths:
   major at that minor or later; `deviceUnsupported` in `llm/engine/policy.go`
   refuses an uncovered device by name so it goes to llama.cpp rather than the
   CPU. No row means no narrowing. Guard: `llm/engine/pin_windows_sass_test.go`.
-  It is written `#! cuda-sass 86 120`: opencoti's own pin parsers skip `#`
+  It is written `#! cuda-sass 75 80 86 89 90 120`: opencoti's own pin parsers skip `#`
   lines and refuse a bare directive, so `ParsePin` reads a `#!` line only for
   a key in `machineKeys`; any other `#!` key stays a comment.
 - The optional CUDA 12 payload is `#! dso-cuda12 <arch> <path> <sha256>` plus
@@ -68,7 +68,9 @@ paths:
   `lib/ollama/engines` so stock `llama-server.exe` never loads its `ggml-cuda.dll`.
   A dev snapshot's `dso win-x86_64` row can lag the build: without it Windows
   CUDA is refused to llama.cpp for a stated reason
-  (`TestTheCommittedPinRoutesWindowsCUDAByItsDLLRow`).
+  (`TestTheCommittedPinRoutesWindowsCUDAByItsDLLRow`). Vulkan is a row of its
+  own (`dso x86_64-vulkan`, `dso win-x86_64-vulkan`) and routes the same way:
+  with the row it is the engine's, without it llama.cpp's.
 - A tested platform does **not** have to have an artifact — a dev pin ships a
   subset. It must be served by the pin or refused for a stated reason, which is
   what `TestEveryTestedPlatformIsServedOrRefused` in `llm/engine/pin_test.go`
@@ -125,6 +127,7 @@ paths:
   restores it in `t.Cleanup`. `TestSupportsDeviceHonoursTheCUDAComputeFloor` in
   `llm/engine/policy_test.go` routes against an all-payload pin so what it
   measures is the compute floor, not the payloads the shipped pin happens to carry;
+  `TestDeviceUnsupportedNamesTheCapability` stubs a pin with no CUDA 12 payload;
   `TestResolve` in `llm/engine/resolve_test.go` does the same with `allPayloadsPin`.
 - Moving to a new artifact is one commit: `repo`, `rev`, `tag`, `channel`, every
   `sha256`, the `feature`, `accel`, `cuda-sass` and `cuda12-sass` rows corrected

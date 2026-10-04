@@ -49,11 +49,15 @@ func TestTheCommittedPinRoutesWindowsCUDAByItsDLLRow(t *testing.T) {
 	case !hasDLL && !hasGPUBin && reason == "":
 		t.Error("windows CUDA is routed to a pin that carries no Windows CUDA payload; the engine would serve it on the CPU")
 	}
-	if reason := pinUncoveredIn(p, win, BackendVulkan); reason == "" {
-		t.Error("windows Vulkan is routed to a pin that carries no Vulkan payload")
+	// Vulkan is a row of its own too (dso win-x86_64-vulkan), and routes the
+	// same way: with the row it is the engine's, without it llama.cpp's.
+	_, hasVulkan := p.DSO("win-x86_64-vulkan")
+	if reason := pinUncoveredIn(p, win, BackendVulkan); hasVulkan != (reason == "") {
+		t.Errorf("windows Vulkan: payload row present = %v, refusal = %q", hasVulkan, reason)
 	}
-	// The "#! cuda-sass" line is what keeps 8.0/9.0 cards off these bytes.
-	if p.CoversCUDA(8, 0) || !p.CoversCUDA(8, 6) {
+	// The "#! cuda-sass" line is what keeps a card the library has no code
+	// for off these bytes: stated, and never covering Pascal.
+	if len(p.CUDASASS) == 0 || p.CoversCUDA(6, 1) || !p.CoversCUDA(8, 6) {
 		t.Errorf("the committed pin's cuda-sass is not in force: %v", p.CUDASASS)
 	}
 }

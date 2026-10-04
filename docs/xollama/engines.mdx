@@ -33,11 +33,12 @@ device is exactly where "probably fine" is wrong. Anything untested routes to
 
 ROCm has no tested opencoti backend. On NVIDIA, a card goes to opencoti only
 when the pinned artifact carries code for its compute capability. With the
-current pin that is 8.6–8.9 and 12.x on the CUDA 13 payload, and 7.0 (Tesla
-V100, Titan V) on a separate CUDA 12 payload, Linux only, driver 570 or newer.
-Every other card — Maxwell, Pascal, Turing, 8.0, Hopper — routes to
-`llamacpp`, and so does a load spanning a 7.0 card and a newer one (one engine
-process loads one payload). That check exists because the failure would
+current pin that is 7.5 through 9.0 and 12.x on the CUDA 13 payload (Turing,
+Ampere, Ada, Hopper, consumer Blackwell), and 5.2 through 7.0 (Maxwell, Pascal,
+Volta) on a separate CUDA 12 payload: Linux only, driver 570 or newer, and
+**legacy** — it ships without having been run on such a card. Datacenter
+Blackwell (10.x) routes to `llamacpp`, and so does a load spanning an old card
+and a newer one (one engine process loads one payload). That check exists because the failure would
 otherwise be silent: an artifact with no code for the device does not refuse
 to start, it falls back to CPU and the load looks like it worked.
 

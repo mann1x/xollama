@@ -105,7 +105,10 @@ func TestSupportsDeviceHonoursTheCUDAComputeFloor(t *testing.T) {
 // whole reason this floor exists is that the alternative failure is silent, so
 // a reason that does not say which device and which capability is no better.
 func TestDeviceUnsupportedNamesTheCapability(t *testing.T) {
-	// Pascal: below the CUDA 13 floor, and not in the CUDA 12 payload's SASS.
+	// Pascal: below the CUDA 13 floor, against a pin with no CUDA 12 payload.
+	p := allPayloadsPin()
+	p.Assets, p.CUDA12SASS = p.Assets[:2], nil
+	withPin(t, p)
 	why := deviceUnsupported(Platform{OS: "linux", Arch: "amd64"}, Device{BackendCUDA, 6, 1})
 	for _, want := range []string{"6.1", "7.5"} {
 		if !contains(why, want) {
