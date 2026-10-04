@@ -11,46 +11,32 @@ import (
 // case this fork now lives in -- a dev artifact carrying part of the next cut
 // while still tagged as the current one.
 func TestSlidingWindowRingFollowsTheDeclaration(t *testing.T) {
-	const assets = "\nbin x86_64 a.llamafile " + "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-
 	for _, tc := range []struct {
-		name string
-		text string
-		want bool
+		name     string
+		engine   string
+		declared bool
 	}{
-		{
-			name: "a release without it",
-			text: "repo o/r\nrev 619e163221eebf248c49db7d16533130328e26f6\ntag v0.10.5+opencoti.c7\nchannel release" + assets,
-			want: false,
-		},
-		{
-			name: "a release with it",
-			text: "repo o/r\nrev 619e163221eebf248c49db7d16533130328e26f6\ntag v0.10.5+opencoti.c8\nchannel release\nfeature swa-cache-types" + assets,
-			want: true,
-		},
-		{
-			// The case the tag regex got wrong: a dev build carrying patch 0288
-			// while still tagged c7. Inferring from the tag refused the very
-			// flags the build was pinned to test.
-			name: "a dev build tagged as the older cut but carrying the flags",
-			text: "repo o/r-dev\nrev 619e163221eebf248c49db7d16533130328e26f6\ntag v0.10.5+opencoti.c7-dev\nchannel dev\nfeature swa-cache-types" + assets,
-			want: true,
-		},
-		{
-			// And the reverse: a dev build on the c8 line that has not picked
-			// up 0288 yet. A cut number would have promised it.
-			name: "a dev build on the newer line that does not carry them yet",
-			text: "repo o/r-dev\nrev 619e163221eebf248c49db7d16533130328e26f6\ntag v0.10.6+opencoti.c8-dev\nchannel dev" + assets,
-			want: false,
-		},
+		{"a build without it", "opencoti-0.10.5-c7-1", false},
+		{"a build with it", "opencoti-0.10.5-c8-1", true},
+		// The case the tag regex got wrong: a dev build carrying patch 0288
+		// while still named c7. Inferring from the name refused the very
+		// flags the build was pinned to test.
+		{"a build named as the older cut but carrying the flags", "opencoti-0.10.5-c7-1", true},
+		// And the reverse: a build on the c8 line that has not picked up
+		// 0288 yet. A cut number would have promised it.
+		{"a build on the newer line that does not carry them yet", "opencoti-0.10.6-c8-1", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			p, err := ParsePin(tc.text)
+			files := pinFiles(enginePin(row("any", "bin", "components/engine/v/"+tc.engine, "engine")))
+			if tc.declared {
+				files[consumerFile] = "feature " + featureSWACacheTypes + "\n"
+			}
+			p, err := loadFiles(files)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := p.HasFeature(featureSWACacheTypes); got != tc.want {
-				t.Errorf("HasFeature(%q) = %v, want %v", featureSWACacheTypes, got, tc.want)
+			if got := p.HasFeature(featureSWACacheTypes); got != tc.declared {
+				t.Errorf("HasFeature(%q) = %v, want %v", featureSWACacheTypes, got, tc.declared)
 			}
 		})
 	}

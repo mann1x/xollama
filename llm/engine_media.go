@@ -501,6 +501,9 @@ func (r *mediaRunner) start(gpus []ml.DeviceInfo) error {
 	if payloadHome != "" {
 		envs["HOME"] = payloadHome
 	}
+	if opencoti && engine.LegacyCUDA(engineDevices(gpus)) {
+		envs[engine.EnvCUDALegacy] = "1"
+	}
 
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = &r.tail

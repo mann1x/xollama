@@ -20,9 +20,9 @@ script.
 |---|---|---|
 | llama.cpp CPU runtime (`llama-server`, CPU `ggml`, built with `llama/compat`) | the fork's release `v0.35.1-thinkbudget`, `ollama-linux-amd64-runtime.tgz` and `ollama-linux-arm64-runtime.tgz` | `llama/runtime-pin-linux.txt` and `llama/runtime-pin-linux-arm64.txt`: sha256, plus the inputs digest |
 | CUDA v12, CUDA v13, Vulkan, MLX CUDA v13 | upstream `v0.35.1`: `ollama-linux-amd64.tar.zst`, `ollama-linux-amd64-mlx.tar.zst` | `llama/runtime-pin-linux.txt`: sha256; upstream's `LLAMA_CPP_VERSION` must equal ours |
-| opencoti engine | HF, whatever `llm/engine/pin.txt` names | `llm/engine/pin.txt` via `cmake/opencoti-fetch.cmake` |
-| opencoti media sidecars (`oc-codec`: mp3, opus, aac, mp4; `oc-audiocpp`: Kokoro, Supertonic, KittenTTS) | HF, the pin's `#! sidecar` rows, staged beside the engine under their published names | `llm/engine/pin.txt` via `cmake/opencoti-fetch.cmake`, re-checked by `scripts/docker-assemble.sh` |
-| opencoti CUDA 12 payload (older cards, e.g. V100) | HF, the pin's `#! dso-cuda12` row, staged with a copy of the engine in `lib/ollama/engines/cuda_v12` | `llm/engine/pin.txt` (sha256 checked by `scripts/docker-assemble.sh`) |
+| opencoti engine and its GPU libraries (CUDA 13, Vulkan) | HF, the components `llm/engine/pin/index.txt` names, staged in `lib/ollama` under their published names | `llm/engine/pin/` via `cmake/opencoti-fetch.cmake` (sha256 and size), re-checked by `scripts/docker-assemble.sh` against the fetch's manifest |
+| opencoti media sidecars (`oc-codec`: mp3, opus, aac, mp4; `oc-audiocpp`: Kokoro, Supertonic, KittenTTS) | HF, the `media` component, staged beside the engine under their published names with their licence texts | as the engine |
+| opencoti CUDA 12 payload (older cards, e.g. V100) | HF, the `cuda12` component: `ggml-cuda-cu12-x86_64.so` beside the same engine, which loads it for a load on such cards (`OPENCOTI_CUDA_LEGACY=1`) | as the engine |
 | `xollama` | Go-only build in AlmaLinux 8 (glibc 2.28), `-buildmode=pie` | the commit; the Go toolchain is the newest patch on `go.mod`'s line |
 
 The overlay order matters. Upstream's tarball goes down first, and the fork's
@@ -131,7 +131,7 @@ the MLX bindings include.
 
 The arm64 payload: the fork's arm64 CPU runtime, upstream's arm64 CUDA 12,
 CUDA 13 and JetPack 5/6 tarballs, and the engine's `aarch64` rows of
-`llm/engine/pin.txt` (the engine and its three media libraries; no GPU
+`llm/engine/pin/` (the engine and its three media libraries; no GPU
 library, so on arm64 the engine serves the CPU and llama.cpp serves CUDA).
 The engine's arm64 audio library needed the system's `libatomic` up to
 snapshot `2610031615001`; from `2610040710001` it does not, and the image no

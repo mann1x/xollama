@@ -1,0 +1,17 @@
+# llm/engine/pin/xollama.txt -- xollama's own rows about the pinned engine.
+#
+# Not a pin file: index.txt and the component pins beside it are opencoti's
+# format 2 and are vendored byte-identical. This file states what xollama has
+# MEASURED the pinned engine to do and its pin does not say. Only
+# llm/engine/pin.go reads it; a row is `feature <name>`.
+#
+# Capabilities are declared, never worked out from the cut number in the
+# engine's name: a dev build carries part of the next cut under the previous
+# cut's tag. A row here is dropped once the engine's own pin states it.
+
+# The SWA cache types (--kv-cache-type-k-swa / -v-swa): featureSWACacheTypes,
+# llm/engine/capability.go.
+feature  swa-cache-types
+# --log-memory-plan at --log-verbosity 4: featureLogMemoryPlan, logArgs in
+# llm/engine/opencoti.go.
+feature  log-memory-plan

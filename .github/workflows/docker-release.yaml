@@ -11,7 +11,7 @@
 #
 #   llama.cpp CPU runtime  the fork's release tgz        llama/runtime-pin-linux[-arm64].txt
 #   CUDA / Vulkan / MLX    upstream's release tarballs   llama/runtime-pin-linux[-arm64].txt
-#   opencoti engine        HF, whatever the pin names    llm/engine/pin.txt
+#   opencoti engine        HF, whatever the pin names    llm/engine/pin
 #   xollama                Go-only build, AlmaLinux 8    this commit
 #
 # scripts/docker-assemble.sh does the assembly and is the same script used to

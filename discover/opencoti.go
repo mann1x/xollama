@@ -39,12 +39,18 @@ func existsOn(b engine.Backend, goos string) bool {
 // opencotiListDevices runs one enumeration and returns its combined output.
 // It is a variable so tests can stand in for the artifact.
 var opencotiListDevices = func(ctx context.Context, artifact string, b engine.Backend) (string, error) {
+	return listDevices(ctx, artifact, b)
+}
+
+// listDevices has the artifact list one backend's devices, with env added to
+// the environment a launch gives it.
+func listDevices(ctx context.Context, artifact string, b engine.Backend, env ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, opencotiEnumerateTimeout)
 	defer cancel()
 	name, args := engine.EnumerateCommand(artifact, b, runtime.GOOS)
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.WaitDelay = llamaServerDiscoveryWaitDelay
-	cmd.Env = envconfig.Environ()
+	cmd.Env = append(envconfig.Environ(), env...)
 	// The HOME the launch will give this same artifact, so a listing and the
 	// load it places cannot disagree about what the engine finds there.
 	home, _ := os.UserHomeDir()

@@ -1,0 +1,17 @@
+format     2
+component  macos
+version    2610031635001
+built-from 2610031615001
+repo       ManniX-ITA/opencoti-llamafile-dev
+rev        21462d105075e8d0a3f511d5519077761a1e2efb
+abi        ggml 41ba479c24d7e3a624c7b13aa3cbe357e41fac04a504c54ec2ee170de0bff9a1
+abi        loader d6ff34022f1d3fb5af56ca0c80e3f4e552bf09f1bebdf0cb5f314a454bf38dbc
+abi-source computed
+engine-min 2610031615001
+gated-with 2610031615001
+gated-with 2610040710001
+gated-with 2610040837001
+requires   macos-aarch64  macos          13.0
+file  macos-aarch64  ape        components/macos/2610031635001/ape-macos-aarch64  07f550415a59415973ef877eec99a776dfa5263b06fdb1fd9cefb7b884f0f723  56896
+file  macos-aarch64  metal      components/macos/2610031635001/ggml-metal-aarch64.dylib  8c2216b36f13e0ea36066034cb43bf96cb1ea65155a7c108a0eae6cb3cc014f1  1596512
+file  any            build-info components/macos/2610031635001/BUILD_INFO.md  55b0d1e0ac418a05690f8d561d1f17b4faa16f1fa2d9446e1d8e62f665230819  2461

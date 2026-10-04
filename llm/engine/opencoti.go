@@ -54,19 +54,27 @@ func DefaultDirs(libOllamaPath, home string) []string {
 	return dirs
 }
 
-// CUDA12Dirs lists where the engine copy that side-loads the CUDA 12 payload
-// is looked for: a cuda_v12 subdirectory of each engine directory. The engine
-// loads the ggml-cuda library beside its own executable, so the two payloads
-// need two directories, each with the engine in it.
-func CUDA12Dirs(libOllamaPath, home string) []string {
-	var dirs []string
-	if home != "" {
-		dirs = append(dirs, filepath.Join(home, ".ollama", "engines", "cuda_v12"))
+// EnvCUDALegacy is the engine's switch between its two CUDA libraries, which
+// sit side by side in its own directory: 1 loads the CUDA 12 one, 0 the CUDA 13
+// one. Unset, the engine asks the driver and takes CUDA 12 only when every
+// NVIDIA device is older than compute 7.5.
+const EnvCUDALegacy = "OPENCOTI_CUDA_LEGACY"
+
+// LegacyCUDA reports whether a load on these devices runs on the pin's CUDA 12
+// library, and so has to be started with EnvCUDALegacy=1: on a host that also
+// has a newer card the engine's own pick is CUDA 13, which has no code for
+// these. An operator's XOLLAMA_ENGINE_PATH is used as given, and that engine
+// makes its own pick.
+func LegacyCUDA(devices []Device) bool {
+	if envconfig.Var(EnvPath) != "" {
+		return false
 	}
-	if libOllamaPath != "" {
-		dirs = append(dirs, filepath.Join(libOllamaPath, "engines", "cuda_v12"))
+	pin, err := loadPin()
+	if err != nil {
+		return false
 	}
-	return dirs
+	cuda12, why := cudaPayload(pin, devices)
+	return cuda12 && why == ""
 }
 
 // Find returns the artifact to run.
@@ -206,7 +214,7 @@ const logVerbosity = "5"
 // quietLogVerbosity is ollama's own threshold, used with --log-memory-plan.
 const quietLogVerbosity = "4"
 
-// featureLogMemoryPlan names --log-memory-plan in pin.txt.
+// featureLogMemoryPlan names --log-memory-plan in pin/xollama.txt.
 const featureLogMemoryPlan = "log-memory-plan"
 
 // logArgs is the logging argv for the pinned engine: ollama's threshold plus
@@ -235,7 +243,7 @@ func Command(artifact string, params []string, devices []Device, goos string) (s
 }
 
 // MacLoader is the file name of the macOS APE loader, staged beside the
-// engine (pin row `#! sidecar macos-aarch64 ape`).
+// engine (the macos component's `file macos-aarch64 ape` row).
 const MacLoader = "ape-macos-aarch64"
 
 // run is the program and argv that start the artifact with args.
@@ -358,21 +366,16 @@ func Launch(stockExe string, params []string, devices []Device, libOllamaPath st
 		return stockExe, params, false
 	}
 
-	home, _ := os.UserHomeDir()
-	dirs := DefaultDirs(libOllamaPath, home)
-	// A card only the CUDA 12 payload serves runs the engine copy staged
-	// beside that payload. An explicit XOLLAMA_ENGINE_PATH is the operator's
-	// choice and is used as given.
+	// One engine process loads one CUDA library, so a load whose GPUs need
+	// both is llama.cpp's. Which of the two a load gets is LegacyCUDA.
 	if pin, err := loadPin(); err == nil {
-		cuda12, why := cudaPayload(pin, devices)
-		if why != "" {
+		if _, why := cudaPayload(pin, devices); why != "" {
 			slog.Info("falling back to stock llama-server", "reason", why)
 			return stockExe, params, false
 		}
-		if cuda12 {
-			dirs = CUDA12Dirs(libOllamaPath, home)
-		}
 	}
+	home, _ := os.UserHomeDir()
+	dirs := DefaultDirs(libOllamaPath, home)
 	artifact, err := Find(envconfig.Var(EnvPath), dirs)
 	if err != nil {
 		slog.Info("falling back to stock llama-server", "reason", decision.Reason, "error", err)

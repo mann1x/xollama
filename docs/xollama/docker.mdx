@@ -57,7 +57,6 @@ ROCm acceleration.
 |---|---|
 | `/usr/bin/xollama` | The server and CLI. It is the entrypoint; the default command is `serve`. |
 | `/usr/lib/ollama/` | The runtime: `llama-server` and CPU libraries, the CUDA and Vulkan backends, the opencoti engine. |
-| `/usr/lib/ollama/engines/cuda_v12/` | A second copy of the opencoti engine beside its CUDA 12 payload, used for Volta cards. |
 | `/usr/lib/ollama/PAYLOAD` | Which bytes the image carries: the xollama version and Go toolchain, the runtime release and sha256, the upstream tarballs, the engine tag and revision. |
 | `/root/.ollama/` | Nothing at first. The server's home: models, keys, settings. Mount a volume here. |
 

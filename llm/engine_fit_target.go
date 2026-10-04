@@ -1,6 +1,10 @@
 package llm
 
-import "log/slog"
+import (
+	"log/slog"
+
+	"github.com/ollama/ollama/llm/engine"
+)
 
 // opencotiEnvsForStart is extraEnvsForStart for a launch opencoti serves.
 //
@@ -19,6 +23,16 @@ import "log/slog"
 func (launch llamaServerLaunchConfig) opencotiEnvsForStart() map[string]string {
 	if pad, ok := launch.mmprojFitTargetMiB(); ok {
 		slog.Debug("opencoti places the vision projector itself; not padding the fit target", "pad_mib", pad)
+	}
+	// The engine holds both CUDA libraries and one process loads one: a load
+	// on cards only the CUDA 12 one has code for says so (engine.LegacyCUDA).
+	if engine.LegacyCUDA(engineDevices(launch.gpus)) {
+		envs := cloneStringMap(launch.extraEnvs)
+		if envs == nil {
+			envs = map[string]string{}
+		}
+		envs[engine.EnvCUDALegacy] = "1"
+		return envs
 	}
 	return launch.extraEnvs
 }

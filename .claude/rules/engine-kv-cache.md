@@ -76,12 +76,12 @@ paths:
   the feature at all, then `kv.ringShapeError()` asks whether this shape of it
   would be accepted. Keep both inside the hook region and inert when opencoti
   was not chosen — see `.claude/rules/upstream-tree.md`.
-- Re-probe, never re-reason, when `llm/engine/pin.txt` moves: run the artifact as
+- Re-probe, never re-reason, when the engine pin (`llm/engine/pin/`) moves: run the artifact as
   `<artifact> --server <flags> --model /nonexistent.gguf`, and read reaching
   `failed to load model` as accepted, anything earlier as refused. Every row of
   `TestRingShapeMatchesWhatTheEngineAccepts` in `llm/engine_ring_shape_test.go`
   is one such run; the probe date and artifact tag are recorded there and above
-  the `feature swa-cache-types` row in `llm/engine/pin.txt`.
+  the `feature swa-cache-types` row in `llm/engine/pin/xollama.txt`.
 - The report against opencoti's `docs/llamafile-flags.md` is **closed**
   (2026-09-20); do not re-file it — see `docs/features/opencoti-config-gaps.md`.
 - Prose: `docs/xollama/kv-cache.mdx`; numbers: `docs/evaluations/phase2-engine-ab.md`.

@@ -127,46 +127,56 @@ stages every payload under the loader's name.
 
 Routing is the tested matrix intersected with what the pinned artifact actually
 ships — see `pinUncovered`. A dev snapshot is a bare APE that accelerates only
-what its `dso` rows provide, so Vulkan reached opencoti for the first time with
+what the GPU libraries pinned beside it provide (a `cuda`, `vulkan` or `metal`
+file row for the platform is the claim), so Vulkan reached opencoti for the first time with
 snapshot `2609242056001`, the first to publish `ggml-vulkan-x86_64.so`.
-The current pin, `2610040710001` (rev `a936348b`), carries CUDA and Vulkan for
-Linux x86_64 and Windows x86_64; it is the first whose Vulkan library runs an
-AMD integrated GPU on Windows (measured on eleven2go, 2026-10-04).
+The current pin (engine `2610040837001`, `llm/engine/pin/index.txt`) carries
+CUDA and Vulkan for Linux x86_64 and Windows x86_64; its Vulkan library is the
+first that runs an AMD integrated GPU on Windows (measured on eleven2go with
+engine `2610040710001`, 2026-10-04; the library is the same bytes).
 
-A pin can also narrow CUDA by silicon. `cuda-sass 86 120` (the dev snapshots
-before `70cee052`) says the payloads carry SASS for sm_86 and sm_120f only, so
+A pin can also narrow CUDA by silicon. `sass 86 120` in the `cuda` component's
+pin (the dev snapshots before `70cee052`) says the payloads carry SASS for sm_86 and sm_120f only, so
 `Pin.CoversCUDA` admits 8.6–8.9 and 12.x and routes 7.5, 8.0, 9.0 and 10.x to
 llama.cpp, naming why. The current pin states `75 80 86 89 90 120`. Without it,
 those cards would load on opencoti and run on the CPU. A pin with no
-`cuda-sass` row keeps the engine's 7.5 floor alone.
+`sass` line keeps the engine's 7.5 floor alone.
 
-**The CUDA 12 payload.** A pin may also carry a second, CUDA 12 payload for
-older cards, on two `#!` lines opencoti's own parsers read as comments:
-`#! dso-cuda12 <arch> <path> <sha256>` and `#! cuda12-sass <cc>...`. b208's was
-`ggml-cuda-cu12-x86_64.so`, SASS sm_70 only (Tesla V100 / Titan V), driver ≥
+**The CUDA 12 payload.** A pin may also carry a second, CUDA 12 library for
+older cards: the `cuda12` component, with its own `sass` line. b208's was
+`ggml-cuda-cu12-x86_64.so`, SASS sm_70 only (Tesla V100 / Titan V), driver >=
 570. The current pin carries `ggml-cuda-cu12-x86_64.so` with
-`cuda12-sass 52 61 70` (Maxwell, Pascal, Volta) as a **legacy** payload: the
+`sass 52 61 70` (Maxwell, Pascal, Volta) as a **legacy** payload: the
 owner's decision (2026-10-04) is to publish it without a run on such a card,
-which neither opencoti nor xollama has. One engine process loads one payload, and the engine takes the
-`ggml-cuda` library beside its own executable, so the CUDA 12 payload is
-staged as `ggml-cuda.so` beside a second copy of the engine in
-`lib/ollama/engines/cuda_v12` (`scripts/docker-assemble.sh`; Linux image only).
-Per load, `cudaPayload` in `llm/engine/policy.go` decides:
+which neither opencoti nor xollama has, and it never waits for one. Both CUDA
+libraries sit beside the one engine under their published names
+(`ggml-cuda-x86_64.so`, `ggml-cuda-cu12-x86_64.so`), and one engine process
+loads one of them. Left to itself the engine asks the driver and takes CUDA 12
+only when every NVIDIA card is older than compute 7.5; `OPENCOTI_CUDA_LEGACY=1`
+makes it take CUDA 12 regardless. Per load, `cudaPayload` in
+`llm/engine/policy.go` decides:
 
 | The load's CUDA devices | Served by |
 |---|---|
-| all covered by `cuda-sass` (7.5–9.0, 12.x on the current pin) | opencoti, CUDA 13 payload |
-| all covered only by `cuda12-sass` (5.2–7.0 on the current pin, untested; 7.0 on b208) | opencoti from `engines/cuda_v12`, CUDA 12 payload |
-| some of each | llama.cpp, with the reason logged (one payload per process) |
+| all covered by the `cuda` component's `sass` (7.5-9.0, 12.x on the current pin) | opencoti, CUDA 13 library |
+| all covered only by the `cuda12` component's `sass` (5.2-7.0 on the current pin, untested; 7.0 on b208) | opencoti started with `OPENCOTI_CUDA_LEGACY=1` (`LegacyCUDA`), CUDA 12 library |
+| some of each | llama.cpp, with the reason logged (one library per process) |
 | any other capability | llama.cpp, as before |
 
-An explicit `XOLLAMA_ENGINE_PATH` is used as given. Guards:
-`llm/engine/pin_cuda12_test.go`.
+An explicit `XOLLAMA_ENGINE_PATH` is used as given, and that engine makes its
+own pick. Guards: `llm/engine/pin_cuda_test.go`. Measured on solidPC
+(2026-10-04, RTX 3090, engine `2610040837001`): with both libraries beside
+it the engine loads `ggml-cuda-x86_64.so`, and with `OPENCOTI_CUDA_LEGACY=1`
+it loads `ggml-cuda-cu12-x86_64.so` ("CUDA 12 legacy library loaded"). Until
+engine `2610040837001` the CUDA 12 library was staged as `ggml-cuda.so` beside
+a second copy of the engine in `lib/ollama/engines/cuda_v12`; the fetch removes
+that directory.
 
-Discovery asks the same payloads. The CUDA listing that replaces llama.cpp's
-runs through the main engine and, when `engines/cuda_v12` holds a second
-engine, through that one too; the longer list wins, and the free-memory
-refresh then asks only that engine (`discover/opencoti_cuda12.go`). Before
+Discovery asks the same libraries. The CUDA listing that replaces llama.cpp's
+is the engine's own pick and, when the CUDA 12 library is staged beside it,
+a second listing with `OPENCOTI_CUDA_LEGACY=1`; the longer list wins, and the
+free-memory refresh then asks only for that one
+(`discover/opencoti_cuda12.go`). Before
 this, a V100 with a 570-series driver was listed by neither the CUDA 13
 payload (driver 580, no Volta) nor anything else, and was dropped as "a
 device the engine that serves it does not list". Guard:

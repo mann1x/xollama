@@ -123,42 +123,17 @@ func TestDeviceRoutingConsultsThePin(t *testing.T) {
 	}
 }
 
-func TestAccelRowsMustHaveAnEngineToAccelerate(t *testing.T) {
-	_, err := ParsePin("repo o/r\nrev " + strings.Repeat("a", 40) +
-		"\ntag v1\nchannel dev\naccel aarch64 CUDA\nbin x86_64 a " + strings.Repeat("a", 64))
-	if err == nil {
-		t.Fatal("ParsePin() = nil error; claiming acceleration for an arch with no bin row must not parse")
-	}
-	if !strings.Contains(err.Error(), "aarch64") {
-		t.Errorf("error %q should name the arch", err)
-	}
-}
-
-func TestDSORowsAreAddressedSeparatelyFromTheEngine(t *testing.T) {
-	p, err := ParsePin("repo o/r\nrev " + strings.Repeat("a", 40) +
-		"\ntag v1\nchannel dev\naccel x86_64 CUDA\n" +
-		"bin x86_64 builds/18/engine " + strings.Repeat("a", 64) + "\n" +
-		"dso x86_64 builds/18/ggml-cuda.so " + strings.Repeat("b", 64))
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The engine is always the bin row, even when a dso shares its arch label.
+// The engine is always the bin row, even when a GPU library shares its label.
+func TestLibrariesAreAddressedSeparatelyFromTheEngine(t *testing.T) {
+	p := mustLoad(t,
+		enginePin(row("any", "bin", "components/engine/v/opencoti-1", "engine")),
+		libPin("cuda", row("x86_64", "cuda", "components/cuda/v/ggml-cuda-x86_64.so", "cuda")))
 	bin, ok := p.Asset("x86_64")
-	if !ok || bin.Path != "builds/18/engine" {
-		t.Fatalf("Asset(x86_64) = %+v, %v; want the bin row", bin, ok)
+	if !ok || bin.Path != "components/engine/v/opencoti-1" {
+		t.Fatalf("Asset(x86_64) = %+v, %v; want the engine", bin, ok)
 	}
 	dso, ok := p.DSO("x86_64")
-	if !ok || dso.Path != "builds/18/ggml-cuda.so" {
-		t.Fatalf("DSO(x86_64) = %+v, %v; want the dso row", dso, ok)
-	}
-}
-
-func TestAccelBackendMustBeSpelledAsDiscoverySpellsIt(t *testing.T) {
-	// "cuda" is how everyone writes it and is not how ml.DeviceID.Library
-	// does; a typo here would silently accelerate nothing.
-	_, err := ParsePin("repo o/r\nrev " + strings.Repeat("a", 40) +
-		"\ntag v1\nchannel dev\naccel x86_64 cuda\nbin x86_64 a " + strings.Repeat("a", 64))
-	if err == nil {
-		t.Fatal("ParsePin() = nil error; an unknown backend spelling must not parse")
+	if !ok || dso.Path != "components/cuda/v/ggml-cuda-x86_64.so" {
+		t.Fatalf("DSO(x86_64) = %+v, %v; want the CUDA library", dso, ok)
 	}
 }

@@ -1,0 +1,14 @@
+format     2
+component  vulkan
+version    2610040653001
+built-from 2610040710001
+repo       ManniX-ITA/opencoti-llamafile-dev
+rev        21462d105075e8d0a3f511d5519077761a1e2efb
+abi        ggml 41ba479c24d7e3a624c7b13aa3cbe357e41fac04a504c54ec2ee170de0bff9a1
+abi-source computed
+engine-min 2610040710001
+gated-with 2610040710001
+requires   x86_64         glibc          2.27
+file  x86_64         vulkan     components/vulkan/2610040653001/ggml-vulkan-x86_64.so  b20ed8622154b0a248d27ed43cb3879cb48b2fb23c94c1b98f709ef460f34d86  56290456
+file  win-x86_64     vulkan     components/vulkan/2610040653001/ggml-vulkan-win-x86_64.dll  93d73376a5daf7e68bcd4d38e27fa4f8f0cdca6387545b98f6d23c72375a0f18  57257814
+file  any            build-info components/vulkan/2610040653001/BUILD_INFO.md  00cd3a0e6e4146facf92cebf26fd2c9f140ed4a6878c9b4be5f7bfdeb91ea81d  2112

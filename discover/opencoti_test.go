@@ -2,7 +2,6 @@ package discover
 
 import (
 	"context"
-	"os"
 	"runtime"
 	"testing"
 
@@ -55,15 +54,15 @@ func onLinux(t *testing.T) {
 
 func withOpencoti(t *testing.T, listings map[engine.Backend]string) {
 	t.Helper()
-	restoreList, restoreFind, restore12 := opencotiListDevices, opencotiArtifact, opencotiCUDA12Artifact
+	restoreList, restoreFind, restoreHas := opencotiListDevices, opencotiArtifact, opencotiHasCUDA12
 	t.Cleanup(func() {
-		opencotiListDevices, opencotiArtifact, opencotiCUDA12Artifact = restoreList, restoreFind, restore12
-		cudaLister.artifact = ""
+		opencotiListDevices, opencotiArtifact, opencotiHasCUDA12 = restoreList, restoreFind, restoreHas
+		cudaLister.known, cudaLister.legacy = false, false
 	})
 	onLinux(t)
-	cudaLister.artifact = ""
+	cudaLister.known, cudaLister.legacy = false, false
 	opencotiArtifact = func() (string, error) { return "/lib/ollama/opencoti", nil }
-	opencotiCUDA12Artifact = func() (string, error) { return "", os.ErrNotExist }
+	opencotiHasCUDA12 = func(string) bool { return false }
 	opencotiListDevices = func(_ context.Context, _ string, b engine.Backend) (string, error) {
 		return listings[b], nil
 	}

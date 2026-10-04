@@ -1,0 +1,14 @@
+format     2
+component  cuda12
+version    2610040730001
+built-from 2610040710001
+repo       ManniX-ITA/opencoti-llamafile-dev
+rev        21462d105075e8d0a3f511d5519077761a1e2efb
+abi        ggml 41ba479c24d7e3a624c7b13aa3cbe357e41fac04a504c54ec2ee170de0bff9a1
+abi-source computed
+engine-min 2610040710001
+sass       52 61 70
+requires   x86_64         glibc          2.27
+absent     win-x86_64 not built
+file  x86_64         cuda12     components/cuda12/2610040730001/ggml-cuda-cu12-x86_64.so  2bc461043ffbcd597d2f8dd7241e626a944aa05a8409255ad731187910d9ecc1  259821904
+file  any            build-info components/cuda12/2610040730001/BUILD_INFO.md  016264f013c1fa3be35b57d5b4125f59bfbeb5a2fa28cde2257359c8a2527a17  2042

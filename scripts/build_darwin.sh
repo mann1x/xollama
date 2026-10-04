@@ -146,7 +146,7 @@ _merge_darwin_payload() {
 
 # xollama-hook: macos-engine
 # The opencoti engine for Apple silicon: the APE, its loader, the Metal library
-# and the media sidecars, every file verified against llm/engine/pin.txt by the
+# and the media sidecars, every file verified against llm/engine/pin by the
 # script every other package stages with. opencoti publishes nothing for Intel,
 # so the files are arm64 only and an Intel Mac stays on llama.cpp
 # (llm/engine/policy.go). They go in their own directory, which
@@ -155,7 +155,7 @@ _stage_opencoti_engine() {
     [ "${XOLLAMA_OPENCOTI_ENGINE:-ON}" = "OFF" ] && return 0
     case "$ARCHS" in *arm64*) ;; *) return 0 ;; esac
     status "Staging the opencoti engine (macos-aarch64)"
-    cmake -DPIN_FILE="$PWD/llm/engine/pin.txt" -DARCH=macos-aarch64 \
+    cmake -DPIN_DIR="$PWD/llm/engine/pin" -DARCH=macos-aarch64 \
         -DDEST_DIR="$PWD/dist/darwin/lib/ollama/engines" \
         -DCACHE_DIR="${XOLLAMA_OPENCOTI_ENGINE_CACHE:-$PWD/build/opencoti-cache}" \
         -DLOCAL_SIDECAR_DIR="${XOLLAMA_OPENCOTI_SIDECAR_DIR:-}" \

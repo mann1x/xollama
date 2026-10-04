@@ -21,7 +21,7 @@
 # Nothing native is compiled here. The CPU runtime is a pinned artifact built
 # once by xollama-runtime.yaml (llama/runtime-pin.txt), the CUDA and Vulkan
 # backends come from upstream's release of the same base, guarded by
-# LLAMA_CPP_VERSION, and the opencoti engine comes from llm/engine/pin.txt,
+# LLAMA_CPP_VERSION, and the opencoti engine comes from llm/engine/pin,
 # SHA-256 enforced. So the payload -- and the payload id the delta update keys
 # on -- changes only when one of those three pins moves. Only the Go binaries,
 # the tray app and the installers are built.
@@ -245,13 +245,13 @@ jobs:
           out gotoolchain "$toolchain"; out gomod "$gomod"
           echo "Go: $toolchain (go.mod: go $gomod)"
 
-          # The -gpu bin when the pin has one; else a dev snapshot's bare APE,
-          # whose CUDA payload is a win-x86_64 dso row (Pin.ArchFor).
-          pin=$(git show "$sha:llm/engine/pin.txt")
-          if grep -Eq '^[[:space:]]*bin[[:space:]]+win-x86_64-gpu[[:space:]]' <<< "$pin"; then
-            out engine yes; out enginearch win-x86_64-gpu; echo "opencoti: the pin carries a Windows artifact (win-x86_64-gpu)"
-          elif grep -Eq '^[[:space:]]*bin[[:space:]]+win-x86_64[[:space:]]' <<< "$pin"; then
-            out engine yes; out enginearch win-x86_64; echo "opencoti: the pin carries a Windows artifact (win-x86_64, dso-side GPU payload)"
+          # The engine is one file for every platform (`file any bin`), with
+          # a row of its own for Windows under the .exe name it needs. Its
+          # pin is the one our index names (llm/engine/pin, pin format 2).
+          epin=$(git show "$sha:llm/engine/pin/index.txt" | awk '$1=="engine" {n=split($2,a,"/"); print a[n]}')
+          [ -n "$epin" ] || fail "llm/engine/pin/index.txt names no engine pin at $sha"
+          if git show "$sha:llm/engine/pin/$epin" | grep -Eq '^[[:space:]]*file[[:space:]]+(win-x86_64|any)[[:space:]]+bin[[:space:]]'; then
+            out engine yes; out enginearch win-x86_64; echo "opencoti: the pin carries the engine for Windows"
           else
             out engine no; echo "opencoti: no Windows row at this pin; the installer carries llama.cpp only"
           fi
@@ -331,27 +331,28 @@ jobs:
           }
           Remove-Item -Force $zip
 
-      # Into lib/ollama/engines, not beside llama-server.exe: ggml's loader
-      # falls back to ggml-cuda.dll in the exe's directory, and a dev pin's
-      # engine dso has exactly that name (cmake/opencoti-engine.cmake).
-      # The same fetch stages the pin's media sidecars ("#! sidecar": the
-      # codec and audio.cpp DLLs) beside the engine, which is where it looks
-      # for them. The installer takes lib\ollama recursively and payloadId
-      # hashes every file under it, so they ship and a changed one is a
-      # payload change.
+      # Into lib/ollama/engines, not beside llama-server.exe: that directory
+      # is the engine's own, and ggml's loader in llama-server.exe looks in
+      # its own for a ggml-cuda.dll (cmake/opencoti-engine.cmake).
+      # The one fetch stages everything the pin names for Windows beside the
+      # engine under its published name: the engine, its CUDA and Vulkan
+      # DLLs, the media DLLs and their licence texts. The installer takes
+      # lib\ollama recursively and payloadId hashes every file under it, so
+      # they ship and a changed one is a payload change.
       - name: stage the opencoti engine
         if: env.ENGINE == 'yes'
         working-directory: repo
         run: |
-          cmake -DPIN_FILE=llm/engine/pin.txt -DARCH=$ENGINE_ARCH \
+          cmake -DPIN_DIR=llm/engine/pin -DARCH=$ENGINE_ARCH -DMANIFEST=engine-manifest.txt \
             -DDEST_DIR=dist/windows-amd64/lib/ollama/engines -P cmake/opencoti-fetch.cmake
-          awk '$1=="#!" && $2=="sidecar" && $3=="win-x86_64" {print $4, $5, $6}' llm/engine/pin.txt \
-            | while read -r kind path sum; do
-                f="dist/windows-amd64/lib/ollama/engines/$(basename "$path")"
-                [ "$(sha256sum "$f" 2>/dev/null | cut -c1-64)" = "$sum" ] \
-                  || { echo "::error::$kind sidecar $(basename "$path") is not staged beside the engine as the pin names it"; exit 1; }
-                echo "$kind sidecar: $(basename "$path")"
-              done
+          [ -s engine-manifest.txt ] || { echo "::error::the fetch staged nothing"; exit 1; }
+          while read -r comp version kind name sum bytes; do
+            f="dist/windows-amd64/lib/ollama/engines/$name"
+            [ "$(sha256sum "$f" 2>/dev/null | cut -c1-64)" = "$sum" ] \
+              || { echo "::error::$comp $kind $name is not staged beside the engine as the pin names it"; exit 1; }
+            echo "$comp $version $kind: $name"
+          done < engine-manifest.txt
+          rm engine-manifest.txt
 
       - name: payload
         working-directory: repo
@@ -542,7 +543,8 @@ jobs:
           git clone -q --filter=blob:none --no-checkout "https://github.com/$GITHUB_REPOSITORY" repo
           git -C repo fetch -q origin "$SHA"
           llama=$(git -C repo show "$SHA:LLAMA_CPP_VERSION" | tr -d '[:space:]')
-          etag=$(git -C repo show "$SHA:llm/engine/pin.txt" | awk '$1=="tag"{print $2}')
+          epin=$(git -C repo show "$SHA:llm/engine/pin/index.txt" | awk '$1=="engine" {n=split($2,a,"/"); print a[n]}')
+          etag=$(git -C repo show "$SHA:llm/engine/pin/$epin" | awk '$1=="file" && $2=="any" && $3=="bin" {n=split($4,a,"/"); print a[n]; exit}')
           if [ "$ENGINE" = yes ]; then engine="opencoti-llamafile \`$etag\` on Windows and Linux"
           else engine="opencoti-llamafile \`$etag\` on Linux; **llama.cpp only on Windows** at this pin"; fi
           # Whether updating to this release takes the small installer: only when

@@ -322,8 +322,8 @@ redirect scheme; `app/cmd/app/app.go` accepts either — see
 on `ubuntu-latest` from pinned artifacts — nothing native is compiled:
 `scripts/docker-assemble.sh` stages the fork's CPU runtime and upstream's GPU
 tarballs (`llama/runtime-pin-linux.txt`, sha256 + a README-excluded inputs
-digest), the engine (`llm/engine/pin.txt`, plus a second copy beside its CUDA 12
-payload in `lib/ollama/engines/cuda_v12`) and a Go-only `xollama`, and
+digest), the engine (`llm/engine/pin/`, with its CUDA 13, CUDA 12 and Vulkan
+libraries and media sidecars beside it) and a Go-only `xollama`, and
 `Dockerfile.xollama` sets `XOLLAMA_HOST=0.0.0.0:22434` and prebuilds the engine's
 dlopen helper from `scripts/cosmo-dlopen-helper.c` (cosmo's own compile command,
 both files given an old mtime), since the runtime image has
@@ -342,11 +342,21 @@ Upstream's `.github/workflows/latest.yaml` job is guarded to `ollama/ollama`
 the `release` job's `needs`.
 Pinned natives: `LLAMA_CPP_VERSION`, `MLX_VERSION`, `MLX_C_VERSION`,
 orchestrated by `CMakeLists.txt` / `CMakePresets.json`; the opencoti engine
-artifact is pinned by `llm/engine/pin.txt` (`repo`, `rev` commit sha, `tag`,
-`channel`, `feature`, `accel`, `cuda-sass`, `cuda12-sass`, plus `bin` / `dso` /
-`dso-cuda12` asset rows and `#! sidecar` rows: the engine's media libraries,
-oc-codec, oc-audiocpp and oc-espeak, staged beside it under their published names; on Apple silicon (`macos-aarch64`, `accel` Metal) also the loader the engine is started through (`ape`) and the Metal library, staged and signed by `scripts/build_darwin.sh` with `app/darwin/engine-loader.entitlements` (`macos-engine` hook)), read by both
-`llm/engine/pin.go` and `cmake/opencoti-fetch.cmake`. Moving that pin retires
+artifact is pinned in `llm/engine/pin/`, opencoti's pin format 2: our own
+`index.txt` (channel, tag, one line per component with its pin's sha256) and the
+component pins it names, vendored byte-identical (`engine`, `cuda`, `cuda12`,
+`vulkan`, `macos`, `media`: `abi`, `engine-min`, `sass`, `feature` and
+`file <platform> <kind> <path> <sha256> <bytes>` rows), plus xollama's own measured
+`feature` rows in `xollama.txt`. Every file is staged beside the engine under its
+published name: the GPU libraries (CUDA 13 and the legacy CUDA 12 one side by side;
+a load on cards only CUDA 12 serves starts the engine with `OPENCOTI_CUDA_LEGACY=1`,
+`engine.LegacyCUDA`), the media libraries oc-codec, oc-audiocpp and oc-espeak with
+their licence texts, and on Apple silicon (`macos-aarch64`) the loader the engine is
+started through (`ape`) and the Metal library, staged and signed by
+`scripts/build_darwin.sh` with `app/darwin/engine-loader.entitlements`
+(`macos-engine` hook). It is read by both `llm/engine/pin.go` (`LoadPin`) and
+`cmake/opencoti-fetch.cmake`, which refuse a vendored pin that is not the one the
+index names and a component whose `abi` or `engine-min` the engine does not meet. Moving that pin retires
 only the rows in `llm/engine_defects.go` the new bytes are *measured* to fix —
 a changelog is not a measurement; the measurement is `scripts/phase2-engine-ab.py`,
 run as the `ollama` user (`.claude/rules/solidpc-testing.md`).

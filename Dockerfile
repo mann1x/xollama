@@ -286,13 +286,13 @@ COPY --from=build /go/src/github.com/ollama/ollama/build/go-license/lib/ollama/G
 # inside the package beside llama-server -- xollama never downloads an engine
 # during a model load. The pinned SHA256 is enforced by the fetch script, so a
 # bad or substituted artifact fails the image build rather than reaching a user.
-# See llm/engine/pin.txt and cmake/opencoti-fetch.cmake.
+# See llm/engine/pin and cmake/opencoti-fetch.cmake.
 #
 # Deliberately not copied into the rocm stage: ROCm has no tested opencoti
 # backend and llm/engine/policy.go routes it to llama.cpp.
 FROM base AS opencoti-engine
 ARG TARGETARCH
-COPY llm/engine/pin.txt llm/engine/pin.txt
+COPY llm/engine/pin llm/engine/pin
 COPY cmake/opencoti-fetch.cmake cmake/opencoti-fetch.cmake
 RUN --mount=type=cache,target=/cache/opencoti-engine \
     case "${TARGETARCH}" in \
@@ -300,7 +300,7 @@ RUN --mount=type=cache,target=/cache/opencoti-engine \
         arm64) ENGINE_ARCH=aarch64 ;; \
         *) echo "no opencoti-llamafile artifact is published for ${TARGETARCH}" >&2; exit 1 ;; \
     esac \
-    && cmake -DPIN_FILE=llm/engine/pin.txt -DARCH="${ENGINE_ARCH}" \
+    && cmake -DPIN_DIR=llm/engine/pin -DARCH="${ENGINE_ARCH}" \
         -DDEST_DIR=/dist/lib/ollama -DCACHE_DIR=/cache/opencoti-engine \
         -P cmake/opencoti-fetch.cmake
 

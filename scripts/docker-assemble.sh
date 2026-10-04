@@ -3,7 +3,7 @@
 #
 # Nothing native is compiled. Every native piece already exists as a published,
 # sha256-pinned artifact (llama/runtime-pin-linux.txt, or
-# llama/runtime-pin-linux-arm64.txt for arm64, and llm/engine/pin.txt);
+# llama/runtime-pin-linux-arm64.txt for arm64, and llm/engine/pin);
 # only the Go binary is built. This is the same script CI runs
 # (.github/workflows/docker-release.yaml) and the one used to validate it
 # locally, so the two cannot drift. Design: plans/docker-image.md.
@@ -134,50 +134,23 @@ if [ -n "$fork_runtime" ]; then
 fi
 
 # 3. the opencoti engine, sha256-enforced by the same script the Dockerfile and
-#    the release use. Whatever llm/engine/pin.txt names is what ships: the
-#    engine, its GPU payload and its media sidecars ("#! sidecar": the codec
-#    and audio.cpp), each beside the engine under its published name.
-cmake -DPIN_FILE="$repo/llm/engine/pin.txt" -DARCH="$earch" \
-    -DDEST_DIR="$lib" -DCACHE_DIR="$assets/opencoti" \
+#    the release use. Whatever llm/engine/pin names is what ships: the engine,
+#    its GPU libraries (CUDA 13, the legacy CUDA 12 one for the cards CUDA 13
+#    has no code for, Vulkan) and its media sidecars, all beside the engine
+#    under their published names. One engine holds both CUDA libraries and
+#    loads the one a load's cards need (llm/engine LegacyCUDA).
+emanifest="$out/engine-manifest.txt"
+cmake -DPIN_DIR="$repo/llm/engine/pin" -DARCH="$earch" \
+    -DDEST_DIR="$lib" -DCACHE_DIR="$assets/opencoti" -DMANIFEST="$emanifest" \
     -P "$repo/cmake/opencoti-fetch.cmake"
 
-# The pin's sidecar rows, as the fetch above staged them. A row whose file is
-# not there, or is other bytes, would ship an engine that refuses mp3, mp4 and
-# the audio.cpp voices.
-sidecars=()
-while read -r skind spath ssum; do
-    sfile="$lib/$(basename "$spath")"
-    echo "$ssum  $sfile" | sha256sum -c --quiet || fail "$skind sidecar $(basename "$spath") is not what the pin names"
-    sidecars+=("$sfile")
-done < <(awk '$1=="#!" && $2=="sidecar" && $3==a {print $4, $5, $6}' a="$earch" "$repo/llm/engine/pin.txt")
-echo "media sidecars staged beside the engine: ${#sidecars[@]}"
-
-# 3b. the CUDA 12 payload ("#! dso-cuda12", for the cards the CUDA 13 payload
-#     has no code for). The engine loads the ggml-cuda library beside its own
-#     executable and one process loads one payload, so it goes in
-#     engines/cuda_v12 beside a copy of the engine; the server picks that
-#     directory per load (llm/engine CUDA12Dirs / cudaPayload).
-epin="$repo/llm/engine/pin.txt"
-c12=$(awk '$1=="#!" && $2=="dso-cuda12" && $3==a {print $4, $5}' a="$earch" "$epin")
-if [ -n "$c12" ]; then
-    read -r c12path c12sum <<<"$c12"
-    erepo=$(awk '$1=="repo" {print $2}' "$epin")
-    erev=$(awk '$1=="rev" {print $2}' "$epin")
-    engine=$(find "$lib" -maxdepth 1 -type f -name 'opencoti-*' -perm -u+x | head -1)
-    [ -n "$engine" ] || fail "no opencoti engine staged in $lib to pair the CUDA 12 payload with"
-    mkdir -p "$assets/opencoti" "$lib/engines/cuda_v12"
-    c12file="$assets/opencoti/$(basename "$c12path")"
-    if ! echo "$c12sum  $c12file" | sha256sum -c --status 2>/dev/null; then
-        curl -fsSL --retry 3 -o "$c12file" "https://huggingface.co/$erepo/resolve/$erev/$c12path"
-    fi
-    echo "$c12sum  $c12file" | sha256sum -c --quiet || fail "CUDA 12 payload does not match the pin"
-    cp -p "$engine" "$lib/engines/cuda_v12/"
-    cp "$c12file" "$lib/engines/cuda_v12/ggml-cuda.so"
-    # The engine looks for its sidecars in its own directory, so this copy
-    # needs them too.
-    [ ${#sidecars[@]} -eq 0 ] || cp -p "${sidecars[@]}" "$lib/engines/cuda_v12/"
-    echo "CUDA 12 payload $c12sum staged in engines/cuda_v12"
-fi
+# The pin's files, as the fetch above says it staged them. A file that is not
+# there, or is other bytes, would ship an engine that refuses a GPU, mp3, mp4
+# or the audio.cpp voices.
+while read -r ecomp _ ekind ename esum _; do
+    echo "$esum  $lib/$ename" | sha256sum -c --quiet || fail "$ecomp $ekind $ename is not what the pin names"
+done < "$emanifest"
+echo "engine files staged beside the engine: $(wc -l < "$emanifest")"
 
 # 4. the Go binary, inside AlmaLinux 8 (glibc 2.28) as the release builds it,
 #    and its license bundle.
@@ -214,6 +187,7 @@ cp "$repo/Dockerfile.xollama" "$out/Dockerfile"
 cp "$repo/scripts/cosmo-dlopen-helper.c" "$out/cosmo-dlopen-helper.c"
 cat > "$out/.dockerignore" <<'EOF'
 .assets
+engine-manifest.txt
 EOF
 
 # What the image carries, so a build log answers "which bytes" on its own.
@@ -225,8 +199,6 @@ EOF
         echo "runtime UPSTREAM ollama/ollama $upstream (test build, not the fork's)"
     fi
     awk '$1=="gpu" {print "gpu     ollama/ollama '"$upstream"' " $2 " " $3}' "$pin"
-    awk '$1=="tag" || $1=="rev" {print "engine  " $1 " " $2}' "$repo/llm/engine/pin.txt"
-    awk '$1=="#!" && $2=="dso-cuda12" && $3==a {print "engine  cuda12 " $5}' a="$earch" "$repo/llm/engine/pin.txt"
-    awk '$1=="#!" && $2=="sidecar" && $3==a {print "engine  sidecar " $4 " " $6}' a="$earch" "$repo/llm/engine/pin.txt"
+    awk '{print "engine  " $1 " " $2 " " $3 " " $4 " " $5}' "$emanifest"
 } | tee "$lib/PAYLOAD"
 du -sh "$lib"/* | sort -h | tail -12

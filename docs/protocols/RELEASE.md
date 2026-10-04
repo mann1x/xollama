@@ -143,7 +143,7 @@ changes when one of these three pins moves.
 |---|---|---|
 | `llama-server.exe` + CPU `ggml-*.dll` | `llama/runtime-pin.txt`: a `runtime-windows-amd64-<llama>-<digest>` release built once by `xollama-runtime.yaml` (MSYS2 clang64, `llama/server` preset `cpu_windows`) | the asset's sha256, and the pin's `inputs` digest must equal the release commit's digest of `LLAMA_CPP_VERSION`, `llama/server` and `llama/compat`. When the runtime was built, the compat patches had to be present in the fetched source (`WAITING_BOUNDARY`, `REASONING_BUDGET_SCOPE_RESPONSE`, `forced_end_pos`) |
 | `cuda_v13\`, `vulkan\` | upstream's `ollama-windows-amd64.zip` from ollama/ollama release `v<upstream>` | upstream's `LLAMA_CPP_VERSION` at that tag must equal ours, or the run fails |
-| opencoti-llamafile | `llm/engine/pin.txt` through `cmake/opencoti-fetch.cmake`, SHA-256 enforced | added only when the pin has a Windows `bin` row: `win-x86_64-gpu` when present, else a dev snapshot's bare `win-x86_64` APE with its `dso win-x86_64` CUDA DLL (`Pin.ArchFor`), staged in `lib\ollama\engines` as `<name>.exe` + `ggml-cuda.dll`, apart from `llama-server.exe` |
+| opencoti-llamafile | `llm/engine/pin/` (pin format 2: our index and the vendored component pins) through `cmake/opencoti-fetch.cmake`, SHA-256 and size enforced | added only when the engine pin has a bin row for Windows (`file win-x86_64 bin` or `file any bin`): the engine as `<name>.exe`, `ggml-cuda-win-x86_64.dll`, `ggml-vulkan-win-x86_64.dll`, the media DLLs and their licence texts, all under their published names in `lib\ollama\engines`, apart from `llama-server.exe` |
 
 The container image has its own two pins, one per architecture, and the same
 kind of check. `plan` refuses a release whose Linux pins would not assemble, so
@@ -153,7 +153,7 @@ the image cannot fail after the release is out for a reason known before it:
 |---|---|---|
 | CPU `llama-server` and `ggml` libraries | `llama/runtime-pin-linux.txt` (amd64) and `llama/runtime-pin-linux-arm64.txt`: `ollama-linux-<arch>-runtime.tgz` of the fork's release `v<upstream>-thinkbudget` | each asset's sha256; each pin's `inputs` digest (`llama/compat/README.md` left out) must equal the release commit's; both pins must name the same fork release and be published |
 | CUDA, Vulkan, MLX, JetPack | upstream's `ollama-linux-<arch>*.tar.zst`, the `gpu` rows of the same pins | each sha256; upstream's `LLAMA_CPP_VERSION` must equal ours |
-| opencoti-llamafile and its media libraries | `llm/engine/pin.txt`, the `x86_64` and `aarch64` rows | SHA-256 enforced by `cmake/opencoti-fetch.cmake`; arm64 has no GPU library, so the engine serves the CPU there |
+| opencoti-llamafile, its GPU and media libraries | `llm/engine/pin/`, the `x86_64` and `aarch64` rows of each component | SHA-256 enforced by `cmake/opencoti-fetch.cmake`; arm64 has no GPU library, so the engine serves the CPU there |
 
 The Go binaries (`xollama.exe`, the tray app, `xollama-linux-amd64`,
 `xollama-linux-arm64`) are compiled, the arm64 one with clang (AlmaLinux 8's
@@ -206,8 +206,8 @@ offers it to anyone. Never delete a runtime release that a published xOllama
 release was built from. Moving this pin changes the payload, so the first
 update after it downloads the full installer, which is the correct behaviour.
 
-**opencoti on Windows depends on the pin.** When `llm/engine/pin.txt` has no
-Windows row, the installer carries llama.cpp only, and `pinUncovered` routes
+**opencoti on Windows depends on the pin.** When the engine pin in
+`llm/engine/pin/` has no bin row for Windows, the installer carries llama.cpp only, and `pinUncovered` routes
 Windows to it. That is the stated property of that snapshot, not a build
 failure. The run writes the result into the release notes: engine included,
 or "llama.cpp only on Windows at this pin". Adding a Windows row is a pin move,

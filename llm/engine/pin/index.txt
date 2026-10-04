@@ -1,0 +1,54 @@
+# llm/engine/pin/index.txt -- xollama's index of the pinned opencoti engine.
+#
+# opencoti pin format 2 (their docs/protocols/PIN_FORMAT.md). This file is
+# OURS: it names the components this tree takes, each by the commit its pin
+# file is readable at, the sha256 of that pin file and its version. The pin
+# files beside it are opencoti's, vendored byte-identical; never edit one.
+# xollama.txt holds our own measured `feature` rows.
+#
+# Read by llm/engine/pin.go (embedded) and cmake/opencoti-fetch.cmake (build
+# time). Both refuse a vendored pin that is not the one named here, and a
+# component whose abi or engine-min the engine does not meet. The engine and
+# everything beside it is fetched ONCE, at build time; xollama never downloads
+# an engine at runtime.
+#
+# Moving a component is one line here plus its pin file, on a MEASUREMENT
+# (scripts/phase2-engine-ab.py, as the `ollama` user), never on a changelog.
+#
+# THIS PIN (2026-10-04, opencoti mail #754, index 64551cef, pins 03702be6,
+# payload 21462d10): engine 2610040837001 = a936348b + patch 0553, the load
+# diagnostics (an eSpeak data path over the limit is refused by name; the real
+# dlopen reason is printed; a sidecar that is present and cannot be loaded says
+# so). Every library is the same bytes measured with engine 2610040710001.
+#
+# MEASURED with these bytes, staged by cmake/opencoti-fetch.cmake under their
+# published names:
+#   solidPC, RTX 3090, as `ollama` (results pin-b137): compat 8/8, llama3
+#     76.9 tok/s (77.4 on 2610040710001), 4 slots 301 tok/s (302), overflow
+#     3.8 tok/s (3.6); speech 8/8 transcribed back by Whisper; Wan2.1 and
+#     Wan2.2 33/33 frames; Vulkan on the Renoir iGPU 34.0-34.1 tok/s, 29/29
+#     layers; from an installed layout with no XOLLAMA_ENGINE_PATH 85.5 tok/s
+#     over four 512-token runs.
+#   The engine loads ggml-cuda-x86_64.so and ggml-vulkan-x86_64.so from its
+#     own directory, and ggml-cuda-cu12-x86_64.so with OPENCOTI_CUDA_LEGACY=1
+#     ("CUDA 12 legacy library loaded").
+#   A codec library that is present and is not an ELF file: "it was FOUND but
+#     could not be loaded ... invalid ELF header".
+#   Raspberry Pi 5 (dietpi5), the aarch64 rows in the :dev image: engine
+#     9.9-10.1 tok/s, llama.cpp 10.9-11.1 interleaved, 512 tokens each; speech
+#     5/5 transcribed back.
+# NOT MEASURED: Windows (the published DLL names, the eSpeak path limit of
+#   259) and macOS wait for the candidate's install check; the CUDA 12 library
+#   on a card older than 7.5 (legacy: it ships and is tested on opportunity).
+# `sbsa` is absent: nothing here routes CUDA on an arm64 server.
+
+format   2
+channel  dev
+tag      c8-dev
+engine   pin/engine.txt  rev 03702be6e5513862d493e5ebda82ed85e9c4f250  sha256 f74dcb94fc7e0bc29884fd773d762241936730d544150444657010537ce2659c  version 2610040837001
+cuda     pin/cuda.txt  rev 03702be6e5513862d493e5ebda82ed85e9c4f250  sha256 7882aff40d000a91a89ee71b2f0758297de5b33aba83330c002fe36f3fed8624  version 2610040656001
+cuda12   pin/cuda12.txt  rev 03702be6e5513862d493e5ebda82ed85e9c4f250  sha256 52a1824558436f198f7af8f849eb015cd4907e09b269c08d51adf368bdbce2a3  version 2610040730001
+sbsa     absent
+vulkan   pin/vulkan.txt  rev 03702be6e5513862d493e5ebda82ed85e9c4f250  sha256 8cb0a64a836dbeacfa76e5d62d0f4928a1246dc11026d13d86d2b34bc0666359  version 2610040653001
+macos    pin/macos.txt  rev 03702be6e5513862d493e5ebda82ed85e9c4f250  sha256 e32ea49d20a6003708c68c85d09fdcc67e9ff8ad64e65f55b5c31e879585b24f  version 2610031635001
+media    pin/media.txt  rev 03702be6e5513862d493e5ebda82ed85e9c4f250  sha256 e70d00b482ce6c7c487818230e084dfe34795896fbfb804c34c42027d8dfd50d  version 2610040725001

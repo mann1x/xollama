@@ -48,12 +48,6 @@ const (
 	BackendMetal  Backend = "Metal"
 )
 
-// knownBackends is every backend name the pin format will accept in an accel
-// row, so a typo is a parse error rather than an arch that quietly accelerates
-// nothing. ROCm and Metal are here because the spelling is valid, not because
-// opencoti-llamafile is tested on them.
-var knownBackends = []Backend{BackendCPU, BackendCUDA, BackendVulkan, BackendROCm, BackendMetal}
-
 type support struct {
 	Platform
 	Backend Backend
@@ -146,7 +140,7 @@ func deviceUnsupported(p Platform, d Device) string {
 		return reason
 	}
 	// A card only the pin's CUDA 12 payload has code for (Volta on the dev
-	// snapshots) is served from that payload; Launch picks its directory.
+	// snapshots) is served from that payload; LegacyCUDA has the engine load it.
 	if d.Backend == BackendCUDA && d.ComputeMajor > 0 {
 		if pin, err := loadPin(); err == nil && needsCUDA12(pin, d) {
 			return ""
@@ -236,7 +230,7 @@ func pinUncovered(p Platform, b Backend) string {
 }
 
 func pinUncoveredIn(pin Pin, p Platform, b Backend) string {
-	arch, err := pin.ArchFor(p.OS, p.Arch)
+	arch, err := PackageArch(p.OS, p.Arch)
 	if err != nil {
 		return fmt.Sprintf("no opencoti-llamafile artifact is packaged for %s/%s", p.OS, p.Arch)
 	}

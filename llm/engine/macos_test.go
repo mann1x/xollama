@@ -1,11 +1,6 @@
 package engine
 
 import (
-	"crypto/sha256"
-	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"slices"
 	"testing"
 )
@@ -66,52 +61,6 @@ func TestTheCommittedPinServesAppleSiliconOnly(t *testing.T) {
 	for _, kind := range []string{SidecarAPE, SidecarMetal, SidecarCodec, SidecarAudioCpp, "espeak"} {
 		if !have[kind] {
 			t.Errorf("the pin has no %q sidecar row for %s", kind, ArchMacOS)
-		}
-	}
-}
-
-// The loader is the one sidecar that is run rather than loaded. Staged like a
-// library it is 0644, and the launch fails with "permission denied".
-func TestCMakeStagesTheMacLoaderExecutable(t *testing.T) {
-	cmake, err := exec.LookPath("cmake")
-	if err != nil {
-		t.Skip("cmake is not installed")
-	}
-	script, err := filepath.Abs("../../cmake/opencoti-fetch.cmake")
-	if err != nil {
-		t.Fatal(err)
-	}
-	src, dest := t.TempDir(), t.TempDir()
-	write := func(name, body string) string {
-		t.Helper()
-		if err := os.WriteFile(filepath.Join(src, name), []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return fmt.Sprintf("%x", sha256.Sum256([]byte(body)))
-	}
-	pin := sidecarPinHead +
-		"bin " + ArchMacOS + " builds/v1/engine " + write("engine", "the engine") + "\n" +
-		"#! sidecar " + ArchMacOS + " ape   builds/v1/" + MacLoader + " " + write(MacLoader, "the loader") + "\n" +
-		"#! sidecar " + ArchMacOS + " metal builds/v1/ggml-metal-aarch64.dylib " + write("ggml-metal-aarch64.dylib", "metal") + "\n"
-	if _, err := ParsePin(pin); err != nil {
-		t.Fatalf("the Go parser refuses the pin CMake is given: %v", err)
-	}
-	pinFile := filepath.Join(src, "pin.txt")
-	if err := os.WriteFile(pinFile, []byte(pin), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	out, err := exec.Command(cmake, "-DPIN_FILE="+pinFile, "-DARCH="+ArchMacOS, "-DDEST_DIR="+dest,
-		"-DLOCAL_FILE="+filepath.Join(src, "engine"), "-DLOCAL_SIDECAR_DIR="+src, "-P", script).CombinedOutput()
-	if err != nil {
-		t.Fatalf("cmake: %v\n%s", err, out)
-	}
-	for name, executable := range map[string]bool{MacLoader: true, "ggml-metal-aarch64.dylib": false} {
-		fi, err := os.Stat(filepath.Join(dest, name))
-		if err != nil {
-			t.Fatalf("%s was not staged: %v", name, err)
-		}
-		if got := fi.Mode()&0o111 != 0; got != executable {
-			t.Errorf("%s staged with mode %v, executable = %v, want %v", name, fi.Mode(), got, executable)
 		}
 	}
 }

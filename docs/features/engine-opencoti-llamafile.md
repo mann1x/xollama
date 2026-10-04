@@ -197,8 +197,8 @@ The opencoti repo is private; the engine is published on Hugging Face, and the
 artifacts are 0.7–2 GB — too big to vendor in git and not ours to relicense.
 
 **Which repo is a variable, and nothing in the tree may assume it.** There are
-two, and `llm/engine/pin.txt` is the only place that says which one this branch
-follows:
+two, and the pin in `llm/engine/pin/` is the only place that says which one
+this branch follows:
 
 | Channel | Repo | What it holds |
 |---|---|---|
@@ -253,14 +253,46 @@ failure.
 
 ## Packaging
 
-`llm/engine/pin.txt` pins the artifact: `repo`/`rev`/`tag` plus one
-`bin <arch> <hf-path> <sha256>` row per published artifact. Two parsers read
-it - `cmake/opencoti-fetch.cmake` at build time and `llm/engine/pin.go` via
-`//go:embed` - and the format is deliberately trivial so they cannot drift.
-`llm/engine/pin_test.go` holds both honest, including an invariant that every
-platform in the routing matrix has an artifact row, and a guard that the file
-stays ASCII (CMake's regex `.` does not match multi-byte UTF-8, which once let
-a comment leak into the parser).
+The pin is opencoti's **pin format 2**, in `llm/engine/pin/`. The engine and
+everything that travels beside it are published as **components**, each with
+its own version, its own pin file and its own immutable commit: `engine`,
+`cuda`, `cuda12`, `sbsa`, `vulkan`, `macos`, `media`. An **index** composes
+them. opencoti publishes its recommended index per channel; xollama keeps its
+own, `llm/engine/pin/index.txt`, and vendors the component pin files it names
+byte-identical beside it (`sbsa` is absent: nothing here routes CUDA on
+arm64 servers). The build reads only this directory, then fetches each payload
+file by its component's `repo` / `rev` / `path` and verifies sha256 and size.
+No pin is fetched at build time.
+
+| File | Whose | What it states |
+|---|---|---|
+| `index.txt` | xollama's | `channel`, `tag`, and per component the pin file, the commit it is readable at, its sha256 and its version, or `absent` |
+| `engine.txt`, `cuda.txt`, `cuda12.txt`, `vulkan.txt`, `macos.txt`, `media.txt` | opencoti's, vendored unchanged | `repo`, `rev` (the payload commit), `abi` digests, `engine-min`, `sass`, `feature` rows, and one `file <platform> <kind> <path> <sha256> <bytes>` row per file |
+| `xollama.txt` | xollama's | `feature` rows xollama has measured and the engine's pin does not state |
+
+A staggered move is one index line and its pin file; nothing else changes.
+What makes that safe is checked in both parsers: every `abi` a component
+states must be one the engine's pin provides, name and digest, and the engine
+must not be older than the component's `engine-min`. A library and an engine
+that disagree on an interface do not fail to load; they crash or run wrong.
+
+Files are staged beside the engine under their **published names**, never
+renamed: that name is what the engine looks for in its own directory
+(`ggml-cuda-x86_64.so`, `ggml-cuda-cu12-x86_64.so`, `ggml-vulkan-x86_64.so`,
+`oc-codec-linux-x86_64.so`; on Windows the engine has a row of its own under
+the `.exe` name). The one exception is not a file the engine reads: every
+component publishes a `BUILD_INFO.md`, staged as `BUILD_INFO.<component>.md`.
+
+Two parsers read the directory - `cmake/opencoti-fetch.cmake` at build time and
+`llm/engine/pin.go` via `//go:embed` - and `llm/engine/pin_cmake_test.go` runs
+the real script against a pin both read, per platform, and holds them to the
+same files, names and modes. `llm/engine/pin_test.go` keeps the committed pin
+honest: every platform in the routing matrix is served or refused for a stated
+reason, every library ships its licence text, and the files stay ASCII
+(CMake's regex `.` does not match multi-byte UTF-8, which once let a comment
+leak into the parser). Until engine `2610040837001` the pin was one file,
+`llm/engine/pin.txt` (`bin` / `dso` rows and `#!` comment rows); opencoti
+stopped writing that format on 2026-10-04.
 
 `cmake/opencoti-engine.cmake` stages the artifact into
 `${OLLAMA_PAYLOAD_INSTALL_PREFIX}/${OLLAMA_LIB_DIR}`, which the catch-all
@@ -277,6 +309,7 @@ Building without it, for Go iteration or offline:
 ```sh
 cmake -B build . -DXOLLAMA_OPENCOTI_ENGINE=OFF            # no engine at all
 cmake -B build . -DXOLLAMA_OPENCOTI_ENGINE_FILE=<path>    # verified local copy
+cmake -B build . -DXOLLAMA_OPENCOTI_SIDECAR_DIR=<dir>     # every other file, verified
 cmake -B build . -DXOLLAMA_OPENCOTI_ENGINE_CACHE=<dir>    # reuse one download
 ```
 
@@ -384,7 +417,7 @@ failing the load.
 A **split** artifact — a bare APE with its `ggml-cuda.so` staged beside it, the
 shape the `dev` channel publishes — extracts nothing at all, so none of this
 applies to it. That is the better arrangement, because both halves can then be
-pinned by sha256 in `llm/engine/pin.txt` and verified at fetch, where a fat
+pinned by sha256 in `llm/engine/pin/` and verified at fetch, where a fat
 bin's payload is unverifiable once unpacked.
 
 ## Queued for the next pin (reported 2026-09-21, not published)
@@ -475,11 +508,11 @@ Apple silicon only. opencoti publishes its macOS files for arm64 and nothing
 for Intel, so `PackageArch` has `darwin/arm64` → `macos-aarch64` and no label
 for `darwin/amd64`, which stays on llama.cpp in a universal app.
 
-- **The package** is the pin's `bin macos-aarch64` row (the same APE file as
-  Linux) and its `#! sidecar macos-aarch64` rows: `ape` (the loader), `metal`
-  (`ggml-metal-aarch64.dylib`), `codec`, `audiocpp`, `espeak` and the licence
-  texts. Metal is a sidecar, not a `dso`: the `accel macos-aarch64 Metal` row
-  is what routes it.
+- **The package** is the engine (the same APE file as Linux, the engine
+  pin's `file any bin` row), the `macos` component's `ape` (the loader) and
+  `metal` (`ggml-metal-aarch64.dylib`), and the `media` component's
+  `macos-aarch64` rows: `codec`, `audiocpp`, `espeak` and the licence texts.
+  The `metal` row is what routes Metal to the engine.
 - **The launch** is `<dir>/ape-macos-aarch64 <engine> --server …` (`run` in
   `llm/engine/opencoti.go`, shared by the launch, the device listing and the
   link probe). Started any other way the engine compiles a loader with `cc`
