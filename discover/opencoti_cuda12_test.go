@@ -25,6 +25,7 @@ func TestAV100ListedOnlyByTheCUDA12PayloadIsKept(t *testing.T) {
 		opencotiListDevices, opencotiArtifact, opencotiCUDA12Artifact = restoreList, restoreFind, restore12
 		cudaLister.artifact = ""
 	})
+	onLinux(t)
 	cudaLister.artifact = ""
 	opencotiArtifact = func() (string, error) { return "/lib/ollama/opencoti", nil }
 	opencotiCUDA12Artifact = func() (string, error) { return "/lib/ollama/engines/cuda_v12/opencoti", nil }

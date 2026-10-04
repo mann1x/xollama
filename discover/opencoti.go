@@ -84,6 +84,11 @@ func outputTail(out string) string {
 
 // opencotiArtifact locates the engine the way a launch does, so discovery
 // never enumerates through a different artifact than the one that will run.
+// opencotiHost is the platform discovery lists backends for. A variable so a
+// test about CUDA or Vulkan names the platform it is about and runs the same
+// on a macOS runner, where existsOn leaves only Metal.
+var opencotiHost = engine.Host
+
 var opencotiArtifact = func() (string, error) {
 	home, _ := os.UserHomeDir()
 	return engine.Find(envconfig.Var(engine.EnvPath), engine.DefaultDirs(ml.LibOllamaPath, home))
@@ -156,7 +161,7 @@ func parseOpencotiDevices(output string, library string) []opencotiDevice {
 // running anything.
 func overlayOpencotiDevices(ctx context.Context, devices []ml.DeviceInfo) []ml.DeviceInfo {
 	selector := envconfig.Var(engine.EnvSelector)
-	host := engine.Host()
+	host := opencotiHost()
 	var backends []engine.Backend
 	for _, b := range opencotiBackends {
 		if existsOn(b, host.OS) && engine.Enumerates(host, b, selector) {

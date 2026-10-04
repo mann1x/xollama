@@ -34,6 +34,9 @@ paths:
   `discover/opencoti_loud_test.go`. A backend is only listed where it can exist
   (`existsOn`, `discover/opencoti.go`: Metal on macOS only, and nothing else
   there), even with `XOLLAMA_ENGINE=opencoti`. Guard:
-  `discover/opencoti_backends_test.go`.
+  `discover/opencoti_backends_test.go`. Discovery reads the platform through
+  `opencotiHost` (`discover/opencoti.go`), so a test about CUDA or Vulkan sets
+  the platform it is about (`discover/opencoti_test.go`,
+  `discover/opencoti_cuda12_test.go`) and runs the same on a macOS runner.
 - Run `golangci-lint run` before pushing — `.golangci.yaml` uses `gofumpt` and a
   `depguard` rule denying `internal/testutil` outside `_test.go` files.
