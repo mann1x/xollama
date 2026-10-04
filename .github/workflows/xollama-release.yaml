@@ -421,8 +421,15 @@ jobs:
   linux:
     needs: plan
     if: needs.plan.outputs.go == 'true'
-    runs-on: ubuntu-latest
+    # Each architecture on a runner of its own kind: no emulation, and the
+    # binary is run where it was built.
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     env:
+      ARCH: ${{ matrix.arch }}
       SHA: ${{ needs.plan.outputs.sha }}
       TAG: ${{ needs.plan.outputs.tag }}
       VERSION: ${{ needs.plan.outputs.version }}
@@ -438,26 +445,27 @@ jobs:
       - name: build (inside almalinux 8)
         working-directory: repo
         run: |
-          docker run --rm -v "$PWD:/src" -w /src -e VERSION \
+          docker run --rm -v "$PWD:/src" -w /src -e VERSION -e ARCH \
             -e CGO_ENABLED=1 -e CGO_LDFLAGS=-ldl -e GOTOOLCHAIN=local -e WANT="$GO_TOOLCHAIN" \
             almalinux:8 bash -euo pipefail -c '
               dnf install -y -q gcc gcc-c++ tar gzip findutils > /dev/null
-              curl -fsSL "https://go.dev/dl/${WANT}.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+              curl -fsSL "https://go.dev/dl/${WANT}.linux-${ARCH}.tar.gz" -o /tmp/go.tar.gz
               tar -C /usr/local -xzf /tmp/go.tar.gz
               export PATH=/usr/local/go/bin:$PATH
               ldflags="-s -w -X=github.com/ollama/ollama/version.Version=$VERSION -X=github.com/ollama/ollama/server.mode=release"
-              go build -trimpath -ldflags "$ldflags" -o xollama-linux-amd64 .
+              go build -trimpath -ldflags "$ldflags" -o "xollama-linux-$ARCH" .
             '
-          sudo chown "$(id -u):$(id -g)" xollama-linux-amd64
-          got=$(GOTOOLCHAIN=local go version xollama-linux-amd64 | awk '{print $NF}')
+          bin="xollama-linux-$ARCH"
+          sudo chown "$(id -u):$(id -g)" "$bin"
+          got=$(GOTOOLCHAIN=local go version "$bin" | awk '{print $NF}')
           echo "built with $got"
           [ "$got" = "$GO_TOOLCHAIN" ] || { echo "::error::built with $got, not $GO_TOOLCHAIN"; exit 1; }
-          ./xollama-linux-amd64 --version 2>&1 | tee version.txt
+          "./$bin" --version 2>&1 | tee version.txt
           grep -q "$VERSION" version.txt || { echo "::error::the binary does not report $VERSION"; exit 1; }
-          objdump -T xollama-linux-amd64 | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
+          objdump -T "$bin" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
       - name: attach to the draft
         working-directory: repo
-        run: gh release upload "$TAG" xollama-linux-amd64 --clobber
+        run: gh release upload "$TAG" "xollama-linux-$ARCH" --clobber
 
   publish:
     needs: [plan, windows, linux]
@@ -481,7 +489,7 @@ jobs:
           mkdir assets && cd assets
           gh release download "$TAG" --clobber
           rm -f sha256sum.txt
-          want=(payload-id.txt xOllamaSetup.exe xOllamaUpdate.exe xollama-linux-amd64 xollama-windows-amd64.exe)
+          want=(payload-id.txt xOllamaSetup.exe xOllamaUpdate.exe xollama-linux-amd64 xollama-linux-arm64 xollama-windows-amd64.exe)
           have=$(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort | xargs)
           [ "$have" = "${want[*]}" ] || { echo "::error::assets are '$have', expected '${want[*]}'"; exit 1; }
           grep -Eqx '[0-9a-f]{64}' payload-id.txt || { echo "::error::payload-id.txt is not a sha256"; exit 1; }

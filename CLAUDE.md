@@ -330,7 +330,9 @@ both files given an old mtime), since the runtime image has
 no compiler (upstream's `Dockerfile`
 now sets it too and `EXPOSE 22434`, `docker-release` hook, but the published
 image still comes from `Dockerfile.xollama`). Publishes to Docker Hub and GHCR,
-amd64 only; see `docs/features/docker-release.md`. The channel is the GitHub
+per architecture (`ARCH=amd64|arm64`, `:<version>-<arch>` joined by the `manifest`
+job); arm64 builds once `llama/runtime-pin-linux-arm64.txt` carries the fork's
+runtime rows, amd64 only until then; see `docs/features/docker-release.md`. The channel is the GitHub
 pre-release flag of the tag's release: a full release moves `:latest`, a
 pre-release or any branch run (`gh workflow run docker-release.yaml --ref dev`)
 moves `:dev`, never `:latest`.

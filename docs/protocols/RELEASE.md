@@ -115,7 +115,7 @@ rebuild of a checked candidate's tree.
 | `xOllamaUpdate.exe` | same, `/DCORE=1` (no `lib\ollama`) | updates whose payload did not change |
 | `payload-id.txt` | `payloadId` in `scripts/build_windows.ps1` | the updater, to pick between the two installers |
 | `xollama-windows-amd64.exe` | `go build`, static | anyone replacing only the CLI/server |
-| `xollama-linux-amd64` | `go build` inside AlmaLinux 8 (glibc 2.28) | Linux hosts that already have a runtime |
+| `xollama-linux-amd64`, `xollama-linux-arm64` | `go build` inside AlmaLinux 8 (glibc 2.28), each on a runner of its architecture | Linux hosts that already have a runtime |
 | `sha256sum.txt` | every asset above | the updater verifies the installer against it before running it |
 
 The asset names are a contract with `app/updater/fork.go`. It matches

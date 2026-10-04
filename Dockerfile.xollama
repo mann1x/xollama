@@ -35,9 +35,12 @@ COPY cosmo-dlopen-helper.c /cosmo/dlopen-helper.c
 RUN cc -pie -fPIC /cosmo/dlopen-helper.c -o /cosmo/dlopen-helper -Wl,-z,execstack -ldl \
     && touch -d 2000-01-01 /cosmo/dlopen-helper /cosmo/dlopen-helper.c
 
+# libatomic1: the engine's arm64 audio library (oc-audiocpp) is linked against
+# libatomic.so.1, which the base image does not carry; without it Kokoro,
+# Supertonic and KittenTTS fail at load on arm64 (dietpi5, 2026-10-04).
 FROM ubuntu:24.04
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates libvulkan1 libopenblas0 \
+    && apt-get install -y --no-install-recommends ca-certificates libvulkan1 libopenblas0 libatomic1 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 COPY rootfs/bin/xollama /usr/bin/xollama

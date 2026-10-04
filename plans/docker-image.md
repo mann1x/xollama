@@ -74,4 +74,5 @@ opencoti publishes b111 to HF and it is measured. Then:
 - [x] Design agreed (2026-09-25)
 - [x] b111 on HF and measured; engine pin moved to it (2026-09-26)
 - [x] Runtime pin + assembly workflow (2026-09-26: `llama/runtime-pin-linux.txt`, `scripts/docker-assemble.sh`, `Dockerfile.xollama`, `docker-release.yaml` on `ubuntu-latest`)
+- [ ] arm64 image (owner, 2026-10-04: "upstream ships it and also the docker image, we need also to do both"). Done: `ARCH` in `scripts/docker-assemble.sh`, `llama/runtime-pin-linux-arm64.txt` (upstream's GPU rows only), the build matrix and `manifest` job in `docker-release.yaml`, `libatomic1` in `Dockerfile.xollama`; a test image with upstream's CPU runtime built and measured on dietpi5 (Raspberry Pi 5). Waiting: the fork's `ollama-linux-arm64-runtime.tgz` (mail #741); its rows in the arm64 pin switch the arm64 build on.
 - [ ] First `:dev` image, user testing (image published 2026-09-26, run 36221348282; `ghcr.io/mann1x/xollama` public, verified anonymously; testing open)

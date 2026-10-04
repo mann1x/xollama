@@ -81,9 +81,12 @@ docker run -d --gpus all -p 22434:22434 -v xollama:/root/.ollama ghcr.io/mann1x/
 
 | run | environment | tags published |
 |---|---|---|
-| on a branch (`dev`) | `dev` | `:<upstream>-dev.<sha>`, `-amd64`, `:dev` |
-| on a tag whose GitHub release is a **pre-release** | `dev` | `:<version>`, `-amd64`, `:dev` |
-| on a tag whose GitHub release is a **full release** | `release` | `:<version>`, `-amd64`, `:latest` |
+| on a branch (`dev`) | `dev` | `:<upstream>-dev.<sha>`, `-<arch>`, `:dev` |
+| on a tag whose GitHub release is a **pre-release** | `dev` | `:<version>`, `-<arch>`, `:dev` |
+| on a tag whose GitHub release is a **full release** | `release` | `:<version>`, `-<arch>`, `:latest` |
+
+`:<version>` and the moving tag are a manifest list over the
+`:<version>-<arch>` images the run built (the `manifest` job).
 
 The channel is the **GitHub pre-release flag**, as it is for the desktop
 updater. It is not the hyphen in the tag: every xOllama tag has one
@@ -114,9 +117,28 @@ default branch, and it does.
 
 ## Architectures
 
-**amd64 only**, for now. arm64 follows once the amd64 image has been through
-user testing. The per-architecture `:<version>-amd64` tag is published already,
-so a later multi-arch manifest can be assembled from it without rebuilding.
+**amd64 today; arm64 is wired and waits for one artifact.** Each architecture
+has its own runtime pin (`llama/runtime-pin-linux.txt`,
+`llama/runtime-pin-linux-arm64.txt`), is assembled by
+`ARCH=<arch> scripts/docker-assemble.sh` and built on a runner of its own kind
+(`ubuntu-latest`, `ubuntu-24.04-arm`), and is pushed as `:<version>-<arch>`.
+The `plan` job adds arm64 to the build as soon as the arm64 pin carries the
+fork's runtime rows; until then the assembly refuses arm64, naming the missing
+rows, and the image is amd64 only.
+
+The arm64 payload: the fork's arm64 CPU runtime (asked of the fork on
+2026-10-04, not published yet), upstream's arm64 CUDA 12, CUDA 13 and JetPack
+5/6 tarballs, and the engine's `aarch64` rows of `llm/engine/pin.txt` (the
+engine and its three media libraries; no GPU library, so on arm64 the engine
+serves the CPU and llama.cpp serves CUDA). `libatomic1` is in the image for
+the engine's arm64 audio library.
+
+Measured on a Raspberry Pi 5 (8 GB, Debian 13, 16K pages), 2026-10-04, with
+upstream's CPU runtime standing in for the fork's
+(`ALLOW_UPSTREAM_RUNTIME=1`, local only, refused in CI, never published):
+`qwen2.5:1.5b`, 512 tokens, four runs: 9.5 tok/s on the engine, 10.7 on
+llama.cpp, inside the image; Kokoro, Supertonic and KittenTTS each
+transcribed back by Whisper, 5 of 5.
 
 ROCm is deliberately absent: the pinned engine declares no ROCm acceleration,
 and an image advertising it would be untested.

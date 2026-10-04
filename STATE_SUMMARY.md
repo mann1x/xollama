@@ -5,6 +5,16 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-04 — Linux arm64: wired into the release and the image, measured on a Raspberry Pi 5; eleven2go runs the shipped engine; PR #5 is not merged.**
+> - Owner: no merge of PR #5; another bug is being fixed too (opencoti bug-3777, a CUDA use-after-free under multi-slot serving, fixed in the unpublished engine build 2610040459001, mail #743), then a new candidate. The Windows iGPU crash (#740) is the other one.
+> - eleven2go: `XOLLAMA_ENGINE_PATH` removed from the user environment on the owner's word, the app restarted in the desktop session; the installed server now runs its own engine (build 2610031615001, the 790 MB CUDA library, 37/37 layers, `qwen3:8b` 123.7 / 124.2 / 123.8 tok/s over 512 tokens). `XOLLAMA_ENGINE_ARGS` is still set. The host is opencoti's next, for the traces of #740 (owner).
+> - Asked the fork for `ollama-linux-arm64-runtime.tgz` (mail #741): it supplies llama.cpp, and its release has no arm64 runtime while upstream ships `ollama-linux-arm64.tar.zst` and a multi-arch image.
+> - Measured on dietpi5 (Raspberry Pi 5, 8 GB, Debian 13, glibc 2.41, 16K pages) with upstream's v0.35.1 arm64 CPU runtime standing in for the fork's, the engine's `aarch64` rows staged by the pin, `xollama` cross-built at `38623cbc`. `qwen2.5:1.5b`, 512 tokens, four runs: bare metal 9.2 / 9.2 / 8.9 / 8.9 tok/s on the engine and 10.0–10.1 on llama.cpp; in the image 9.5–9.6 and 10.7–10.8. Speech: Kokoro (two voices), Supertonic (mp3, wav), KittenTTS, each transcribed back by Whisper, 5/5 bare and in the image.
+> - Found on arm64, reported to opencoti (#744): the audio library needs the system's `libatomic.so.1`, absent from `ubuntu:24.04` (every speech load failed in the image; `libatomic1` added to `Dockerfile.xollama`, a bare minimal system is still exposed); the engine's message beside it blames the dlopen helper; the engine's CPU build lacks the dot-product and FP16 paths upstream's runtime picks on a Cortex-A76, about 10 % slower.
+> - Code: `scripts/docker-assemble.sh` takes `ARCH` (pin, engine rows, Go container by architecture; `ALLOW_UPSTREAM_RUNTIME=1` for a local test without the fork's runtime, refused in CI); `llama/runtime-pin-linux-arm64.txt` (upstream's arm64 GPU rows, runtime rows awaited); `docker-release.yaml` builds per architecture on native runners and joins `:<version>` and the moving tag in a `manifest` job, arm64 switched on by the pin; `xollama-release.yaml` builds `xollama-linux-arm64` beside amd64 and expects it in the asset set. The amd64 assembly gives the same file set as before.
+> - Not run: the two workflows on hosted runners (the arm64 runner, the manifest job), the Go build inside the arm64 container, the JetPack and CUDA payloads on arm64 hardware.
+> - Left on dietpi5: `/root/xollama-arm64` (stage, store 2.6 GB, context) and the image `xollama:arm64-test`; the test container is removed; the owner's containers were not touched.
+>
 > **2026-10-04 — The draft of `v0.35.1-rc.1.xollama` installed and measured on eleven2go (owner's instruction).**
 > - Install (RELEASE.md steps 6–7): `xOllamaSetup.exe` (sha256 `3037c046…9e54`) through a one-time interactive scheduled task, exit 0 in 30 s. `xollama.exe --version` is `0.35.1-rc.1.xollama`, `lib\ollama\PAYLOAD_ID` equals `payload-id.txt` (`af8547b7…aa7f`), 22434 listens and `/api/xollama` answers, `/api/xollama/devices` lists the RTX 3090 (CUDA) and the RX 9070 XT and the Radeon iGPU (Vulkan), all on the engine; the think-budget ollama still answers on 11434 (same process).
 > - **The host overrides the engine.** Its user environment sets `XOLLAMA_ENGINE_PATH` to `opencoti-b208\opencoti-0.10.5-c7-2609281805001.exe` (and `XOLLAMA_ENGINE_ARGS`), so the installed server runs that engine and its 311 MB CUDA DLL, not the draft's; a Vulkan load there fails loudly ("Vulkan is not usable": that directory has no Vulkan library). Left as the owner set it. The draft's own engine was measured from a second server on 22498, started from the installed files without the two variables, then stopped.
@@ -1846,15 +1856,14 @@ turns, measured on the manic benchmark on eleven2go). The engine pin is b208
 
 ## Known gaps
 
-- **No Linux arm64 package** (Raspberry Pi, Jetson, Ampere). The code serves it:
-  `PackageArch` maps `linux/arm64` to the pin's `bin aarch64` row, the three
-  media libraries and their licence texts have aarch64 rows, and
-  `linux/arm64` CUDA and CPU are in the tested matrix. What is missing is
-  packaging: `xollama-release.yaml` builds only `xollama-linux-amd64`,
-  `llama/runtime-pin-linux.txt` and the image are amd64, and the fork, which
-  supplies llama.cpp, publishes no `ollama-linux-arm64-runtime.tgz`. Today a
-  Pi is served by a source build on the Pi (`cmake -B build . && cmake --build
-  build`), never yet run by us on one.
+- **Linux arm64 waits for the fork's runtime** (Raspberry Pi, Jetson, Ampere).
+  Wired on 2026-10-04: `xollama-release.yaml` builds `xollama-linux-arm64`,
+  and the image builds for arm64 as soon as
+  `llama/runtime-pin-linux-arm64.txt` names the fork's
+  `ollama-linux-arm64-runtime.tgz` (asked, mail #741). Measured on a
+  Raspberry Pi 5 only with upstream's CPU runtime standing in. No Linux
+  archive with a runtime exists for either architecture: a bare install is
+  the binary plus a runtime the host already has, or a source build.
 - **The engine crashes on an AMD integrated GPU through Vulkan on Windows**
   (eleven2go, 2026-10-04, `0xc0000028`); stock llama.cpp serves it. Reported
   to opencoti. A machine with a discrete GPU is unaffected by default.
