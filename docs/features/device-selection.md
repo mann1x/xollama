@@ -129,8 +129,9 @@ Routing is the tested matrix intersected with what the pinned artifact actually
 ships — see `pinUncovered`. A dev snapshot is a bare APE that accelerates only
 what its `dso` rows provide, so Vulkan reached opencoti for the first time with
 snapshot `2609242056001`, the first to publish `ggml-vulkan-x86_64.so`.
-The current pin, `2610031615001` (rev `70cee052`, the re-published full
-library set), carries CUDA and Vulkan for Linux x86_64 and Windows x86_64.
+The current pin, `2610040710001` (rev `a936348b`), carries CUDA and Vulkan for
+Linux x86_64 and Windows x86_64; it is the first whose Vulkan library runs an
+AMD integrated GPU on Windows (measured on eleven2go, 2026-10-04).
 
 A pin can also narrow CUDA by silicon. `cuda-sass 86 120` (the dev snapshots
 before `70cee052`) says the payloads carry SASS for sm_86 and sm_120f only, so

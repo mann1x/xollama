@@ -5,6 +5,16 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-04 — Engine pin moved to `2610040710001` (rev `a936348b`): the Windows integrated-GPU crash and the CUDA use-after-free are fixed; measured on solidPC, eleven2go and the Raspberry Pi 5.**
+> - opencoti mail #750: patch 0551 (the Vulkan DLL registers the real stack, bug-3913, our #740), 0550 (CUDA use-after-free under multi-slot serving, bug-3777, every CUDA library), 0552 (a library beside the engine wins the lookup), `oc-espeak` with a 4096-byte data path (bug-3912, our #739), `oc-audiocpp-linux-aarch64.so` without `libatomic` (our #744). Changed bytes: the engine, four CUDA libraries, two Vulkan libraries, four `oc-espeak`, one arm64 audio library.
+> - solidPC (as `ollama`, `/srv/ml/xb133`, results `pin-b133`): compat 8/8, llama3 77.4 tok/s (76.5 on 70cee052), 4 slots 302 tok/s (299), overflow 3.6 tok/s; speech 8/8 transcribed back; Wan2.1 and Wan2.2 33/33 frames; Vulkan on the Renoir iGPU 34.2–34.6 tok/s, 29/29 layers.
+> - eleven2go (owner: "rerun the tests on eleven2go"; the new files in the fresh side directory `xollama-b133\engines`, served by the installed candidate on 22498): **the iGPU runs**, 37/37 layers, 5.0 tok/s over five 512-token runs, while the installed `2610031615001` still exits `0xc0000028` in the same minute; RX 9070 XT 104.2–104.3 tok/s warm; RTX 3090 123.5–123.9; Kokoro, KittenTTS, Supertonic, OuteTTS transcribed back. Test tags removed, the installed server and the ollama on 11434 untouched.
+> - dietpi5: the aarch64 rows in an image with `libatomic` purged: engine 9.9–10.0 tok/s, llama.cpp 9.9–11.0 interleaved, speech 5/5. `libatomic1` is out of `Dockerfile.xollama` again.
+> - Not measured on these bytes: macOS (engine and `oc-espeak` changed), CUDA 12, the long eSpeak path (my deep-directory run did not push the data path past 160 characters; opencoti's gate did), bug-3777's own trigger.
+> - Told opencoti what is still not delivered (#751, owner's instruction) and got its answers (#752): the per-component pin format and the engine's refusal of a mismatched library are not built and not dated (the first v2 snapshot will be these bytes); the misleading dlopen-helper message is open; the arm64 dot-product path is their c9; eSpeak past Windows' ~260 characters still fails without naming the limit; `BUILD_INFO.md` joins `SHA256SUMS` from the next publish; CUDA 12 waits for chris-v100; a prebuilt dlopen helper has been inside the engine since 2026-09-27 (0431), unverified by us on a bare arm64 host.
+> - Owner: the release starts the image automatically ("keep the image start automatic").
+> - Left: a new candidate (`rc.2`) from this tree, with its draft and install check; PR #5's notes follow the tree, its title is still `rc.1`.
+>
 > **2026-10-04 — `:dev` published for amd64 and arm64; the release now carries Linux arm64 and starts the image; protocols updated (owner's instruction).**
 > - Published: `docker-release` from `dev` at `e90f26fa4`, run 37178934906, all four jobs green, the first real run of `manifest`. `mannixita/xollama:dev` and `ghcr.io/mann1x/xollama:dev` (and `:0.35.1-dev.e90f26fa`) are manifest lists over `linux/amd64` and `linux/arm64`; `-amd64` and `-arm64` tags beside them. `:latest` not touched.
 > - The published image pulled and run on dietpi5: `arm64/linux`, `/api/xollama` names `0.35.1-dev.e90f26fa`, `PAYLOAD` names the fork's runtime `096e5e43…`. `qwen2.5:1.5b`, 512 tokens, the two engines interleaved over four rounds: llama.cpp 10.9 / 10.9 / 10.9 / 11.0 tok/s, the engine 9.9 / 10.0 / 9.8 / 9.9. The engine is about 10 % behind on a Cortex-A76 (its CPU build has no dot-product or FP16 path); the Pi reports past thermal throttling (`0xe0000`), which is the spread between earlier sessions. Kokoro answered mp3, transcribed back. The owner's containers untouched.
@@ -1873,9 +1883,10 @@ turns, measured on the manic benchmark on eleven2go). The engine pin is b208
   hardware; the release workflow's arm64 job, its Linux pin guard and its
   start of the image workflow have not run on hosted runners yet. No Linux
   archive with a runtime exists for either architecture.
-- **The engine crashes on an AMD integrated GPU through Vulkan on Windows**
-  (eleven2go, 2026-10-04, `0xc0000028`); stock llama.cpp serves it. Reported
-  to opencoti. A machine with a discrete GPU is unaffected by default.
+- **The last published candidate draft (`rc.1`, pin `2610031615001`) crashes on
+  an AMD integrated GPU through Vulkan on Windows.** Fixed by the pin move to
+  `2610040710001` (measured on eleven2go, 2026-10-04); it reaches users with
+  the next candidate.
 - The Docker image is published to `:dev` (run 36221348282). It is amd64
   only, and b111 carries no Vulkan payload, so Vulkan loads go to llama.cpp.
 - Upstream's `Dockerfile` still sets `OLLAMA_HOST`/`EXPOSE 11434`, which

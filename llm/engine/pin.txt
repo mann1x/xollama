@@ -111,8 +111,8 @@
 # ---------------------------------------------------------------------------
 
 repo     ManniX-ITA/opencoti-llamafile-dev
-rev      70cee05232e020634bae5c1b5df5dec5131d4f6c
-tag      opencoti-0.10.5-c7-2610031615001
+rev      a936348b468190050d6d58607a736b26398634d4
+tag      opencoti-0.10.5-c7-2610040710001
 channel  dev
 
 # THIS BRANCH PINS A DEVELOPMENT SNAPSHOT. It is not a release and must not be
@@ -152,6 +152,60 @@ channel  dev
 # This is the last pin in this format. opencoti and xollama agreed a
 # per-component format (mails #730-#737, opencoti docs/protocols/PIN_FORMAT.md).
 #
+# THIS PIN: 2610040710001, rev a936348b (opencoti mail #750), moved 2026-10-04.
+# Against 2610031615001 rev 70cee052 it changes the engine, all four CUDA
+# libraries, both Vulkan libraries, the four oc-espeak files and
+# oc-audiocpp-linux-aarch64.so; the codec, the other audio libraries, the
+# macOS loader and the Metal library are the same bytes. What it fixes:
+#   0551  Vulkan on an AMD integrated GPU on Windows no longer dies with
+#         0xc0000028: the Vulkan DLL registers the real stack before the AMD
+#         driver unwinds on it (bug-3913, our mail #740).
+#   0550  a CUDA use-after-free under multi-slot serving, in every CUDA
+#         library (bug-3777).
+#   0552  a library beside the engine wins over a stale bare-named one in the
+#         shared app directory.
+#   oc-espeak keeps its data path in 4096 bytes, not 160 (bug-3912).
+#   oc-audiocpp-linux-aarch64.so no longer needs the system's libatomic.
+# Rows opencoti's own pin does not carry (bin macos-aarch64, dso-cuda12, the
+# licence texts, BUILD_INFO.md) are composed here from the build directory's
+# SHA256SUMS; BUILD_INFO.md's digest is confirmed by opencoti (#752).
+# cuda-sass and cuda12-sass are carried forward on opencoti's word (#752):
+# only the Linux CUDA 13 library was read back from the file.
+#
+# MEASURED on these bytes, 2026-10-04, staged by cmake/opencoti-fetch.cmake
+# from this pin (70cee052 in brackets):
+#   solidPC, RTX 3090, as the ollama user: compat 8/8 (8/8), llama3 77.4
+#   tok/s (76.5), qwen2.5:1.5b x4 302 tok/s (299), gemma4 thinking separated,
+#   70B overflow 3.6 tok/s (2.7, that day under load). Speech 8/8 mp3, each
+#   transcribed back; Wan2.1 33/33 frames (221 s), Wan2.2 33/33 (114 s).
+#   Renoir iGPU through ggml-vulkan.so (CUDA hidden), 29/29 layers:
+#   qwen2.5:1.5b 34.4 / 34.4 / 34.2 / 34.6 tok/s.
+#   eleven2go (Windows 11, the installed v0.35.1-rc.1.xollama serving this
+#   engine from a fresh directory, port 22498), qwen3:8b, 512 tokens, one
+#   cold and four warm runs, 37/37 layers each:
+#     Radeon iGPU through ggml-vulkan.dll: 5.0 tok/s x5. The control, the
+#     installed 2610031615001 in the same minute, still exits 0xc0000028.
+#     RX 9070 XT through ggml-vulkan.dll: 101.7 cold, 104.2 / 104.3 / 104.3 /
+#     104.3. RTX 3090 through the six-arch ggml-cuda.dll: 123.9 / 123.9 /
+#     123.8 / 123.5 / 123.5.
+#     Kokoro, KittenTTS, Supertonic and OuteTTS each answered mp3 and were
+#     transcribed back.
+#   dietpi5 (Raspberry Pi 5, 16K pages), the aarch64 rows in an ubuntu:24.04
+#   image with libatomic removed: qwen2.5:1.5b 512 tokens interleaved, the
+#   engine 10.0 / 9.9 / 9.9 / 9.9 tok/s, llama.cpp 9.9 / 10.8 / 10.9 / 11.0;
+#   Kokoro (two voices), Supertonic (mp3, wav) and KittenTTS transcribed
+#   back, 5/5.
+# NOT MEASURED on these bytes: macOS (the engine and oc-espeak changed; the
+# Metal library and the loader did not), CUDA 12 (nobody, on any snapshot),
+# the 7.5 / 8.0 / 9.0 cards, the long eSpeak path (opencoti's gate, a
+# 147-character HOME; our run did not reach 160), bug-3777's own trigger.
+# OPEN with opencoti: the per-component pin format is agreed and not built;
+# the engine blames its dlopen helper when a library's dependency is missing;
+# the aarch64 CPU build has no dot-product or FP16 path (about 10 % on a
+# Cortex-A76, their c9); eSpeak on Windows still fails past about 260
+# characters without naming the limit.
+#
+# BEFORE IT, rev 70cee052:
 # MEASURED on rev 70cee052's libraries, solidPC, 2026-10-04, staged by
 # cmake/opencoti-fetch.cmake from this pin, the host under load (load average
 # 20-40: an md resync and another session's engine run), rev cee83ff6 in
@@ -543,16 +597,16 @@ accel    macos-aarch64  Metal
 # One APE serves every host; the arch label selects who may package it. There
 # is no win-x86_64-gpu bin on this channel: Windows packages the bare APE
 # (Pin.ArchFor) with the "dso win-x86_64" payload below.
-bin  x86_64      builds/opencoti-0.10.5-c7-2610031615001/opencoti-0.10.5-c7-2610031615001  abd906ca1a9c10394e1de15757456c5a44d49623d05c00102722a9e02b3477d8
-bin  aarch64     builds/opencoti-0.10.5-c7-2610031615001/opencoti-0.10.5-c7-2610031615001  abd906ca1a9c10394e1de15757456c5a44d49623d05c00102722a9e02b3477d8
-bin  win-x86_64  builds/opencoti-0.10.5-c7-2610031615001/opencoti-0.10.5-c7-2610031615001  abd906ca1a9c10394e1de15757456c5a44d49623d05c00102722a9e02b3477d8
+bin  x86_64      builds/opencoti-0.10.5-c7-2610040710001/opencoti-0.10.5-c7-2610040710001  6382a37cace0c9a5d78920b7aacc4aa8744a39f195c75449226b501eaa9ba8a5
+bin  aarch64     builds/opencoti-0.10.5-c7-2610040710001/opencoti-0.10.5-c7-2610040710001  6382a37cace0c9a5d78920b7aacc4aa8744a39f195c75449226b501eaa9ba8a5
+bin  win-x86_64  builds/opencoti-0.10.5-c7-2610040710001/opencoti-0.10.5-c7-2610040710001  6382a37cace0c9a5d78920b7aacc4aa8744a39f195c75449226b501eaa9ba8a5
 
-bin  macos-aarch64  builds/opencoti-0.10.5-c7-2610031615001/opencoti-0.10.5-c7-2610031615001  abd906ca1a9c10394e1de15757456c5a44d49623d05c00102722a9e02b3477d8
-dso  x86_64      builds/opencoti-0.10.5-c7-2610031615001/ggml-cuda.so              dd2a395308a6afbd1eda1d68f2faf6516d9e7230f939a8c5bf4f4655c410f091
-dso  win-x86_64  builds/opencoti-0.10.5-c7-2610031615001/ggml-cuda-win-x86_64.dll  e5139409494a61e8e6bc41cba7840977a9a869bf3031f25ff6e76cecadcfc4fa
-dso  x86_64-vulkan      builds/opencoti-0.10.5-c7-2610031615001/ggml-vulkan-x86_64.so       02769278e9e6eb8f2a9f3dc9da8b8d4c709bee84fc361abec7f4854146cd2425
-dso  win-x86_64-vulkan  builds/opencoti-0.10.5-c7-2610031615001/ggml-vulkan-win-x86_64.dll  6f24139150e04dc905619c4282a903e6ab042dbc5fbed04c8afd8d16d34ff62e
-#! dso-cuda12 x86_64 builds/opencoti-0.10.5-c7-2610031615001/ggml-cuda-cu12-x86_64.so 41c7ce7e0f67a24a83712b6f2397b28fb716db8fe5180d361120f2e1919d94e4
+bin  macos-aarch64  builds/opencoti-0.10.5-c7-2610040710001/opencoti-0.10.5-c7-2610040710001  6382a37cace0c9a5d78920b7aacc4aa8744a39f195c75449226b501eaa9ba8a5
+dso  x86_64      builds/opencoti-0.10.5-c7-2610040710001/ggml-cuda.so              234e1c38a4b90d1cb859b0a7c95069b39d3ba4bb40a2dafa2ec7dd75d2442f67
+dso  win-x86_64  builds/opencoti-0.10.5-c7-2610040710001/ggml-cuda-win-x86_64.dll  274412de939f5b593323c0f02ef2e87a2a9195e639a94a47d8a3a5679f95464e
+dso  x86_64-vulkan      builds/opencoti-0.10.5-c7-2610040710001/ggml-vulkan-x86_64.so       b20ed8622154b0a248d27ed43cb3879cb48b2fb23c94c1b98f709ef460f34d86
+dso  win-x86_64-vulkan  builds/opencoti-0.10.5-c7-2610040710001/ggml-vulkan-win-x86_64.dll  93d73376a5daf7e68bcd4d38e27fa4f8f0cdca6387545b98f6d23c72375a0f18
+#! dso-cuda12 x86_64 builds/opencoti-0.10.5-c7-2610040710001/ggml-cuda-cu12-x86_64.so 2bc461043ffbcd597d2f8dd7241e626a944aa05a8409255ad731187910d9ecc1
 #! cuda12-sass 52 61 70
 
 # The media sidecars, staged beside the engine under these file names. What is
@@ -565,42 +619,42 @@ dso  win-x86_64-vulkan  builds/opencoti-0.10.5-c7-2610031615001/ggml-vulkan-win-
 # audio.cpp, never linked into the engine or another sidecar. COPYING.espeak-ng
 # and the source refs are in the snapshot's directory and BUILD_INFO.md
 # (opencoti #691, #697).
-#! sidecar  x86_64      codec     builds/opencoti-0.10.5-c7-2610031615001/oc-codec-linux-x86_64.so        9bb61aae811e8a36d859c08832a92322da402e4d00c701786f9c42e0358f734e
-#! sidecar  x86_64      audiocpp  builds/opencoti-0.10.5-c7-2610031615001/oc-audiocpp-linux-x86_64.so     b2abd02cb1967c43b8181168d352224b84e4df63f1e2175512dec6c9122a7226
-#! sidecar  x86_64      espeak    builds/opencoti-0.10.5-c7-2610031615001/oc-espeak-linux-x86_64.so       0e6c185dfca5dbda6c0be06d5578e645f057cc01d7eefc781a2e32bccf511365
-#! sidecar  win-x86_64  codec     builds/opencoti-0.10.5-c7-2610031615001/oc-codec-win-x86_64.dll         02ed077e02325b2f7e1645626dc7b2b2fa4f814902ca0050c3235ea934b70f2f
-#! sidecar  win-x86_64  audiocpp  builds/opencoti-0.10.5-c7-2610031615001/oc-audiocpp-win-x86_64.dll      a4931b653066a9389f0f3a6c875bc63deb86130631c1f190c57bf7e23a9da269
-#! sidecar  win-x86_64  espeak    builds/opencoti-0.10.5-c7-2610031615001/oc-espeak-win-x86_64.dll        2f556d69aa27e4e0fc037430799696a28ea9a7dff8d534a36960b82efd62d896
-#! sidecar  aarch64     codec     builds/opencoti-0.10.5-c7-2610031615001/oc-codec-linux-aarch64.so       7daf2e8c1e83e8186e5916c3f3e156478c3f11b47a8e998475067a0784021d73
-#! sidecar  aarch64     audiocpp  builds/opencoti-0.10.5-c7-2610031615001/oc-audiocpp-linux-aarch64.so    0b599637d4d3ab1c8c4a673b4657d330490df725884a4b13c5ab80393c77cba1
-#! sidecar  aarch64     espeak    builds/opencoti-0.10.5-c7-2610031615001/oc-espeak-linux-aarch64.so      47d6e5fd8d52ab6520c7a6bc707bf0165947cd79b81c5401bfb9bdd4dd27b764
+#! sidecar  x86_64      codec     builds/opencoti-0.10.5-c7-2610040710001/oc-codec-linux-x86_64.so        9bb61aae811e8a36d859c08832a92322da402e4d00c701786f9c42e0358f734e
+#! sidecar  x86_64      audiocpp  builds/opencoti-0.10.5-c7-2610040710001/oc-audiocpp-linux-x86_64.so     b2abd02cb1967c43b8181168d352224b84e4df63f1e2175512dec6c9122a7226
+#! sidecar  x86_64      espeak    builds/opencoti-0.10.5-c7-2610040710001/oc-espeak-linux-x86_64.so       acda08e88031d985297eab40d85e0127c7143db6a5ed6430577408ddfb204666
+#! sidecar  win-x86_64  codec     builds/opencoti-0.10.5-c7-2610040710001/oc-codec-win-x86_64.dll         02ed077e02325b2f7e1645626dc7b2b2fa4f814902ca0050c3235ea934b70f2f
+#! sidecar  win-x86_64  audiocpp  builds/opencoti-0.10.5-c7-2610040710001/oc-audiocpp-win-x86_64.dll      a4931b653066a9389f0f3a6c875bc63deb86130631c1f190c57bf7e23a9da269
+#! sidecar  win-x86_64  espeak    builds/opencoti-0.10.5-c7-2610040710001/oc-espeak-win-x86_64.dll        cb973acf6f2e81ff0b357b563738812b9394ff013e38fc1bb2e7f633ca4c6000
+#! sidecar  aarch64     codec     builds/opencoti-0.10.5-c7-2610040710001/oc-codec-linux-aarch64.so       7daf2e8c1e83e8186e5916c3f3e156478c3f11b47a8e998475067a0784021d73
+#! sidecar  aarch64     audiocpp  builds/opencoti-0.10.5-c7-2610040710001/oc-audiocpp-linux-aarch64.so    9ff0420c5d7bf72488c67671ce5019bd68241cd28103d9bec22a184cd11463d0
+#! sidecar  aarch64     espeak    builds/opencoti-0.10.5-c7-2610040710001/oc-espeak-linux-aarch64.so      f5ebf620dd968e77720c21ec6685c8acf4d59bdf6278abd355a3ef930d6c5d9d
 #
 # The licence text and the source references of the libraries above, staged
 # beside them like any sidecar row so no package carries the GPL eSpeak-ng
 # library or the LGPL codec without them. Arch-independent files, one row per
 # arch because a package is staged per arch (TestEveryLicensedSidecarShipsItsText).
-#! sidecar  x86_64      espeak-licence  builds/opencoti-0.10.5-c7-2610031615001/COPYING.espeak-ng  8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903
-#! sidecar  x86_64      build-info      builds/opencoti-0.10.5-c7-2610031615001/BUILD_INFO.md      7cf8494519b46366bb5c009e5861eb7733db5e8ce9dc060b2bc12bea9bc15581
-#! sidecar  win-x86_64  espeak-licence  builds/opencoti-0.10.5-c7-2610031615001/COPYING.espeak-ng  8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903
-#! sidecar  win-x86_64  build-info      builds/opencoti-0.10.5-c7-2610031615001/BUILD_INFO.md      7cf8494519b46366bb5c009e5861eb7733db5e8ce9dc060b2bc12bea9bc15581
-#! sidecar  aarch64     espeak-licence  builds/opencoti-0.10.5-c7-2610031615001/COPYING.espeak-ng  8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903
-#! sidecar  aarch64     build-info      builds/opencoti-0.10.5-c7-2610031615001/BUILD_INFO.md      7cf8494519b46366bb5c009e5861eb7733db5e8ce9dc060b2bc12bea9bc15581
-#! sidecar  x86_64      ffmpeg-licence    builds/opencoti-0.10.5-c7-2610031615001/COPYING.LGPLv2.1.ffmpeg  246041b6ecf9bc32d718a62c57877c78b5eb397b6467e74ed7ae2626ab189c30
-#! sidecar  x86_64      lame-licence      builds/opencoti-0.10.5-c7-2610031615001/COPYING.lame  bfe4a52dc4645385f356a8e83cc54216a293e3b6f1cb4f79f5fc0277abf937fd
-#! sidecar  x86_64      openh264-licence  builds/opencoti-0.10.5-c7-2610031615001/LICENSE.openh264  dd5c1c9668512530fa5a96e4c29ac4033d70a7eeb0eed7a42fddb6dd794ebdbb
-#! sidecar  win-x86_64  ffmpeg-licence    builds/opencoti-0.10.5-c7-2610031615001/COPYING.LGPLv2.1.ffmpeg  246041b6ecf9bc32d718a62c57877c78b5eb397b6467e74ed7ae2626ab189c30
-#! sidecar  win-x86_64  lame-licence      builds/opencoti-0.10.5-c7-2610031615001/COPYING.lame  bfe4a52dc4645385f356a8e83cc54216a293e3b6f1cb4f79f5fc0277abf937fd
-#! sidecar  win-x86_64  openh264-licence  builds/opencoti-0.10.5-c7-2610031615001/LICENSE.openh264  dd5c1c9668512530fa5a96e4c29ac4033d70a7eeb0eed7a42fddb6dd794ebdbb
-#! sidecar  aarch64     ffmpeg-licence    builds/opencoti-0.10.5-c7-2610031615001/COPYING.LGPLv2.1.ffmpeg  246041b6ecf9bc32d718a62c57877c78b5eb397b6467e74ed7ae2626ab189c30
-#! sidecar  aarch64     lame-licence      builds/opencoti-0.10.5-c7-2610031615001/COPYING.lame  bfe4a52dc4645385f356a8e83cc54216a293e3b6f1cb4f79f5fc0277abf937fd
-#! sidecar  aarch64     openh264-licence  builds/opencoti-0.10.5-c7-2610031615001/LICENSE.openh264  dd5c1c9668512530fa5a96e4c29ac4033d70a7eeb0eed7a42fddb6dd794ebdbb
-#! sidecar  macos-aarch64  ape               builds/opencoti-0.10.5-c7-2610031615001/ape-macos-aarch64  07f550415a59415973ef877eec99a776dfa5263b06fdb1fd9cefb7b884f0f723
-#! sidecar  macos-aarch64  metal             builds/opencoti-0.10.5-c7-2610031615001/ggml-metal-aarch64.dylib  8c2216b36f13e0ea36066034cb43bf96cb1ea65155a7c108a0eae6cb3cc014f1
-#! sidecar  macos-aarch64  codec             builds/opencoti-0.10.5-c7-2610031615001/oc-codec-macos-aarch64.dylib  1886f0f92f8edcc3d5540d43ce32b5972ba0cf56e4ee7ed78c6fbc174bf95e64
-#! sidecar  macos-aarch64  audiocpp          builds/opencoti-0.10.5-c7-2610031615001/oc-audiocpp-macos-aarch64.dylib  683b3ad619fd93d0ffc7caea5e71573beca258244c39434857ee6f8d8288917a
-#! sidecar  macos-aarch64  espeak            builds/opencoti-0.10.5-c7-2610031615001/oc-espeak-macos-aarch64.dylib  fe2294b9937fb720ecf7b8ff6f508b0bb566caa820d6ca8c4de9bee19d418a96
-#! sidecar  macos-aarch64  espeak-licence    builds/opencoti-0.10.5-c7-2610031615001/COPYING.espeak-ng  8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903
-#! sidecar  macos-aarch64  build-info        builds/opencoti-0.10.5-c7-2610031615001/BUILD_INFO.md  7cf8494519b46366bb5c009e5861eb7733db5e8ce9dc060b2bc12bea9bc15581
-#! sidecar  macos-aarch64  ffmpeg-licence    builds/opencoti-0.10.5-c7-2610031615001/COPYING.LGPLv2.1.ffmpeg  246041b6ecf9bc32d718a62c57877c78b5eb397b6467e74ed7ae2626ab189c30
-#! sidecar  macos-aarch64  lame-licence      builds/opencoti-0.10.5-c7-2610031615001/COPYING.lame  bfe4a52dc4645385f356a8e83cc54216a293e3b6f1cb4f79f5fc0277abf937fd
-#! sidecar  macos-aarch64  openh264-licence  builds/opencoti-0.10.5-c7-2610031615001/LICENSE.openh264  dd5c1c9668512530fa5a96e4c29ac4033d70a7eeb0eed7a42fddb6dd794ebdbb
+#! sidecar  x86_64      espeak-licence  builds/opencoti-0.10.5-c7-2610040710001/COPYING.espeak-ng  8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903
+#! sidecar  x86_64      build-info      builds/opencoti-0.10.5-c7-2610040710001/BUILD_INFO.md      640f882b5eb1b404ac3d10a3dc3f463a00ce8e37bf8709b98e7a4197fd700b3a
+#! sidecar  win-x86_64  espeak-licence  builds/opencoti-0.10.5-c7-2610040710001/COPYING.espeak-ng  8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903
+#! sidecar  win-x86_64  build-info      builds/opencoti-0.10.5-c7-2610040710001/BUILD_INFO.md      640f882b5eb1b404ac3d10a3dc3f463a00ce8e37bf8709b98e7a4197fd700b3a
+#! sidecar  aarch64     espeak-licence  builds/opencoti-0.10.5-c7-2610040710001/COPYING.espeak-ng  8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903
+#! sidecar  aarch64     build-info      builds/opencoti-0.10.5-c7-2610040710001/BUILD_INFO.md      640f882b5eb1b404ac3d10a3dc3f463a00ce8e37bf8709b98e7a4197fd700b3a
+#! sidecar  x86_64      ffmpeg-licence    builds/opencoti-0.10.5-c7-2610040710001/COPYING.LGPLv2.1.ffmpeg  246041b6ecf9bc32d718a62c57877c78b5eb397b6467e74ed7ae2626ab189c30
+#! sidecar  x86_64      lame-licence      builds/opencoti-0.10.5-c7-2610040710001/COPYING.lame  bfe4a52dc4645385f356a8e83cc54216a293e3b6f1cb4f79f5fc0277abf937fd
+#! sidecar  x86_64      openh264-licence  builds/opencoti-0.10.5-c7-2610040710001/LICENSE.openh264  dd5c1c9668512530fa5a96e4c29ac4033d70a7eeb0eed7a42fddb6dd794ebdbb
+#! sidecar  win-x86_64  ffmpeg-licence    builds/opencoti-0.10.5-c7-2610040710001/COPYING.LGPLv2.1.ffmpeg  246041b6ecf9bc32d718a62c57877c78b5eb397b6467e74ed7ae2626ab189c30
+#! sidecar  win-x86_64  lame-licence      builds/opencoti-0.10.5-c7-2610040710001/COPYING.lame  bfe4a52dc4645385f356a8e83cc54216a293e3b6f1cb4f79f5fc0277abf937fd
+#! sidecar  win-x86_64  openh264-licence  builds/opencoti-0.10.5-c7-2610040710001/LICENSE.openh264  dd5c1c9668512530fa5a96e4c29ac4033d70a7eeb0eed7a42fddb6dd794ebdbb
+#! sidecar  aarch64     ffmpeg-licence    builds/opencoti-0.10.5-c7-2610040710001/COPYING.LGPLv2.1.ffmpeg  246041b6ecf9bc32d718a62c57877c78b5eb397b6467e74ed7ae2626ab189c30
+#! sidecar  aarch64     lame-licence      builds/opencoti-0.10.5-c7-2610040710001/COPYING.lame  bfe4a52dc4645385f356a8e83cc54216a293e3b6f1cb4f79f5fc0277abf937fd
+#! sidecar  aarch64     openh264-licence  builds/opencoti-0.10.5-c7-2610040710001/LICENSE.openh264  dd5c1c9668512530fa5a96e4c29ac4033d70a7eeb0eed7a42fddb6dd794ebdbb
+#! sidecar  macos-aarch64  ape               builds/opencoti-0.10.5-c7-2610040710001/ape-macos-aarch64  07f550415a59415973ef877eec99a776dfa5263b06fdb1fd9cefb7b884f0f723
+#! sidecar  macos-aarch64  metal             builds/opencoti-0.10.5-c7-2610040710001/ggml-metal-aarch64.dylib  8c2216b36f13e0ea36066034cb43bf96cb1ea65155a7c108a0eae6cb3cc014f1
+#! sidecar  macos-aarch64  codec             builds/opencoti-0.10.5-c7-2610040710001/oc-codec-macos-aarch64.dylib  1886f0f92f8edcc3d5540d43ce32b5972ba0cf56e4ee7ed78c6fbc174bf95e64
+#! sidecar  macos-aarch64  audiocpp          builds/opencoti-0.10.5-c7-2610040710001/oc-audiocpp-macos-aarch64.dylib  683b3ad619fd93d0ffc7caea5e71573beca258244c39434857ee6f8d8288917a
+#! sidecar  macos-aarch64  espeak            builds/opencoti-0.10.5-c7-2610040710001/oc-espeak-macos-aarch64.dylib  0efd35578b5f8e169aa87eede0f81e08ba7a8090c261701d677dcec131e2e681
+#! sidecar  macos-aarch64  espeak-licence    builds/opencoti-0.10.5-c7-2610040710001/COPYING.espeak-ng  8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903
+#! sidecar  macos-aarch64  build-info        builds/opencoti-0.10.5-c7-2610040710001/BUILD_INFO.md  640f882b5eb1b404ac3d10a3dc3f463a00ce8e37bf8709b98e7a4197fd700b3a
+#! sidecar  macos-aarch64  ffmpeg-licence    builds/opencoti-0.10.5-c7-2610040710001/COPYING.LGPLv2.1.ffmpeg  246041b6ecf9bc32d718a62c57877c78b5eb397b6467e74ed7ae2626ab189c30
+#! sidecar  macos-aarch64  lame-licence      builds/opencoti-0.10.5-c7-2610040710001/COPYING.lame  bfe4a52dc4645385f356a8e83cc54216a293e3b6f1cb4f79f5fc0277abf937fd
+#! sidecar  macos-aarch64  openh264-licence  builds/opencoti-0.10.5-c7-2610040710001/LICENSE.openh264  dd5c1c9668512530fa5a96e4c29ac4033d70a7eeb0eed7a42fddb6dd794ebdbb

@@ -133,7 +133,9 @@ The arm64 payload: the fork's arm64 CPU runtime, upstream's arm64 CUDA 12,
 CUDA 13 and JetPack 5/6 tarballs, and the engine's `aarch64` rows of
 `llm/engine/pin.txt` (the engine and its three media libraries; no GPU
 library, so on arm64 the engine serves the CPU and llama.cpp serves CUDA).
-`libatomic1` is in the image for the engine's arm64 audio library.
+The engine's arm64 audio library needed the system's `libatomic` up to
+snapshot `2610031615001`; from `2610040710001` it does not, and the image no
+longer installs it (run on the Pi with the package removed).
 
 Measured on a Raspberry Pi 5 (8 GB, Debian 13, 16K pages), 2026-10-04, in the
 published `:dev` image: `qwen2.5:1.5b`, 512 tokens, the two engines
