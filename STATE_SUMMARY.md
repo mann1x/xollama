@@ -5,6 +5,12 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-04 — Draft build of `v0.35.1-rc.1.xollama` from `7d5769833` (release PR #5, not merged).**
+> - `gh workflow run xollama-release.yaml --ref dev -f pr=5` (run 37170880018): plan, linux, windows and publish green; a **draft** release, no tag, invisible to the updater. Assets: `xOllamaSetup.exe` 1.30 GB (797 MB in v0.34.4-xollama.2: the six-architecture CUDA DLL is 790 MB), `xOllamaUpdate.exe` 14.8 MB, both binaries, `payload-id.txt` `af8547b7…aa7f`.
+> - Verified from the downloaded draft (`backup_models/release-check/v0.35.1-rc.1.xollama`): every `sha256sum.txt` line OK; `xollama-linux-amd64 --version` names `0.35.1-rc.1.xollama`. The Windows payload carries, in `lib\ollama\engines`, the engine, `ggml-cuda.dll` (790,682,112 bytes), `ggml-vulkan.dll`, the three media DLLs, the four licence texts and `BUILD_INFO.md`.
+> - Container: `scripts/docker-assemble.sh` run locally from the same pin, exit 0: the CUDA and Vulkan libraries beside the engine, the CUDA 12 library in `engines/cuda_v12` with a second engine copy. No image published.
+> - Left before the candidate is released: the install check of the draft on eleven2go (it is also the only Windows measurement of the six-architecture and Vulkan DLLs), then the merge of PR #5. Both need the owner's word.
+
 > **2026-10-04 — Engine pin moved to rev `70cee052` (the full library set of `2610031615001`); a per-component pin format agreed with opencoti.**
 > - Owner: "agree a new pinning schema that allows partial and staggered release, then make a full pre-release build from hf dev" and "we publish cuda 12 without testing it, legacy".
 > - The pin: same engine, sidecars and macOS files; new are the six-architecture CUDA libraries for Linux and Windows (`cuda-sass 75 80 86 89 90 120`), the Vulkan libraries for both, and the CUDA 12 legacy library (`cuda12-sass 52 61 70`, Linux, pinned without a run on such a card). No row for the Linux arm64 library: nothing we ship is built for it.
