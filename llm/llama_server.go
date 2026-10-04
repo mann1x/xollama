@@ -1891,7 +1891,10 @@ func (s *llamaServerRunner) schemaGrammar(ctx context.Context, schema json.RawMe
 		NPredict       int             `json:"n_predict"`
 		JsonSchema     json.RawMessage `json:"json_schema"`
 		ResponseFields []string        `json:"response_fields"`
-	}{Prompt: [][]int{{}}, JsonSchema: schema, ResponseFields: []string{"generation_settings/grammar"}})
+		// xollama-hook: council -- on opencoti the conversion states a small
+		// window of its own (engine_grammar.go); absent on stock llama.cpp.
+		NumCtx int `json:"num_ctx,omitempty"`
+	}{Prompt: [][]int{{}}, JsonSchema: schema, ResponseFields: []string{"generation_settings/grammar"}, NumCtx: grammarWindow(s.usedOpencoti)})
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal grammar request: %v", err)
 	}

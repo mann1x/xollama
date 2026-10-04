@@ -51,7 +51,18 @@ logs of the baseline run: `/srv/ml/xb140`.
 
 Baseline: **2026-10-04**, tree `4db0bcedb`, engine `2610041714001`, vulkan
 `2610041656001`, cuda `2610040656001`, media `2610040945001`, macos
-`2610041000001`.
+`2610041000001`; candidate rows from `v0.35.1-rc.1.xollama`.
+
+**On opencoti c8** (2026-10-05, engine `2610042347001`, the libraries
+unchanged; working directory `/srv/ml/xc8`), every engine gate was run again
+on the new bytes before candidate 2. G3: compat 8/8, llama3 77.3 tok/s, 4
+slots 304, and the overflow model loads, which retired the last known-defect
+row. G4: all pass, 0 refusals. G5: see its row. G6: speech 8/8, video 33/33
+on both models. G7: 34.7 tok/s, polls 200. G8: RTX 3090 123.3 to 123.5 tok/s,
+RX 9070 XT 103.2 warm and clean after the idle, engine gone 830 ms after the
+kill, integrated GPU 5.4 to 5.5, speech 4/4. G10 (engine replaced in the rc.1
+image on the Pi): 10.0 to 10.2 against 11.1, speech 5/5. G11: 125.0 to 127.9
+and 31.5 to 31.7 tok/s, speech 7/7 answered.
 
 ### G1. Repository checks
 
@@ -111,9 +122,22 @@ are in [`RELEASE.md`, "The council gate"](RELEASE.md#the-council-gate).
 Wrapper: `scripts/gates/council.sh <tag>...`, which runs
 `scripts/council-gate.py`.
 
+- **Run the PolyKV tag at least four times, each on a fresh server.** A
+  council turn depends on what the builder writes, and one pass proves little:
+  on 2026-10-05 the tag failed 4 runs of 7, on two engines, only when the
+  builder gave the planner a think level (the schema conversion of a thinking
+  member with a format was refused for room; fixed, `llm.GrammarWindow`). The
+  gate prints calls, tokens and tok/s per turn: a slow turn with many tokens
+  is the council working (40 to 60 tok/s is normal here), a slow turn with few
+  is a fault.
 - **Baseline:** `gate/council-kv3-384k` three PASS, 5 pools, 0 refusals, 8 /
   33 / 32 s; `gate/council-kv3-nopolykv` three PASS, 0 pools, 9 / 43 / 40 s;
   `omni-council-idle` three PASS through the unpooled turn, 7 / 357 / 7 s.
+  On c8 with the fix: the PolyKV tag 4 runs of 4, 5 pools and 0 refusals
+  each, convened turns of 55 to 291 s (2,400 to 14,500 tokens), second turns
+  of 8 to 197 s; the other two tags three PASS each (51 / 340 s and 198 /
+  157 s). Turn times vary with how much the council decides to do and are not
+  a criterion.
 
 ### G6. Media on Linux
 
@@ -137,7 +161,9 @@ Wrapper: `scripts/gates/council.sh <tag>...`, which runs
   (`bench.sh`), then `/api/engine?endpoint=props` and `kv` twice with the
   model loaded, then one more generation.
 - **Expected:** every layer offloaded, `props` and `kv` answer 200, the
-  generation after them works, `crash lines in the server log: 0`.
+  generation after them works. `crash lines in the server log` reads 4 on a
+  good run: they are the CUDA probes failing with the card hidden, as the
+  test intends.
 - **Baseline:** 33.5 tok/s (`qwen2.5:1.5b`), 200 on all four polls. The engine
   before (`2610040950001`) answered 502 with the engine dead (bug-3921).
 

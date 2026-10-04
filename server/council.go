@@ -824,6 +824,11 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 	}
 	if budget := council.ThinkBudget(r.Think, r.MaxTokens, window); budget > 0 {
 		req.Think = &api.ThinkValue{Value: budget}
+		// A format on a thinking reply is converted to a grammar by the
+		// engine first, once per process, in a window of its own beside the
+		// owner: the owner gives back the cells for it, as for any member
+		// booked there (llm.GrammarWindow, council_room.go).
+		cm.grammarRoom(ctx, r)
 		// A cloud model or a stock ollama takes no token budget: ollama.com
 		// refuses one ("think must be a boolean or string"). There the member
 		// thinks, and num_predict, the reply cap, bounds it.

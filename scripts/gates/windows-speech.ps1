@@ -1,6 +1,6 @@
-$i = "$env:LOCALAPPDATA\Programs\xOllama"; $d = "$env:USERPROFILE\xollama-b140"; $u = 'http://127.0.0.1:22498'; $log = "$d\serve-speech.log"
+$i = "$env:LOCALAPPDATA\Programs\xOllama"; $d = "$env:USERPROFILE\xollama-c8"; $u = 'http://127.0.0.1:22498'; $log = "$d\serve-speech.log"
 Remove-Item Env:XOLLAMA_ENGINE_ARGS -ErrorAction SilentlyContinue
-$env:XOLLAMA_ENGINE_PATH = "$d\engines\opencoti-0.10.5-c7-2610041714001.exe"; $env:OLLAMA_MODELS = "$env:USERPROFILE\xollama-b120\models"; $env:XOLLAMA_HOST = '127.0.0.1:22498'
+$env:XOLLAMA_ENGINE_PATH = "$d\engines\opencoti-llamafile-0.10.5-c8-win-x86_64.llamafile.exe"; $env:OLLAMA_MODELS = "$env:USERPROFILE\xollama-b120\models"; $env:XOLLAMA_HOST = '127.0.0.1:22498'
 New-Item -ItemType Directory -Force "$d\out" | Out-Null; Remove-Item $log, "$log.err" -ErrorAction SilentlyContinue
 $p = Start-Process -FilePath "$i\xollama.exe" -ArgumentList 'serve' -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError "$log.err" -PassThru
 $ok = $false; for ($n = 0; $n -lt 60 -and -not $ok; $n++) { Start-Sleep 1; try { $v = (Invoke-RestMethod "$u/api/version" -TimeoutSec 2).version; $ok = $true } catch {} }
