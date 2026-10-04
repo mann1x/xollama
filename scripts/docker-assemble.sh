@@ -192,6 +192,9 @@ if [ -z "${SKIP_GO:-}" ]; then
         -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
         almalinux:8 bash -euo pipefail -c '
             dnf install -y -q gcc gcc-c++ tar gzip findutils git cmake > /dev/null
+            # arm64: clang, as upstream builds it. AlmaLinux 8 gcc has no
+            # arm_bf16.h, which the MLX headers include.
+            if [ "$GOARCH_DL" = arm64 ]; then dnf install -y -q clang > /dev/null; export CC=clang CXX=clang++; fi
             curl -fsSL "https://go.dev/dl/${WANT}.linux-${GOARCH_DL}.tar.gz" | tar -C /usr/local -xz
             export PATH=/usr/local/go/bin:$PATH GOFLAGS=-buildvcs=false
             git config --global --add safe.directory /src

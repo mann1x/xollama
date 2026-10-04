@@ -117,28 +117,29 @@ default branch, and it does.
 
 ## Architectures
 
-**amd64 today; arm64 is wired and waits for one artifact.** Each architecture
-has its own runtime pin (`llama/runtime-pin-linux.txt`,
-`llama/runtime-pin-linux-arm64.txt`), is assembled by
-`ARCH=<arch> scripts/docker-assemble.sh` and built on a runner of its own kind
-(`ubuntu-latest`, `ubuntu-24.04-arm`), and is pushed as `:<version>-<arch>`.
-The `plan` job adds arm64 to the build as soon as the arm64 pin carries the
-fork's runtime rows; until then the assembly refuses arm64, naming the missing
-rows, and the image is amd64 only.
+**amd64 and arm64.** Each architecture has its own runtime pin
+(`llama/runtime-pin-linux.txt`, `llama/runtime-pin-linux-arm64.txt`), is
+assembled by `ARCH=<arch> scripts/docker-assemble.sh` and built on a runner of
+its own kind (`ubuntu-latest`, `ubuntu-24.04-arm`), and is pushed as
+`:<version>-<arch>`. The `plan` job builds arm64 only while the arm64 pin
+carries the fork's runtime rows; an incomplete pin gives an amd64-only image
+and an assembly that refuses arm64, naming the missing rows. The Go binary is
+built with clang on arm64, as upstream does: AlmaLinux 8's gcc lacks a header
+the MLX bindings include.
 
-The arm64 payload: the fork's arm64 CPU runtime (asked of the fork on
-2026-10-04, not published yet), upstream's arm64 CUDA 12, CUDA 13 and JetPack
-5/6 tarballs, and the engine's `aarch64` rows of `llm/engine/pin.txt` (the
-engine and its three media libraries; no GPU library, so on arm64 the engine
-serves the CPU and llama.cpp serves CUDA). `libatomic1` is in the image for
-the engine's arm64 audio library.
+The arm64 payload: the fork's arm64 CPU runtime, upstream's arm64 CUDA 12,
+CUDA 13 and JetPack 5/6 tarballs, and the engine's `aarch64` rows of
+`llm/engine/pin.txt` (the engine and its three media libraries; no GPU
+library, so on arm64 the engine serves the CPU and llama.cpp serves CUDA).
+`libatomic1` is in the image for the engine's arm64 audio library.
 
-Measured on a Raspberry Pi 5 (8 GB, Debian 13, 16K pages), 2026-10-04, with
-upstream's CPU runtime standing in for the fork's
-(`ALLOW_UPSTREAM_RUNTIME=1`, local only, refused in CI, never published):
-`qwen2.5:1.5b`, 512 tokens, four runs: 9.5 tok/s on the engine, 10.7 on
-llama.cpp, inside the image; Kokoro, Supertonic and KittenTTS each
-transcribed back by Whisper, 5 of 5.
+Measured on a Raspberry Pi 5 (8 GB, Debian 13, 16K pages), 2026-10-04, in the
+image built from the pins: `qwen2.5:1.5b`, 512 tokens, four runs, 9.8-9.9
+tok/s on the engine and 9.7-10.1 on llama.cpp; Kokoro, Supertonic and
+KittenTTS each transcribed back by Whisper. The CUDA and JetPack payloads
+have not been run on arm64 hardware. `ALLOW_UPSTREAM_RUNTIME=1` (local only,
+refused in CI) assembles with upstream's CPU runtime when a pin has no runtime
+rows.
 
 ROCm is deliberately absent: the pinned engine declares no ROCm acceleration,
 and an image advertising it would be untested.
