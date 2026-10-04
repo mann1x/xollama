@@ -175,7 +175,22 @@ interactive scheduled task, and the full check (version, `PAYLOAD_ID`, 22434
 and `/api/xollama`, `/api/xollama/devices`, a 512-token generation on the
 GPU, the stock ollama on 11434 untouched).
 
-- **Baseline:** to be recorded from `v0.35.1-rc.1.xollama`.
+- **Scripts:** `scripts/gates/windows-install-pre.ps1`, `windows-install.ps1`
+  and `windows-install-check.ps1` on stdin; `windows-install-measure.ps1`
+  copied to the host and run with `-File`, because it has multi-line blocks
+  and stdin runs none of them (it printed three lines and nothing else the
+  first time).
+- **Baseline** (`v0.35.1-rc.1.xollama`, 2026-10-04, AMD Software 26.9.2): the
+  installer exits 0 in 29 s; version and `PAYLOAD_ID` (`4ece3b6d…`) match the
+  release; 22434 answers `/api/xollama`; the engines directory holds engine
+  `2610041714001` with its CUDA, Vulkan and three media libraries; five
+  512-token runs each of `qwen3:8b`: RTX 3090 on CUDA (pinned by PCI ID) 123.2
+  cold, 123.4 to 123.6 tok/s warm; RX 9070 XT on Vulkan (pinned by name) 100.6
+  cold, 102.9 to 103.0 warm; integrated GPU 5.1 tok/s; 37/37 layers on each;
+  all three display devices `OK` afterwards; ollama on 11434 untouched.
+  Seen, open: at the load on the integrated GPU, right after the RX 9070 XT
+  unload, the free-memory refresh warned "context deadline exceeded" after
+  504 µs and the load went on with the old values.
 
 ### G10. The image
 
@@ -193,7 +208,13 @@ GPU, the stock ollama on 11434 untouched).
   back.
 - **Baseline:** arm64 with the engine replaced: opencoti 9.8 to 9.9 tok/s,
   llama.cpp 10.8 to 10.9 (`qwen2.5:1.5b`, interleaved), speech 5 of 5. The
-  candidate's own images: to be recorded from `v0.35.1-rc.1.xollama`.
+  candidate's images (`mannixita/xollama:0.35.1-rc.1.xollama`,
+  `scripts/gates/image-x86.sh` and `image-pi.sh` with `IMG=` set): amd64 on
+  solidPC with the RTX 3090, `llama3`, four 512-token runs: opencoti 85.6 to
+  85.9 tok/s, llama.cpp 85.6 to 86.1, speech 4 of 4 transcribed back; arm64
+  on the Pi 5: opencoti 10.1 tok/s, llama.cpp 11.0 to 11.1, speech 3 of 3;
+  `PAYLOAD` names the fork's runtime and every pinned engine file on both;
+  the owner's containers and the stock ollama on the Pi untouched.
 
 ### G11. macOS
 
@@ -217,7 +238,13 @@ GPU, the stock ollama on 11434 untouched).
 each binary names, both image architectures, the installer naming the fork's
 releases endpoint.
 
-- **Baseline:** to be recorded from `v0.35.1-rc.1.xollama`.
+- **Baseline** (`v0.35.1-rc.1.xollama`, merge commit `3284571c5`): the release
+  run's five jobs succeeded; seven assets, every `sha256sum.txt` line OK; the
+  amd64 binary on solidPC and the arm64 binary on the Pi name the version; the
+  image is `linux/amd64` and `linux/arm64` on Docker Hub and GHCR; the
+  provenance block names engine `2610041714001`. `strings` finds no releases
+  endpoint in the compressed installer (expected; the installed app is checked
+  in G9).
 
 ## Not gated
 

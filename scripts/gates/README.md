@@ -17,5 +17,7 @@ disk, never `/tmp`.
 | `serve-side.sh`, `speech-linux.sh`, `video-linux.sh` | G6 | solidPC |
 | `vulkan-linux.sh`, `bench.sh` | G7 | solidPC |
 | `windows-side.ps1`, `windows-speech.ps1` | G8 | eleven2go, sent on stdin |
-| `pi-image.sh` | G10 | dietpi5 |
+| `windows-install-pre.ps1`, `windows-install.ps1`, `windows-install-check.ps1` (stdin), `windows-install-measure.ps1` (`-File`) | G9 | eleven2go |
+| `pi-image.sh` (engine replaced in `:dev`), `image-pi.sh` (a published image) | G10 | dietpi5 |
+| `image-x86.sh` | G10 | solidPC |
 | `bench.sh`, `speech-mac.sh` | G11 | Mac mini |

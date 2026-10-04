@@ -5,6 +5,14 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-04 — `v0.35.1-rc.1.xollama` is published (PR #5 merged, `3284571c5`) and passed every gate of `docs/protocols/VALIDATION.md`.**
+> - Merged on the owner's word (21:22: merge if all green) with 23 checks passing and 12 skipped on `f27add71a`. The release run and the image run succeeded; the candidate is a pre-release with seven assets and images for amd64 and arm64 on Docker Hub and GHCR.
+> - G12, the artifact: every checksum OK, both Linux binaries name the version on their own architecture, provenance names engine `2610041714001`.
+> - G9, the installer on eleven2go: exit 0 in 29 s, version and payload id match, `qwen3:8b` at 512 tokens: RTX 3090 123.4 to 123.6 tok/s, RX 9070 XT (pinned by name) 102.9 to 103.0, integrated GPU 5.1, all layers on the GPU, all display devices OK, the owner's ollama untouched.
+> - G10, the images: amd64 on solidPC opencoti 85.6 to 85.9 tok/s and llama.cpp 85.6 to 86.1 (`llama3`), speech 4 of 4; arm64 on the Pi 5 opencoti 10.1 and llama.cpp 11.0 to 11.1, speech 3 of 3. The Mac mini has no Docker; the Mac is covered by the signed app (G11).
+> - Seen, open: on eleven2go the free-memory refresh before the integrated GPU's load warned "context deadline exceeded" after 504 µs and the load used the old values; the load and the run were fine.
+> - Left: opencoti promotes opencoti-llamafile to c8 (asked by mail); then the engine pin moves to the c8 release and `release: v0.35.1-xollama` is cut from the candidate's tree with the short check.
+
 > **2026-10-04 — The gates of a release are written down (`docs/protocols/VALIDATION.md`), and the first release's baseline is recorded.**
 > - Owner, 21:22: the first release validates everything; every later release passes only the delta of the previous validation, plus what regressed. `VALIDATION.md` lists gates G1 to G12, each with host, steps, expected result and the last measured baseline, a table from "what the change touches" to the gates it needs, and what is not gated. The scripts as run are in `scripts/gates/`.
 > - Added to the baseline on tree `4db0bcedb`: hosted CI 23 pass, 12 skipping; stock llama.cpp control on solidPC compat 8/8, llama3 78.5 tok/s (opencoti 77.4), 4 slots 591 tok/s (opencoti 301; known gap, llama.cpp was 620 on 2026-09-21), overflow 2.9 (3.1); macOS, the bundle signed and notarized from this tree on the Mac mini: `qwen2.5:1.5b` 125.9 to 127.4 tok/s, `llama3` 31.3 to 31.7, Metal library "abi ggml 41ba479c24d7 matches this engine", speech 7 of 7 answered (one OuteTTS voice transcribed back with one wrong word).
