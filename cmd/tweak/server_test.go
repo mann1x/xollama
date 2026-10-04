@@ -110,7 +110,8 @@ func TestRemoveDropsThisUsersCopy(t *testing.T) {
 func TestTheWalkOffersRemoveOnlyWhenAKeyIsSet(t *testing.T) {
 	var actions []api.APIKeyRequest
 	fakeKeyServer(t, &actions)
-	out := runServerCmd(t, "\n")
+	// A bare `tweak server` asks which part first; the key is the second.
+	out := runServerCmd(t, "api-key\n\n")
 	if strings.Contains(out, "remove it") || !strings.Contains(out, "API key: none") {
 		t.Fatalf("open server walk:\n%s", out)
 	}
@@ -132,5 +133,61 @@ func TestAnUnknownActionIsRefused(t *testing.T) {
 	cmd.SetArgs([]string{"--api-key=rotate"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("rotate accepted")
+	}
+}
+
+func TestTheServerOffersOnlyTheSettingsAServerMayDefault(t *testing.T) {
+	names := serverFields()
+	for _, want := range []string{"engine", "kv-k", "kv-unified", "kv-residency", "slots", "slots-max", "session-pool", "spec-type"} {
+		if !contains(names, want) {
+			t.Errorf("%s is missing from the server's defaults", want)
+		}
+	}
+	for _, own := range []string{"dca", "dca-chunk", "devices", "device-backend", "council"} {
+		if contains(names, own) {
+			t.Errorf("%s is a model's own setting, offered as a server default", own)
+		}
+	}
+}
+
+func TestServerDefaultsAreSentByFlag(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	var sent []api.SettingsRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case api.XollamaSettingsPath:
+			var req api.SettingsRequest
+			json.NewDecoder(r.Body).Decode(&req)
+			sent = append(sent, req)
+			json.NewEncoder(w).Encode(api.SettingsResponse{Path: "/x", Defaults: req.Defaults})
+		case "/api/ps":
+			json.NewEncoder(w).Encode(api.ProcessResponse{})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
+
+	runServerCmd(t, "", "--kv-k=q8_0", "--kv-v=q8_0", "--slots=on", "-y")
+	if len(sent) != 2 || sent[1].Defaults == nil {
+		t.Fatalf("sent %+v", sent)
+	}
+	d := sent[1].Defaults
+	if d.KV == nil || d.KV.K != "q8_0" || d.KV.V != "q8_0" || d.Slots == nil || d.Slots.Dynamic == nil || !*d.Slots.Dynamic {
+		t.Fatalf("defaults sent: %+v", d)
+	}
+}
+
+func TestTheEnginePoliciesAreModelAndServerSettings(t *testing.T) {
+	for _, name := range []string{"kv-rolling-window", "mtp-policy", "fit", "vram-target"} {
+		if _, ok := fieldByName(name); !ok {
+			t.Errorf("tweak model has no --%s", name)
+		}
+		if !contains(serverFields(), name) {
+			t.Errorf("tweak server has no --%s", name)
+		}
 	}
 }

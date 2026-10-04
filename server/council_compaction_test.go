@@ -84,7 +84,7 @@ func TestTheCompactionIsCarriedForward(t *testing.T) {
 		chatChunks(t, s, req)
 		councilIdle.Wait()
 		p := e.routePrompts()[turn]
-		if !strings.Contains(p, compactionSummaryHeading) || !strings.Contains(p, fakeMerged) {
+		if !strings.Contains(p, compactionSummaryHeading) || !strings.Contains(p, fakeReplaySecond) {
 			t.Errorf("turn %d: the council was not sent the summary", turn)
 		}
 		if strings.Contains(p, "a1 a1 a1") {
@@ -169,7 +169,7 @@ func TestASecondFoldIsIncremental(t *testing.T) {
 		}
 		if writers++; writers == 2 {
 			p := e.prompts[i]
-			if !strings.Contains(p, fakeMerged) || strings.Contains(p, "a1 a1 a1") {
+			if !strings.Contains(p, fakeReplaySecond) || strings.Contains(p, "a1 a1 a1") {
 				t.Error("the second fold's writer did not read the first summary in place of the folded turns")
 			}
 		}
@@ -337,15 +337,18 @@ func TestAWriterThatFailsFallsBack(t *testing.T) {
 	}
 }
 
-// Review off ships the writer's replay; basic makes no model call at all.
+// A fold is the writer's one pass unless the review is asked for (owner,
+// 2026-09-30); basic makes no model call at all.
 func TestCompactionSettings(t *testing.T) {
-	no := false
+	no, yes := false, true
 	for name, tc := range map[string]struct {
 		ctx     *xollama.CouncilContext
 		writers int
 		critics int
 	}{
+		"default":    {nil, 1, 0},
 		"review off": {&xollama.CouncilContext{Review: &no}, 1, 0},
+		"review on":  {&xollama.CouncilContext{Review: &yes}, 1, 2},
 		"basic":      {&xollama.CouncilContext{Compaction: xollama.CouncilCompactionBasic}, 0, 0},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -364,7 +367,7 @@ func TestCompactionSettings(t *testing.T) {
 			}
 			e.mu.Lock()
 			for i, r := range e.roles {
-				if r == "compaction-writer" && strings.Contains(e.prompts[i], "Mark the halfway point") {
+				if r == "compaction-writer" && tc.critics == 0 && strings.Contains(e.prompts[i], "Mark the halfway point") {
 					t.Error("the writer was asked for a marker nothing reads")
 				}
 			}
@@ -379,7 +382,7 @@ func TestTheRetrospectiveReadsTheFoldedReasoning(t *testing.T) {
 	for _, thinking := range []bool{true, false} {
 		councilCompactions.reset()
 		e := &councilEngine{route: `{"route":"council"}`}
-		s := councilServer(t, e, councilOn())
+		s := councilServer(t, e, withRetrospective(councilOn()))
 		req := stockLongReq("conv-retro")
 		if thinking {
 			req.Messages[1].Thinking = "I should start from the law."
@@ -427,7 +430,7 @@ func TestRefusalsCompact(t *testing.T) {
 func TestTheWriterMarksTheHalfOnlyForAReview(t *testing.T) {
 	councilCompactions.reset()
 	e := &councilEngine{route: `{"route":"council"}`}
-	s := councilServer(t, e, councilOn())
+	s := councilServer(t, e, withReview(councilOn()))
 	chatChunks(t, s, stockLongReq("conv-marker"))
 	councilIdle.Wait()
 	e.mu.Lock()
@@ -525,7 +528,7 @@ func TestTheRetrospectiveTouchesNoPool(t *testing.T) {
 	councilRoots.reset()
 	e := &councilEngine{route: `{"route":"council"}`}
 	kv := &fakeKV{grant: 16384, used: 900, session: "conv-retro-pool", sessPressure: 0.9}
-	s := polykvCouncil(t, e, kv, councilOn())
+	s := polykvCouncil(t, e, kv, withRetrospective(councilOn()))
 	req := longCouncilReq("conv-retro-pool", "Why is the sky blue?")
 	req.Messages[1].Thinking = "I should start from the law."
 	chatChunks(t, s, req)
@@ -605,7 +608,7 @@ func TestTheTextPathTakesTurnsOnTheOwner(t *testing.T) {
 	const grant = 2176
 	e := &councilEngine{route: `{"route":"council"}`, hold: 5 * time.Millisecond}
 	kv := &fakeKV{grant: grant, most: grant, used: 900, session: "conv-turns", sessPressure: 0.9}
-	s := polykvCouncil(t, e, kv, councilOn())
+	s := polykvCouncil(t, e, kv, withRetrospective(withReview(councilOn())))
 	req := longCouncilReq("conv-turns", "Why is the sky blue?")
 	req.Messages[1].Thinking = "I should start from the law."
 	chatChunks(t, s, req)
@@ -763,4 +766,25 @@ func TestTheWriterIsNotSentTheRequests(t *testing.T) {
 	if writers == 0 {
 		t.Fatal("no writer was asked")
 	}
+}
+
+// withRetrospective asks c's folds for the retrospective, which is off by
+// default.
+func withRetrospective(c *xollama.Council) *xollama.Council {
+	yes := true
+	if c.Context == nil {
+		c.Context = &xollama.CouncilContext{}
+	}
+	c.Context.Retrospective = &yes
+	return c
+}
+
+// withReview asks c's folds for the critics' review, which is off by default.
+func withReview(c *xollama.Council) *xollama.Council {
+	yes := true
+	if c.Context == nil {
+		c.Context = &xollama.CouncilContext{}
+	}
+	c.Context.Review = &yes
+	return c
 }

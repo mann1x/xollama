@@ -102,21 +102,63 @@ func devicesOf(backend string) []api.XollamaDevice {
 }
 
 // selectorFor is how a menu pick is written into the config: by PCI ID where
-// discovery found one, because it is the only identity that survives a reboot
-// or a card being added, else by the backend's index.
-func selectorFor(d api.XollamaDevice) string {
+// discovery found one, else by the device's name, with its place among the
+// backend's devices of that name when peers holds more than one. Never by
+// index: an index is an enumeration order, and Vulkan on Windows, which gives
+// no PCI ID, renumbers its devices from one boot to the next.
+func selectorFor(d api.XollamaDevice, peers []api.XollamaDevice) string {
 	if pci, ok := xollama.CanonicalPCIID(d.PCIID); ok {
 		return pci
 	}
-	return d.ID
+	name := apiDeviceName(d)
+	if name == "" {
+		return d.ID
+	}
+	ordinal, count := 0, 0
+	for _, o := range peers {
+		if o.Backend != d.Backend || !xollama.SameDeviceName(apiDeviceName(o), name) {
+			continue
+		}
+		count++
+		if o.ID == d.ID {
+			ordinal = count
+		}
+	}
+	if count < 2 {
+		ordinal = 0
+	}
+	return xollama.NameSelector(name, ordinal)
+}
+
+// apiDeviceName is what a device is called, as a pin by name matches it.
+func apiDeviceName(d api.XollamaDevice) string {
+	if d.Description != "" {
+		return d.Description
+	}
+	return d.Name
+}
+
+// splitSelectors splits a device answer on commas, and on spaces too except
+// inside a name selector, whose name has spaces of its own.
+func splitSelectors(s string) []string {
+	var out []string
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if _, _, ok := xollama.ParseNameSelector(part); ok {
+			out = append(out, part)
+			continue
+		}
+		out = append(out, strings.Fields(part)...)
+	}
+	return out
 }
 
 // deviceLine renders one device for a menu or a listing.
 func deviceLine(d api.XollamaDevice) string {
-	name := d.Description
-	if name == "" {
-		name = d.Name
-	}
+	name := apiDeviceName(d)
 	var tags []string
 	if d.PCIID != "" {
 		tags = append(tags, d.PCIID)
@@ -156,7 +198,7 @@ func deviceOptions(c *xollama.Config) []string {
 	devs := devicesOf(deviceBackend(c))
 	out := make([]string, 0, len(devs)+2)
 	for _, d := range devs {
-		out = append(out, selectorFor(d))
+		out = append(out, selectorFor(d, devs))
 	}
 	hasIntegrated := slices.ContainsFunc(devs, func(d api.XollamaDevice) bool { return d.Integrated })
 	hasDiscrete := slices.ContainsFunc(devs, func(d api.XollamaDevice) bool { return !d.Integrated })
@@ -201,7 +243,7 @@ func setDeviceBackend(c *xollama.Config, v string) error {
 }
 
 // setDeviceIDs reads a comma- or space-separated list of PCI IDs, device
-// indexes and aliases. "all" is every device of the backend. A bare number is
+// names (name:<name>, separated by commas only), device indexes and aliases. "all" is every device of the backend. A bare number is
 // a device index here, never a menu number: flags pass values straight
 // through, and "1" meaning the second menu line in one place and device #1 in
 // another would be a trap. The wizard turns menu numbers into selectors before
@@ -216,13 +258,13 @@ func setDeviceIDs(c *xollama.Config, v string) error {
 		return nil
 	}
 	var ids []string
-	for _, tok := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' }) {
-		if pci, ok := xollama.CanonicalPCIID(tok); ok {
-			tok = pci
+	for _, tok := range splitSelectors(s) {
+		if key, ok := xollama.CanonicalDeviceKey(tok); ok {
+			tok = key
 		} else {
 			tok = strings.ToLower(tok)
 		}
-		if !slices.Contains(ids, tok) {
+		if !slices.ContainsFunc(ids, func(id string) bool { return strings.EqualFold(id, tok) }) {
 			ids = append(ids, tok)
 		}
 	}
@@ -233,7 +275,7 @@ func setDeviceIDs(c *xollama.Config, v string) error {
 // resolveDeviceMenu turns the menu numbers in a wizard answer into the
 // selectors those lines print, leaving anything else as typed.
 func resolveDeviceMenu(raw string, options []string) string {
-	toks := strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == ' ' })
+	toks := splitSelectors(raw)
 	if len(toks) == 0 {
 		return raw
 	}
@@ -281,9 +323,12 @@ var deviceFields = []field{
 		title: "Devices — which devices of that backend",
 		help: "Pick one or more, by menu number or by value, separated by commas; several\n" +
 			"spread the model across them. A pick is written as the device's PCI ID, the\n" +
-			"one identity that survives a reboot or a card being added. A device index\n" +
-			"and the words `integrated` and `discrete` are accepted too. Unset, or `all`,\n" +
-			"takes every device of the backend.",
+			"one identity that survives a reboot or a card being added, or as its name\n" +
+			"(`name:AMD Radeon RX 9070 XT`, `#2` after it for the second such card) where\n" +
+			"the backend gives no PCI ID. The words `integrated` and `discrete` are accepted\n" +
+			"too. A device index is accepted but positional: the backend may number its\n" +
+			"devices differently after a reboot. Unset, or `all`, takes every device of\n" +
+			"the backend.",
 		kind:     kindDevices,
 		choices:  deviceOptions,
 		describe: describeDevices,

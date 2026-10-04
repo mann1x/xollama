@@ -16,10 +16,14 @@ paths:
   - server/council_continue_test.go
   - server/council_tools.go
   - server/council_tools_test.go
+  - server/council_cloud.go
+  - server/council_cloud_test.go
   - api/xollama_tools.go
   - api/xollama_tools_test.go
   - llm/engine_council.go
   - llm/engine_council_test.go
+  - llm/engine_council_slots.go
+  - llm/engine_council_slots_test.go
   - llm/engine_window.go
   - llm/engine_window_test.go
   - cmd/council_run.go
@@ -69,21 +73,62 @@ paths:
   the capability checks. Registry row `council` in
   `docs/protocols/UPSTREAM-SYNC.md`.
 - `councilServes` is false for a model without an enabled council, a request
-  with no messages, tools without `council_chat_state` or a `format` (the
-  client is steering the output itself), and any member's own turn. Members
+  with no messages, a `format` (the client is steering the output itself),
+  a `num_predict` below `councilMinReply` (64: a probe of the model, such as
+  Cerebriline's one-token template probe read for `prompt_eval_count`), a
+  request without tools and without `council_chat_state` whose messages
+  already hold tool calls (a generic client's housekeeping: Cerebriline's
+  compaction took 13.5 minutes through the council on 0427; guard
+  `TestAToolTasksHousekeepingIsAnsweredPlainly`), and any member's own turn. Tools without `council_chat_state` are a
+  generic harness's and ARE the council's (owner, 2026-09-30: a council must
+  work driven by a harness that does not know it is one). Members
   are marked with the
   `councilMemberKey` gin context key — never a header, so no client can set it
   and no member can convene the council again.
 - Every member is an ordinary chat turn served in process through
   `ChatHandler`, thinking off unless its role states `council.<role>.think`.
-  `on` is `xollama.DefaultCouncilThinkBudget` (2048) tokens, never a level:
-  `medium` at 131k let a member loop past 29k tokens live.
   A thinking role is sent an explicit **token** budget
-  (`council.ThinkBudget(setting, cm.window)`), never a level: a level is a
-  share of `num_predict`, which for a member is its reply cap. `num_predict`
-  becomes `max_tokens` + budget. `Stream` reads only `Message.Content`, so
+  (`council.ThinkBudget(setting, r.MaxTokens, window)`), never a level. The
+  budget is **inside** the reply cap: `num_predict` is the cap, never
+  cap + budget (Cerebriline's output budget, 11.29). With a cap, a level is
+  its share of the cap, `on` is medium, and a token count is held to 4/5 of
+  the cap. Only a member whose own model sets its cap (cap 0) takes a level
+  as a share of its window and `on` as `DefaultCouncilThinkBudget` (2048):
+  `medium` at 131k of window let a member loop past 29k tokens live.
+  Every member's instruction ends with the Output Budget section
+  (`budgetNote`, `internal/council/steps.go`); keep its wording Cerebriline's.
+- **A reply cap belongs to the model the request runs on** (`maxTok(cfg,
+  role, model, host)`, `internal/council/steps.go`). A role's stated
+  `max_tokens` holds on its own model only. Every call runs on its role's
+  model: the front on the synthesizer's (model, host, `numCtx`), the route
+  decision and the direct answer on the planner's; the direct answer's cap is
+  `directTok` (the synthesizer's on the council's model, else the planner's
+  own). On
+  the council's own model an unstated cap is `cfg.OutputBudget()`: the least
+  of 3/4 of `cfg.Window`, `cfg.Ceiling` (`council.max_tokens`, default
+  16384) and the Modelfile `num_predict` (`cfg.LeadMaxTokens`) -- always a
+  number, because the owner's window is booked for it. The server sets
+  `cfg.Window` before `Direct` (from num_ctx) and again from the tree. On another model it is 0: nothing is
+  sent and that model's template (its Modelfile, or the remote endpoint's)
+  decides. `councilReserve` counts only `cfg.OnLead` roles, so a cloud
+  role's 128k cap books nothing in the owner; each books its cap, which
+  holds its thinking. The builder's levels are shares of the role's cap
+  (`builtThink`, `internal/council/build.go`). A member on another model
+  sheds the client's `num_predict` and `num_ctx` (they are the council's) and
+  takes its role's `num_ctx` (`council.<role>.num_ctx`, needs `model`,
+  schema v5). Guards: `TestAReplyCapFollowsTheModelItRunsOn`,
+  `TestTheReserveCountsOnlyTheRolesOnTheCouncilsModel`,
+  `TestTheReserveBooksTheCapsWithTheThinkingInside`,
+  `TestARemoteRoleTakesItsOwnCapAndWindow`, `TestEveryCallRunsOnItsRolesModel`,
+  `TestTheDirectAnswerTakesItsModelsCap`. On a tool turn a writer (`writes`) gets at
+  least `writeMaxTokens` (16384, `internal/council/cut.go`): an edit carries
+  old + new text in one call, and a 3,072 cap cut the medium council's fix
+  three times. `done_reason "length"` reaches it as `Reply.Cut`; a cut writer
+  with no call is asked again once (`maxCuts`), never more. `Stream` reads only `Message.Content`, so
   the reasoning is dropped. The route-only decision never carries `think`.
-  The cap message is the model's `think_budget_message`; never set one here. Each parallel member gets its own engine session
+  A token budget carries `think_budget_message` (`councilBudgetMessage`: the
+  client's, else the council model's), local or remote; never invent one.
+  Guard: `TestABudgetGoesWithTheModelsBudgetMessage`. Each parallel member gets its own engine session
   named under the conversation's (`<session>~researcher-1`); the planner keeps
   the conversation's session so a direct answer hits the same cache as a plain
   chat. Deliberation streams as thinking, the answer as content, through
@@ -127,8 +172,21 @@ paths:
   it books the window on the conversation's session. P1 (the conversation),
   P2r (+ plan), P2f (+ findings) and P3s (+ critiques) are each built once,
   forked from the longest prefix already built, and pinned to the owner.
-  Workers attach with `pool_id` and no window, and are closed when done. Pools
-  are released newest first, and the owner is never closed.
+  Workers attach with `pool_id` and no window. A council is a living thing
+  until its client leaves (the owner's ruling, 2026-09-28): `leaveWorker`
+  only takes a worker off its layer, and its session stays open across calls,
+  trips and turns, so the engine resumes it from its own cache (opencoti #526;
+  closed after every call, a resumed synthesizer re-prefilled ~18k of 21k
+  tokens, ab-4). `closeSessions` closes the turn's member sessions only when
+  the request context ended, i.e. the client left. Pools are released newest
+  first, and the owner is never closed. A pool the engine will not release is
+  named at Warn by `unreleased()` (`server/council_polykv.go`): its cells stay
+  booked in the owner until the session ends (bug-118), the line that explains
+  a refusal minutes later. A root the engine still refuses or that nothing
+  folded, a root whose text cannot be rendered, and a member that runs unpooled
+  are Warn too, never Debug (`server/council_loud_test.go`). Guards:
+  `TestAResumedMemberReattachesToItsStage`,
+  `TestAClientThatLeavesClosesItsCouncilsSessions`.
 - A layer is the rendered prompt up to `councilSentinel`, and must be a byte
   prefix of the member's own rendered prompt, or the member has no layer. On
   an owned tree it then runs on the owner's session inside its window
@@ -144,6 +202,10 @@ paths:
   cited in the constants; change one only against a measurement. The
   prompts (`council_compaction_prompts.go`) are its texts adapted to chat —
   keep the structure. Rules that tests hold:
+  - a fold is the writer's one pass by default (owner, 2026-09-30):
+    `council.context.review` and `.retrospective` are off when unset (nil
+    means off in `types/xollama/council.go`, `review: false,
+    retrospective: false` in `newCouncilCompactor`); each is opt-in;
   - the system message is never changed: the summary is a user message
     after it, so the root's system part survives a fold;
   - a record per conversation, applied every turn and dropped on a hash
@@ -230,9 +292,20 @@ paths:
   the owner, so they need no cells, but each needs a slot: with `-np 1` the
   engine deferred researcher 2 until researcher 1 released slot 0 (ab-3,
   opencoti #501), and the elastic controller did not grow (3 s saturation +
-  512 MiB free-VRAM guard). `-np` = widest local step, `-c` unchanged (never
-  × the width), `--kv-unified` forced; not on stock, a single-sequence model
-  or `kv.unified: false`. The estimate counts the width as sequences only.
+  512 MiB free-VRAM guard). `-np` = the engine's parallel ceiling
+  (`resolveSlotPlan(...).Max`: slots.max, `XOLLAMA_MAX_PARALLEL` or 4), never
+  below the council's local width (owner's ruling 2026-09-28: a council
+  follows the engine's parallel slots). `-c` is unchanged (never × the width),
+  and `--kv-unified` is forced. None of this applies on stock, to a
+  single-sequence model, or with `kv.unified: false`. The estimate counts the
+  live slots as sequences only.
+  `councilSlots` is the floor and counts local members only: max(researchers,
+  critics + 1 for the synthesizer beside the critics' reviews), at least 1. A
+  role with a host, or on a cloud model, takes no slot here.
+- **Cloud members are counted apart** (`server/council_cloud.go`):
+  `council.cloud_parallel` (default 3, at most 16) at a time, one count per
+  council model shared by every turn (`councilCloud`). `takeCloud` in `stream`
+  runs after the host branch; a remote host is not counted.
 - **Defaults: 2 researchers, 1 critic** (owner's ruling 2026-09-27: a second
   critic of the same model added nothing; it pays when it is another model).
   Server tests state two critics in `councilOn()` to cover indices.
@@ -312,9 +385,23 @@ paths:
   unreadable is a fresh start, never an error. Add a field with a new protobuf
   number; a changed meaning is a new feature name. The key is
   `<models>/council-state.key`, written through `fsowner`.
-- **Tools on council turns (9.5, `council_tools_v1`).** Tools reach the
-  council only with `council_chat_state`: a member that calls one is suspended
-  into the state, so a client without it keeps the plain-chat bypass. Every
+- **A generic client** (tools, no `council_chat_state`; `server/council_held.go`,
+  `internal/council/generic.go`): the server keeps the sealed resume point by
+  the conversation's session (`councilHeld`, 64 conversations, 2 h) and sends
+  none. Tools no client marked read-only are marked from their names
+  (`InferReadOnly`; a client that marks any is taken at its word). Check
+  words (`check`, `lint`, `validate`, `verify`, `diagnose`) read: a parse
+  check is how members find a syntax error's line, and 0428 had no member
+  able to call `check_file` (guard `TestReadOnlyIsInferredOnlyWhenTheClientMarksNone`).
+  A write still wins (`run_check` is a change). With no
+  stated check, the check is the non-reading call a member repeats unchanged
+  across a change (`inferredCheck`), and then runs as a stated one would.
+  Past assistant thinking is stripped from what members read
+  (`councilMembersView`), after the fold: the retrospective reads it. Guard:
+  `TestAGenericClientsToolTurnIsTheCouncilsAndResumes`, failing with the held
+  point off. Never gate the council on an xOllama field again.
+- **Tools on council turns (9.5, `council_tools_v1`).** A member that calls
+  one is suspended into the state, the client's or the held one. Every
   member request carries the client's tools (`councilMembers.tools`), and so
   does `councilRenderer`, or the PolyKV root stops being the members' prefix
   (`TestAToolTurnsRootHoldsTheTools`). The policy lives in
@@ -355,3 +442,376 @@ paths:
   the board persists through `Progress.Notes`/`Seen` (state Progress fields
   5-6). Keep the caps (`maxNoteChars`, `maxNotes`) and the "do not wait"
   wording: the named risk is members chatting instead of working.
+- **Test cycles (11.4)**: `Config.MaxTests` (`DefaultMaxTests` 6) bounds a
+  tool turn's cycles. A synthesizer ending with `Retest` ("VERDICT: RETEST")
+  carries its evidence like a finding, is recorded in `Progress.Tests` (state
+  Progress field 7), and starts the next cycle. `base` adds every failed check
+  after the first plan, then `Replan`'s plan for the cycle (`replanRequest`,
+  run on the owner; `Progress.Replans`, state Progress field 8), so every
+  member of a cycle and its re-plan share one prefix. `holdBack` streams the
+  synthesizer's content up to the verdict only: the status is the user's, the
+  report the council's. The synthesizer
+  key and `Request.Round` are the cycle ("s", "s.2"...). Critics' `REVISE` and
+  `NeedsRevision` count rounds from `cfg.cycleStart`. The continue route sets
+  `MaxTests` 0. Researchers are asked to propose only when a tool that changes
+  something exists. Guards: `TestAFailedCheckGoesBackToTheResearchers`,
+  `TestATurnResumesPastAFailedCheck`, `TestTheFailedChecksTravelInTheState`.
+- **ab-5 fixes (11.6)**:
+  - `MaxSteps` (`DefaultMaxSteps` 6; builder `max_steps` 2..16, state Build
+    field 5) bounds a testing synthesizer's tool steps in `callTools`: a
+    `budgetNote` at the bound, then a forced `Retest` report two steps later.
+  - A testing synthesizer's reply without a verdict gets `verdictNudge` once.
+    The nudged call streams nowhere (`onToken` is swapped out), and only its
+    verdict joins the reply the user read. Never let it stream again: the user
+    would read the answer twice.
+  - `Progress.Prior` (state Progress field 10) holds failed checks from before
+    this council: `Kept` merges Prior+Tests (`lastPrior`, 6 × 6000);
+    `previousPrior` marks them `earlierMark`; `RouteRebuild` and the front's
+    rebuild drop them (`dropEarlier`); `frontReport` adds the front's own
+    attempts. `withPrior` puts them after the conversation for every member,
+    the builder and the planner included.
+  - The front is bounded by `frontSteps` (4): at the bound it gets
+    `frontBudgetNote`, and two steps later it is forwarded.
+  - Findings and critiques are introduced as claims (`findingsIntro`,
+    `critiquesIntro`). The builder must never name a cause or a fix (it
+    anchored the whole council in ab-5).
+  - Guards are in `internal/council/checks_test.go`; each was checked by removal.
+- **Sources (11.7, `internal/council/sources.go`)**: `user()` is an instruction
+  and is headed `[COUNCIL · INSTRUCTIONS FOR YOU]`. Another member's work goes
+  through `sourced(source, ...)`, and the plan reply through `planReply`. Never
+  add a council message to a member's conversation without a header: a user
+  turn without one is the user's. `sourcesNote` rides in the plan request,
+  the route decision, the front and the builder. `IsPlannerRequest` strips the
+  header. `noted` compares against the headed note.
+- **History (11.7, `internal/council/history.go`)**: `server/council.go` runs
+  `council.History(conv)` before compaction. It splits the earlier turns'
+  forwarded calls by member key (`callMember`, the `ForwardedID` prefix),
+  drops the member's text and thinking beside its calls, and points at a
+  repeated long result (`repeatAt`). It must stay a pure function of the
+  messages, or the shared prefix breaks between turns. Calls without a member
+  id pass unchanged.
+- **Reviews (11.9, `internal/council/review.go`, `server/council_review.go`)**:
+  `ReviewTool` is `local` and only the synthesizer's (`may`). `sendForReview`
+  runs after `post` in `callTools`; `Take(cfg.Turn)` runs before every
+  synthesizer call. Never make the synthesizer wait on a review except at
+  DONE (`Wait`, `reviewWait`); that is the owner's design.
+  - A review judges the calls' results (`checkEvidence`), never only the
+    synthesizer's account of them.
+  - The DONE gate keeps `gatedReply` (the answer the user read) and mutes the
+    reply that follows.
+  - Job ids are `Turn/key:call`, since the desk outlives turns.
+  - A check the synthesizer moved on from unsent is sent for it
+    (`unsentCheck`, id `auto_<call>`): a read-only call after a change, with
+    no `ReviewTool` call after it, when the next turn changes something
+    (measured: the synthesizer never called the tool). At DONE `sendLast`
+    sends that check under the same id, else an unchecked last change
+    (`uncheckedChange`, `done_<n>`).
+  - With the deliberation shown, `callFrom` sets `showReviews`: each review
+    taken streams as its critic's thinking, role `council.Reviewer`, named
+    with its index by `memberName` in `server/council.go`.
+  - The server keeps one desk per session (`councilDesks.get`, remade when
+    the critic count changes), closes it when the client leaves, and closes
+    it after `reviewIdle` idle.
+  - Background members have no tools. `ownWindow` states their window
+    on opencoti, where no window books the whole pool.
+  - `sendForReview` also sends an `unsentCheck` when the synthesizer's next
+    call changes something (id `auto_<check>`; a read is still checking).
+    `sendLast` at DONE reuses that id, or sends an `uncheckedChange`.
+  - Reviews are shown at delivery through `cfg.show`, as `Reviewer` thinking
+    (set in `callFrom` when the deliberation is shown); `memberName` numbers
+    reviewers.
+- **Loop guards (11.15, `internal/council/loops.go`, from Cerebriline)**:
+  `may` refuses a writing call whose old/new text pair is equal (`noChange`,
+  answered in place, never forwarded). `sends` counts a writing call sent
+  again with the same arguments AND the same result; `transcript` appends
+  `strikeNote(n)`, and at `loopStrikes` `callTools` ends the member's steps
+  (`strikeStop`, RETEST when testing). Reads keep `repeatedCall`. Keep the
+  count reset on a different result: the call did something else.
+- **Misquoted changes (11.20, `internal/council/quote.go`)**: `misquotes`
+  answers a writer's change in place when its own latest read of the same
+  target (gutters dropped) has >= `minQuoted` chars of the quote's start and a
+  mid-line mismatch after it, showing the read's text there. The member's own
+  changes to the target since the read that went through (not `failedWrite`)
+  are replayed onto it (`replay`, oldest first); a whole write (`wholeArgs`)
+  is the text itself; a change whose quote is not once in the text, or one
+  with no old/new pair, ends the scan. A quote carrying the read's gutters
+  (`ungutter(q) != q`) whose unnumbered text the read has is answered with
+  `numberedQuote`. Never refuse on a mismatch at a line's end or where
+  the read ends: that read showed part. `maxMisquotes` bounds it; an answer
+  in place `continue`s `callTools` without spending a refusal. `transcript`
+  and `forwarded` must call the same `misquotes`, or a call is both refused
+  and sent.
+- **The front's handoff (11.15)**: `frontRead` (reads after its last change)
+  goes to every member as `frontReadSource` (`Progress.Read`, state 14, never
+  kept); `frontReport` is only its changes onward, or "" when it only read.
+  `frontSteps` is 3.
+- **Changes together, one check (11.14)**: `testNote` asks for every
+  non-conflicting proposal in one reply, then one check, and lets the
+  synthesizer fix a next failure its check already shows. Researchers report
+  every fault in their part. Never bring back "one at a time": it cost a whole
+  cycle per fault (medium 1101 s vs plain 91 s). Guard:
+  `TestTheSynthesizerAppliesTheProposalsTogether`.
+- **Usage per role (`council_usage_v1`, `server/council_usage.go`)**: every
+  member call's done metrics go into `councilMembers.usage` (`usageBook`,
+  keyed by role, model and host), both locally and through `remote`. The turn's
+  done chunk carries `ChatResponse.CouncilUsage` (`council` hook in
+  `api/types.go`), plus the desk's reviewers (`councilDesks.usage`, drained).
+  `prompt_tokens` = `prompt_eval_count` + cached: what was sent, and what a
+  cloud model bills. The manic harness records it per trip and per role.
+  Guards: `TestACouncilTurnReportsWhatEachRoleSpent`,
+  `TestAUsageBookCountsTheCachedPromptAsSent`.
+- **A new task starts clean** (`server/council_fresh.go`): a request with no
+  assistant turn on a *derived* session (no `SessionID`) drops what the server
+  kept for that session (`councilForget`: kept deliberation, review desk, held
+  resume point, compaction record). The derived id comes from the opening, so
+  a harness re-sending its task lands on the last run's session: 0422/0424/0426
+  shared `xo-efd33195b0dfad24`. Without the reset, a re-sent task resumed the
+  past run's held council mid-turn, with no planner. A client-named session
+  is never reset. Guard `TestATaskSentAgainStartsClean` (fails with the call
+  removed).
+- **The done chunk's `prompt_eval_count` is the conversation's**, never a
+  member's: the whole request the client sent, this turn's tool round trips
+  included, as the client sent it, rendered with its tools and tokenized
+  (`councilCompactor.sentTokens`, handed over by `setConvTokens` after each
+  compact). **Never through `apply`**: apply drops a record that does not
+  match, the raw messages never match the members' view, and that dropped all
+  eight folds of 0427/0428 the moment each was made. Else the front's or the planner's prompt
+  (`carriesConversation`; the synthesizer's holds the plan and findings too:
+  229k on 0418), else the sum. Do not measure the history `compact` folds
+  instead: a generic harness's task is one message, so that history is too
+  short to measure, and a resumed research round reported the members' 393k
+  (0426), which made Cerebriline compact. Guards:
+  `TestTheReportedPromptIsTheConversations`,
+  `TestTheSentConversationIsMeasuredWhole`,
+  `TestTheDoneChunkReportsTheConversationsPrompt`.
+- **Every fold and every apply use the members' view** (`hist`, after
+  `council.History`): the first compact, the refused-root fold and the idle
+  fold after the answer. A record's hash covers role and content, and History
+  rewrites forwarded calls, so a fold of the client's raw messages is dropped
+  by the next apply and the root is refused again (0428: three six-minute
+  folds in its last twenty minutes). Guard
+  `TestARefusedRootsFoldIsOfTheMembersView` (both sites fail it alone).
+- **The task list (11.10, `internal/council/tasks.go`)**: the planner's plan
+  JSON carries `"tasks"`; `mergeTasks` enforces the rules (no deletion, an
+  outcome to close, a real researcher to assign, refuted stays refuted, new
+  ids after the last). It is a schema field, never a tool: the planner has no
+  tool loop. A task is matched by its words before its id (`updates`): a
+  planner renumbers from 0 (sixth simple run). Plans are kept with the list's
+  ids (`plan.Tasks` set after the merge), so no member reads the planner's 0s. Carried in `Kept` and state Progress 12/13 (Plan 3); every
+  rebuild drops it with `dropEarlier`.
+- **Stuck checks (11.11, `internal/council/stuck.go`)**: `Progress.Checks`
+  (state Progress 11) keeps each failed cycle's check: the first read-only
+  result after its last write (`lastCheck`), never a later read -- a search
+  after the check read as "moved" six times on an unchanged error;
+  `testsBody` marks same/moved and adds `stuckNote` after `stuckAfter` same
+  outputs. Keep every note topic-agnostic (owner's condition; the test lists
+  forbidden words).
+- **A review always has its verdict (11.12)**: `Desk.work` re-asks once with
+  `reviewFormatNudge`; a second miss is `REVIEW: UNCLEAR`, never a pass.
+- **The builder (11.5, `internal/council/build.go`)**: `Builder` reads
+  `builderConversation` only (system + the user's unheaded messages: no
+  answers, member work or tool results — it anchored on them twice). It runs
+  on its own session `~builder` with `ownWindow`, never on the owner, whose
+  cache a different prefix would evict. Before it (and a reviewer) is booked,
+  `roomFor` (`server/council_room.go`) has the owner give back the cells it
+  needs when `/kv`'s `largest_admissible` is short: never below used + reserve,
+  at once or deferred. Without it a whole-window owner refused the builder for
+  2 min. Its model/host/think come from
+  `builderOn`: `council.builder` (no `prompt` — the JSON contract is the
+  runtime's — and no `count`), else the planner's
+  (`TestTheBuilderRunsOnItsOwnModel`). It runs before the first plan of a
+  council route with no kept build, and on `RouteRebuild`. `apply` appends its
+  instructions to `prompt(cfg, r)` ("For this work: ..."), sets think only for
+  roles the user left unset (levels map to 1024/2048/4096), and sets `MaxTests`
+  (0..12). The user's roles, counts, models, prompts and think settings stand,
+  and the tool policy is fixed. `Progress.Build` (state Progress field 9)
+  travels in `Kept`, the continue route included. A reply that isn't the JSON
+  asked for is an empty build (recorded, shapes nothing, offers no target).
+  Guards: `TestTheBuilderShapesTheCouncilTheUserDefined`,
+  `TestABuilderThatSaysNothingShapesNothing`.
+- **The front (11.5, `internal/council/front.go`)**: on a tool turn,
+  `WithRouting` (server, after `WithEvidence`/`WithBroadcast`, same list for
+  every member) adds `council_forward`/`council_rebuild`. `fronted` (a
+  ToolModel and the forward tool in the list) replaces `Decide` and `direct`
+  with the synthesizer's front call (`Front` role, key "f", on the owner
+  session like the planner). Only `Front` may call the routing tools
+  (`refusedRouting`), and they are `local`. A rebuild runs `MakeBuild` inside
+  the front loop, and `rebuilt()` answers it with the new setup. A forward
+  sets `p.Route` to council. A direct answer keeps `keptWith(Previous,
+  Build)`. The route decision offers `continue` only when `canContinue`.
+  Guards: `TestTheSynthesizerTakesTheRequestFirst`,
+  `TestTheSynthesizerRebuildsTheCouncilForNewWork`, `TestOnlyTheFrontRoutes`,
+  `TestAToolTurnGoesThroughTheSynthesizerFirst` (checked by removal).
+- **Preemption (11.4, the owner's ruling: test results and verdicts only)**:
+  a `council_post` with `kind` confirmed/refuted (`Note.Kind`, state Note
+  field 4) calls `board.preemptLocked`, which cancels each same-role mate's
+  call registered by `streamPreemptible` (`board.listen`). The mate keeps its
+  partial text as an assistant turn and reads the verdict through `unread`,
+  at most `maxPreempts` (2) times. No engine can inject tokens into a running
+  generation, so this is the approximation. Guard:
+  `TestAVerdictInterruptsTheMateGenerating` (checked by removal).
+- **A repeated call (11.2)**: `transcript` appends `repeatedCall` to a result
+  that repeats, word for word, an earlier identical call's result in the same
+  member's turns. Keep it generic: it serves any tool.
+- **The harness directive (`internal/council/directive.go`,
+  plans/council-harness.md)**: `ChatRequest.Council` → `Config.Direct`. A
+  stated mode sets the route before the front / `Decide` and is never left:
+  `answer` = `RouteFront` on a tool turn (no routing tools, `answerMsg`, no
+  front step budget) else `direct`; `escalate`/`deliberate` = `RouteCouncil`,
+  escalate appending `escalated()` evidence to `Prior`. `makeBuild` returns
+  the stated build over `MakeBuild` at every builder call site, including the
+  front's rebuild. Unknown mode or slot is an error (400), never ignored.
+- **Instructions**: `Config.Instructions[slot]` = `Said{Owner, Client}`.
+  `Everyone` goes through `charter()` (the shared prefix) plus the front and
+  the direct answer; a role's through `prompt()`. `apply` must use
+  `basePrompt`, or the guidance lands twice. Empty guidance must leave every
+  member's messages byte-identical (`TestNoInstructionsChangeNothing`).
+- **Across the hand-off**: `priorCheck()` (escalate only) is the agent's last
+  `evidence.result`; `testsBody` compares the first check with it
+  (`sameAgentNote`/`movedAgentNote`), and `stuck()` counts it. `CheckTool`
+  restricts `lastCheck` to that tool's calls.
+- **Cues (Phase 3)**: `routeCue` in `routeRequest`, `frontCue` in the auto
+  front. Topic-agnostic; a stated mode skips both.
+- **A full owner compacts, never waits (11.26, `council_owner_full.go`)**:
+  an owner-bound member is marked `llm.WithCompactOnFull`. Its full-owner
+  refusal is `ErrOwnerFull` at once; it waits only for another owner-bound
+  member to land (its own landing is not one). With none in flight, the turn
+  calls `dropForCompaction`, folds `hist` (the pre-fold conversation; `apply`
+  needs the raw one), rebuilds the root, and resumes from the latest
+  checkpoint, once. Never mark reviewers, the builder or compaction calls.
+- **A worker's layer ends at its own instruction (11.25, `council.OwnPart`)**:
+  the first `[COUNCIL · INSTRUCTIONS FOR YOU]` message after the last plan,
+  never the last user message. Mates' notes, the user's system prompt and the
+  council's nudges follow the instruction; cut after them, each member's
+  instruction lands in its layer and no two members share a stage. Read a
+  sharing miss off `council: pool shares a prefix with a sibling`.
+- **A turn's layers outlive its round trips (11.24, `council_layers_kept.go`)**:
+  a request ending with the members' calls stashes the layers it used (and
+  their parents) for the owner. The next request of the same turn adopts them
+  on the same runner and kept root. Anything else releases them newest first,
+  as does `councilStashIdle`. A root rebuild calls `dropAdopted` before the old
+  root goes. Never stash without a kept root (an unowned pool is not the
+  owner's). Never keep a layer the round trip did not use, or stale stages pile
+  up in the owner's cells.
+- **A member sized to its request is sized in tokens (11.23, `ownWindow`)**:
+  a background reviewer and the builder state a window of their request plus
+  reply cap plus 512, counted by rendering and tokenizing
+  (`councilMembers.tokens`); never estimate from characters/3 again (a
+  13196-token review was sized 12800 and refused). Half the characters only
+  when counting fails.
+- **A change of approach shows in the list (11.22, `approachKept`)**: while
+  the stuck note is in force, a re-plan that refutes no task or adds none is
+  asked again once (`keptNote`, `ReplanAgain`); the second answer stands. Judge
+  the ledger diff, never the plan's prose: on hard the prose promised a whole
+  replacement and the list kept every task open.
+- **Which call is the check (11.19, 11.21, `lastCheck`)**: the read-only
+  call (tool and arguments, `readKey`) the member called most after its first
+  change, the earliest on a tie; one whose latest output equals the previous
+  cycle's check wins; its latest result counts. Never "the last read" (a
+  search read as progress) or "the first read after the last change" (a read
+  of the file just edited read as progress). Both made every check look
+  moved, and the stuck note never fired. Count `same`/`moved` notes in a
+  run's log before trusting the stuck path.
+- **The reserve books the caps alone** (11.29). A lead member is sent
+  `num_predict` = its cap, with the thinking inside it, so
+  `councilReserve(cfg, window)` adds no think room. Wherever a budget is sent as a token count (this server's
+  models, or a model another xollama serves), the member also gets
+  `think_budget_message`: the client's, else the council model template's
+  (`councilBudgetMessage`). Cloud and stock ollama take neither. Guards:
+  `TestTheReserveBooksTheCapsWithTheThinkingInside`,
+  `TestABudgetGoesWithTheModelsBudgetMessage`.
+- **A researcher's and a critic's tool steps are bounded** (`stepLimit` in
+  `internal/council/tools.go`: `researcherSteps` 4, `criticSteps` 3). A step
+  is a turn that called a client-run tool (`toolSteps`), forwarded or answered
+  from the shared reads; evidence lookups cost none. Past the bound the call
+  is not made: `stepsOutNote` asks for the report, and a second try ends the
+  turn as it stands. `toolNote` names the count and asks for every read in one
+  step; a critic checks only the claims the answer depends on (20260930-085958:
+  one critic made 50 finds in 26 trips).
+- **A reply its reasoning took whole is asked again once without thinking**:
+  a plan that does not parse (`validPlan` in `MakePlan`) and a reader's empty
+  report (`emptied` in `callTools`). A brief the planner left out is numbered
+  (`parsePlan`), so no two researchers get the same one. Guards:
+  `TestAMembersToolStepsAreBounded`,
+  `TestAnEmptyPlanIsAskedAgainWithoutThinking`,
+  `TestAnEmptyReportIsAskedAgainWithoutThinking`.
+- **Every member call is retried in one place** (11.29,
+  `server/council_retry.go`, wrapped around `councilMembers.StreamTools`):
+  - a stream with no line for `councilIdleTimeout` (5 min) is closed with
+    `errMemberIdle`, and a call past `councilCallTimeout` (20 min) is ended;
+  - a failed call is asked again `councilRetries` (2) times, with backoff;
+  - not retried: `llm.ErrOwnerFull` (its own path), a 4xx other than 429
+    (`memberStatus` carries the call's own status; never read the shared
+    `cm.last`), and a host outside `XOLLAMA_COUNCIL_HOSTS`;
+  - the council's fallback to its own model (`fallsBack`) comes after these
+    tries.
+  Guards: `TestAFailedOrStalledMemberIsAskedAgain`,
+  `TestAMemberThatKeepsFailingIsAskedAgainOnlyTwice`.
+- **Researcher and critic steps are bounded** (11.29, `stepLimit`, 4 and 3):
+  a step is a turn that called a client tool (`toolSteps`), forwarded or
+  answered from the shared reads. Evidence lookups are `maxLookups`'. Past the
+  bound the call is not made and the member is told (`stepsOutNote`); a
+  second try ends its turn. Guard: `TestAMembersToolStepsAreBounded`.
+- **Results are records** (11.29, `internal/council/report.go`). The result
+  tools are `council_report` (researcher), `council_verdict` (critic),
+  `council_done` / `council_retest` (a checking synthesizer):
+  - `WithReports` adds them to every member's list, so the rendered tool
+    list, and with it the shared prefix, stays one. `may` restricts each to
+    its role.
+  - `takeResult` takes one only as the turn's one non-local call, and renders
+    it into the text and `VERDICT:` markers the flow already routes on.
+  - Keep that rendering: findings, critiques, the task list and
+    `council_chat_state` all read text.
+  - A typed report carries its reads by ref (`evidenceRefs`), not inline.
+  - At `stepLimit` the call carries `resultSchema` as `Format`, so the
+    grammar admits no call.
+  Guards: `TestAResearchersReportIsTyped`, `TestTheForcedAnswerIsTheReportsFormat`.
+- **Reasoning between a member's steps** (11.29, `internal/council/replay.go`):
+  - `withReasoning` keeps `Thinking` on the latest step only (Cerebriline's
+    `last`).
+  - `condense` replaces reasoning that ended on `Config.BudgetMessage` (the
+    template's `think_budget_message`) with a `Condenser` note once the
+    step's results are in.
+  - The `Condenser` runs beside the owner (`ownWindow`) with no tools, never
+    on the owner: that would evict the conversation's cache.
+  Guards: `TestAMembersLastReasoningIsReplayed`, `TestCappedReasoningIsCondensed`.
+- **A synthesizer's cycle lasts while its check moves** (`cycleSteps`,
+  `internal/council/checkcall.go`): the step bound counts from the latest
+  check run whose output differed from the run before, capped at
+  `maxCycleSteps` (4) × the cycle's steps. Do not go back to counting every
+  step of the cycle: on 0416 that ended six cycles one fix after the check
+  named the next error, each paying a full research round. Guard
+  `TestACycleLastsWhileItsCheckMoves` (fails with the reset off).
+- **An inferred check is the turn's, not one member's**: the server infers
+  it from the whole turn's tool traffic (`council.InferCheck` over
+  `all[len(conv):]` in `councilChat`), and a synthesizer cycle whose steps
+  run out with changes unchecked has the check made before its RETEST
+  (0417: nine cycles, one check). Guards
+  `TestTheCheckIsInferredAcrossMembers`, `TestASpentCycleIsCheckedBeforeItEnds`.
+- **A turn's check can be a single run** (`council.InferTurnCheck`, server
+  only): with no call repeated across a change, the turn's first non-reading
+  call is the check when its tool's name runs something (`runWords`: run,
+  exec, command, shell, bash, test…) — made before any change, it observed.
+  An edit tool's call is never taken, and a member's own inference
+  (`inferredCheck`) still waits for a repeat. 0418 ran its check at 51 s and
+  not again until 1,989 s. Guard `TestATurnsFirstRunIsItsCheck`.
+- **A harness's stated check is a call, not a tool name** (`check_call`,
+  `internal/council/checkcall.go`, `council_check_call_v1`). `cfg.readOnly`
+  answers true for exactly that call (`isCheck`, same `readKey`), so a check
+  through a shell tool is a check and every other shell call is still a
+  change. Never widen that to the package-level `readOnly(tools, c)`: the
+  shared reads would then answer a check from its earlier run. A synthesizer
+  that ends a turn with a change unchecked (`uncheckedWrite`) has the call
+  made for it (`issueCheck`); nothing is streamed to the answer for it.
+- **A model's context should hold at least what its council's roles may write**
+  (`councilReserve`: every local seat's cap plus 1024), with or without PolyKV;
+  a smaller one still runs. The owner's first booking asks `firstFloor`
+  (`server/council_polykv.go`): a stated `council.context.floor` as it is, an
+  unstated one the reserve, at most half the window and at least 4096. It used
+  to ask the whole window, which no engine can grant once the root pool holds
+  cells of the same context ("largest admissible 16371 < num_ctx_min 16384",
+  a 503 after two minutes on `omni-council-idle`, 2026-10-04, on two engines).
+  A reserve above the window is said at Warn. Guard:
+  `TestAnUnstatedFloorDoesNotAskForTheWholeWindow`. The release's council gate
+  is `scripts/council-gate.py` on the tags named in
+  `docs/protocols/RELEASE.md`.

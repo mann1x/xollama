@@ -56,11 +56,29 @@ paths:
 - **Purging is scoped to `payloadDirName` (`.llamafile`)**, never the root
   itself, so a misconfigured root cannot delete a user's files.
   `TestPurgeIsScopedToWhatWeCreate` holds it there.
-- Identity is **path + size + mtime first, sha256 only when those disagree** —
-  the steady state costs one stat, and hashing 700 MB happens on the launch
-  after the artifact changed. Each half has exactly one test that only it can
-  satisfy (`TestStatIsTrustedInTheSteadyState`, `TestTouchedArtifactWithSameBytesKeepsItsPayload`);
-  keep it that way, or deleting one half will leave every test passing.
+- Identity is **content, never the path**: size + mtime first (against every
+  stat already seen for the owning bytes, `Seen`, at most 8), sha256 only when
+  none matches. The steady state costs one stat, hashing 700 MB happens once
+  per new copy, and the same bytes at two paths neither purge nor re-hash
+  (`TestTheSameBytesAtTwoPathsShareOnePayload`). Each half has exactly one test
+  that only it can satisfy (`TestStatIsTrustedInTheSteadyState`,
+  `TestTouchedArtifactWithSameBytesKeepsItsPayload`); keep it that way, or
+  deleting one half will leave every test passing.
+- **Preparation is locked**: `payloadMu` within the process and an exclusive
+  file lock on `<root>/.xollama-payload.lock` across processes
+  (`payload_lock_unix.go` flock, `payload_lock_windows.go` LockFileEx), held
+  from reading the marker to writing it. Without it an LLM engine and a media
+  engine starting together both read "no marker" and one purges the tree the
+  other is unpacking into. Guard: `TestConcurrentLaunchesNeverPurgeEachOther`
+  (fails with both locks removed; passes with either).
+- Every file and directory here is created through `internal/fsowner`
+  (`MkdirAll`, `CreateTemp`, `OpenFile`, `WriteFile`), never `os` directly.
+- Since opencoti 0330 a bundled payload extracts to a **content-keyed**
+  `~/.llamafile/v/<ver>-<tag>[-dev]/p/<crc32>-<size>/`, and the split form
+  extracts nothing, so the re-cut collision above no longer reaches the
+  kernels on any pin from 0330 on. The purge now only bounds the directory
+  at one payload; the private HOME stays (owner, 2026-09-21: xollama works
+  in its own environment).
 - A **split** artifact (bare APE + side-loaded `ggml-cuda.so`) extracts nothing
   at all — verified by running one with an empty `HOME`: it works and creates no
   cache. Nothing here applies to it, and it is the shape to prefer when opencoti

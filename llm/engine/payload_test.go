@@ -190,31 +190,31 @@ func TestPayloadHomeDeclinesRatherThanBreakingTheLaunch(t *testing.T) {
 // in the home directory of whoever happens to have started the server, which on
 // a Linux service is root.
 func TestDefaultPayloadRootsPreferOllamasRuntimeDirectory(t *testing.T) {
-	got := DefaultPayloadRoots("/usr/local/lib/ollama", "/home/u")
+	got := payloadRoots("linux", "/usr/local/lib/ollama", "/home/u")
 	want := []string{
 		filepath.Join("/usr/local/lib/ollama", "engines", "payload"),
 		filepath.Join("/home/u", ".ollama", "engines", "payload"),
 	}
 	if !slices.Equal(got, want) {
-		t.Errorf("DefaultPayloadRoots() = %q, want %q", got, want)
+		t.Errorf("payloadRoots() = %q, want %q", got, want)
 	}
 
 	// Never the user's ~/.llamafile: that is where they keep their own
 	// opencoti builds, and staying out of it is the point.
 	for _, root := range got {
 		if strings.Contains(root, payloadDirName) {
-			t.Errorf("DefaultPayloadRoots() offered %q, which is the user's own payload directory", root)
+			t.Errorf("payloadRoots() offered %q, which is the user's own payload directory", root)
 		}
 	}
 
-	if got := DefaultPayloadRoots("", "/home/u"); len(got) != 1 || got[0] != filepath.Join("/home/u", ".ollama", "engines", "payload") {
-		t.Errorf("no lib dir: DefaultPayloadRoots() = %q", got)
+	if got := payloadRoots("linux", "", "/home/u"); len(got) != 1 || got[0] != filepath.Join("/home/u", ".ollama", "engines", "payload") {
+		t.Errorf("no lib dir: payloadRoots() = %q", got)
 	}
-	if got := DefaultPayloadRoots("/usr/local/lib/ollama", ""); len(got) != 1 || got[0] != filepath.Join("/usr/local/lib/ollama", "engines", "payload") {
-		t.Errorf("no home: DefaultPayloadRoots() = %q", got)
+	if got := payloadRoots("linux", "/usr/local/lib/ollama", ""); len(got) != 1 || got[0] != filepath.Join("/usr/local/lib/ollama", "engines", "payload") {
+		t.Errorf("no home: payloadRoots() = %q", got)
 	}
-	if got := DefaultPayloadRoots("", ""); len(got) != 0 {
-		t.Errorf("nothing to go on: DefaultPayloadRoots() = %q, want none", got)
+	if got := payloadRoots("linux", "", ""); len(got) != 0 {
+		t.Errorf("nothing to go on: payloadRoots() = %q, want none", got)
 	}
 }
 

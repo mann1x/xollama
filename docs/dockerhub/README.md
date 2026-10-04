@@ -1,4 +1,4 @@
-<!-- short: Soft fork of Ollama with the opencoti engine, per-model settings and dynamic slots. CUDA, amd64 -->
+<!-- short: Soft fork of Ollama with the opencoti engine, per-model settings and dynamic slots. CUDA, amd64 and arm64 -->
 
 # xollama
 
@@ -26,12 +26,12 @@ xollama is not affiliated with or endorsed by Ollama.
 | `latest` | The newest full release. Moves only when a release is promoted. |
 | `dev` | The newest pre-release, or the newest build of the `dev` branch. Moves often. |
 | `<version>` | One build, never moved. A release looks like `0.34.4-xollama.1`; a branch build like `0.34.4-dev.86de2b7d` (upstream version, `dev`, commit). |
-| `<version>-amd64` | The same image under an architecture-specific name. |
+| `<version>-amd64`, `<version>-arm64` | One architecture of that build. `<version>`, `dev` and `latest` are a manifest over both: Docker picks yours. |
 
 A build moves `latest` or `dev`, never both. If `latest` does not exist yet, no
 full release has been published as an image: use `dev` or a version tag.
 
-**Architecture:** `linux/amd64` only. No arm64 image and no ROCm build yet.
+**Architectures:** `linux/amd64` and `linux/arm64`. arm64 starts with the 0.35.1 builds: `dev` has it now, `latest` gets it with the first 0.35.1 release. On arm64 the image carries CUDA 12, CUDA 13 and JetPack 5/6 payloads for NVIDIA hardware and runs on the CPU everywhere else, a Raspberry Pi 5 included (about 10 tok/s on a 1.5B model). No ROCm build.
 
 ## What is inside
 
@@ -241,14 +241,14 @@ needs only the NVIDIA Windows driver.
 3 is missing.
 
 Which engine serves a load depends on the card. With the currently pinned
-engine (opencoti build `2609272353001`):
+engine (opencoti build `2610040710001`):
 
 | The load's GPUs | Served by |
 |---|---|
-| all compute capability 8.6–8.9 or 12.x (RTX 30xx / 40xx / 50xx, A6000, L40…) | opencoti, CUDA 13 payload |
-| all compute capability 7.0 (Tesla V100, Titan V) | opencoti, CUDA 12 payload (host driver 570+) |
-| a mix of those two groups | stock `llama.cpp` |
-| anything else (7.5, 8.0, 9.0, 10.x, older) | stock `llama.cpp` on upstream's CUDA backends |
+| all compute capability 7.5–9.0 or 12.x (RTX 20xx to 50xx, A-series, L40, H100…) | opencoti, CUDA 13 payload |
+| all compute capability 5.2–7.0 (Maxwell, Pascal, Tesla V100, Titan V) | opencoti, CUDA 12 payload: legacy, shipped without a run on such a card. `XOLLAMA_ENGINE=llamacpp` puts them on stock `llama.cpp` |
+| a mix of the two groups above | stock `llama.cpp` |
+| any other card (10.x) | stock `llama.cpp`, on upstream's CUDA backends |
 
 The engine chosen for each load, and why, is in `docker logs xollama`.
 
@@ -257,8 +257,8 @@ The engine chosen for each load, and why, is in `docker logs xollama`.
 Upstream's Vulkan backend and the Vulkan loader are in the image, as in
 upstream's own image; pass the devices with `--device /dev/dri`.
 `OLLAMA_VULKAN=0` turns Vulkan off and `GGML_VK_VISIBLE_DEVICES` selects
-devices. The pinned engine has no Vulkan payload, so Vulkan loads are served
-by stock `llama.cpp`.
+devices. The pinned engine carries its own Vulkan payload, so a Vulkan load is
+served by opencoti; `XOLLAMA_ENGINE=llamacpp` keeps it on upstream's backend.
 
 ## Configuring slots and KV cache
 

@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"slices"
 	"strings"
@@ -51,9 +52,13 @@ func selectModelDevices(cfg *xollama.Config, gpus []ml.DeviceInfo) ([]ml.DeviceI
 	selected := make([]bool, len(candidates))
 	var missing []string
 	for _, id := range pin.IDs {
+		if xollama.IsPositional(id) {
+			slog.Warn("a device pin by index is positional: the backend's numbering can change across a reboot or a driver update; pin by PCI ID or by name with `xollama tweak model`",
+				"backend", pin.Backend, "index", id)
+		}
 		matched := false
 		for i, c := range candidates {
-			if deviceMatches(c, id) {
+			if deviceMatches(c, id, candidates) {
 				selected[i], matched = true, true
 			}
 		}
@@ -73,8 +78,9 @@ func selectModelDevices(cfg *xollama.Config, gpus []ml.DeviceInfo) ([]ml.DeviceI
 	return out, nil
 }
 
-// deviceMatches reports whether one pin entry names this device.
-func deviceMatches(d ml.DeviceInfo, id string) bool {
+// deviceMatches reports whether one pin entry names this device, one of the
+// backend's devices in peers.
+func deviceMatches(d ml.DeviceInfo, id string, peers []ml.DeviceInfo) bool {
 	switch id {
 	case xollama.DeviceIntegrated:
 		return d.Integrated
@@ -85,7 +91,34 @@ func deviceMatches(d ml.DeviceInfo, id string) bool {
 		dpci, ok := xollama.CanonicalPCIID(d.PCIID)
 		return ok && dpci == pci
 	}
+	if name, ordinal, ok := xollama.ParseNameSelector(id); ok {
+		return xollama.NameSelects(name, ordinal, deviceName(d), nameOrdinal(d, peers))
+	}
 	return d.ID == id
+}
+
+// deviceName is what a device is called: the name a pin by name matches.
+func deviceName(d ml.DeviceInfo) string {
+	if d.Description != "" {
+		return d.Description
+	}
+	return d.Name
+}
+
+// nameOrdinal is d's place, from 1, among the devices of its backend in all
+// that share its name, in the backend's order; 0 when d is not in all.
+func nameOrdinal(d ml.DeviceInfo, all []ml.DeviceInfo) int {
+	n := 0
+	for _, o := range all {
+		if o.Library != d.Library || !xollama.SameDeviceName(deviceName(o), deviceName(d)) {
+			continue
+		}
+		n++
+		if o.ID == d.ID {
+			return n
+		}
+	}
+	return 0
 }
 
 func setAsideIntegratedVulkan(gpus []ml.DeviceInfo) []ml.DeviceInfo {

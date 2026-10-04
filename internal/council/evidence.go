@@ -19,13 +19,13 @@ const EvidenceTool = "council_evidence"
 const (
 	// inlineEvidence is the largest result a reply carries whole; a longer
 	// one is listed by ref with a preview, to be fetched with EvidenceTool.
-	inlineEvidence = 1500
+	inlineEvidence = 4000
 	// previewLines and previewChars bound that preview.
-	previewLines = 10
-	previewChars = 800
+	previewLines = 30
+	previewChars = 2000
 	// maxFetch bounds one EvidenceTool answer, in lines and characters.
 	maxFetchLines = 200
-	maxFetchChars = 8000
+	maxFetchChars = 16000
 	// maxLookups bounds the member's turns that call only EvidenceTool.
 	maxLookups = 6
 	// ownBudget bounds the tool results a member carries whole in its own
@@ -63,7 +63,7 @@ func WithEvidence(tools api.Tools) api.Tools {
 
 // local reports whether a call is answered by the council itself.
 func local(c api.ToolCall) bool {
-	return c.Function.Name == EvidenceTool || c.Function.Name == PostTool
+	return c.Function.Name == EvidenceTool || c.Function.Name == PostTool || c.Function.Name == ReviewTool || routing(c.Function.Name) || resultTool(c.Function.Name)
 }
 
 func stringArg(c api.ToolCall, key string) string {

@@ -122,7 +122,10 @@ func newCouncilCompactor(members *councilMembers, tree *councilTree, cc *xollama
 		members: members, tree: tree, render: render, tokenize: tokenize,
 		numCtx: numCtx, reserve: reserve, key: members.session,
 		compactAt: compactAt, idleCompactAt: councilIdleCompactAt(cc, compactAt),
-		review: true, retrospective: true,
+		// One pass by default (owner, 2026-09-30): the writer alone, as
+		// Cerebriline's agentic compaction with councilEnabled false and the
+		// thinking summary off. The review and the retrospective are opt-in.
+		review: false, retrospective: false,
 		think: cfg.Think[council.Planner], temperature: cfg.Temperature,
 		perChar: 0.3,
 	}
@@ -451,6 +454,28 @@ func (c *councilCompactor) compact(ctx context.Context, conv []api.Message, forc
 	})
 	out, _ := c.apply(conv)
 	return out
+}
+
+// sentTokens is the size in tokens of the conversation the client sent, tools
+// rendered: what a plain model's prompt_eval_count would be, and so what the
+// done chunk reports. It is the whole request, this turn's tool round trips
+// included -- not the history compact sizes, which a generic harness's
+// one-message task leaves too short to measure (native.sh 0426: a research
+// round reported the members' 393k). 0 when unmeasured.
+//
+// It never goes through apply: the client's raw messages are not the members'
+// view a record is made of, and apply drops a record that does not match --
+// which dropped every fold the moment it was made (native.sh 0427 and 0428:
+// eight folds of about six minutes each, all eight dropped).
+func (c *councilCompactor) sentTokens(ctx context.Context, sent []api.Message) int {
+	if c == nil {
+		return 0
+	}
+	z, err := c.measure(ctx, sent)
+	if err != nil {
+		return 0
+	}
+	return z.tokens
 }
 
 // trigger says why a conversation of sizes z compacts, or "" when it does not.
@@ -1157,7 +1182,7 @@ func (t *councilTree) reviewLayer(ctx context.Context, reviewed []api.Message) (
 			rctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			if err := t.kv.ReleasePool(rctx, l.id); err != nil {
-				slog.Debug("council: could not release the review's pool", "pool", l.id, "error", err)
+				unreleased("the review's pool", l.id, err)
 			}
 		}
 	}, l.err == nil

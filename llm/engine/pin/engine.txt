@@ -1,0 +1,68 @@
+format     2
+component  engine
+version    2610041714001
+repo       ManniX-ITA/opencoti-llamafile-dev
+rev        771ce08f507b5207eac0974bb98e0211adfadee0
+abi        ggml 41ba479c24d7e3a624c7b13aa3cbe357e41fac04a504c54ec2ee170de0bff9a1
+abi        media b099409b3029a6e380268e31d1caefa6706569961d32e72b3543fbc73903d95c
+abi        loader d6ff34022f1d3fb5af56ca0c80e3f4e552bf09f1bebdf0cb5f314a454bf38dbc
+abi-source exported
+feature    attach_in_response_v1
+feature    audio_speech_content_format_v1
+feature    audio_speech_v1
+feature    audio_speech_voice_files_v1
+feature    audio_transcriptions_v1
+feature    audio_translations_v1
+feature    boot_id_v1
+feature    cache_type_swa_v1
+feature    capacity_readonly_v1
+feature    ctx_min_negotiation_v1
+feature    elastic_drain_k_v1
+feature    elastic_drain_v1
+feature    elastic_guaranteed_alloc_v1
+feature    elastic_hold_rw_v1
+feature    elastic_rw_v1
+feature    graceful_shutdown_v1
+feature    images_edit_v1 x86_64 win-x86_64
+feature    images_generate_v1 x86_64 win-x86_64
+feature    kv_observable_v1
+feature    kv_pressure_v1
+feature    kv_recyclable_v1
+feature    kv_resident_admission_v1
+feature    kv_resize_deferred_v1
+feature    kv_resize_live_v1
+feature    kv_resize_v1
+feature    kv_status_v1
+feature    list_device_ids_v1
+feature    lock_v1
+feature    log_memory_plan_v1
+feature    parent_watch_v1
+feature    polykv_private_window_v1
+feature    polykv_rebase_v1
+feature    polykv_sampling_route_v1
+feature    polykv_shared_root_v1
+feature    polykv_subpools_v1
+feature    pool_continue_v1
+feature    pool_delete_alias_v1
+feature    pool_match_in_response_v1
+feature    pool_unknown_in_response_v1
+feature    pool_unowned_v1
+feature    read_routes_snapshot_v1
+feature    sdcpp_vid_gen_v1 x86_64 win-x86_64
+feature    session_close_body_v1
+feature    session_close_keep_running_v1
+feature    session_close_v1
+feature    session_pressure_v1
+feature    settle_waived_header_v1
+feature    shutdown_gpu_policy_v1
+feature    slots_nonblocking_v1
+feature    stream_keepalive_v1
+feature    swa_trim_v1
+feature    tcp_keepalive_v1
+feature    tps_real_pool_id_v1
+feature    tps_snapshot_v1
+feature    videos_generate_v1 x86_64 win-x86_64
+feature    videos_i2v_v1 x86_64 win-x86_64
+file  any            bin        components/engine/2610041714001/opencoti-0.10.5-c7-2610041714001  3118324fe3339cbaf1f1f91bb27b8af63e6379aa8f6c85e9115bc9e8a8b2d05e  134677211
+file  win-x86_64     bin        components/engine/2610041714001/opencoti-0.10.5-c7-2610041714001.exe  3118324fe3339cbaf1f1f91bb27b8af63e6379aa8f6c85e9115bc9e8a8b2d05e  134677211
+file  any            build-info components/engine/2610041714001/BUILD_INFO.engine.md  51b29e07efb548ff14d161bbbb79bfdb54033e8c2a9e12be62a9fdef966a7a49  6756

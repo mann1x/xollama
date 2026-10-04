@@ -27,7 +27,8 @@ import (
 func (cm *councilMembers) remote(ctx context.Context, r council.Request, req api.ChatRequest, onToken func(string)) (string, error) {
 	u, err := councilHostAllowed(r.Host, envconfig.CouncilHosts())
 	if err != nil {
-		return "", fmt.Errorf("council %s: %w", r.Role, err)
+		// The operator's refusal stands however often it is asked.
+		return "", memberStatus{fmt.Errorf("council %s: %w", r.Role, err), http.StatusForbidden}
 	}
 	req.SessionID = ""
 	think := any(nil)
@@ -37,6 +38,7 @@ func (cm *councilMembers) remote(ctx context.Context, r council.Request, req api
 	slog.Info("council: member on another server", "role", r.Role, "index", r.Index, "host", u.Host, "model", req.Model, "think", think)
 	var out strings.Builder
 	done := false
+	began := time.Now()
 	err = api.NewClient(u, http.DefaultClient).Chat(ctx, &req, func(resp api.ChatResponse) error {
 		if t := resp.Message.Content; t != "" {
 			out.WriteString(t)
@@ -44,6 +46,7 @@ func (cm *councilMembers) remote(ctx context.Context, r council.Request, req api
 		}
 		if resp.Done {
 			done = true
+			cm.usage.add(r, resp.Metrics, 0, time.Since(began))
 			cm.mu.Lock()
 			cm.m.PromptEvalCount += resp.PromptEvalCount
 			cm.m.PromptEvalDuration += resp.PromptEvalDuration

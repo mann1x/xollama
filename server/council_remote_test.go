@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/internal/council"
@@ -154,9 +155,10 @@ func TestCouncilHostAllowed(t *testing.T) {
 
 // A token budget goes only where it is understood: this server's own models,
 // and a model another xollama serves itself. A cloud model and a stock ollama
-// get think true, with the budget as room in num_predict.
+// get think true, bounded by num_predict: the role's stated max_tokens, the
+// thinking inside it ("on" is medium, a quarter of it).
 func TestAThinkingMemberGetsABudgetOnlyWhereOneIsUnderstood(t *testing.T) {
-	budget := float64(xollama.DefaultCouncilThinkBudget)
+	budget := float64(2048 / 4)
 	for _, tc := range []struct {
 		name           string
 		xollama, cloud bool
@@ -177,6 +179,7 @@ func TestAThinkingMemberGetsABudgetOnlyWhereOneIsUnderstood(t *testing.T) {
 			t.Setenv("XOLLAMA_COUNCIL_HOSTS", "127.0.0.1")
 			c := remoteResearchers(srv.URL)
 			c.Researcher.Think = "on"
+			c.Researcher.MaxTokens = 2048
 			if tc.model != "" {
 				c.Researcher.Model = tc.model
 			}
@@ -187,8 +190,45 @@ func TestAThinkingMemberGetsABudgetOnlyWhereOneIsUnderstood(t *testing.T) {
 			}
 			for _, r := range remote.reqs {
 				opts, _ := r["options"].(map[string]any)
-				if r["think"] != tc.want || opts["num_predict"] != float64(384)+budget {
-					t.Errorf("think %v, num_predict %v; want %v and %v", r["think"], opts["num_predict"], tc.want, float64(384)+budget)
+				if r["think"] != tc.want || opts["num_predict"] != float64(2048) {
+					t.Errorf("think %v, num_predict %v; want %v and 2048", r["think"], opts["num_predict"], tc.want)
+				}
+			}
+		})
+	}
+}
+
+// A role on another server with no max_tokens of its own is sent none, nor
+// the client's reply cap and window, which are the council's: that server's
+// template for the model decides. A stated num_ctx is sent as the role's.
+func TestARemoteRoleTakesItsOwnCapAndWindow(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		maxTok, numCtx  int
+		wantNP, wantCtx any
+	}{
+		{"unstated", 0, 0, nil, nil},
+		{"stated", 131072, 262144, float64(131072), float64(262144)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			councilProbes.reset()
+			remote := &remoteOllama{}
+			srv := remote.serve(t)
+			t.Setenv("XOLLAMA_COUNCIL_HOSTS", "127.0.0.1")
+			c := remoteResearchers(srv.URL)
+			c.Researcher.MaxTokens, c.Researcher.NumCtx = tc.maxTok, tc.numCtx
+			s := councilServer(t, &councilEngine{route: `{"route":"council"}`}, c)
+			chatChunks(t, s, api.ChatRequest{
+				Model: "council", Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}},
+				Options: map[string]any{"num_predict": 999, "num_ctx": 4096},
+			})
+			if len(remote.reqs) != 2 {
+				t.Fatalf("the remote served %d chats, want 2", len(remote.reqs))
+			}
+			for _, r := range remote.reqs {
+				opts, _ := r["options"].(map[string]any)
+				if opts["num_predict"] != tc.wantNP || opts["num_ctx"] != tc.wantCtx {
+					t.Errorf("num_predict %v, num_ctx %v; want %v and %v", opts["num_predict"], opts["num_ctx"], tc.wantNP, tc.wantCtx)
 				}
 			}
 		})
@@ -242,6 +282,10 @@ func TestAPulledCloudTagIsCloudByItsManifest(t *testing.T) {
 // A remote member whose reply stops before its done line has failed: the
 // fragment must not stand in for its finding.
 func TestARemoteReplyThatStopsShortFallsBack(t *testing.T) {
+	// Asked again first (council_retry.go), without the wait.
+	backoff := councilRetryBackoff
+	councilRetryBackoff = time.Millisecond
+	t.Cleanup(func() { councilRetryBackoff = backoff })
 	remote := &remoteOllama{cut: true}
 	srv := remote.serve(t)
 	t.Setenv("XOLLAMA_COUNCIL_HOSTS", "127.0.0.1")
@@ -259,5 +303,45 @@ func TestARemoteReplyThatStopsShortFallsBack(t *testing.T) {
 	}
 	if n != 2 {
 		t.Errorf("%d researchers answered here, want the 2 whose remote replies were cut", n)
+	}
+}
+
+// A budget sent as a token count carries the message that closes the
+// reasoning at it: the council model's own think_budget_message. A server that
+// takes no budget (stock ollama, a cloud model) is sent neither.
+func TestABudgetGoesWithTheModelsBudgetMessage(t *testing.T) {
+	const msg = "I have used my thinking budget."
+	for _, tc := range []struct {
+		name    string
+		xollama bool
+		want    any
+	}{
+		{"xollama", true, msg},
+		{"stock ollama", false, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			councilProbes.reset()
+			remote := &remoteOllama{xollama: tc.xollama}
+			srv := remote.serve(t)
+			t.Setenv("XOLLAMA_COUNCIL_HOSTS", "127.0.0.1")
+			c := remoteResearchers(srv.URL)
+			c.Researcher.Think = "on"
+			s := councilServer(t, &councilEngine{route: `{"route":"council"}`}, c)
+			no := false
+			w := createRequest(t, s.CreateHandler, api.CreateRequest{Model: "council-msg", From: "council", Parameters: map[string]any{"think_budget_message": msg}, Stream: &no})
+			if w.Code != http.StatusOK {
+				t.Fatalf("create: %d %s", w.Code, w.Body.String())
+			}
+			chatChunks(t, s, api.ChatRequest{Model: "council-msg", Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}}})
+			if len(remote.reqs) != 2 {
+				t.Fatalf("the remote served %d chats, want 2", len(remote.reqs))
+			}
+			for _, r := range remote.reqs {
+				opts, _ := r["options"].(map[string]any)
+				if opts["think_budget_message"] != tc.want {
+					t.Errorf("think %v, think_budget_message %v; want %v", r["think"], opts["think_budget_message"], tc.want)
+				}
+			}
+		})
 	}
 }

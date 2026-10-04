@@ -27,15 +27,17 @@ type Devices struct {
 	Backend string `json:"backend,omitempty"`
 
 	// IDs selects devices within Backend. Each entry is a PCI ID
-	// ("0000:18:00.0", or "18:00.0" in the default domain), the backend's
-	// numeric device index, or one of the aliases "integrated" and
-	// "discrete". Empty means every device of Backend. Several entries spread
+	// ("0000:18:00.0", or "18:00.0" in the default domain), a device name
+	// ("name:AMD Radeon RX 9070 XT", "#2" after it for the second of that
+	// name), the backend's numeric device index, or one of the aliases
+	// "integrated" and "discrete". Empty means every device of Backend. Several entries spread
 	// the model across those devices, as CUDA does across cards.
 	//
 	// The PCI ID is the primary form because it is the only one that
 	// survives a reboot, a driver update or a card being added: an index is
 	// an enumeration order, and two backends number the same device
-	// differently.
+	// differently. Where discovery has no PCI ID -- Vulkan on Windows -- the
+	// name is the stable form (device_name.go); an index is positional.
 	IDs []string `json:"ids,omitempty"`
 }
 
@@ -91,8 +93,8 @@ func (d *Devices) normalize() {
 	}
 	for i, id := range d.IDs {
 		id = strings.TrimSpace(id)
-		if pci, ok := CanonicalPCIID(id); ok {
-			id = pci
+		if key, ok := CanonicalDeviceKey(id); ok {
+			id = key
 		} else if a := strings.ToLower(id); a == DeviceIntegrated || a == DeviceDiscrete {
 			id = a
 		}
@@ -118,17 +120,24 @@ func (d *Devices) validate() error {
 		if id == "" {
 			return fmt.Errorf("xollama config: devices.ids must not contain an empty entry")
 		}
-		if seen[id] {
+		if seen[strings.ToLower(id)] {
 			return fmt.Errorf("xollama config: devices.ids lists %q twice", id)
 		}
-		seen[id] = true
-		if _, ok := CanonicalPCIID(id); ok || id == DeviceIntegrated || id == DeviceDiscrete {
+		seen[strings.ToLower(id)] = true
+		if _, ok := CanonicalDeviceKey(id); ok || id == DeviceIntegrated || id == DeviceDiscrete {
 			continue
 		}
 		if n, err := strconv.Atoi(id); err == nil && n >= 0 {
 			continue
 		}
-		return fmt.Errorf("xollama config: devices.ids entry %q is not a PCI ID, a device index, %q or %q", id, DeviceIntegrated, DeviceDiscrete)
+		return fmt.Errorf("xollama config: devices.ids entry %q is not a PCI ID, a device name (name:<name>), a device index, %q or %q", id, DeviceIntegrated, DeviceDiscrete)
 	}
 	return nil
+}
+
+// IsPositional reports whether a pin entry is a bare device index: it names a
+// place in the backend's enumeration, not a device.
+func IsPositional(id string) bool {
+	n, err := strconv.Atoi(id)
+	return err == nil && n >= 0
 }

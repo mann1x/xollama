@@ -21,7 +21,7 @@ import (
 const (
 	UpdateIconName = "tray_upgrade.ico"
 	IconName       = "tray.ico"
-	ClassName      = "OllamaClass"
+	ClassName      = "xOllamaClass" // xollama-hook: app-state
 )
 
 func NewTray(app AppCallbacks) (TrayCallbacks, error) {
@@ -457,7 +457,7 @@ func (t *winTray) setIcon(src string) error {
 	defer t.muNID.Unlock()
 	t.nid.Icon = h
 	t.nid.Flags |= NIF_ICON | NIF_TIP
-	if toolTipUTF16, err := syscall.UTF16FromString("Ollama"); err == nil {
+	if toolTipUTF16, err := syscall.UTF16FromString(AppName); err == nil { // xollama-hook: app-brand
 		copy(t.nid.Tip[:], toolTipUTF16)
 	} else {
 		return err

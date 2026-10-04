@@ -8,6 +8,7 @@ paths:
   - discover/**
   - fs/**
   - middleware/**
+  - decision/**
 ---
 
 # Upstream tree — additive files or marked hooks
@@ -26,5 +27,16 @@ paths:
   hook's `Placement.PoolID` (`placementFields` in `llm/engine_council.go`). The engine numbers
   its first pool `0`, so `nil` means "no pool"; a `> 0` guard or an `omitempty`
   plain `int` on the wire silently drops pool 0. See `docs/xollama/sessions.mdx`.
+- **A fallback is loud.** A path that degrades says why at Warn, or fails with
+  the cause, never Debug: a device listing that fails carries the engine's last
+  lines (`outputTail`, `discover/opencoti.go`), a refresh that finds nothing
+  names the cooldown (`discover/refresh_opencoti.go`). Guard:
+  `discover/opencoti_loud_test.go`. A backend is only listed where it can exist
+  (`existsOn`, `discover/opencoti.go`: Metal on macOS only, and nothing else
+  there), even with `XOLLAMA_ENGINE=opencoti`. Guard:
+  `discover/opencoti_backends_test.go`. Discovery reads the platform through
+  `opencotiHost` (`discover/opencoti.go`), so a test about CUDA or Vulkan sets
+  the platform it is about (`discover/opencoti_test.go`,
+  `discover/opencoti_cuda12_test.go`) and runs the same on a macOS runner.
 - Run `golangci-lint run` before pushing — `.golangci.yaml` uses `gofumpt` and a
   `depguard` rule denying `internal/testutil` outside `_test.go` files.

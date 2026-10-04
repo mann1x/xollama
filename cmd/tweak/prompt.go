@@ -164,6 +164,9 @@ func (a *asker) render(cfg *xollama.Config, f field, current string) []string {
 	case kindText:
 		a.printf("   type it, `@path` to read it from a file, or `unset`\n")
 		return nil
+	case kindBlob:
+		a.printf("   a file path, an hf.co/<owner>/<repo>/<file> reference, a sha256 digest, or `unset`\n")
+		return nil
 	}
 
 	for i, o := range options {
@@ -319,5 +322,6 @@ func clone(c *xollama.Config) *xollama.Config {
 		out.Devices = &d
 	}
 	out.Council = c.Council.Clone()
+	out.Media = c.Media.Clone()
 	return &out
 }

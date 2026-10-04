@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -48,6 +49,12 @@ type councilEngine struct {
 	// tools names the tool a role calls (9.5) until its prompt, after the
 	// role's instruction, holds a result.
 	tools map[string]string
+	// cut ends the named role's first reply at its cap (done_reason length).
+	cut map[string]bool
+	// fail makes the named role's first n calls fail; stall makes its first
+	// call send nothing until it is ended (council_retry.go).
+	fail  map[string]int
+	stall map[string]bool
 }
 
 // compactionMarkers tell the compaction's members apart by their instruction.
@@ -74,13 +81,13 @@ var compactionReplies = map[string]string{
 	"compaction-retrospective": "## What worked\n- Answering from the law first.",
 }
 
-var councilMarkers = []string{`{"route":"direct"}`, "ROLE: PLANNER. The council", "ROLE: RESEARCHER", "ROLE: CRITIC", "ROLE: SYNTHESIZER"}
+var councilMarkers = []string{`{"route":"direct"}`, "ROLE: PLANNER. The council", "ROLE: RESEARCHER", "ROLE: CRITIC", "ROLE: SYNTHESIZER", "ROLE: BUILDER", "COUNCIL: You are the council's synthesizer"}
 
 func (e *councilEngine) complete(ctx context.Context, r llm.CompletionRequest, fn func(llm.CompletionResponse)) error {
 	role, at := "chat", -1
 	for i, m := range councilMarkers {
 		if j := strings.LastIndex(r.Prompt, m); j > at {
-			at, role = j, []string{"route", "planner", "researcher", "critic", "synthesizer"}[i]
+			at, role = j, []string{"route", "planner", "researcher", "critic", "synthesizer", "builder", "front"}[i]
 		}
 	}
 	for m, cr := range compactionMarkers {
@@ -122,6 +129,12 @@ func (e *councilEngine) complete(ctx context.Context, r llm.CompletionRequest, f
 	}
 	e.mu.Unlock()
 
+	if n := e.count(role); n <= e.fail[role] {
+		return errors.New("upstream connection reset")
+	} else if n == 1 && e.stall[role] {
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	reply := map[string]string{
 		"route":       e.route,
 		"planner":     `{"plan":"look it up","briefs":["physics","history"]}`,
@@ -129,9 +142,22 @@ func (e *councilEngine) complete(ctx context.Context, r llm.CompletionRequest, f
 		"critic":      "Keep both findings.",
 		"synthesizer": "The sky is blue because air scatters blue light most.",
 		"chat":        "Hello there!",
+		"builder":     `{"target":"Explaining a physical phenomenon.","planner":"","researcher":"","critic":"","synthesizer":"","max_tests":2}`,
 	}[role]
 	if role == "route" && e.route == `{"route":"direct"}` {
 		reply = e.route
+	}
+	if role == "synthesizer" && strings.Contains(r.Prompt[at:], council.Done) {
+		// Asked for a verdict (a turn that can test), it gives one.
+		reply += " " + council.Done
+	}
+	if role == "front" {
+		// The synthesizer's front turn (11.5): a direct route is its answer,
+		// any other hands the request to the council.
+		reply = "Hello there!"
+		if e.route != `{"route":"direct"}` && !strings.Contains(r.Prompt[at:], "<tool>") {
+			reply = `{"name": "council_forward", "arguments": {}}`
+		}
 	}
 	if name := e.tools[role]; name != "" && !strings.Contains(r.Prompt[at:], "<tool>") {
 		// Each brief reads its own file: the same read twice would go out
@@ -169,7 +195,11 @@ func (e *councilEngine) complete(ctx context.Context, r llm.CompletionRequest, f
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	fn(llm.CompletionResponse{Content: reply[half:], Done: true, DoneReason: llm.DoneReasonStop, PromptEvalCount: 10, EvalCount: 5})
+	why := llm.DoneReasonStop
+	if e.cut[role] && e.count(role) == 1 {
+		why = llm.DoneReasonLength
+	}
+	fn(llm.CompletionResponse{Content: reply[half:], Done: true, DoneReason: why, PromptEvalCount: 10, EvalCount: 5})
 	return nil
 }
 
@@ -329,10 +359,10 @@ func TestACouncilModelAnswersWithItsMembers(t *testing.T) {
 		}
 	}
 	last := chunks[len(chunks)-1]
-	if !last.Done || last.DoneReason != "stop" || last.EvalCount != 5*7 {
-		t.Errorf("final chunk %+v, want done/stop and the members' 35 eval tokens", last)
+	if !last.Done || last.DoneReason != "stop" || last.EvalCount != 5*8 {
+		t.Errorf("final chunk %+v, want done/stop and the members' 40 eval tokens", last)
 	}
-	for role, n := range map[string]int{"route": 1, "planner": 1, "researcher": 2, "critic": 2, "synthesizer": 1} {
+	for role, n := range map[string]int{"route": 1, "builder": 1, "planner": 1, "researcher": 2, "critic": 2, "synthesizer": 1} {
 		if got := e.count(role); got != n {
 			t.Errorf("%s calls = %d, want %d", role, got, n)
 		}
@@ -402,12 +432,16 @@ func TestANonStreamedCouncilTurnIsOneResponse(t *testing.T) {
 	}
 }
 
-// Tools and a format are the client steering the model's own output; the
-// model answers them as an ordinary chat.
-func TestToolsAndFormatBypassTheCouncil(t *testing.T) {
+// A format is the client steering the model's own output, and a reply cap no
+// council answer fits in is the client probing the model; the model answers
+// both as an ordinary chat. Tools do not: a generic client's are the council's
+// (council_held.go).
+func TestAFormatBypassesTheCouncil(t *testing.T) {
 	for _, req := range []api.ChatRequest{
 		{Format: json.RawMessage(`"json"`)},
-		{Tools: getTestTools()},
+		{Format: json.RawMessage(`"json"`), Tools: getTestTools()},
+		// Cerebriline's template probe: one token, read for its prompt size.
+		{Options: map[string]any{"num_predict": float64(1)}},
 	} {
 		e := &councilEngine{route: `{"route":"council"}`}
 		s := councilServer(t, e, councilOn())
@@ -416,6 +450,38 @@ func TestToolsAndFormatBypassTheCouncil(t *testing.T) {
 		chatChunks(t, s, req)
 		if !slices.Equal(e.roles, []string{"chat"}) {
 			t.Errorf("format %s tools %d: calls %v, want one plain turn", req.Format, len(req.Tools), e.roles)
+		}
+	}
+}
+
+// A generic client's request without tools, in a conversation its tools
+// worked in, is its own housekeeping (Cerebriline's compaction summary): the
+// model answers it alone. With the council's state, or with no tool traffic
+// before it, it is the council's.
+func TestAToolTasksHousekeepingIsAnsweredPlainly(t *testing.T) {
+	worked := []api.Message{
+		{Role: "user", Content: "Fix the game."},
+		{Role: "assistant", ToolCalls: []api.ToolCall{{ID: "s:call_a", Function: api.ToolCallFunction{Name: "read_files"}}}},
+		{Role: "tool", ToolCallID: "s:call_a", Content: "the file"},
+		{Role: "user", Content: "Summarize the conversation so far."},
+	}
+	state := ""
+	for _, tc := range []struct {
+		name    string
+		req     api.ChatRequest
+		council bool
+	}{
+		{"housekeeping", api.ChatRequest{Messages: worked}, false},
+		{"a plain chat", api.ChatRequest{Messages: []api.Message{{Role: "user", Content: "Why?"}}}, true},
+		{"a council-aware client", api.ChatRequest{Messages: worked, CouncilChatState: &state}, true},
+	} {
+		councilStateKeyIn(t, t.TempDir())
+		e := &councilEngine{route: `{"route":"council"}`}
+		s := councilServer(t, e, councilOn())
+		tc.req.Model = "council"
+		chatChunks(t, s, tc.req)
+		if plain := slices.Equal(e.roles, []string{"chat"}); plain == tc.council {
+			t.Errorf("%s: calls %v, want the council %v", tc.name, e.roles, tc.council)
 		}
 	}
 }
@@ -522,15 +588,17 @@ func TestAThinkingRoleReasonsWithinItsBudgetAndHidesIt(t *testing.T) {
 		t.Errorf("the researchers' replies are missing from the deliberation: %q", thinking)
 	}
 
-	// on is 2048 tokens, medium a quarter of the 16k window; the budget comes
-	// on top of the role's reply cap; the routing call and the critics never
+	// Every member's reply cap is three quarters of the 16k window, its
+	// thinking inside it: on and medium are a quarter of the cap, the builder
+	// thinks as the planner does, and the routing call and the critics never
 	// reason.
 	want := map[string][2]int{
 		"route":       {0, 16},
-		"planner":     {2048, 512 + 2048},
-		"researcher":  {4096, 384 + 4096},
-		"critic":      {0, 256},
-		"synthesizer": {2048, 1024 + 2048},
+		"planner":     {3072, 12288},
+		"builder":     {3072, 12288},
+		"researcher":  {3072, 12288},
+		"critic":      {0, 12288},
+		"synthesizer": {2048, 12288},
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -647,5 +715,24 @@ func TestARenderIsWhatTheEngineGets(t *testing.T) {
 		if got != out[0].DebugInfo.RenderedTemplate {
 			t.Errorf("rendered %q, the engine got %q", out[0].DebugInfo.RenderedTemplate, got)
 		}
+	}
+}
+
+// The done chunk's prompt_eval_count is the conversation's, as a plain model
+// reports it, not the members' sum: a client sizes its context from it, and
+// the sum (161,214 on native.sh run 0416) had a harness compact a conversation
+// a third that size. It is the conversation as sent, rendered and tokenized
+// (the stub counts words: 6), not even one member's call (10), whose prompt
+// adds the member's own part. Every member's output still counts.
+func TestTheDoneChunkReportsTheConversationsPrompt(t *testing.T) {
+	e := &councilEngine{route: `{"route":"council"}`}
+	s := councilServer(t, e, councilOn())
+	chunks := chatChunks(t, s, api.ChatRequest{Model: "council", Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}}})
+	done := chunks[len(chunks)-1]
+	e.mu.Lock()
+	calls := len(e.roles)
+	e.mu.Unlock()
+	if calls < 4 || done.PromptEvalCount != 6 || done.EvalCount != 5*calls {
+		t.Errorf("%d calls: prompt_eval_count %d (want the conversation's 6), eval_count %d (want %d)", calls, done.PromptEvalCount, done.EvalCount, 5*calls)
 	}
 }

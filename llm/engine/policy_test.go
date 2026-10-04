@@ -20,9 +20,9 @@ func TestSupportsRefusesWhatIsNotTested(t *testing.T) {
 		// backend, on any platform.
 		{"rocm on linux amd64", Platform{"linux", "amd64"}, BackendROCm},
 		{"rocm on windows", Platform{"windows", "amd64"}, BackendROCm},
-		// macOS keeps ollama's own MLX path; this package never routes there.
-		{"metal on darwin", Platform{"darwin", "arm64"}, BackendMetal},
-		{"cpu on darwin", Platform{"darwin", "arm64"}, BackendCPU},
+		// opencoti publishes no files for an Intel Mac.
+		{"metal on an intel mac", Platform{"darwin", "amd64"}, BackendMetal},
+		{"cpu on an intel mac", Platform{"darwin", "amd64"}, BackendCPU},
 		// Published artifacts are x86_64 and aarch64 only.
 		{"cuda on linux 386", Platform{"linux", "386"}, BackendCUDA},
 		// No aarch64 Windows artifact.
@@ -105,7 +105,10 @@ func TestSupportsDeviceHonoursTheCUDAComputeFloor(t *testing.T) {
 // whole reason this floor exists is that the alternative failure is silent, so
 // a reason that does not say which device and which capability is no better.
 func TestDeviceUnsupportedNamesTheCapability(t *testing.T) {
-	// Pascal: below the CUDA 13 floor, and not in the CUDA 12 payload's SASS.
+	// Pascal: below the CUDA 13 floor, against a pin with no CUDA 12 payload.
+	p := allPayloadsPin()
+	p.Assets, p.CUDA12SASS = p.Assets[:2], nil
+	withPin(t, p)
 	why := deviceUnsupported(Platform{OS: "linux", Arch: "amd64"}, Device{BackendCUDA, 6, 1})
 	for _, want := range []string{"6.1", "7.5"} {
 		if !contains(why, want) {

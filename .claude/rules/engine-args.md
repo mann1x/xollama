@@ -32,7 +32,7 @@ paths:
   that the pinned bytes answer badly *without failing* (`--sparse-attn`,
   opencoti bug-3524). It logs a WARN and never refuses. It is not the guarded
   list and not `llm/engine_defects.go`. Retire a row in the same commit that
-  moves `llm/engine/pin.txt` to bytes that fix it.
+  moves the engine line of `llm/engine/pin/index.txt` to bytes that fix it.
 - The splitter treats a backslash as a literal backslash, never an escape —
   Windows paths are a likelier value than an escape sequence. Quote instead.
 - What is appended is logged at INFO, not DEBUG.

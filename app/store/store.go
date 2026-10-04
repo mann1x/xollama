@@ -207,7 +207,7 @@ var legacyConfigPath = func() string {
 	case "windows":
 		return filepath.Join(os.Getenv("LOCALAPPDATA"), "xOllama", "config.json") // xollama-hook: app-state
 	case "darwin":
-		return filepath.Join(os.Getenv("HOME"), "Library", "Application Support", "Ollama", "config.json")
+		return filepath.Join(os.Getenv("HOME"), "Library", "Application Support", "xOllama", "config.json") // xollama-hook: app-state
 	default:
 		return filepath.Join(os.Getenv("HOME"), ".ollama", "config.json")
 	}

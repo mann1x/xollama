@@ -33,6 +33,7 @@ import (
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/auth"
+	"github.com/ollama/ollama/decision"
 	"github.com/ollama/ollama/discover"
 	"github.com/ollama/ollama/envconfig"
 	"github.com/ollama/ollama/format"
@@ -118,10 +119,7 @@ func init() {
 	renderers.RenderImgTags = true
 }
 
-var (
-	errRequired            = errors.New("is required")
-	errTypicalPUnsupported = errors.New("typical_p is no longer supported")
-)
+var errRequired = errors.New("is required")
 
 func (s *Server) modelOptions(model *Model, requestOpts map[string]any) (api.Options, error) {
 	return s.modelOptionsWithEmbeddingBatchDefault(model, requestOpts, shouldApplyEmbeddingBatchDefault(model, requestOpts))
@@ -147,6 +145,7 @@ func (s *Server) modelOptionsWithEmbeddingBatchDefault(model *Model, requestOpts
 		}
 	}
 
+	warnDeprecatedOptions(requestOpts)
 	if err := opts.FromMap(requestOpts); err != nil {
 		return api.Options{}, err
 	}
@@ -175,6 +174,18 @@ func shouldApplyEmbeddingBatchDefault(m *Model, requestOpts map[string]any) bool
 func hasOption(opts map[string]any, name string) bool {
 	_, ok := opts[name]
 	return ok
+}
+
+// deprecatedOptions may still be set per request, and reach the runner, but
+// cannot be saved as model parameters.
+var deprecatedOptions = []string{"typical_p"}
+
+func warnDeprecatedOptions(opts map[string]any) {
+	for _, name := range deprecatedOptions {
+		if opts[name] != nil {
+			slog.Warn("deprecated option provided", "option", name)
+		}
+	}
 }
 
 func usesAutomaticNumCtx(model *Model, requestOpts map[string]any) bool {
@@ -210,11 +221,6 @@ func (s *Server) scheduleRunner(ctx context.Context, model *Model, caps []model.
 
 	if slices.Contains(model.Config.ModelFamilies, "mllama") && len(model.ProjectorPaths) > 0 {
 		return nil, nil, nil, fmt.Errorf("'llama3.2-vision' is no longer compatible with your version of Ollama and has been replaced by a newer version. To re-download, run 'xollama pull llama3.2-vision'")
-	}
-
-	// null is unset, as in Options.FromMap
-	if requestOpts["typical_p"] != nil {
-		return nil, nil, nil, errTypicalPUnsupported
 	}
 
 	if err := model.CheckCapabilities(caps...); err != nil {
@@ -851,6 +857,109 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 	}
 
 	streamResponse(c, ch)
+}
+
+// SystemOneHandler compiles typed questions, scores their allowed answers, and
+// returns probabilities. Callers must select weights trained for the prompt format.
+func (s *Server) SystemOneHandler(c *gin.Context) {
+	// TODO(parthsareen): Check token limits before copying state and schema into
+	// each question's prompt. This byte cap limits memory use until then.
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 32<<20)
+	body, err := io.ReadAll(c.Request.Body)
+	var req decision.Request
+	if err == nil {
+		err = json.Unmarshal(body, &req)
+	}
+	if err != nil {
+		var sizeErr *http.MaxBytesError
+		if errors.As(err, &sizeErr) {
+			c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body must not exceed 32 MiB"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if len(req.Images) == 0 && len(body) > 64<<10 {
+		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request body must not exceed 64 KiB without images"})
+		return
+	}
+	ref, err := parseAndValidateModelRef(req.Model)
+	if err != nil {
+		if errors.Is(err, errModelRequired) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		writeModelRefParseError(c, err, http.StatusNotFound, fmt.Sprintf("model '%s' not found", req.Model))
+		return
+	}
+	if ref.Source == modelSourceCloud {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "System One requires a local decision model"})
+		return
+	}
+	name, err := getExistingName(ref.Name)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("model '%s' not found", req.Model)})
+		return
+	}
+	m, err := GetModel(name.String())
+	if err != nil {
+		handleScheduleError(c, req.Model, err)
+		return
+	}
+	if !m.isGGUF() {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("model %q is not supported by System One; use a local GGUF model", req.Model)})
+		return
+	}
+	compiled, err := decision.CompileWithEncoder(req, m.metadata.String("decision.type"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	caps := []model.Capability{model.CapabilityDecision}
+	if len(req.Images) > 0 {
+		caps = append(caps, model.CapabilityVision)
+	}
+	r, _, _, err := s.scheduleRunner(c.Request.Context(), m, caps, nil, req.KeepAlive, nil)
+	if err != nil {
+		handleScheduleError(c, req.Model, err)
+		return
+	}
+	scorer, ok := r.(llm.Scorer)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("model %q does not support System One scoring; use a local decision model with a scoring-capable runner", req.Model)})
+		return
+	}
+	if err := compiled.Render(func(messages []api.Message) (string, error) {
+		if m.System != "" {
+			messages = append([]api.Message{{Role: "system", Content: m.System}}, messages...)
+		}
+		think := &api.ThinkValue{Value: false}
+		if m.HasChatTemplate && chatModeForModel(m) == chatExecutionModeNative {
+			return r.ApplyChatTemplate(c.Request.Context(), llm.ChatRequest{Messages: messages, Think: think})
+		}
+		return renderPrompt(m, messages, nil, think)
+	}); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	compiled.Request.MaxTokens = r.ContextLength()
+	result, err := scorer.Score(c.Request.Context(), compiled.Request)
+	if err != nil {
+		s.sched.expireRunnersForRuntimeOOM(m, err)
+		status := http.StatusInternalServerError
+		var statusErr api.StatusError
+		if errors.As(err, &statusErr) {
+			status = statusErr.StatusCode
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	response, err := compiled.Answer(req.Model, result)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 func (s *Server) EmbedHandler(c *gin.Context) {
@@ -1658,8 +1767,7 @@ func GetModelInfo(req api.ShowRequest) (*api.ShowResponse, error) {
 		Template:     m.Template.String(),
 		Details:      modelDetails,
 		Messages:     msgs,
-		Capabilities: m.Capabilities(),
-		Thinking:     m.Thinking(),
+		Capabilities: publicCapabilities(m.Capabilities()),
 		ModifiedAt:   mf.FileInfo().ModTime(),
 		Requires:     m.Config.Requires,
 		// Several integrations crash on a nil/omitempty+empty ModelInfo, so by
@@ -1667,6 +1775,9 @@ func GetModelInfo(req api.ShowRequest) (*api.ShowResponse, error) {
 		ModelInfo: make(map[string]any),
 		// xollama-hook: model-config
 		Xollama: m.Xollama,
+	}
+	if !slices.Contains(resp.Capabilities, model.CapabilityDecision) {
+		resp.Thinking = m.Thinking()
 	}
 
 	if m.Config.RemoteHost != "" {
@@ -1764,6 +1875,11 @@ func GetModelInfo(req api.ShowRequest) (*api.ShowResponse, error) {
 				resp.Tensors = tensors
 			}
 		}
+		return resp, nil
+	}
+
+	// xollama-hook: media — a media-only template has no weights to read.
+	if m.ModelPath == "" && modelMedia(m) != nil {
 		return resp, nil
 	}
 
@@ -2076,6 +2192,10 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	// xollama-hook: device-select — see docs/features/device-selection.md
 	r.GET(api.XollamaDevicesPath, XollamaDevicesHandler)
 	r.POST(api.XollamaAPIKeyPath, s.APIKeyHandler) // xollama-hook: api-key
+	// xollama-hook: system-settings — see plans/system-settings.md
+	r.POST(api.XollamaSettingsPath, s.SettingsHandler)
+	r.POST(api.XollamaLinkProbePath, s.LinkProbeHandler)
+	r.POST(api.XollamaMediaPullPath, s.MediaPullHandler) // xollama-hook: media
 	r.GET("/api/status", s.StatusHandler)
 	// Codex uses this existing Ollama listener for both native and Ollama
 	// models. The proxy selects the upstream per request.
@@ -2116,6 +2236,7 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.POST("/api/embeddings", s.EmbeddingsHandler)
 	r.POST("/api/tokenize", s.TokenizeHandler)
 	r.POST("/api/detokenize", s.DetokenizeHandler)
+	r.POST("/v1/systemone", s.SystemOneHandler)
 
 	// Inference (OpenAI compatibility)
 	// TODO(cloud-stage-a): apply Modelfile overlay deltas for local models with cloud
@@ -2123,12 +2244,25 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.POST("/v1/chat/completions", s.withInferenceRequestLogging("/v1/chat/completions", cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.ChatMiddleware(lookupThinking), s.ChatHandler)...)
 	r.POST("/v1/completions", s.withInferenceRequestLogging("/v1/completions", cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.CompletionsMiddleware(), s.GenerateHandler)...)
 	r.POST("/v1/embeddings", cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.EmbeddingsMiddleware(), s.EmbedHandler)
-	r.GET("/v1/models", middleware.ListMiddleware(), s.ListHandler)
+	r.GET("/v1/models", s.mediaModelsMiddleware(), middleware.ListMiddleware(), s.ListHandler) // xollama-hook: media
 	r.GET("/v1/models/:model", cloudModelPathPassthroughMiddleware(cloudErrRemoteModelDetailsUnavailable), middleware.RetrieveMiddleware(), s.ShowHandler)
 	r.POST("/v1/responses", s.withInferenceRequestLogging("/v1/responses", s.responsesCompactionMiddleware(), cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.ResponsesMiddleware(lookupThinking), s.ChatHandler)...)
 	r.POST("/v1/responses/compact", s.ResponsesCompactHandler)
 	// OpenAI-compatible audio endpoint
-	r.POST("/v1/audio/transcriptions", middleware.TranscriptionMiddleware(), s.ChatHandler)
+	r.POST("/v1/audio/transcriptions", s.mediaTranscriptionMiddleware(), middleware.TranscriptionMiddleware(), s.ChatHandler) // xollama-hook: media
+	// xollama-hook: media — the OpenAI media routes, served by a model's media
+	// engines (server/media_routes.go).
+	r.POST("/v1/audio/translations", s.TranslationsHandler)
+	r.POST("/v1/audio/speech", s.SpeechHandler)
+	r.POST("/v1/images/generations", s.ImageGenerationsHandler)
+	r.POST("/v1/images/edits", s.ImageEditsHandler)
+	r.GET(api.XollamaMediaVoicesPath, s.MediaVoicesHandler)
+	r.POST(api.XollamaMediaVoicesPath, s.MediaVoicesHandler)
+	r.POST("/v1/videos", s.VideoCreateHandler)
+	r.GET("/v1/videos", s.VideoListHandler)
+	r.GET("/v1/videos/:id", s.VideoGetHandler)
+	r.GET("/v1/videos/:id/content", s.VideoContentHandler)
+	r.DELETE("/v1/videos/:id", s.VideoDeleteHandler)
 
 	// Inference (Anthropic compatibility)
 	r.POST("/v1/messages", s.withInferenceRequestLogging("/v1/messages", cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.AnthropicMessagesMiddleware(lookupThinking), s.ChatHandler)...)
@@ -2759,7 +2893,8 @@ func llamaServerConfigForModel(m *Model) llm.LlamaServerConfig {
 		// xollama-hook: model-config -- the launch part only: a council changes
 		// how a turn is answered, not how the model loads, and must not give a
 		// council tag its own runner (types/xollama LaunchConfig).
-		Xollama: m.Xollama.LaunchConfig(),
+		// xollama-hook: system-settings -- the server's defaults under it.
+		Xollama: launchXollama(m).LaunchConfig(),
 		// xollama-hook: launch-config
 		SingleSequenceOnly:      singleSequenceOnly(m),
 		SingleSequenceStockOnly: parallelUnsafeArchitecture(m),
@@ -3590,7 +3725,7 @@ func countChatImages(msgs []api.Message) int {
 
 func handleScheduleError(c *gin.Context, name string, err error) {
 	switch {
-	case errors.Is(err, errCapabilities), errors.Is(err, errRequired), errors.Is(err, errTypicalPUnsupported):
+	case errors.Is(err, errCapabilities), errors.Is(err, errRequired):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	case errors.Is(err, context.Canceled):
 		c.JSON(499, gin.H{"error": "request canceled"})

@@ -2,9 +2,12 @@ package council
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/types/xollama"
@@ -34,7 +37,7 @@ func (s *toolStub) StreamTools(ctx context.Context, req Request, onToken func(st
 		}
 	}
 	key := MemberKey(req.Role, req.Index, req.Round)
-	if s.narrate[key] && len(results) == 0 && req.Messages[len(req.Messages)-1].Content != narratedNudge {
+	if s.narrate[key] && len(results) == 0 && req.Messages[len(req.Messages)-1].Content != user(narratedNudge).Content {
 		out := "I called read_files and it returned INVENTED-DATA."
 		onToken(out)
 		return Reply{Content: out}, nil
@@ -47,6 +50,9 @@ func (s *toolStub) StreamTools(ctx context.Context, req Request, onToken func(st
 		return Reply{Content: "let me look", Calls: []api.ToolCall{{Function: api.ToolCallFunction{Name: name, Arguments: args}}}}, nil
 	}
 	out := string(req.Role) + " says " + strings.Join(results, "|")
+	if req.Role == Synthesizer {
+		out += " " + Done
+	}
 	onToken(out)
 	return Reply{Content: out}, nil
 }
@@ -179,6 +185,22 @@ func TestResearchersAreToldWhichToolsOnlyRead(t *testing.T) {
 		note := strings.Contains(last, "You may call these tools, which only read: read_files.")
 		if want := c.Role == Researcher || c.Role == Critic; note != want {
 			t.Errorf("%s: tool note %v in %q", c.Role, note, last)
+		}
+		// Researchers propose the change that write_file would make.
+		if propose := strings.Contains(last, "propose every one you find"); propose != (c.Role == Researcher) {
+			t.Errorf("%s: asked to propose %v", c.Role, propose)
+		}
+	}
+	// With only tools that read there is no change to propose.
+	cfg := toolCfg()
+	cfg.Tools = testTools[:1]
+	s = &toolStub{stub: stub{route: `{"route":"council"}`}}
+	if _, err := Run(t.Context(), cfg, s, conv, func(Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range s.calls {
+		if strings.Contains(c.Messages[len(c.Messages)-1].Content, "propose every one you find") {
+			t.Errorf("%s asked to propose a change with no tool that makes one", c.Role)
 		}
 	}
 }
@@ -468,7 +490,7 @@ func TestANoteReachesTheMateBesideIt(t *testing.T) {
 			lastR2 = c
 		}
 		for _, m := range c.Messages {
-			if strings.HasPrefix(m.Content, "NOTES FROM") && key != "r2" {
+			if strings.HasPrefix(m.Content, header(notesSource)) && key != "r2" {
 				t.Errorf("%s read its mate's notes %q", key, m.Content)
 			}
 			if c.Role == Critic && m.Role == "tool" && !strings.HasPrefix(m.Content, "Refused: no council member works beside you") {
@@ -478,11 +500,359 @@ func TestANoteReachesTheMateBesideIt(t *testing.T) {
 	}
 	n := 0
 	for _, m := range lastR2.Messages {
-		if strings.HasPrefix(m.Content, "NOTES FROM") && strings.Contains(m.Content, "- r1: The brace at line 119") {
+		if strings.HasPrefix(m.Content, header(notesSource)) && strings.Contains(m.Content, "- r1: The brace at line 119") {
 			n++
 		}
 	}
 	if n != 1 {
 		t.Errorf("r2's last request holds the note %d times, want once", n)
+	}
+}
+
+// A synthesizer that sends the same edit again and gets the same error back is
+// told so under the repeat, in words that fit any tool; a repeat that got a
+// different result, and the first call, carry nothing.
+func TestARepeatedCallWithTheSameResultIsPointedOut(t *testing.T) {
+	cfg := toolCfg()
+	edit := func(id, path string) api.ToolCall {
+		args := api.NewToolCallFunctionArguments()
+		args.Set("path", path)
+		return api.ToolCall{ID: id, Function: api.ToolCallFunction{Name: "write_file", Arguments: args}}
+	}
+	turns := []api.Message{
+		{Role: "assistant", ToolCalls: []api.ToolCall{edit("c0", "a.js")}},
+		{Role: "assistant", ToolCalls: []api.ToolCall{edit("c1", "a.js")}},
+		{Role: "assistant", ToolCalls: []api.ToolCall{edit("c2", "a.js")}},
+		{Role: "assistant", ToolCalls: []api.ToolCall{edit("c3", "b.js")}},
+	}
+	cfg.Results = map[string]string{"s:c0": "error: no match", "s:c1": "error: no match", "s:c2": "ok", "s:c3": "error: no match"}
+	var got []string
+	for _, m := range cfg.transcript(Synthesizer, "s", turns) {
+		if m.Role == "tool" {
+			got = append(got, m.Content)
+		}
+	}
+	// A change sent again unchanged, with the same result, is steered
+	// (Cerebriline's ladder); a different result starts the count again.
+	want := []string{"error: no match", "error: no match" + strikeNote(2), "ok", "error: no match"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("results %q, want %q", got, want)
+	}
+	// A read with the same result is pointed out as before.
+	reads := []api.Message{
+		{Role: "assistant", ToolCalls: []api.ToolCall{readCall("r0", "a.js")}},
+		{Role: "assistant", ToolCalls: []api.ToolCall{readCall("r1", "a.js")}},
+	}
+	cfg.Results = map[string]string{"s:r0": "text", "s:r1": "text"}
+	got = nil
+	for _, m := range cfg.transcript(Synthesizer, "s", reads) {
+		if m.Role == "tool" {
+			got = append(got, m.Content)
+		}
+	}
+	if want := []string{"text", "text" + fmt.Sprintf(repeatedCall, "r0")}; !slices.Equal(got, want) {
+		t.Fatalf("reads %q, want %q", got, want)
+	}
+}
+
+// retestStub's synthesizer reports a failed check fails times, then answers.
+type retestStub struct {
+	toolStub
+	fails int
+	synth atomic.Int32
+}
+
+func (s *retestStub) StreamTools(ctx context.Context, req Request, onToken func(string)) (Reply, error) {
+	if req.Role != Synthesizer {
+		return s.toolStub.StreamTools(ctx, req, onToken)
+	}
+	s.mu.Lock()
+	s.calls = append(s.calls, req)
+	s.mu.Unlock()
+	n := int(s.synth.Add(1))
+	out := "fixed it " + Done
+	if n <= s.fails {
+		out = fmt.Sprintf("Status %d: still failing, trying again.\n\n%s tried change %d; the test failed.", n, Retest, n)
+	}
+	onToken(out)
+	return Reply{Content: out}, nil
+}
+
+// A failed check goes back to the council: the next cycle's researchers,
+// critics and synthesizer read every failed check so far, and the answer is
+// the last synthesizer's. Without tools there is nothing to check with, and
+// the bound stops the loop.
+func TestAFailedCheckGoesBackToTheResearchers(t *testing.T) {
+	s := &retestStub{toolStub: toolStub{stub: stub{route: `{"route":"council"}`}}, fails: 2}
+	var content strings.Builder
+	res, err := Run(t.Context(), toolCfg(), s, conv, func(e Event) {
+		if e.Kind == Content {
+			content.WriteString(e.Text)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The user reads the statuses and the answer, never a report.
+	if got := content.String(); got != "Status 1: still failing, trying again.\n\nStatus 2: still failing, trying again.\n\nfixed it" {
+		t.Errorf("content %q", got)
+	}
+	// The planner plans each cycle again, from the checks.
+	var replans int
+	for _, c := range s.calls {
+		if c.Role == Planner && c.Round > 0 {
+			replans++
+			if last := all(c); !strings.Contains(last, fmt.Sprintf("TEST %d:", c.Round)) || !strings.Contains(last, "Plan the work again") {
+				t.Errorf("re-plan %d without its checks: %q", c.Round, last)
+			}
+		}
+	}
+	if replans != 2 {
+		t.Errorf("%d re-plans, want 2", replans)
+	}
+	if res.Answer != "fixed it" || s.synth.Load() != 3 {
+		t.Fatalf("answer %q after %d synthesizers, want the third's", res.Answer, s.synth.Load())
+	}
+	if got := s.count(Researcher); got != 3*DefaultResearchers {
+		t.Errorf("%d researcher calls, want %d", got, 3*DefaultResearchers)
+	}
+	var last Request
+	for _, c := range s.calls {
+		if c.Role == Researcher {
+			last = c
+		}
+	}
+	all := ""
+	for _, m := range last.Messages {
+		all += m.Content + "\n"
+	}
+	if !strings.Contains(all, "tried change 1; the test failed") || !strings.Contains(all, "tried change 2; the test failed") {
+		t.Errorf("the last cycle's researcher did not read both failed checks:\n%s", all)
+	}
+
+	// Bounded by the builder: one check sent back at most, the second
+	// synthesizer's reply is the answer.
+	s = &retestStub{toolStub: toolStub{stub: stub{route: `{"route":"council"}`, build: `{"target":"t","planner":"","researcher":"","critic":"","synthesizer":"","max_tests":1}`}}, fails: 5}
+	res, _ = Run(t.Context(), toolCfg(), s, conv, func(Event) {})
+	if s.synth.Load() != 2 || !strings.Contains(res.Answer, "Status 2") {
+		t.Errorf("bound 1: %d synthesizers, answer %q", s.synth.Load(), res.Answer)
+	}
+
+	// No tools, no checks: the first answer stands.
+	s = &retestStub{toolStub: toolStub{stub: stub{route: `{"route":"council"}`}}, fails: 5}
+	res, _ = Run(t.Context(), FromModel(nil, 0.7), s, conv, func(Event) {})
+	if n := s.count(Synthesizer); n != 1 || s.count(Researcher) != DefaultResearchers {
+		t.Errorf("without tools: %d synthesizers, want 1 (answer %q)", n, res.Answer)
+	}
+}
+
+// A turn resumed after a failed check starts at the next cycle: the check
+// that failed is not run again.
+func TestATurnResumesPastAFailedCheck(t *testing.T) {
+	s := &retestStub{toolStub: toolStub{stub: stub{route: `{"route":"council"}`}}}
+	from := Progress{
+		Route: "council", Plan: &Plan{Plan: "p", Briefs: []string{"a", "b"}},
+		Rounds: []RoundProgress{{Findings: []string{"f1", "f2"}, Critiques: []string{"c1"}}},
+		Tests:  []string{"tried the first change. " + Retest},
+	}
+	res, err := RunFrom(t.Context(), toolCfg(), s, conv, from, nil, func(Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Answer != "fixed it" || s.synth.Load() != 1 || s.count(Researcher) != DefaultResearchers {
+		t.Fatalf("answer %q, %d synthesizers, %d researchers; want one cycle past the check", res.Answer, s.synth.Load(), s.count(Researcher))
+	}
+	for _, c := range s.calls {
+		all := ""
+		for _, m := range c.Messages {
+			all += m.Content
+		}
+		if c.Role == Synthesizer && (c.Round != 1 || !strings.Contains(all, "TEST 1:\ntried the first change")) {
+			t.Errorf("the synthesizer ran as cycle %d without the failed check", c.Round)
+		}
+	}
+}
+
+// The report after the verdict never reaches the user, however the tokens
+// split the marker; text that only looked like its start is passed on.
+func TestTheReportAfterTheVerdictIsHeldBack(t *testing.T) {
+	for _, tc := range []struct {
+		tokens []string
+		want   string
+	}{
+		{[]string{"Still fail", "ing. VER", "DICT: RE", "TEST tried x"}, "Still failing. "},
+		{[]string{"A VERSION of it ", "works"}, "A VERSION of it works"},
+		{[]string{"ends on VERD"}, "ends on VERD"},
+	} {
+		var got strings.Builder
+		emit := holdBack(func(e Event) { got.WriteString(e.Text) }, Retest)
+		for _, s := range tc.tokens {
+			emit(Event{Kind: Content, Text: s})
+		}
+		emit(Event{Kind: Content, Done: true})
+		if got.String() != tc.want {
+			t.Errorf("%q: got %q, want %q", tc.tokens, got.String(), tc.want)
+		}
+	}
+}
+
+// preemptStub's r1 writes a little and then waits for its context; r2 posts
+// a note of kind, once r1 is generating, then answers.
+type preemptStub struct {
+	toolStub
+	kind      string
+	started   chan struct{}
+	r1Calls   atomic.Int32
+	cancelled atomic.Int32
+}
+
+func (s *preemptStub) StreamTools(ctx context.Context, req Request, onToken func(string)) (Reply, error) {
+	key := MemberKey(req.Role, req.Index, req.Round)
+	switch key {
+	case "r1":
+		s.mu.Lock()
+		s.calls = append(s.calls, req)
+		s.mu.Unlock()
+		if s.r1Calls.Add(1) == 1 {
+			onToken("I suspect the parser")
+			close(s.started)
+			select {
+			case <-ctx.Done():
+				s.cancelled.Add(1)
+				return Reply{}, ctx.Err()
+			case <-time.After(300 * time.Millisecond):
+				out := "r1 finished on its own"
+				onToken(out)
+				return Reply{Content: out}, nil
+			}
+		}
+		onToken("r1 goes on")
+		return Reply{Content: "r1 goes on"}, nil
+	case "r2":
+		s.mu.Lock()
+		s.calls = append(s.calls, req)
+		s.mu.Unlock()
+		for _, m := range req.Messages {
+			if m.Role == "tool" {
+				return Reply{Content: "r2 done"}, nil
+			}
+		}
+		<-s.started
+		args := api.NewToolCallFunctionArguments()
+		args.Set("note", "The fix at line 119 passes the test.")
+		args.Set("kind", s.kind)
+		return Reply{Content: "posting", Calls: []api.ToolCall{{Function: api.ToolCallFunction{Name: PostTool, Arguments: args}}}}, nil
+	}
+	return s.toolStub.StreamTools(ctx, req, onToken)
+}
+
+// A mate's checked verdict interrupts a researcher mid-generation: what it
+// wrote stays as its turn, it reads the verdict, and it goes on. A plain note
+// interrupts nobody.
+func TestAVerdictInterruptsTheMateGenerating(t *testing.T) {
+	for kind, interrupts := range map[string]bool{NoteConfirmed: true, "note": false} {
+		s := &preemptStub{kind: kind, started: make(chan struct{})}
+		s.route = `{"route":"council"}`
+		cfg := toolCfg()
+		cfg.Broadcast = true
+		cfg.Tools = WithBroadcast(cfg.Tools)
+		if _, err := Run(t.Context(), cfg, s, conv, func(Event) {}); err != nil {
+			t.Fatal(err)
+		}
+		if got := s.cancelled.Load() == 1; got != interrupts {
+			t.Fatalf("%s: interrupted %v, want %v", kind, got, interrupts)
+		}
+		if !interrupts {
+			continue
+		}
+		var last Request
+		for _, c := range s.calls {
+			if MemberKey(c.Role, c.Index, c.Round) == "r1" {
+				last = c
+			}
+		}
+		all := ""
+		for _, m := range last.Messages {
+			all += m.Role + ": " + m.Content + "\n"
+		}
+		if s.r1Calls.Load() != 2 || !strings.Contains(all, "assistant: I suspect the parser") || !strings.Contains(all, "- r2 (CONFIRMED, checked): The fix at line 119 passes the test.") {
+			t.Errorf("r1's resumed request:\n%s", all)
+		}
+	}
+}
+
+// readStub reads on every call: a critic that would research for ever.
+type readStub struct {
+	stub
+	n int
+}
+
+func (s *readStub) StreamTools(_ context.Context, _ Request, _ func(string)) (Reply, error) {
+	s.n++
+	a := api.NewToolCallFunctionArguments()
+	a.Set("path", fmt.Sprintf("f%d", s.n))
+	return Reply{Content: fmt.Sprintf("looking %d", s.n), Calls: []api.ToolCall{{Function: api.ToolCallFunction{Name: "read_files", Arguments: a}}}}, nil
+}
+
+// A critic's and a researcher's reads stop at their steps: past them the call
+// is not made, the member is told so, and a second try ends its turn with the
+// report it has. Measured before: one critic made 50 finds in 26 trips.
+func TestAMembersToolStepsAreBounded(t *testing.T) {
+	for _, r := range []Role{Critic, Researcher} {
+		s := &readStub{}
+		cfg := toolCfg()
+		req := Request{Role: r, Messages: []api.Message{{Role: "user", Content: "go"}}}
+		key := MemberKey(r, 0, 0)
+		var turns []api.Message
+		trips := 0
+		for {
+			out, next, err := callTools(t.Context(), s, cfg, req, turns, func(string) {})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if next == nil {
+				if !strings.Contains(out, "looking") {
+					t.Fatalf("%s: the report %q", r, out)
+				}
+				break
+			}
+			if trips++; trips > 20 {
+				t.Fatalf("%s: still reading after %d trips", r, trips)
+			}
+			for _, c := range next[len(next)-1].ToolCalls {
+				next = append(next, api.Message{Role: "tool", ToolCallID: ForwardedID(key, c.ID), Content: "data"})
+			}
+			turns = next
+		}
+		if want := cfg.stepLimit(r); trips != want {
+			t.Fatalf("%s: %d trips, want %d", r, trips, want)
+		}
+		if !noted(turns, stepsOutNote) && s.n != cfg.stepLimit(r)+2 {
+			t.Fatalf("%s: asked %d times", r, s.n)
+		}
+	}
+}
+
+// emptyStub reports nothing while it thinks, and something once it does not.
+type emptyStub struct {
+	stub
+	reqs []Request
+}
+
+func (s *emptyStub) StreamTools(_ context.Context, req Request, _ func(string)) (Reply, error) {
+	s.reqs = append(s.reqs, req)
+	if req.Think != "" {
+		return Reply{}, nil
+	}
+	return Reply{Content: "the report"}, nil
+}
+
+// A researcher's empty report is asked for again, once, without thinking.
+func TestAnEmptyReportIsAskedAgainWithoutThinking(t *testing.T) {
+	s := &emptyStub{}
+	req := Request{Role: Researcher, Think: "medium", Messages: []api.Message{{Role: "user", Content: "go"}}}
+	out, turns, err := callTools(t.Context(), s, toolCfg(), req, nil, func(string) {})
+	if err != nil || turns != nil || !strings.HasPrefix(out, "the report") || len(s.reqs) != 2 {
+		t.Fatalf("out %q turns %v err %v asked %d", out, turns, err, len(s.reqs))
 	}
 }

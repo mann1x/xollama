@@ -9,9 +9,9 @@
 # published, sha256-pinned artifact, so the image is ASSEMBLED on a
 # GitHub-hosted runner (plans/docker-image.md):
 #
-#   llama.cpp CPU runtime  the fork's release tgz        llama/runtime-pin-linux.txt
-#   CUDA / Vulkan / MLX    upstream's release tarballs   llama/runtime-pin-linux.txt
-#   opencoti engine        HF, whatever the pin names    llm/engine/pin.txt
+#   llama.cpp CPU runtime  the fork's release tgz        llama/runtime-pin-linux[-arm64].txt
+#   CUDA / Vulkan / MLX    upstream's release tarballs   llama/runtime-pin-linux[-arm64].txt
+#   opencoti engine        HF, whatever the pin names    llm/engine/pin
 #   xollama                Go-only build, AlmaLinux 8    this commit
 #
 # scripts/docker-assemble.sh does the assembly and is the same script used to
@@ -21,12 +21,18 @@
 # CHANNELS. `:dev` is the only thing a branch build can move. `:latest` moves
 # only from a tag whose GitHub release is a full release -- the pre-release
 # flag decides, as it does for the desktop updater, not the hyphen in the tag
-# (every `v<upstream>-xollama.<n>` tag has one). A release created by
-# xollama-release.yaml with GITHUB_TOKEN triggers no workflow, so the image for
-# a release is a manual run on its tag: `gh workflow run docker-release.yaml
-# --ref v0.34.2-xollama.2`.
+# (every xOllama tag has one: `v<upstream>-rc.<k>.xollama`, `-xollama`,
+# `-xollama.<n>`; a candidate is a pre-release and only ever moves `:dev`). A tag created by
+# xollama-release.yaml with GITHUB_TOKEN triggers no push event, so that
+# workflow's publish job starts this one on the tag (workflow_dispatch). A
+# promotion changes the flag and rebuilds nothing: run this by hand on the
+# tag afterwards to move :latest, `gh workflow run docker-release.yaml --ref
+# v0.35.0-xollama` (RELEASE.md step 8).
 #
-# amd64 only, for now (plans/docker-image.md); arm64 follows user testing.
+# amd64 always; arm64 as soon as llama/runtime-pin-linux-arm64.txt names the
+# fork's arm64 CPU runtime (the plan job reads it). Each architecture is
+# assembled and built on a runner of its own kind, pushed as :<version>-<arch>,
+# and the manifest job joins what was built into :<version> and the moving tag.
 
 name: docker-release
 
@@ -75,6 +81,7 @@ jobs:
       environment: ${{ steps.plan.outputs.environment }}
       moving_tag: ${{ steps.plan.outputs.moving_tag }}
       gotoolchain: ${{ steps.plan.outputs.gotoolchain }}
+      arches: ${{ steps.plan.outputs.arches }}
     steps:
       - uses: actions/checkout@v4
 
@@ -128,11 +135,24 @@ jobs:
           [ -n "$toolchain" ] || fail "no stable Go release found on the go$line line (go.mod says go $gomod)"
           out gotoolchain "$toolchain"
 
+          # arm64 joins once its pin carries the fork's runtime. An incomplete
+          # pin is not an error here: the image is amd64 only until then.
+          arches='["amd64"]'
+          if awk '$1=="sha256" {f=1} END {exit !f}' llama/runtime-pin-linux-arm64.txt 2> /dev/null; then
+            arches='["amd64","arm64"]'
+          fi
+          out arches "$arches"
+
+          echo "architectures $arches"
           echo "image $version, channel $( [ "$prerelease" = true ] && echo dev || echo release ), Go $toolchain"
 
   build:
     needs: plan
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(needs.plan.outputs.arches) }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     environment: ${{ needs.plan.outputs.environment }}
     timeout-minutes: 90
     permissions:
@@ -141,7 +161,7 @@ jobs:
     env:
       VERSION: ${{ needs.plan.outputs.version }}
       GO_TOOLCHAIN: ${{ needs.plan.outputs.gotoolchain }}
-      MOVING_TAG: ${{ needs.plan.outputs.moving_tag }}
+      ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
 
@@ -149,7 +169,9 @@ jobs:
       # can prove the pin's inputs digest against it and not just trust it.
       - name: fetch the runtime's provenance
         run: |
-          built=$(awk '$1=="built" {print $2}' llama/runtime-pin-linux.txt)
+          pin=llama/runtime-pin-linux.txt
+          [ "$ARCH" = amd64 ] || pin="llama/runtime-pin-linux-$ARCH.txt"
+          built=$(awk '$1=="built" {print $2}' "$pin")
           git fetch -q --depth 1 --filter=blob:none https://github.com/mann1x/ollama "$built"
 
       # The payload is ~5.5 GB unpacked, the image as much again; the runner
@@ -157,7 +179,7 @@ jobs:
       - name: make room
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
-          docker image prune -af > /dev/null
+          docker image prune -af > /dev/null || true
           df -h /
 
       - name: assemble
@@ -202,15 +224,50 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # :<version>, :<version>-amd64 (so a later multi-arch manifest can be
-      # assembled from it), and the channel's moving tag -- :dev or :latest,
-      # never both.
+      # Only :<version>-<arch> from here; the manifest job makes :<version>
+      # and the channel's moving tag out of the architectures that were built.
       - name: push
         if: inputs.push != false
         run: |
           for image in "$GHCR_IMAGE" "$DOCKERHUB_IMAGE"; do
-            for tag in "$VERSION" "$VERSION-amd64" "$MOVING_TAG"; do
-              docker tag "xollama:$VERSION" "$image:$tag"
-              docker push -q "$image:$tag"
-            done
+            docker tag "xollama:$VERSION" "$image:$VERSION-$ARCH"
+            docker push -q "$image:$VERSION-$ARCH"
+          done
+
+  # :<version> and the moving tag (:dev or :latest, never both) as one manifest
+  # list over the per-architecture images.
+  manifest:
+    needs: [plan, build]
+    if: inputs.push != false
+    runs-on: ubuntu-latest
+    environment: ${{ needs.plan.outputs.environment }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
+      MOVING_TAG: ${{ needs.plan.outputs.moving_tag }}
+      ARCHES: ${{ needs.plan.outputs.arches }}
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: join
+        run: |
+          set -euo pipefail
+          for image in "$GHCR_IMAGE" "$DOCKERHUB_IMAGE"; do
+            sources=()
+            for arch in $(jq -r '.[]' <<< "$ARCHES"); do sources+=("$image:$VERSION-$arch"); done
+            docker buildx imagetools create -t "$image:$VERSION" -t "$image:$MOVING_TAG" "${sources[@]}"
+            docker buildx imagetools inspect "$image:$VERSION" | grep -E 'Name|Platform'
           done

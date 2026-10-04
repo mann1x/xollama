@@ -1,0 +1,33 @@
+format     2
+component  media
+version    2610040945001
+built-from 2610040950001
+repo       ManniX-ITA/opencoti-llamafile-dev
+rev        771ce08f507b5207eac0974bb98e0211adfadee0
+abi        media b099409b3029a6e380268e31d1caefa6706569961d32e72b3543fbc73903d95c
+abi-source exported
+engine-min 2610040950001
+gated-with 2610040950001
+feature    media_codec_v1
+feature    audio_speech_audiocpp_v1
+feature    audio_speech_espeak_v1
+requires   macos-aarch64  macos          13.0
+requires   x86_64         glibc          2.28
+requires   aarch64        glibc          2.29
+file  x86_64         codec      components/media/2610040945001/oc-codec-linux-x86_64.so  c19e216ee6d2ba86987de1daad574861368e76011e2e3ca82823206b36f0f3cf  4968600
+file  aarch64        codec      components/media/2610040945001/oc-codec-linux-aarch64.so  542b4316a2ac7c001c9c80a83f3e36ae8844f7332d056107f2bebc1fffe40fae  4771256
+file  win-x86_64     codec      components/media/2610040945001/oc-codec-win-x86_64.dll  3ebf8f6a07431bd861b096a89c2bde5eb7a0e9318087b79749f1c7cfc897cf4c  6328832
+file  macos-aarch64  codec      components/media/2610040945001/oc-codec-macos-aarch64.dylib  0d2febe2f2203d1ce6427d0e6d2519c7dffe99f5b001686b032ffba998563725  4585088
+file  x86_64         audiocpp   components/media/2610040945001/oc-audiocpp-linux-x86_64.so  c114ce21d31646cc51c1b6ae61b1c1e5cc8c1d77cd5a4431455553112e6b9fc0  7441224
+file  aarch64        audiocpp   components/media/2610040945001/oc-audiocpp-linux-aarch64.so  3b0e3cb3db157cae51ffacc8327f02c255dee42180636bd39265ad6757be4dd3  6302040
+file  win-x86_64     audiocpp   components/media/2610040945001/oc-audiocpp-win-x86_64.dll  d87575fbf60a3e1fa7082b491211c29f599a740e5364a2f5a2edaa5a57b240b8  7409664
+file  macos-aarch64  audiocpp   components/media/2610040945001/oc-audiocpp-macos-aarch64.dylib  da62beec1771ade7fe92f49a66ba8a856c2f501f7ce14ceb6a7b6ae25b7e8296  3819664
+file  x86_64         espeak     components/media/2610040945001/oc-espeak-linux-x86_64.so  2a4ca6ecb5a714c5bd96286c666b0ee0328ace6302aa6d9e2d29d740159be4a5  18899232
+file  aarch64        espeak     components/media/2610040945001/oc-espeak-linux-aarch64.so  be689f872e583ed0aec1095a4ccb0363c671914b931e6344fbbe73cb12176924  18853976
+file  win-x86_64     espeak     components/media/2610040945001/oc-espeak-win-x86_64.dll  4620a2e6d5498cb53a587c51dc72115690c8cf136291c40a56142f51da1ec90b  18928120
+file  macos-aarch64  espeak     components/media/2610040945001/oc-espeak-macos-aarch64.dylib  ee7181f36287cdb110bc74004cef09c94c1fc193f41a2eff274fc83bfa299517  18889808
+file  any            licence    components/media/2610040945001/COPYING.espeak-ng  8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903  35147  for espeak
+file  any            licence    components/media/2610040945001/COPYING.LGPLv2.1.ffmpeg  246041b6ecf9bc32d718a62c57877c78b5eb397b6467e74ed7ae2626ab189c30  26517  for codec
+file  any            licence    components/media/2610040945001/COPYING.lame  bfe4a52dc4645385f356a8e83cc54216a293e3b6f1cb4f79f5fc0277abf937fd  25284  for codec
+file  any            licence    components/media/2610040945001/LICENSE.openh264  dd5c1c9668512530fa5a96e4c29ac4033d70a7eeb0eed7a42fddb6dd794ebdbb  1295  for codec
+file  any            build-info components/media/2610040945001/BUILD_INFO.media.md  1d77a88f76191bffb9f303fd7b20e2f84edcb0e0ab1c7a7e0a0eb0998958e94e  3927

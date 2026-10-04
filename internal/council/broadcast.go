@@ -31,14 +31,26 @@ import (
 const PostTool = "council_post"
 
 const (
-	maxNoteChars = 200
+	maxNoteChars = 600
 	maxNotes     = 4
 )
 
 // Note is one broadcast: its call's forwarded id, its author and its text.
+// Kind is "" for a note, or a verdict -- NoteConfirmed or NoteRefuted -- which
+// interrupts the mates generating beside it (preemption, 11.4).
 type Note struct {
-	ID, From, Text string
+	ID, From, Text, Kind string
 }
+
+// A verdict note says a check showed something works, or does not. The owner's
+// ruling (2026-09-28): only test results and verdicts preempt.
+const (
+	NoteConfirmed = "confirmed"
+	NoteRefuted   = "refuted"
+)
+
+// maxPreempts bounds how often one member's generation is interrupted.
+const maxPreempts = 2
 
 // WithBroadcast adds PostTool to the members' tools. Every member carries
 // it, so the shared prefix holds one list; who may call it is decided here.
@@ -53,6 +65,7 @@ func WithBroadcast(tools api.Tools) api.Tools {
 	}
 	props := api.NewToolPropertiesMap()
 	props.Set("note", api.ToolProperty{Type: api.PropertyType{"string"}, Description: fmt.Sprintf("At most %d characters: what works, what you found and its evidence, or which part you take.", maxNoteChars)})
+	props.Set("kind", api.ToolProperty{Type: api.PropertyType{"string"}, Enum: []any{"note", NoteConfirmed, NoteRefuted}, Description: "note, or a verdict you checked: confirmed (it works) or refuted (it does not). A verdict interrupts your mates so they read it at once."})
 	t := api.Tool{Type: "function", Function: api.ToolFunction{
 		Name:        PostTool,
 		Description: "Send a very short note to the council members working beside you. Never wait for an answer. Changes nothing.",
@@ -70,6 +83,48 @@ type board struct {
 	notes []Note
 	seen  map[string]int
 	sync  func(notes []Note, seen map[string]int)
+	// generating holds the cancel of each member's model call in flight,
+	// and preempted the members a verdict interrupted.
+	generating map[string]func()
+	preempted  map[string]bool
+}
+
+// listen registers the member's model call in flight, so a verdict from a
+// mate can interrupt it; the returned func ends that.
+func (b *board) listen(key string, cancel func()) func() {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.generating == nil {
+		b.generating = map[string]func(){}
+	}
+	b.generating[key] = cancel
+	return func() {
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		delete(b.generating, key)
+	}
+}
+
+// preempt interrupts every mate of from generating now. Called locked.
+func (b *board) preemptLocked(from string) {
+	for key, cancel := range b.generating {
+		if key != from && roleOf(key) == roleOf(from) {
+			if b.preempted == nil {
+				b.preempted = map[string]bool{}
+			}
+			b.preempted[key] = true
+			cancel()
+		}
+	}
+}
+
+// wasPreempted reports, once, whether a verdict interrupted the member.
+func (b *board) wasPreempted(key string) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	p := b.preempted[key]
+	delete(b.preempted, key)
+	return p
 }
 
 func newBoard(p Progress, sync func([]Note, map[string]int)) *board {
@@ -143,8 +198,15 @@ func (cfg Config) post(r Role, key string, calls []api.ToolCall) {
 		if len(text) > maxNoteChars {
 			text = truncate(text, maxNoteChars) + "…"
 		}
-		b.notes = append(b.notes, Note{ID: id, From: key, Text: text})
+		kind := stringArg(c, "kind")
+		if kind != NoteConfirmed && kind != NoteRefuted {
+			kind = ""
+		}
+		b.notes = append(b.notes, Note{ID: id, From: key, Text: text, Kind: kind})
 		changed = true
+		if kind != "" {
+			b.preemptLocked(key)
+		}
 	}
 	if changed {
 		b.changed()
@@ -181,6 +243,10 @@ func (cfg Config) unread(r Role, key string) *api.Message {
 	var lines []string
 	for _, x := range b.notes[min(from, len(b.notes)):] {
 		if x.From != key && roleOf(x.From) == roleOf(key) {
+			if x.Kind != "" {
+				lines = append(lines, fmt.Sprintf("- %s (%s, checked): %s", x.From, strings.ToUpper(x.Kind), x.Text))
+				continue
+			}
 			lines = append(lines, fmt.Sprintf("- %s: %s", x.From, x.Text))
 		}
 	}
@@ -192,7 +258,7 @@ func (cfg Config) unread(r Role, key string) *api.Message {
 	if len(lines) == 0 {
 		return nil
 	}
-	m := user("NOTES FROM THE MEMBERS WORKING BESIDE YOU (for your information; do not reply, do not wait):\n" + strings.Join(lines, "\n"))
+	m := sourced(notesSource, "Notes from the members working beside you (for your information; do not reply, do not wait):\n"+strings.Join(lines, "\n"))
 	return &m
 }
 
@@ -201,5 +267,5 @@ func (cfg Config) postNote(r Role) string {
 	if !cfg.canPost(r) {
 		return ""
 	}
-	return fmt.Sprintf(" You may call %s to tell the members working beside you, in at most %d characters, something that saves them work: a fix that works, the answer to a problem, or which part of the work you take when it splits (keep your brief's part unless you agree otherwise). Post rarely -- at most %d notes -- name the evidence, never wait for replies, and never post to chat.", PostTool, maxNoteChars, maxNotes)
+	return fmt.Sprintf(" You may call %s to tell the members working beside you, in at most %d characters, something that saves them work: a fix that works, the answer to a problem, or which part of the work you take when it splits (keep your brief's part unless you agree otherwise). Post rarely -- at most %d notes -- name the evidence, never wait for replies, and never post to chat. Give kind confirmed or refuted only for a result you checked: it interrupts your mates, so they stop pursuing what it settles.", PostTool, maxNoteChars, maxNotes)
 }

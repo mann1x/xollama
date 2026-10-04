@@ -33,7 +33,7 @@ const MediaTypeImageJSON = "application/vnd.ollama.image.json"
 
 // SchemaVersion is the newest schema this build can read. It is NOT
 // necessarily what it writes: see requiredVersion.
-const SchemaVersion = 4
+const SchemaVersion = 7
 
 // SchemaVersionBase is the version that expresses everything except the fields
 // added in v2 (kv.unified, kv.residency_mode), v3 (devices) and v4 (council).
@@ -100,6 +100,12 @@ type Config struct {
 
 	// Council makes this model a council. See Council. Schema v4.
 	Council *Council `json:"council,omitempty"`
+
+	// Fit is the engine's automatic fit (engine_policy.go).
+	Fit *Fit `json:"fit,omitempty"`
+
+	// Media attaches opencoti's media engines (media.go). Schema v7.
+	Media *Media `json:"media,omitempty"`
 }
 
 // Slots holds this model's serving-capacity settings.
@@ -277,6 +283,11 @@ type KV struct {
 	// model that pins engine "llamacpp" and also names a residency mode is
 	// refused rather than served without it.
 	ResidencyMode string `json:"residency_mode,omitempty"`
+
+	// RollingWindow is opencoti's KV rolling window (--kv-rolling-window):
+	// "on" (the window sized by the engine), "off", or a size in MiB. See
+	// engine_policy.go.
+	RollingWindow string `json:"rolling_window,omitempty"`
 }
 
 // Draft holds speculative-decoding settings for this model.
@@ -289,6 +300,10 @@ type Draft struct {
 	// from the draft model's own metadata. Empty means infer, which is what
 	// almost every model should do.
 	SpecType string `json:"spec_type,omitempty"`
+
+	// AutoMTPPolicy is when opencoti drafts with a built-in MTP head
+	// (--auto-mtp-policy). See engine_policy.go.
+	AutoMTPPolicy string `json:"auto_mtp_policy,omitempty"`
 }
 
 // Engine values. These mirror the XOLLAMA_ENGINE selector, minus "auto":
@@ -337,6 +352,9 @@ func (c *Config) Validate() error {
 		}
 	}
 	if err := c.Council.validate(c.Engine); err != nil {
+		return err
+	}
+	if err := c.Media.validate(c.Engine); err != nil {
 		return err
 	}
 	if c.Engine != "" && !slices.Contains(validEngines, c.Engine) {
@@ -441,7 +459,7 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("xollama config: session.max_pools needs session.pool; it sizes the pooling that session.pool switches on")
 		}
 	}
-	return nil
+	return c.validateEnginePolicies()
 }
 
 // Parse decodes and validates a xollama.json payload.
@@ -473,9 +491,25 @@ func Parse(data []byte) (*Config, error) {
 // version that is true of it, and only a model that actually uses a v2 field
 // pays the v2 floor.
 func (c *Config) requiredVersion() int {
+	// An older build would read media as an unknown field and serve the
+	// model with no media engine: its image or speech routes would answer
+	// 404 for a model whose publisher attached them.
+	if !c.Media.IsZero() {
+		return 7
+	}
+	// An older build would drop these and run the engine's own policies,
+	// not the ones stated.
+	if c.setsEnginePolicies() {
+		return 6
+	}
 	// An older build would read a council as an unknown field and serve the
 	// model as a plain chat: one model call where the publisher meant a
 	// council. Refusing is the honest answer here too.
+	// An older build would drop a role's num_ctx and run that role in the
+	// window its model's template gives, not the one the publisher set.
+	if c.Council.setsRoleWindow() {
+		return 5
+	}
 	if !c.Council.IsZero() {
 		return 4
 	}
@@ -517,7 +551,9 @@ func (c *Config) IsZero() bool {
 	}
 	return c.Engine == "" &&
 		c.FlashAttention == "" &&
-		(c.Draft == nil || c.Draft.SpecType == "") &&
+		(c.Draft == nil || (c.Draft.SpecType == "" && c.Draft.AutoMTPPolicy == "")) &&
+		(c.KV == nil || c.KV.RollingWindow == "") &&
+		c.Fit.IsZero() &&
 		(c.KV == nil || (c.KV.K == "" && c.KV.V == "" && c.KV.KSWA == "" && c.KV.VSWA == "" &&
 			c.KV.Unified == nil && c.KV.ResidencyMode == "")) &&
 		(c.Slots == nil || (c.Slots.Dynamic == nil && c.Slots.Max == 0 && c.Slots.Live == 0 && c.Slots.TPSFloor == 0 &&
@@ -525,7 +561,8 @@ func (c *Config) IsZero() bool {
 		(c.DCA == nil || (c.DCA.Enabled == nil && c.DCA.ChunkSize == 0)) &&
 		(c.Session == nil || (c.Session.Affinity == nil && c.Session.Pool == nil && c.Session.MaxPools == 0 && c.Session.ClientPools == 0)) &&
 		c.Devices.IsZero() &&
-		c.Council.IsZero()
+		c.Council.IsZero() &&
+		c.Media.IsZero()
 }
 
 // The closed sets, exported so a tool that ASKS for one of these values offers

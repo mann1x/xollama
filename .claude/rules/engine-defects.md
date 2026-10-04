@@ -18,7 +18,7 @@ paths:
 - Diagnosis only. The `engine-defects` hook is one line in `llm/llama_server.go`:
   `annotateEngineDefect` wraps the original error, never retries or downgrades.
   Retrying is what `XOLLAMA_ENGINE_FALLBACK` is for and it stays opt-in.
-- Retire the row in the same commit that moves `llm/engine/pin.txt` to an
+- Retire the row in the same commit that moves `llm/engine/pin/index.txt` to an
   artifact without the defect, including a re-cut under the same file names.
   `TestKnownDefectsMatchThePinnedArtifact` fails until you do — but only on the
   release channel: it skips when `pin.Channel` is not `engine.ChannelRelease`,

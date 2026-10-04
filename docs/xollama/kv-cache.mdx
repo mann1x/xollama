@@ -102,7 +102,7 @@ The ring needs an engine that has a separate short-window cache; stock
 `llama.cpp` has no such flag, so asking for one there is refused the same way as
 an unknown type.
 
-The pinned engine (`opencoti-0.10.5-c7-2609272353001`) has the ring: its pin
+The pinned engine (`opencoti-0.10.5-c7-2610040710001`) has the ring: its pin
 carries `feature swa-cache-types`. On a build without that feature, `k_swa` /
 `v_swa` are refused at load, naming the build.
 
@@ -161,9 +161,14 @@ model. Hybrid models are fine.
    does not refuse it. It quietly promotes the plain half to the same KVarN
    width and logs a warning, so you do not get what you asked for.
 4. **KVarN turns flash attention on** even if you set it off.
-5. **Flash attention `auto` can turn it off**: on a CPU-only host, or where
-   the device cannot run it. A quantised `v` then refuses to load. Set
-   `OLLAMA_FLASH_ATTENTION=1` whenever `v` is quantised.
+5. **Flash attention `auto` can turn it off**: on a CPU-only host or load, or
+   where the device cannot run it. The engine then refuses a quantised `v`.
+   When that `v` is xOllama's own setting (the model's `kv.v` or
+   `XOLLAMA_V_CACHE_TYPE`), xOllama loads the model once more with an `f16` `v`
+   and logs a warning (`retrying the load with an f16 V cache`), so the model
+   loads with a bigger cache. A `v` from `OLLAMA_KV_CACHE_TYPE` alone fails as
+   it does on upstream ollama. To keep the quantised `v`, set
+   `flash_attention` `on` for the model, or `OLLAMA_FLASH_ATTENTION=1`.
 
 <Warning>
   **`q6_0` mixed with another type crashed on CUDA** on engine builds before

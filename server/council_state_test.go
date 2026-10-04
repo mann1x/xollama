@@ -110,7 +110,7 @@ func TestACouncilStateSkipsWhatItDoesNotKnow(t *testing.T) {
 // delivers a note twice nor loses one a mate has not read yet.
 func TestTheNotesBoardTravelsInTheState(t *testing.T) {
 	s := testState()
-	s.progress.Notes = []council.Note{{ID: "n1", From: "researcher 1", Text: "I take the parser"}, {ID: "n2", From: "researcher 2", Text: "tests pass"}}
+	s.progress.Notes = []council.Note{{ID: "n1", From: "researcher 1", Text: "I take the parser"}, {ID: "n2", From: "researcher 2", Text: "tests pass", Kind: council.NoteConfirmed}}
 	s.progress.Seen = map[string]int{"research/0/1": 2, "research/0/0": 0}
 	got, err := unmarshalCouncilState(s.marshal())
 	if err != nil {
@@ -121,6 +121,46 @@ func TestTheNotesBoardTravelsInTheState(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got.progress.Seen, s.progress.Seen) {
 		t.Errorf("seen = %+v, want %+v", got.progress.Seen, s.progress.Seen)
+	}
+}
+
+// The failed checks of a turn (11.4) travel in the state, in order, so a
+// resumed turn starts at the cycle after the last; so do the checks carried
+// from before it and the builder's step budget.
+func TestTheFailedChecksTravelInTheState(t *testing.T) {
+	s := testState()
+	s.progress.Tests = []string{"tried a; the test failed. " + council.Retest, "tried b; still failing. " + council.Retest}
+	s.progress.Replans = []council.Plan{{Plan: "p2", Briefs: []string{"x", "y"}}, {Plan: "p3", Briefs: []string{"z", "w"}}}
+	s.progress.Build = &council.Build{
+		Target:       "Fixing a bug in a JavaScript game.",
+		Instructions: map[council.Role]string{council.Researcher: "read before concluding", council.Synthesizer: "one edit at a time"},
+		Think:        map[council.Role]int{council.Researcher: 2048, council.Critic: 0},
+		MaxTests:     8,
+		MaxSteps:     5,
+	}
+	s.progress.Prior = []string{"(earlier turn) tried c; failed.", "The synthesizer worked on the request itself."}
+	s.progress.Checks = []string{"SyntaxError at 1", ""}
+	s.progress.Tasks = []council.Task{{ID: 1, Task: "find the fault", Status: council.TaskRefuted, Outcome: "the check did not move"}, {ID: 2, Task: "rewrite it", Status: council.TaskAssigned, Researcher: 2}}
+	s.progress.Carried = []council.Task{{ID: 1, Task: "find the fault", Status: council.TaskOpen}}
+	s.progress.Replans[0].Tasks = s.progress.Tasks
+	got, err := unmarshalCouncilState(s.marshal())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.progress.Tests, s.progress.Tests) {
+		t.Errorf("tests = %q, want %q", got.progress.Tests, s.progress.Tests)
+	}
+	if !reflect.DeepEqual(got.progress.Checks, s.progress.Checks) || !reflect.DeepEqual(got.progress.Tasks, s.progress.Tasks) || !reflect.DeepEqual(got.progress.Carried, s.progress.Carried) {
+		t.Errorf("checks %q tasks %+v carried %+v", got.progress.Checks, got.progress.Tasks, got.progress.Carried)
+	}
+	if !reflect.DeepEqual(got.progress.Prior, s.progress.Prior) {
+		t.Errorf("prior = %q, want %q", got.progress.Prior, s.progress.Prior)
+	}
+	if !reflect.DeepEqual(got.progress.Replans, s.progress.Replans) {
+		t.Errorf("replans = %+v, want %+v", got.progress.Replans, s.progress.Replans)
+	}
+	if !reflect.DeepEqual(got.progress.Build, s.progress.Build) {
+		t.Errorf("build = %+v, want %+v", got.progress.Build, s.progress.Build)
 	}
 }
 
@@ -171,8 +211,8 @@ func TestACouncilTurnSendsItsState(t *testing.T) {
 	req := api.ChatRequest{Model: "council", CouncilChatState: &empty, Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}}}
 	chunks := chatChunks(t, s, req)
 	checkpoints, done := stateChunks(chunks)
-	if len(checkpoints) != 6 || done == "" {
-		t.Fatalf("%d checkpoints, done state %v; want 6 and one", len(checkpoints), done != "")
+	if len(checkpoints) != 7 || done == "" {
+		t.Fatalf("%d checkpoints, done state %v; want 7 and one", len(checkpoints), done != "")
 	}
 	for _, c := range chunks {
 		if c.CouncilChatState != "" && !c.Done && (c.Message.Content != "" || c.Message.Thinking != "" || c.Council != nil) {
@@ -199,11 +239,11 @@ func TestABrokenOffTurnResumes(t *testing.T) {
 	empty := ""
 	req := api.ChatRequest{Model: "council", CouncilChatState: &empty, Messages: []api.Message{{Role: "user", Content: "Why is the sky blue?"}}}
 	checkpoints, _ := stateChunks(chatChunks(t, s, req))
-	if len(checkpoints) != 6 {
+	if len(checkpoints) != 7 {
 		t.Fatalf("%d checkpoints", len(checkpoints))
 	}
-	// After the route, the plan and both researchers.
-	blob := checkpoints[3]
+	// After the route, the build, the plan and both researchers.
+	blob := checkpoints[4]
 	st, err := openCouncilState(blob)
 	if err != nil || st.progress.Plan == nil || st.progress.Rounds[0].Findings[0] == "" || st.progress.Rounds[0].Findings[1] == "" {
 		t.Fatalf("checkpoint 4: %v %+v", err, st.progress)

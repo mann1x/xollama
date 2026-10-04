@@ -43,8 +43,5 @@ func EnumerateCommand(artifact string, b Backend, goos string) (string, []string
 		"--offline", "--verbose",
 		"--gpu", gpuFlag([]Device{{Backend: b}}),
 	}
-	if goos == "windows" {
-		return artifact, args
-	}
-	return "sh", append([]string{artifact}, args...)
+	return run(artifact, args, goos)
 }

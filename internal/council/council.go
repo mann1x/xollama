@@ -49,6 +49,9 @@ type Request struct {
 	Seed        int64
 	Temperature float64
 	MaxTokens   int
+	// NumCtx is the context window of a role on another model, or 0 for
+	// that model's own (xollama.CouncilRole.NumCtx).
+	NumCtx int
 	// Think is the role's think setting (xollama.CouncilRole.Think), or ""
 	// for none. ThinkBudget resolves it against the member's window.
 	Think string
@@ -97,15 +100,34 @@ type Config struct {
 	Jitter float64
 	// Seed, when non-nil, makes a turn reproducible. Nil draws a random seed
 	// per member per request.
-	Seed             *int64
-	MaxRounds        int
+	Seed      *int64
+	MaxRounds int
+	// MaxTests bounds the test cycles of a turn with tools (11.4): the
+	// synthesizer applies and checks the council's proposals, and a failed
+	// check sends its result back to the researchers.
+	MaxTests int
+	// MaxSteps bounds the synthesizer's tool steps in one cycle: past it, it
+	// is asked to report DONE or RETEST.
+	MaxSteps         int
 	ShowDeliberation bool
 	// Broadcast offers council_post to members working side by side
 	// (broadcast.go).
 	Broadcast bool
 	// board is the turn's notes, shared by the members of RunFrom.
-	board     *board
+	board *board
+	// MaxTokens is each role's stated reply cap; an unstated one is resolved
+	// by maxTok against the model the request runs on.
 	MaxTokens map[Role]int
+	// LeadMaxTokens is the council's own model's num_predict, or 0: it bounds
+	// the output budget of an unstated role on that model (OutputBudget).
+	LeadMaxTokens int
+	// Ceiling is the council's output ceiling (xollama.Council.MaxTokens),
+	// and Window the council's window, the owner's: with LeadMaxTokens they
+	// make OutputBudget. The server sets Window once it knows it.
+	Ceiling int
+	Window  int
+	// NumCtx is each role's window on its own model (xollama.CouncilRole.NumCtx).
+	NumCtx map[Role]int
 	// Prompts replace a role's built-in instruction; Models serve a role on
 	// another model.
 	Prompts map[Role]string
@@ -135,11 +157,59 @@ type Config struct {
 	// turn continues that conversation; it offers the planner the continue
 	// route (continue.go).
 	Previous *Progress
+	// Reviews is where the synthesizer's checks go for the critics to
+	// review while it works (review.go); nil offers no reviews.
+	Reviews Reviews
+	// Turn names the user turn this run answers, the same on every trip of
+	// it: it tells this turn's reviews from an earlier turn's. The server
+	// sets it from the turn's hash; "" falls back to the conversation's
+	// length.
+	Turn string
+	// request is the user's latest message, which a review is made against.
+	request string
+	// carried is the task list this turn began with, from the turns before;
+	// ledger the list as it stands (tasks.go).
+	carried, ledger []Task
+	// checks are the outputs of the failed cycles' last checks, aligned
+	// with tests (stuck.go).
+	checks []string
+	// checked receives the synthesizer's last check output when its cycle
+	// ends; nil records nothing.
+	checked *string
+	// showReviews streams the reviews the synthesizer gets as thinking
+	// (callFrom sets it); nil shows nothing.
+	showReviews func(round int, rs []Review)
 	// continuing marks a synthesizer continuing the previous deliberation.
 	continuing bool
+	// tests are the reports of the turn's failed checks so far, and
+	// cycleStart the round the current test cycle began at (RunFrom).
+	tests      []string
+	cycleStart int
+	// first is the turn's first plan, which a re-plan follows (base).
+	first *Plan
+	// build is the builder's shaping of this turn's council (build.go).
+	build *Build
 	// ResultBudget is the characters of tool results a member carries whole
 	// in its own turns; past it the rest travel by ref. 0 is the default.
 	ResultBudget int
+	// Instructions is the guidance each slot adds (directive.go): Everyone
+	// after the charter, a role after its instruction, the builder before
+	// its build.
+	Instructions map[Role]Said
+	// Mode, Stated, Evidence and CheckTool are a harness's directive
+	// (directive.go): the turn's mode, its build, its agent's attempts and
+	// the tool whose result is the check.
+	Mode      string
+	Stated    *Build
+	Evidence  []api.CouncilEvidence
+	CheckTool string
+	// CheckCall is the harness's check as a call (api.CouncilCheckCall), or
+	// nil: only it counts as the check, and the council makes it after a
+	// synthesizer turn that wrote and ran none (checkcall.go).
+	CheckCall *api.ToolCall
+	// BudgetMessage is the message that closes a member's reasoning at its
+	// budget, which marks reasoning to condense (replay.go); "" for none.
+	BudgetMessage string
 }
 
 // Built-in defaults: two researchers, which find more between them than one,
@@ -150,9 +220,8 @@ const (
 	DefaultResearchers = 2
 	DefaultCritics     = 1
 	DefaultJitter      = 0.02
+	DefaultMaxTests    = 6
 )
-
-var defaultMaxTokens = map[Role]int{Planner: 512, Researcher: 384, Critic: 256, Synthesizer: 1024}
 
 // FromModel resolves a model's council section against the defaults.
 // temperature is the model's own, after request and Modelfile options.
@@ -160,16 +229,16 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 	cfg := Config{
 		Researchers: DefaultResearchers, Critics: DefaultCritics,
 		Temperature: temperature, Jitter: DefaultJitter,
-		MaxRounds: 1, ShowDeliberation: true,
-		MaxTokens: map[Role]int{}, Prompts: map[Role]string{}, Models: map[Role]string{},
+		MaxRounds: 1, MaxTests: DefaultMaxTests, MaxSteps: DefaultMaxSteps, ShowDeliberation: true,
+		MaxTokens: map[Role]int{}, NumCtx: map[Role]int{}, Prompts: map[Role]string{}, Models: map[Role]string{},
 		Hosts: map[Role]string{}, Think: map[Role]string{},
-		Charter: Charter(c),
-	}
-	for r, n := range defaultMaxTokens {
-		cfg.MaxTokens[r] = n
+		Charter: Charter(c), Instructions: map[Role]Said{}, Ceiling: xollama.DefaultCouncilMaxTokens,
 	}
 	if c == nil {
 		return cfg
+	}
+	if c.MaxTokens > 0 {
+		cfg.Ceiling = c.MaxTokens
 	}
 	if c.TemperatureJitter != nil {
 		cfg.Jitter = *c.TemperatureJitter
@@ -182,7 +251,10 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 		cfg.ShowDeliberation = *c.ShowDeliberation
 	}
 	cfg.Broadcast = c.Broadcast != nil && *c.Broadcast
-	for _, r := range []Role{Planner, Researcher, Critic, Synthesizer} {
+	if c.Instructions != "" {
+		cfg.Instructions[Everyone] = Said{Owner: c.Instructions}
+	}
+	for _, r := range []Role{Planner, Researcher, Critic, Synthesizer, Builder} {
 		role := c.Role(string(r))
 		if role == nil {
 			continue
@@ -198,8 +270,14 @@ func FromModel(c *xollama.Council, temperature float64) Config {
 		if role.MaxTokens > 0 {
 			cfg.MaxTokens[r] = role.MaxTokens
 		}
+		if role.NumCtx > 0 {
+			cfg.NumCtx[r] = role.NumCtx
+		}
 		if role.Prompt != "" {
 			cfg.Prompts[r] = role.Prompt
+		}
+		if role.Instructions != "" {
+			cfg.Instructions[r] = Said{Owner: role.Instructions}
 		}
 		if role.Model != "" {
 			cfg.Models[r] = role.Model
@@ -250,7 +328,8 @@ func NewDraws(cfg Config) Draws {
 		t := cfg.Temperature * (1 + cfg.Jitter*(2*src.Float64()-1))
 		return Draw{Seed: seed(), Temperature: t}
 	}
-	rounds := max(cfg.MaxRounds, 1)
+	// Each test cycle may take every revision round again.
+	rounds := max(cfg.MaxRounds, 1) * (max(cfg.MaxTests, maxBuildTests) + 1)
 	d := Draws{
 		Decide: fixed(), Direct: fixed(), Plan: fixed(), Synth: fixed(),
 		Researchers: make([][]Draw, rounds), Critics: make([][]Draw, rounds),
@@ -296,20 +375,52 @@ func (c Config) Validate() error {
 	return nil
 }
 
+// OutputBudget is the reply cap of a member on the council's own model whose
+// role states none, thinking included: Cerebriline's output budget, the least
+// of three quarters of the window, the ceiling and the model's num_predict.
+// The caps are room, not a target: the prompts ask for terse replies, and a
+// member starved of room cannot carry its findings and their evidence
+// (owner's ruling 2026-09-28: "the council should not be starved").
+func (cfg Config) OutputBudget() int {
+	n := cfg.Ceiling
+	if n <= 0 {
+		n = xollama.DefaultCouncilMaxTokens
+	}
+	if cfg.Window > 0 {
+		n = min(n, cfg.Window*3/4)
+	}
+	if cfg.LeadMaxTokens > 0 {
+		n = min(n, cfg.LeadMaxTokens)
+	}
+	return n
+}
+
 // ThinkBudget resolves a role's think setting to the tokens a member may spend
-// reasoning, or 0 for none. "on" is xollama.DefaultCouncilThinkBudget; a
-// level is its share of window,
-// the member's context, by the same table a chat request's think level uses;
-// a positive integer is a budget as it stands.
-func ThinkBudget(setting string, window int) int {
+// reasoning, or 0 for none. capTokens is the member's reply cap, which the
+// reasoning is part of, and window its context. With a cap, a level is its
+// share of the cap (as Cerebriline maps a level onto its output budget, by
+// the table a chat request's level uses), "on" is medium, and a token budget
+// is held to four fifths of the cap so the reply keeps room. With none --
+// the member's own model sets it -- a level is a share of window and "on" is
+// xollama.DefaultCouncilThinkBudget.
+func ThinkBudget(setting string, capTokens, window int) int {
 	switch setting {
 	case "", xollama.CouncilThinkOff:
 		return 0
 	case xollama.CouncilThinkOn:
-		return xollama.DefaultCouncilThinkBudget
+		if capTokens <= 0 {
+			return xollama.DefaultCouncilThinkBudget
+		}
+		setting = "medium"
 	}
 	if n, err := strconv.Atoi(setting); err == nil {
+		if capTokens > 0 {
+			n = min(n, capTokens*4/5)
+		}
 		return max(n, 0)
+	}
+	if capTokens > 0 {
+		window = capTokens
 	}
 	return (&api.ThinkValue{Value: setting}).BudgetTokens(window)
 }

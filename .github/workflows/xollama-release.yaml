@@ -2,7 +2,13 @@
 # read that first — this file is the mechanism, not the rules.
 #
 # A release is a pull request from dev into main titled `release: v<version>`,
-# whose body is the release notes. While the PR is open this workflow only
+# whose body is the release notes. A version is one of three forms, all on the
+# upstream release dev is based on (RELEASE.md, "Versions and tags"):
+#   v<upstream>-rc.<k>.xollama   a release candidate, never promoted
+#   v<upstream>-xollama          the release: the tree of its last candidate
+#   v<upstream>-xollama.<n>      a re-release on the same upstream
+# Plain semver orders them in exactly that order, which is the order the
+# desktop updater uses. While the PR is open this workflow only
 # checks it. When it is merged (with a merge commit), it builds on
 # GitHub-hosted runners, fills a draft release, and publishes it as a
 # pre-release — which is also what creates the tag, on the merge commit.
@@ -15,7 +21,7 @@
 # Nothing native is compiled here. The CPU runtime is a pinned artifact built
 # once by xollama-runtime.yaml (llama/runtime-pin.txt), the CUDA and Vulkan
 # backends come from upstream's release of the same base, guarded by
-# LLAMA_CPP_VERSION, and the opencoti engine comes from llm/engine/pin.txt,
+# LLAMA_CPP_VERSION, and the opencoti engine comes from llm/engine/pin,
 # SHA-256 enforced. So the payload -- and the payload id the delta update keys
 # on -- changes only when one of those three pins moves. Only the Go binaries,
 # the tray app and the installers are built.
@@ -39,6 +45,8 @@ on:
 permissions:
   contents: write
   pull-requests: read
+  # publish starts docker-release.yaml on the tag it has just created.
+  actions: write
 
 concurrency:
   group: xollama-release-${{ github.event.pull_request.number || inputs.pr }}
@@ -63,12 +71,14 @@ jobs:
       sha: ${{ steps.plan.outputs.sha }}
       version: ${{ steps.plan.outputs.version }}
       tag: ${{ steps.plan.outputs.tag }}
+      kind: ${{ steps.plan.outputs.kind }}
       upstream: ${{ steps.plan.outputs.upstream }}
       engine: ${{ steps.plan.outputs.engine }}
       enginearch: ${{ steps.plan.outputs.enginearch }}
       runtime_tag: ${{ steps.plan.outputs.runtime_tag }}
       runtime_asset: ${{ steps.plan.outputs.runtime_asset }}
       runtime_sha256: ${{ steps.plan.outputs.runtime_sha256 }}
+      linux_runtime_tag: ${{ steps.plan.outputs.linux_runtime_tag }}
     steps:
       - name: plan
         id: plan
@@ -89,16 +99,21 @@ jobs:
           gh pr view "$pr" --json title,body,state,baseRefName,headRefOid,mergeCommit > pr.json
           title=$(jq -r .title pr.json)
           state=$(jq -r .state pr.json)
-          re='^release: v([0-9]+\.[0-9]+\.[0-9]+)-xollama\.([1-9][0-9]*)$'
+          re='^release: v([0-9]+\.[0-9]+\.[0-9]+)-(rc\.([1-9][0-9]*)\.xollama|xollama(\.([1-9][0-9]*))?)$'
           if ! [[ "$title" =~ $re ]]; then
             # Any other PR into main is not a release, and that is not an error.
             [ "$GITHUB_EVENT_NAME" = pull_request ] && { echo "not a release PR: $title"; exit 0; }
-            fail "PR #$pr is not a release PR: its title must be 'release: v<upstream>-xollama.<n>', got '$title'"
+            fail "PR #$pr is not a release PR: its title must be 'release: v<upstream>-rc.<k>.xollama', 'release: v<upstream>-xollama' or 'release: v<upstream>-xollama.<n>', got '$title'"
           fi
           upstream=${BASH_REMATCH[1]}
-          version="${upstream}-xollama.${BASH_REMATCH[2]}"
+          version="${upstream}-${BASH_REMATCH[2]}"
+          if [ -n "${BASH_REMATCH[3]}" ]; then kind=rc
+          elif [ -z "${BASH_REMATCH[5]}" ]; then kind=release
+          else kind=rerelease; fi
           tag="v$version"
-          out version "$version"; out tag "$tag"; out upstream "$upstream"
+          out version "$version"; out tag "$tag"; out upstream "$upstream"; out kind "$kind"
+          # Every tag this repository publishes as an xOllama release, old and new.
+          tags='^v[0-9]+\.[0-9]+\.[0-9]+-(rc\.[1-9][0-9]*\.xollama|xollama(\.[1-9][0-9]*)?)$'
 
           # check  : PR open, event-driven — validate only, build nothing
           # draft  : manual run on an open PR — build the head into a draft
@@ -142,8 +157,21 @@ jobs:
           fi
           # Newer than everything published, by the order the updater uses.
           newest=$(gh release list --limit 100 --json tagName,isDraft --jq '.[] | select(.isDraft | not) | .tagName' \
-            | { grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-xollama\.[0-9]+$' || true; } | sed 's/^v//' | { cat; echo "$version"; } | sort -V | tail -1)
+            | { grep -E "$tags" || true; } | sed 's/^v//' | { cat; echo "$version"; } | sort -V | tail -1)
           [ "$newest" = "$version" ] || fail "$version is not newer than the published $newest"
+
+          # The release ships the tree its last candidate was checked on. The
+          # version is stamped into the binaries, so the release is a rebuild;
+          # the same tree is what lets it take the short check (RELEASE.md step 7).
+          if [ "$kind" = release ]; then
+            rc=$(gh release list --limit 100 --json tagName,isDraft --jq '.[] | select(.isDraft | not) | .tagName' \
+              | { grep -E "^v${upstream//./\\.}-rc\.[1-9][0-9]*\.xollama$" || true; } | sort -V | tail -1)
+            [ -n "$rc" ] || fail "$tag has no published candidate; release v$upstream-rc.1.xollama first"
+            git fetch --quiet origin "refs/tags/$rc:refs/tags/$rc"
+            [ "$(git rev-parse "$sha^{tree}")" = "$(git rev-parse "$rc^{tree}")" ] \
+              || fail "$tag must ship the tree of $rc, its last candidate, and $sha differs; release the change as the next candidate"
+            echo "tree matches $rc"
+          fi
 
           # The CUDA and Vulkan backends are borrowed from upstream's release of
           # the same base, which is only sound when both sides built the same
@@ -175,6 +203,35 @@ jobs:
           out runtime_tag "$rtag"; out runtime_asset "$rasset"; out runtime_sha256 "$rsum"
           echo "CPU runtime: $rtag (inputs match)"
 
+          # The container image is built from this tag once it exists
+          # (docker-release.yaml, started by publish), from the two Linux
+          # runtime pins. Refuse here what would only fail there, after the
+          # release is out: a pin without its runtime, built from other llama
+          # inputs, not published, or the two architectures on different fork
+          # releases. The fork's llama/compat/README.md is not a build input,
+          # so the digest leaves it out, as scripts/docker-assemble.sh does.
+          lnow=$(git ls-tree -r "$sha" -- LLAMA_CPP_VERSION llama/server llama/compat \
+            | grep -v '[[:space:]]llama/compat/README\.md$' | sha256sum | cut -c1-64)
+          ltags=
+          for lf in llama/runtime-pin-linux.txt llama/runtime-pin-linux-arm64.txt; do
+            lpin=$(git show "$sha:$lf") || fail "no $lf at $sha; the image cannot be assembled"
+            lfield() { awk -v k="$1" '$1==k {print $2; exit}' <<< "$lpin"; }
+            lrepo=$(lfield repo); ltag=$(lfield tag); lasset=$(lfield asset); linputs=$(lfield inputs)
+            [ -n "$lrepo" ] && [ -n "$ltag" ] && [ -n "$lasset" ] && [ -n "$(lfield sha256)" ] \
+              || fail "$lf names no runtime; move it to the fork's release (FORK-SYNC.md)"
+            [ "$lnow" = "$linputs" ] \
+              || fail "$lf was built from inputs $linputs, but this commit's are $lnow; move both Linux runtime pins to the fork release built from them"
+            gh release view "$ltag" --repo "$lrepo" --json assets --jq '.assets[].name' | grep -qx "$lasset" \
+              || fail "$lf: $lrepo $ltag publishes no $lasset"
+            [ "$(lfield upstream)" = "v$upstream" ] \
+              || fail "$lf takes its GPU backends from $(lfield upstream), this release is on v$upstream"
+            ltags="$ltags $ltag"
+          done
+          [ "$(tr ' ' '\n' <<< "$ltags" | sort -u | grep -c .)" = 1 ] \
+            || fail "the two Linux runtime pins name different fork releases ($ltags); they move together"
+          out linux_runtime_tag "${ltags##* }"
+          echo "Linux CPU runtimes: fork ${ltags##* }, amd64 and arm64 (inputs match)"
+
           # The Go toolchain: upstream's LINE, the newest PATCH. go.mod stays
           # upstream's (`go 1.26.0`, what upstream builds its releases with);
           # the build takes the newest go<major.minor>.N, because 1.26.0 carries
@@ -188,13 +245,13 @@ jobs:
           out gotoolchain "$toolchain"; out gomod "$gomod"
           echo "Go: $toolchain (go.mod: go $gomod)"
 
-          # The -gpu bin when the pin has one; else a dev snapshot's bare APE,
-          # whose CUDA payload is a win-x86_64 dso row (Pin.ArchFor).
-          pin=$(git show "$sha:llm/engine/pin.txt")
-          if grep -Eq '^[[:space:]]*bin[[:space:]]+win-x86_64-gpu[[:space:]]' <<< "$pin"; then
-            out engine yes; out enginearch win-x86_64-gpu; echo "opencoti: the pin carries a Windows artifact (win-x86_64-gpu)"
-          elif grep -Eq '^[[:space:]]*bin[[:space:]]+win-x86_64[[:space:]]' <<< "$pin"; then
-            out engine yes; out enginearch win-x86_64; echo "opencoti: the pin carries a Windows artifact (win-x86_64, dso-side GPU payload)"
+          # The engine is one file for every platform (`file any bin`), with
+          # a row of its own for Windows under the .exe name it needs. Its
+          # pin is the one our index names (llm/engine/pin, pin format 2).
+          epin=$(git show "$sha:llm/engine/pin/index.txt" | awk '$1=="engine" {n=split($2,a,"/"); print a[n]}')
+          [ -n "$epin" ] || fail "llm/engine/pin/index.txt names no engine pin at $sha"
+          if git show "$sha:llm/engine/pin/$epin" | grep -Eq '^[[:space:]]*file[[:space:]]+(win-x86_64|any)[[:space:]]+bin[[:space:]]'; then
+            out engine yes; out enginearch win-x86_64; echo "opencoti: the pin carries the engine for Windows"
           else
             out engine no; echo "opencoti: no Windows row at this pin; the installer carries llama.cpp only"
           fi
@@ -274,15 +331,28 @@ jobs:
           }
           Remove-Item -Force $zip
 
-      # Into lib/ollama/engines, not beside llama-server.exe: ggml's loader
-      # falls back to ggml-cuda.dll in the exe's directory, and a dev pin's
-      # engine dso has exactly that name (cmake/opencoti-engine.cmake).
+      # Into lib/ollama/engines, not beside llama-server.exe: that directory
+      # is the engine's own, and ggml's loader in llama-server.exe looks in
+      # its own for a ggml-cuda.dll (cmake/opencoti-engine.cmake).
+      # The one fetch stages everything the pin names for Windows beside the
+      # engine under its published name: the engine, its CUDA and Vulkan
+      # DLLs, the media DLLs and their licence texts. The installer takes
+      # lib\ollama recursively and payloadId hashes every file under it, so
+      # they ship and a changed one is a payload change.
       - name: stage the opencoti engine
         if: env.ENGINE == 'yes'
         working-directory: repo
         run: |
-          cmake -DPIN_FILE=llm/engine/pin.txt -DARCH=$ENGINE_ARCH \
+          cmake -DPIN_DIR=llm/engine/pin -DARCH=$ENGINE_ARCH -DMANIFEST=engine-manifest.txt \
             -DDEST_DIR=dist/windows-amd64/lib/ollama/engines -P cmake/opencoti-fetch.cmake
+          [ -s engine-manifest.txt ] || { echo "::error::the fetch staged nothing"; exit 1; }
+          while read -r comp version kind name sum bytes; do
+            f="dist/windows-amd64/lib/ollama/engines/$name"
+            [ "$(sha256sum "$f" 2>/dev/null | cut -c1-64)" = "$sum" ] \
+              || { echo "::error::$comp $kind $name is not staged beside the engine as the pin names it"; exit 1; }
+            echo "$comp $version $kind: $name"
+          done < engine-manifest.txt
+          rm engine-manifest.txt
 
       - name: payload
         working-directory: repo
@@ -384,8 +454,15 @@ jobs:
   linux:
     needs: plan
     if: needs.plan.outputs.go == 'true'
-    runs-on: ubuntu-latest
+    # Each architecture on a runner of its own kind: no emulation, and the
+    # binary is run where it was built.
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     env:
+      ARCH: ${{ matrix.arch }}
       SHA: ${{ needs.plan.outputs.sha }}
       TAG: ${{ needs.plan.outputs.tag }}
       VERSION: ${{ needs.plan.outputs.version }}
@@ -401,26 +478,30 @@ jobs:
       - name: build (inside almalinux 8)
         working-directory: repo
         run: |
-          docker run --rm -v "$PWD:/src" -w /src -e VERSION \
+          docker run --rm -v "$PWD:/src" -w /src -e VERSION -e ARCH \
             -e CGO_ENABLED=1 -e CGO_LDFLAGS=-ldl -e GOTOOLCHAIN=local -e WANT="$GO_TOOLCHAIN" \
             almalinux:8 bash -euo pipefail -c '
               dnf install -y -q gcc gcc-c++ tar gzip findutils > /dev/null
-              curl -fsSL "https://go.dev/dl/${WANT}.linux-amd64.tar.gz" -o /tmp/go.tar.gz
+              # arm64: clang, as upstream builds it. AlmaLinux 8 gcc has no
+              # arm_bf16.h, which the MLX headers include.
+              if [ "$ARCH" = arm64 ]; then dnf install -y -q clang > /dev/null; export CC=clang CXX=clang++; fi
+              curl -fsSL "https://go.dev/dl/${WANT}.linux-${ARCH}.tar.gz" -o /tmp/go.tar.gz
               tar -C /usr/local -xzf /tmp/go.tar.gz
               export PATH=/usr/local/go/bin:$PATH
               ldflags="-s -w -X=github.com/ollama/ollama/version.Version=$VERSION -X=github.com/ollama/ollama/server.mode=release"
-              go build -trimpath -ldflags "$ldflags" -o xollama-linux-amd64 .
+              go build -trimpath -ldflags "$ldflags" -o "xollama-linux-$ARCH" .
             '
-          sudo chown "$(id -u):$(id -g)" xollama-linux-amd64
-          got=$(GOTOOLCHAIN=local go version xollama-linux-amd64 | awk '{print $NF}')
+          bin="xollama-linux-$ARCH"
+          sudo chown "$(id -u):$(id -g)" "$bin"
+          got=$(GOTOOLCHAIN=local go version "$bin" | awk '{print $NF}')
           echo "built with $got"
           [ "$got" = "$GO_TOOLCHAIN" ] || { echo "::error::built with $got, not $GO_TOOLCHAIN"; exit 1; }
-          ./xollama-linux-amd64 --version 2>&1 | tee version.txt
+          "./$bin" --version 2>&1 | tee version.txt
           grep -q "$VERSION" version.txt || { echo "::error::the binary does not report $VERSION"; exit 1; }
-          objdump -T xollama-linux-amd64 | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
+          objdump -T "$bin" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
       - name: attach to the draft
         working-directory: repo
-        run: gh release upload "$TAG" xollama-linux-amd64 --clobber
+        run: gh release upload "$TAG" "xollama-linux-$ARCH" --clobber
 
   publish:
     needs: [plan, windows, linux]
@@ -431,9 +512,12 @@ jobs:
       SHA: ${{ needs.plan.outputs.sha }}
       TAG: ${{ needs.plan.outputs.tag }}
       MODE: ${{ needs.plan.outputs.mode }}
+      KIND: ${{ needs.plan.outputs.kind }}
       UPSTREAM: ${{ needs.plan.outputs.upstream }}
       ENGINE: ${{ needs.plan.outputs.engine }}
       RUNTIME_TAG: ${{ needs.plan.outputs.runtime_tag }}
+      LINUX_RUNTIME_TAG: ${{ needs.plan.outputs.linux_runtime_tag }}
+      VERSION: ${{ needs.plan.outputs.version }}
       GO_TOOLCHAIN: ${{ needs.plan.outputs.gotoolchain }}
       GO_MOD: ${{ needs.plan.outputs.gomod }}
     steps:
@@ -443,7 +527,7 @@ jobs:
           mkdir assets && cd assets
           gh release download "$TAG" --clobber
           rm -f sha256sum.txt
-          want=(payload-id.txt xOllamaSetup.exe xOllamaUpdate.exe xollama-linux-amd64 xollama-windows-amd64.exe)
+          want=(payload-id.txt xOllamaSetup.exe xOllamaUpdate.exe xollama-linux-amd64 xollama-linux-arm64 xollama-windows-amd64.exe)
           have=$(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort | xargs)
           [ "$have" = "${want[*]}" ] || { echo "::error::assets are '$have', expected '${want[*]}'"; exit 1; }
           grep -Eqx '[0-9a-f]{64}' payload-id.txt || { echo "::error::payload-id.txt is not a sha256"; exit 1; }
@@ -459,14 +543,15 @@ jobs:
           git clone -q --filter=blob:none --no-checkout "https://github.com/$GITHUB_REPOSITORY" repo
           git -C repo fetch -q origin "$SHA"
           llama=$(git -C repo show "$SHA:LLAMA_CPP_VERSION" | tr -d '[:space:]')
-          etag=$(git -C repo show "$SHA:llm/engine/pin.txt" | awk '$1=="tag"{print $2}')
+          epin=$(git -C repo show "$SHA:llm/engine/pin/index.txt" | awk '$1=="engine" {n=split($2,a,"/"); print a[n]}')
+          etag=$(git -C repo show "$SHA:llm/engine/pin/$epin" | awk '$1=="file" && $2=="any" && $3=="bin" {n=split($4,a,"/"); print a[n]; exit}')
           if [ "$ENGINE" = yes ]; then engine="opencoti-llamafile \`$etag\` on Windows and Linux"
           else engine="opencoti-llamafile \`$etag\` on Linux; **llama.cpp only on Windows** at this pin"; fi
           # Whether updating to this release takes the small installer: only when
           # the previous published release carried the same payload.
           id=$(cat assets/payload-id.txt)
           prev=$(gh release list --limit 20 --json tagName,isDraft --jq '.[] | select(.isDraft | not) | .tagName' \
-            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-xollama\.[0-9]+$' | grep -vx "$TAG" | sort -V | tail -1 || true)
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-(rc\.[1-9][0-9]*\.xollama|xollama(\.[1-9][0-9]*)?)$' | grep -vx "$TAG" | sort -V | tail -1 || true)
           if [ -z "$prev" ]; then delta="first release: every install takes \`xOllamaSetup.exe\`"
           elif [ "$(gh release download "$prev" -p payload-id.txt -O - 2>/dev/null)" = "$id" ]; then
             delta="payload unchanged since $prev: updating from it downloads \`xOllamaUpdate.exe\` only"
@@ -484,6 +569,8 @@ jobs:
             echo "| Go | \`$GO_TOOLCHAIN\` (go.mod: \`go $GO_MOD\`, upstream's line with its newest patch release) |"
             echo "| llama.cpp | \`$llama\`: CPU runtime \`$RUNTIME_TAG\`, CUDA 13 and Vulkan backends from upstream v$UPSTREAM |"
             echo "| engine | $engine |"
+            echo "| Linux | \`xollama-linux-amd64\`, \`xollama-linux-arm64\` (glibc 2.28 and newer; the binary alone, no runtime) |"
+            echo "| container image | \`mannixita/xollama:$VERSION\` and \`ghcr.io/mann1x/xollama:$VERSION\`, amd64 and arm64; CPU runtime \`mann1x/ollama $LINUX_RUNTIME_TAG\`. Built from this tag after the release is published |"
             echo "| payload id | \`$id\` |"
             echo "| update | $delta |"
             echo
@@ -499,7 +586,21 @@ jobs:
           gh release edit "$TAG" --draft=false --prerelease --latest=false
           got=$(git ls-remote "https://github.com/$GITHUB_REPOSITORY" "refs/tags/$TAG" | cut -f1)
           [ "$got" = "$SHA" ] || { echo "::error::tag $TAG points at $got, not $SHA"; exit 1; }
-          echo "published $TAG as a pre-release; promote after the test-host check (RELEASE.md step 8)"
+          if [ "$KIND" = rc ]; then
+            echo "published $TAG as a pre-release; a candidate is never promoted: after the test-host check, release v$UPSTREAM-xollama from the same tree"
+          else
+            echo "published $TAG as a pre-release; promote after the test-host check (RELEASE.md step 8)"
+          fi
+
+      # A tag made with GITHUB_TOKEN starts no workflow on its own, but a
+      # workflow_dispatch does. The image reads the release's pre-release flag:
+      # a pre-release moves :dev, never :latest. A failure here is a warning:
+      # the release is out, and the image can be run by hand on the tag.
+      - name: start the container image
+        if: env.MODE == 'release'
+        run: |
+          gh workflow run docker-release.yaml --ref "$TAG" \
+            || echo "::warning::could not start docker-release.yaml on $TAG; run it by hand: gh workflow run docker-release.yaml --ref $TAG"
 
       - name: dry run
         if: env.MODE == 'draft'

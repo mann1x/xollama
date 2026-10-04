@@ -14,9 +14,12 @@ import (
 
 // stub answers every role with a fixed reply and records the calls.
 type stub struct {
-	mu      sync.Mutex
-	calls   []Request
-	route   string
+	mu    sync.Mutex
+	calls []Request
+	route string
+	// plan, when set, is the planner's reply to a plan request.
+	plan    func(Request) string
+	build   string
 	fail    Role
 	revise  bool
 	live    atomic.Int32
@@ -53,6 +56,13 @@ func (s *stub) Stream(ctx context.Context, req Request, onToken func(string)) (s
 	switch {
 	case req.Format != nil && strings.Contains(string(req.Format), "route"):
 		out = s.route
+	case req.Format != nil && strings.Contains(string(req.Format), `"target"`):
+		out = s.build
+		if out == "" {
+			out = `{"target":"t","planner":"","researcher":"","critic":"","synthesizer":"","max_tests":6}`
+		}
+	case req.Format != nil && s.plan != nil:
+		out = s.plan(req)
 	case req.Format != nil:
 		out = `{"plan":"p","briefs":["a","b","c","d"]}`
 	case req.Role == Critic && s.revise:
@@ -136,9 +146,9 @@ func TestTheCouncilRunsEveryRoleAtItsWidth(t *testing.T) {
 	if s.count(Synthesizer) != 1 || res.Answer != "synthesizer says" {
 		t.Errorf("answer %q", res.Answer)
 	}
-	// plan + 3 findings + 1 critique as thinking, the answer as content
-	if thinking != 5 || content != 1 || done != 6 {
-		t.Errorf("thinking %d content %d done %d, want 5, 1 and 6", thinking, content, done)
+	// build + plan + 3 findings + 1 critique as thinking, the answer as content
+	if thinking != 6 || content != 1 || done != 7 {
+		t.Errorf("thinking %d content %d done %d, want 6, 1 and 7", thinking, content, done)
 	}
 }
 
@@ -269,18 +279,79 @@ func TestACanceledTurnReturnsPromptly(t *testing.T) {
 	}
 }
 
+// With a reply cap a level is a share of it, "on" is medium and a token
+// budget leaves the reply a fifth; without one (the member's own model sets
+// it) a level is a share of the window and "on" a fixed budget.
 func TestThinkBudgetResolvesARoleSetting(t *testing.T) {
-	for setting, want := range map[string]int{
-		"": 0, "off": 0,
-		"on":     2048, // DefaultCouncilThinkBudget, whatever the window
-		"medium": 4096,
-		"high":   8192,
-		"low":    2048,
-		"2048":   2048,
+	for _, tc := range []struct {
+		setting     string
+		cap, window int
+		want        int
+	}{
+		{"", 16384, 131072, 0},
+		{"off", 16384, 131072, 0},
+		{"on", 16384, 131072, 4096},
+		{"medium", 16384, 131072, 4096},
+		{"high", 16384, 131072, 8192},
+		{"low", 16384, 131072, 2048},
+		{"max", 16384, 131072, 13107},
+		{"2048", 16384, 131072, 2048},
+		{"65536", 16384, 131072, 13107},
+		{"on", 0, 131072, xollama.DefaultCouncilThinkBudget},
+		{"medium", 0, 16384, 4096},
+		{"65536", 0, 16384, 65536},
 	} {
-		if got := ThinkBudget(setting, 16384); got != want {
-			t.Errorf("ThinkBudget(%q, 16384) = %d, want %d", setting, got, want)
+		if got := ThinkBudget(tc.setting, tc.cap, tc.window); got != tc.want {
+			t.Errorf("ThinkBudget(%q, cap %d, window %d) = %d, want %d", tc.setting, tc.cap, tc.window, got, tc.want)
 		}
+	}
+}
+
+// A member's output budget is Cerebriline's: the least of three quarters of
+// the window, the council's ceiling and the model's num_predict.
+func TestTheOutputBudgetIsTheLeastOfWindowCeilingAndNumPredict(t *testing.T) {
+	for _, tc := range []struct {
+		name                   string
+		ceiling, window, numPr int
+		want                   int
+	}{
+		{"the default ceiling on a large window", 0, 393216, 0, xollama.DefaultCouncilMaxTokens},
+		{"three quarters of a small window", 0, 8192, 0, 6144},
+		{"a stated ceiling", 32768, 393216, 0, 32768},
+		{"the model's num_predict", 32768, 393216, 12000, 12000},
+		{"no window known", 0, 0, 0, xollama.DefaultCouncilMaxTokens},
+	} {
+		c := &xollama.Council{MaxTokens: tc.ceiling}
+		cfg := FromModel(c, 0.7)
+		cfg.Window, cfg.LeadMaxTokens = tc.window, tc.numPr
+		if got := cfg.OutputBudget(); got != tc.want {
+			t.Errorf("%s: %d, want %d", tc.name, got, tc.want)
+		}
+		if got := cfg.Cap(Researcher); got != tc.want {
+			t.Errorf("%s: a researcher's cap %d, want the budget %d", tc.name, got, tc.want)
+		}
+	}
+}
+
+// Each member reads the cap its reply is cut at, and its thinking share of it.
+func TestAMemberIsToldItsOutputBudget(t *testing.T) {
+	c := &xollama.Council{
+		Researcher: &xollama.CouncilRole{Think: "medium"},
+		Critic:     &xollama.CouncilRole{Model: "other"},
+	}
+	cfg := FromModel(c, 0.7)
+	cfg.Window = 393216
+	got := prompt(cfg, Researcher)
+	for _, want := range []string{"# Output Budget", "capped at 16384 tokens, thinking included", "at most 4096 tokens may be spent thinking (effort medium)"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the researcher's instruction lacks %q:\n%s", want, got)
+		}
+	}
+	if got := prompt(cfg, Synthesizer); !strings.Contains(got, "capped at 16384 tokens") || strings.Contains(got, "spent thinking") {
+		t.Errorf("a synthesizer that does not think is told its cap alone:\n%s", got)
+	}
+	if got := prompt(cfg, Critic); strings.Contains(got, "# Output Budget") {
+		t.Errorf("a critic on another model, whose cap that model sets, was told one:\n%s", got)
 	}
 }
 
@@ -296,7 +367,8 @@ func TestEachRoleCarriesItsThinkButNeverTheRoute(t *testing.T) {
 	if _, err := Run(t.Context(), cfg, s, conv, func(Event) {}); err != nil {
 		t.Fatal(err)
 	}
-	want := map[Role]string{Planner: "on", Researcher: "high", Critic: "", Synthesizer: "1024"}
+	// The builder runs where the planner does, and reasons as it does.
+	want := map[Role]string{Planner: "on", Builder: "on", Researcher: "high", Critic: "", Synthesizer: "1024"}
 	for _, c := range s.calls {
 		isRoute := c.Format != nil && strings.Contains(string(c.Format), "route")
 		switch {
@@ -421,11 +493,11 @@ func TestEveryMemberSharesOnePrefix(t *testing.T) {
 					}
 				}
 				if c.Role == Planner && c.Format != nil && strings.Contains(string(c.Format), "briefs") {
-					if !strings.HasPrefix(c.Messages[len(shared)].Content, DefaultCharter) {
+					if !strings.HasPrefix(c.Messages[len(shared)].Content, header(instructionsSource)+DefaultCharter) {
 						t.Errorf("the plan request does not open with the charter: %q", c.Messages[len(shared)].Content)
 					}
 				}
-				if c.Role != Planner && route == `{"route":"council"}` && !strings.HasPrefix(c.Messages[len(shared)].Content, DefaultCharter) {
+				if c.Role != Planner && c.Role != Builder && route == `{"route":"council"}` && !strings.HasPrefix(c.Messages[len(shared)].Content, header(instructionsSource)+DefaultCharter) {
 					t.Errorf("%s does not continue from the plan request", c.Role)
 				}
 			}
@@ -449,7 +521,7 @@ func TestTheRouteDecisionReadsTheCharter(t *testing.T) {
 		t.Fatal(err)
 	}
 	route := s.calls[0]
-	if route.Format == nil || !strings.HasPrefix(route.Messages[len(route.Messages)-1].Content, DefaultCharter) {
+	if route.Format == nil || !strings.HasPrefix(route.Messages[len(route.Messages)-1].Content, header(instructionsSource)+DefaultCharter) {
 		t.Errorf("the route decision does not open with the charter: %+v", route.Messages)
 	}
 }
@@ -467,8 +539,8 @@ func TestATurnResumesFromItsProgress(t *testing.T) {
 		t.Fatal(err)
 	}
 	// route, plan, two researchers, one critic
-	if len(points) != 5 {
-		t.Fatalf("%d checkpoints, want 5: %+v", len(points), points)
+	if len(points) != 6 {
+		t.Fatalf("%d checkpoints, want 6: %+v", len(points), points)
 	}
 	last := points[len(points)-1]
 	if last.Route != "council" || last.Plan == nil || len(last.Rounds) != 1 || last.Rounds[0].Critiques[0] == "" || last.Rounds[0].Findings[0] == "" {
@@ -476,9 +548,9 @@ func TestATurnResumesFromItsProgress(t *testing.T) {
 	}
 
 	// Broken off after the first researcher: the rest runs, nothing twice.
-	from := points[2]
+	from := points[3]
 	if from.Rounds[0].Findings[0] == "" && from.Rounds[0].Findings[1] == "" {
-		t.Fatalf("checkpoint 3 holds no finding: %+v", from)
+		t.Fatalf("checkpoint 4 holds no finding: %+v", from)
 	}
 	done := 0
 	for _, f := range from.Rounds[0].Findings {
@@ -491,8 +563,8 @@ func TestATurnResumesFromItsProgress(t *testing.T) {
 	if err != nil || res.Answer == "" {
 		t.Fatalf("resume: %v %+v", err, res)
 	}
-	if s.count(Planner) != 0 {
-		t.Errorf("the planner was asked again %d times", s.count(Planner))
+	if s.count(Planner) != 0 || s.count(Builder) != 0 {
+		t.Errorf("the planner was asked again %d times, the builder %d", s.count(Planner), s.count(Builder))
 	}
 	if n := s.count(Researcher); n != cfg.Researchers-done {
 		t.Errorf("%d researchers asked, want %d", n, cfg.Researchers-done)

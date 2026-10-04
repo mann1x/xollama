@@ -52,6 +52,8 @@ type fakeKV struct {
 	// ownerGone answers owner: null for a pool asked for an owner, as the
 	// engine does when that session holds no live allocation.
 	ownerGone bool
+	// admissible is /kv's largest_admissible; nil leaves it out.
+	admissible *int
 }
 
 type fakePool struct {
@@ -114,10 +116,16 @@ func (f *fakeKV) CloseSession(_ context.Context, id string) error {
 func (f *fakeKV) KV(context.Context) (llm.KVStatus, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.liveAfter > 0 && f.grant == 0 && len(f.e.roles) > 0 {
+	calls := 0
+	if f.councilRunner != nil && f.e != nil {
+		f.e.mu.Lock()
+		calls = len(f.e.roles)
+		f.e.mu.Unlock()
+	}
+	if f.liveAfter > 0 && f.grant == 0 && calls > 0 {
 		f.grant = f.liveAfter
 	}
-	k := llm.KVStatus{Pressure: f.pressure}
+	k := llm.KVStatus{Pressure: f.pressure, LargestAdmissible: f.admissible}
 	if f.recurrent {
 		k.RS = &llm.KVRecurrent{CellsCommitted: 4, CellsCap: 8}
 	}
@@ -131,7 +139,14 @@ func (f *fakeKV) KV(context.Context) (llm.KVStatus, error) {
 	return k, nil
 }
 
+// ownerLocked reads the engine's calls under the engine's own lock: a turn's
+// idle compaction asks KV while a member's call is still being recorded.
 func (f *fakeKV) ownerLocked() string {
+	if f.councilRunner == nil || f.e == nil {
+		return ""
+	}
+	f.e.mu.Lock()
+	defer f.e.mu.Unlock()
 	for i, r := range f.e.roles {
 		if r == "route" {
 			return f.e.sessions[i]
@@ -157,6 +172,15 @@ func (f *fakeKV) Resize(_ context.Context, id string, numCtx int, deferred bool)
 func polykvCouncil(t *testing.T, e *councilEngine, kv *fakeKV, c *xollama.Council) *Server {
 	t.Helper()
 	kv.councilRunner = &councilRunner{mockRunner: &mockRunner{contextLength: 32768}, e: e}
+	// These fixtures hold a default council in 16384 or 4096 tokens, less
+	// than its roles may write. A council left on auto runs such a turn
+	// without the tree (councilOutgrowsContext), so the fixtures state the
+	// tree they are about.
+	if c != nil && c.PolyKV == "" {
+		on := *c
+		on.PolyKV = xollama.CouncilPolyKVOn
+		c = &on
+	}
 	return councilServerOn(t, kv, c, nil)
 }
 
@@ -207,6 +231,12 @@ func TestACouncilOnPolyKVBuildsItsTreeOnce(t *testing.T) {
 			if e.sessions[i] != owner || pl == nil || pl.NumCtx != 16384 || pl.PoolID != nil {
 				t.Errorf("%s: session %q placement %+v, want the owner booking 16384", role, e.sessions[i], pl)
 			}
+		case "builder":
+			// It reads only the user's messages, so it shares nothing with the
+			// owner's cache: its own session, and a window of its own.
+			if e.sessions[i] != owner+"~builder" || pl == nil || pl.PoolID != nil || pl.NumCtx == 0 || pl.NumCtx >= 16384 {
+				t.Errorf("builder: session %q placement %+v, want its own session and a small window", e.sessions[i], pl)
+			}
 		default:
 			if pl == nil || pl.PoolID == nil || *pl.PoolID != want[role] || pl.NumCtx != 0 {
 				t.Errorf("%s: placement %+v, want pool %d and no window", role, pl, want[role])
@@ -214,10 +244,10 @@ func TestACouncilOnPolyKVBuildsItsTreeOnce(t *testing.T) {
 		}
 	}
 
-	// Every worker session closed, the owner kept; the pools released
-	// newest first.
-	if len(kv.closed) != 5 || slices.Contains(kv.closed, owner) {
-		t.Errorf("closed %v: want the 5 workers, never the owner", kv.closed)
+	// No session closed: the council lives until its client leaves, and its
+	// members resume from their own caches. The pools released newest first.
+	if len(kv.closed) != 0 {
+		t.Errorf("closed %v: want none, the owner %q included", kv.closed, owner)
 	}
 	if !slices.Equal(kv.released, []int{3, 2, 1, 0}) {
 		t.Errorf("released %v, want [3 2 1 0]", kv.released)
@@ -285,9 +315,16 @@ func TestPolyKVOffRunsTheMembersUnpooled(t *testing.T) {
 func TestTheOwnerWindowFollowsThePressure(t *testing.T) {
 	e := &councilEngine{route: `{"route":"direct"}`}
 	kv := &fakeKV{grant: 16384, used: 900, pressure: &llm.KVPressure{WindowS: 60, Refused60s: 2, LastRefusalAgeS: 3}}
+	// Small stated caps, so the turn's reserve leaves the idle owner room to
+	// give back; the output budget, three quarters of the window per member,
+	// booked, would take the whole window.
+	off := func() *xollama.CouncilRole {
+		return &xollama.CouncilRole{Think: xollama.CouncilThinkOff, MaxTokens: 1024}
+	}
 	s := polykvCouncil(t, e, kv, &xollama.Council{
 		Enabled: councilOn().Enabled,
 		Context: &xollama.CouncilContext{Window: 16384, Floor: 4096},
+		Planner: off(), Researcher: off(), Critic: off(), Synthesizer: off(),
 	})
 	chatChunks(t, s, polykvReq)
 	kv.mu.Lock()
@@ -429,7 +466,7 @@ func TestAnIdleCouncilSummarisesForTheNextMessage(t *testing.T) {
 		t.Errorf("the next message began with %s, want the council's own decision", r)
 	}
 	p := e.prompts[idleRoles]
-	if !strings.Contains(p, compactionSummaryHeading) || !strings.Contains(p, fakeMerged) {
+	if !strings.Contains(p, compactionSummaryHeading) || !strings.Contains(p, fakeReplaySecond) {
 		t.Error("the next message did not start from the idle summary")
 	}
 }
@@ -552,13 +589,15 @@ func TestThePlannerAttachesTheConversationRoot(t *testing.T) {
 	if p := kv.pools[1]; p.parent == nil || *p.parent != 0 {
 		t.Errorf("the researchers' layer forks %v, want the root", p.parent)
 	}
-	reserve := councilReserve(council.FromModel(councilOn(), 0.7))
+	cfgR := council.FromModel(councilOn(), 0.7)
+	cfgR.Window = 16384
+	reserve := councilReserve(cfgR)
 	for i, r := range e.roles {
 		pl := e.placements[i]
 		if r != "route" && r != "planner" {
 			continue
 		}
-		if pl == nil || pl.PoolID == nil || *pl.PoolID != 0 || pl.NumCtx != 16384 || pl.NumCtxMin != max(4096, roundUp(reserve, 256)) {
+		if pl == nil || pl.PoolID == nil || *pl.PoolID != 0 || pl.NumCtx != 16384 || pl.NumCtxMin != min(16384, max(4096, roundUp(reserve, 256)), 8192) {
 			t.Errorf("%s: placement %+v, want the root, a 16384 window and its own part as the floor", r, pl)
 		}
 	}
@@ -720,6 +759,51 @@ func TestARefusedRootCompactsAndRetries(t *testing.T) {
 	defer kv.mu.Unlock()
 	if len(kv.pools) == 0 || kv.pools[0].parent != nil || !strings.Contains(kv.pools[0].text, compactionSummaryHeading) {
 		t.Errorf("the root was not built on the compacted conversation: %+v", kv.pools)
+	}
+}
+
+// The fold made after a refused root is of the conversation the members
+// read (council.History), the same view every later request is applied to.
+// One made of the client's raw messages never matched: the next apply dropped
+// it, the root was refused again and the council folded again (native.sh
+// 0428: three six-minute folds in its last twenty minutes, each dropped).
+func TestARefusedRootsFoldIsOfTheMembersView(t *testing.T) {
+	// suspended: the turn stops on the researchers' calls, so no idle fold
+	// follows the answer and the record is the refused fold's own.
+	for _, suspended := range []bool{false, true} {
+		t.Run(fmt.Sprint("suspended=", suspended), func(t *testing.T) { refusedRootFold(t, suspended) })
+	}
+}
+
+func refusedRootFold(t *testing.T, suspended bool) {
+	councilRoots.reset()
+	councilCompactions.reset()
+	councilStateKeyIn(t, t.TempDir())
+	e := &councilEngine{route: `{"route":"council"}`}
+	kv := &fakeKV{grant: 16384, used: 900, session: "conv-1", full: 1}
+	s := polykvCouncil(t, e, kv, councilOn())
+	req := longCouncilReq("conv-1", "Why is the sky blue?")
+	// The client's tools ride every request of a task: one without them, in a
+	// conversation tools worked in, is housekeeping and answered plainly.
+	req.Tools = councilTestTools
+	if suspended {
+		e.tools = map[string]string{"researcher": "read_files"}
+	}
+	// An earlier turn's forwarded calls: History files them under their member.
+	req.Messages = append(req.Messages[:2:2], append([]api.Message{
+		{Role: "assistant", ToolCalls: []api.ToolCall{{ID: "r1:call_a", Function: api.ToolCallFunction{Name: "read_files"}}}},
+		{Role: "tool", ToolCallID: "r1:call_a", Content: "notes " + words(300, "t1")},
+		{Role: "assistant", Content: "So it is the wavelength. " + words(300, "a1b")},
+	}, req.Messages[2:]...)...)
+	chatChunks(t, s, req)
+	councilIdle.Wait()
+	rec := councilCompactions.get("conv-1")
+	if rec == nil {
+		t.Fatal("no compaction record after the refused root")
+	}
+	view := council.History(append([]api.Message{{Role: "system"}}, req.Messages...))
+	if len(view)-1 < rec.n || compactionHash(view[1:1+rec.n]) != rec.hash {
+		t.Errorf("the record (n=%d) does not apply to the members' view of the conversation", rec.n)
 	}
 }
 
@@ -1031,4 +1115,18 @@ func TestAnUnownedRootIsNeverKept(t *testing.T) {
 			t.Error("the unowned root was kept for the next turn")
 		}
 	})
+}
+
+// A client that leaves takes its council with it: every member session its
+// turn ran on is closed, the owner's never.
+func TestAClientThatLeavesClosesItsCouncilsSessions(t *testing.T) {
+	kv := &fakeKV{}
+	cm := &councilMembers{session: "conv-left", tree: &councilTree{kv: kv, owner: "conv-left"}}
+	for _, id := range []string{"conv-left~researcher-2", "conv-left~researcher-1", "conv-left~synthesizer", "conv-left~researcher-1"} {
+		cm.opened(id)
+	}
+	cm.closeSessions()
+	if want := []string{"conv-left~researcher-1", "conv-left~researcher-2", "conv-left~synthesizer"}; !slices.Equal(kv.closed, want) {
+		t.Errorf("closed %v, want %v", kv.closed, want)
+	}
 }

@@ -1,62 +1,89 @@
 package engine
 
 import (
-	_ "embed"
+	"crypto/sha256"
+	"embed"
 	"fmt"
+	"io/fs"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 )
 
-// pinText is the committed artifact pin. It is embedded rather than read from
-// disk because its consumers are a running server and a test, neither of which
-// can assume the source tree is present.
+// pinFS is the committed pin: opencoti's pin format 2 (their
+// docs/protocols/PIN_FORMAT.md). pin/index.txt is OUR index -- which
+// components this tree takes, each by the sha256 of its pin file -- and the
+// component pin files beside it are byte-identical copies of the published
+// ones.
 //
-// cmake/opencoti-engine.cmake parses the same file with the same rules at
-// build time. The format is deliberately trivial so the two parsers cannot
-// drift; TestPinFormatIsWhatCMakeParses pins the assumptions CMake relies on.
+// It is embedded rather than read from disk because its consumers are a
+// running server and a test, neither of which can assume the source tree is
+// present. cmake/opencoti-fetch.cmake reads the same directory with the same
+// rules at build time; TestCMakeStagesWhatGoReads holds the two to one answer.
 //
-//go:embed pin.txt
-var pinText string
+//go:embed pin/*.txt
+var pinFS embed.FS
 
-// Asset is one published engine artifact.
+// pinDir is where the pin lives in pinFS.
+const pinDir = "pin"
+
+// Asset is one published file of the pinned engine.
 type Asset struct {
-	Kind   string // "bin" (the engine) or "dso" (a side-loaded GPU payload)
-	Arch   string // x86_64 | aarch64 | win-x86_64 | win-x86_64-gpu | universal
+	Kind   string // "bin" (the engine), "dso" (a GPU library), "dso-cuda12" or "sidecar"
+	Arch   string // x86_64 | aarch64 | win-x86_64 | macos-aarch64, a dso with its backend: x86_64-vulkan
 	Path   string // path within the Hugging Face repo
 	SHA256 string
+	Bytes  int64
+	// Role is the pin's own kind for a sidecar (SidecarCodec, "licence",
+	// "build-info", or a kind a later component adds). Empty on the others.
+	Role string
+	// For names the kind a licence text belongs to (`for espeak`).
+	For string
+	// Component and Version say which component pin the row is from; Repo and
+	// Rev where its bytes are fetched. Components move one at a time, so two
+	// assets of one pin can come from two commits.
+	Component string
+	Version   string
+	Repo      string
+	Rev       string
 }
 
-// Pin is the parsed pin file: where the artifacts live, which bytes are the
-// right ones, and what that build can be asked to do.
+// StagedName is the file name the asset has beside the engine: the name it was
+// published with, never another. That name is the one the engine looks for,
+// and it is unique across the components of an index.
+func (a Asset) StagedName() string { return path.Base(a.Path) }
+
+// Pin is the parsed pin: where the files live, which bytes are the right ones,
+// and what that build can be asked to do.
 type Pin struct {
+	// Repo and Rev are the engine component's. Every Asset carries its own.
 	Repo string
 	Rev  string
-	Tag  string
-	// Channel is release or dev. It is declared rather than guessed from the
-	// repo name because the two channels may share a repo -- a dev channel
-	// points at the release repo whenever nothing new is in flight -- and
-	// because a build has to be able to say which one it is.
+	// Tag is the engine's file name, which names its cut and build
+	// (opencoti-0.10.5-c7-2610040837001). Version is the build id alone.
+	Tag     string
+	Version string
+	// Channel is release or dev, from the index. It is declared rather than
+	// guessed from the repo name because the two channels may share a repo.
 	Channel string
-	// Features are the engine capabilities this artifact carries, named
-	// explicitly. See the note on feature directives in pin.txt.
-	Features []string
-	// Accels are the backends this artifact can actually accelerate, per arch.
-	// A release bin embeds its payloads; a dev snapshot is a bare APE that
-	// accelerates only what its dso rows provide. Declaring it is what stops
-	// routing handing a GPU load to an engine that would quietly serve it on
-	// the CPU.
+	// Features are the capabilities the engine's pin states for every
+	// platform. See HasFeatureOn for the ones a pin limits to some.
+	Features         []string
+	platformFeatures map[string][]string
+	// Accels are the backends the pinned files accelerate, per arch: a GPU
+	// library's row is the claim that the backend exists there. It is what
+	// stops routing handing a GPU load to an engine that would quietly serve
+	// it on the CPU.
 	Accels []Accel
-	// CUDASASS lists the compute capabilities the CUDA payload carries SASS
-	// for, as major*10+minor, from the cuda-sass directive. Empty means the
-	// pin does not narrow them, and the engine's minCUDACompute floor alone
-	// applies. See CoversCUDA.
+	// CUDASASS lists the compute capabilities the CUDA library carries SASS
+	// for, as major*10+minor, from the cuda component's sass line. Empty
+	// means the pin does not narrow them. See CoversCUDA.
 	CUDASASS []int
-	// CUDA12SASS is the same list for the legacy CUDA 12 payload
-	// (`#! dso-cuda12`, `#! cuda12-sass`): the older cards the CUDA 13 payload
-	// has no code for (Volta 7.0 on the dev snapshots). One process loads one
-	// payload, so it is staged beside a second copy of the engine in
-	// engines/cuda_v12 and chosen per load (CUDA12Dirs, Launch).
+	// CUDA12SASS is the same list for the legacy CUDA 12 library: the older
+	// cards the CUDA 13 one has no code for. Both libraries sit beside one
+	// engine, and one process loads one of them (cudaPayload, LegacyCUDAEnv).
 	CUDA12SASS []int
 	Assets     []Asset
 }
@@ -85,8 +112,8 @@ func (p Pin) Accelerates(arch string, b Backend) bool {
 // CoversCUDA reports whether the pinned CUDA payload carries code for a device
 // of this compute capability. SASS for major.minor runs on the same major at
 // that minor or later, and on nothing else: sm_86 serves 8.6-8.9, sm_120f
-// serves 12.x, and neither serves 8.0 or 9.0. A pin without cuda-sass does not
-// narrow anything.
+// serves 12.x, and neither serves 8.0 or 9.0. A pin without a sass line does
+// not narrow anything.
 //
 // The failure this prevents is silent: a device the DSO has no code for makes
 // the engine run the load on the CPU, which reads as slowness, not as an error.
@@ -104,7 +131,7 @@ func (p Pin) CoversCUDA(major, minor int) bool {
 
 // CoversCUDA12 reports whether the pin's CUDA 12 payload carries code for a
 // device of this compute capability, with CoversCUDA's matching rule. Unlike
-// CoversCUDA, a pin that states no cuda12-sass covers nothing: the CUDA 12
+// CoversCUDA, a pin that states no sass for it covers nothing: the CUDA 12
 // payload is optional and only ever serves what it names.
 func (p Pin) CoversCUDA12(major, minor int) bool {
 	if _, ok := p.CUDA12DSO("x86_64"); !ok {
@@ -128,164 +155,475 @@ func (p Pin) CUDA12DSO(arch string) (Asset, bool) {
 	return Asset{}, false
 }
 
-// kindCUDA12DSO is the asset kind of a `#! dso-cuda12` row.
-const kindCUDA12DSO = "dso-cuda12"
+// Asset kinds. A pin's file kinds map onto them in assetOf.
+const (
+	kindBin       = "bin"
+	kindDSO       = "dso"
+	kindCUDA12DSO = "dso-cuda12"
+	// kindSidecar is every other file staged beside the engine: the media
+	// libraries it loads from its own directory under their published names,
+	// the macOS loader and Metal library, the licence texts.
+	kindSidecar = "sidecar"
+)
 
-// HasFeature reports whether the pinned artifact declares a capability.
+// What a sidecar is. The kinds are opencoti's and the list is open: a row of
+// a kind this build has never heard of is still a file the engine wants
+// beside it, so it is staged, never checked against these names.
+const (
+	// SidecarCodec encodes and decodes: mp3, opus and aac speech, mp4 video.
+	SidecarCodec = "codec"
+	// SidecarAPE is the macOS loader the engine is started through
+	// (MacLoader); SidecarMetal is its Metal backend library.
+	SidecarAPE   = "ape"
+	SidecarMetal = "metal"
+	// SidecarAudioCpp is audio.cpp: Kokoro, Supertonic and KittenTTS.
+	SidecarAudioCpp = "audiocpp"
+	// SidecarLicence is a licence text; Asset.For names what it covers.
+	SidecarLicence = "licence"
+)
+
+// Sidecars returns the files the pin stages beside the engine for an arch
+// label, other than the engine and its GPU libraries, in pin order.
+func (p Pin) Sidecars(arch string) []Asset {
+	var out []Asset
+	for _, a := range p.Assets {
+		if a.Kind == kindSidecar && a.Arch == arch {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// Files returns everything the pin stages beside the engine for an arch
+// label, the engine included. It is what cmake/opencoti-fetch.cmake stages.
+func (p Pin) Files(arch string) []Asset {
+	var out []Asset
+	for _, a := range p.Assets {
+		if dsoArch, _ := splitDSOLabel(a.Arch); a.Arch == arch || (a.Kind == kindDSO && dsoArch == arch) {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// HasFeature reports whether the pinned engine declares a capability on every
+// platform it runs on.
 func (p Pin) HasFeature(name string) bool {
 	return slices.Contains(p.Features, name)
 }
 
-// machineKeys are the directives a "#!" line may carry (see ParsePin).
-var machineKeys = []string{"cuda-sass", "cuda12-sass", kindCUDA12DSO}
+// HasFeatureOn reports whether the pinned engine declares a capability for an
+// arch label: one it has everywhere, or one its pin lists that platform for
+// (`feature images_generate_v1 x86_64 win-x86_64`).
+func (p Pin) HasFeatureOn(name, arch string) bool {
+	return p.HasFeature(name) || slices.Contains(p.platformFeatures[name], arch)
+}
 
 // DefaultPin is the pin compiled into this binary.
-func DefaultPin() (Pin, error) { return ParsePin(pinText) }
+var DefaultPin = sync.OnceValues(func() (Pin, error) { return LoadPin(pinFS, pinDir) })
 
-// ParsePin reads the pin format described at the top of pin.txt.
-func ParsePin(text string) (Pin, error) {
-	var p Pin
+// components are the component names of pin format 2, in the order an index
+// lists them.
+var components = []string{"engine", "cuda", "cuda12", "sbsa", "vulkan", "macos", "media"}
+
+// platforms are the platform labels of a `file` row, `any` aside.
+var platforms = []string{"x86_64", "aarch64", "win-x86_64", ArchMacOS}
+
+// fixedArity is the number of fields each fixed KEY takes. Extra trailing
+// fields are ignored: that is the format's room for later columns.
+var fixedArity = map[string]int{
+	"format": 1, "component": 1, "version": 1, "built-from": 1, "repo": 1, "rev": 1,
+	"abi": 2, "abi-source": 1, "engine-min": 1, "gated-with": 1, "requires": 3, "file": 5,
+	"channel": 1, "tag": 1,
+}
+
+// variableKeys take as many fields as they are given.
+var variableKeys = []string{"feature", "absent", "sass"}
+
+// statement is one line of a pin or index file.
+type statement struct {
+	key    string
+	fields []string
+	line   int
+}
+
+// statements reads the syntax both file kinds share: one statement per line,
+// '#' starts a comment, an unknown KEY is an error, the first statement is
+// `format 2`.
+func statements(name, text string) ([]statement, error) {
+	var out []statement
 	for n, raw := range strings.Split(text, "\n") {
-		line := raw
-		// "#! <key> <values>" is a machine-readable line inside a comment:
-		// opencoti's own pin parsers skip every '#' line and refuse any bare
-		// directive but repo/rev/tag and asset rows, so facts they add for
-		// us ride there (mail #449). Only keys this parser knows are read;
-		// an unknown one is a comment, so a new key cannot break a build.
-		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), "#!"); ok {
-			if f := strings.Fields(rest); len(f) > 0 && slices.Contains(machineKeys, f[0]) {
-				line = rest
-			}
+		if i := strings.IndexByte(raw, '#'); i >= 0 {
+			raw = raw[:i]
 		}
-		if i := strings.IndexByte(line, '#'); i >= 0 {
-			line = line[:i]
-		}
-		fields := strings.Fields(line)
-		if len(fields) == 0 {
+		f := strings.Fields(raw)
+		if len(f) == 0 {
 			continue
 		}
-		switch fields[0] {
-		case "repo", "rev", "tag", "channel", "feature":
-			if len(fields) != 2 {
-				return Pin{}, fmt.Errorf("pin.txt:%d: %s takes exactly one value, got %d", n+1, fields[0], len(fields)-1)
-			}
-			switch fields[0] {
-			case "repo":
-				p.Repo = fields[1]
-			case "rev":
-				p.Rev = fields[1]
-			case "tag":
-				p.Tag = fields[1]
-			case "channel":
-				p.Channel = fields[1]
-			case "feature":
-				p.Features = append(p.Features, fields[1])
-			}
-		case "accel":
-			if len(fields) != 3 {
-				return Pin{}, fmt.Errorf("pin.txt:%d: accel row needs <arch> <backend>, got %d fields", n+1, len(fields)-1)
-			}
-			b := Backend(fields[2])
-			if !slices.Contains(knownBackends, b) {
-				return Pin{}, fmt.Errorf("pin.txt:%d: accel backend %q is not one of %v", n+1, fields[2], knownBackends)
-			}
-			p.Accels = append(p.Accels, Accel{Arch: fields[1], Backend: b})
-		case "cuda-sass", "cuda12-sass":
-			if len(fields) < 2 {
-				return Pin{}, fmt.Errorf("pin.txt:%d: %s needs at least one compute capability", n+1, fields[0])
-			}
-			for _, f := range fields[1:] {
-				cc, err := strconv.Atoi(f)
-				if err != nil || cc < 10 {
-					return Pin{}, fmt.Errorf("pin.txt:%d: %s %q is not a compute capability written as major*10+minor (86, 120)", n+1, fields[0], f)
-				}
-				if fields[0] == "cuda12-sass" {
-					p.CUDA12SASS = append(p.CUDA12SASS, cc)
-				} else {
-					p.CUDASASS = append(p.CUDASASS, cc)
-				}
-			}
-		case "bin", "dso", kindCUDA12DSO:
-			if len(fields) != 4 {
-				return Pin{}, fmt.Errorf("pin.txt:%d: asset row needs <kind> <arch> <path> <sha256>, got %d fields", n+1, len(fields))
-			}
-			p.Assets = append(p.Assets, Asset{Kind: fields[0], Arch: fields[1], Path: fields[2], SHA256: fields[3]})
-		default:
-			return Pin{}, fmt.Errorf("pin.txt:%d: unknown directive %q", n+1, fields[0])
+		key, fields := f[0], f[1:]
+		switch arity, fixed := fixedArity[key]; {
+		case fixed && len(fields) < arity:
+			return nil, fmt.Errorf("%s:%d: %s needs %d field(s), got %d", name, n+1, key, arity, len(fields))
+		case !fixed && !slices.Contains(variableKeys, key) && !slices.Contains(components, key):
+			return nil, fmt.Errorf("%s:%d: unknown KEY %q", name, n+1, key)
 		}
+		out = append(out, statement{key: key, fields: fields, line: n + 1})
 	}
-	for _, missing := range []struct {
-		name  string
-		value string
-	}{{"repo", p.Repo}, {"rev", p.Rev}, {"tag", p.Tag}, {"channel", p.Channel}} {
-		if missing.value == "" {
-			return Pin{}, fmt.Errorf("pin.txt: no %s directive", missing.name)
+	if len(out) == 0 || out[0].key != "format" || out[0].fields[0] != "2" {
+		return nil, fmt.Errorf("%s: the first statement must be `format 2`", name)
+	}
+	return out[1:], nil
+}
+
+// fileRow is a `file` row of a component pin.
+type fileRow struct {
+	platform, kind, path, sha256, forKind string
+	bytes                                 int64
+}
+
+// component is one parsed component pin.
+type component struct {
+	name, version, repo, rev, engineMin string
+	abi                                 map[string]string
+	sass                                []int
+	features                            [][]string
+	files                               []fileRow
+}
+
+// indexEntry is one component line of an index.
+type indexEntry struct {
+	name, file, sha256, version string
+}
+
+// parseIndex reads an index: the channel and, per component, the pin file it
+// names or that it is absent.
+func parseIndex(name, text string) (channel string, entries []indexEntry, err error) {
+	sts, err := statements(name, text)
+	if err != nil {
+		return "", nil, err
+	}
+	var tag string
+	for _, st := range sts {
+		switch {
+		case st.key == "channel":
+			channel = st.fields[0]
+		case st.key == "tag":
+			tag = st.fields[0]
+		case slices.Contains(components, st.key):
+			if slices.ContainsFunc(entries, func(e indexEntry) bool { return e.name == st.key }) {
+				return "", nil, fmt.Errorf("%s:%d: a second %s line", name, st.line, st.key)
+			}
+			f := st.fields
+			if len(f) == 1 && f[0] == "absent" {
+				continue
+			}
+			if len(f) < 7 || f[1] != "rev" || f[3] != "sha256" || f[5] != "version" {
+				return "", nil, fmt.Errorf("%s:%d: %s is neither `absent` nor `<pin path> rev <commit> sha256 <digest> version <id>`", name, st.line, st.key)
+			}
+			if !isCommitRev(f[2]) || !isSHA256(f[4]) || !isBuildID(f[6]) {
+				return "", nil, fmt.Errorf("%s:%d: bad rev, sha256 or version on the %s line", name, st.line, st.key)
+			}
+			entries = append(entries, indexEntry{name: st.key, file: path.Base(f[0]), sha256: f[4], version: f[6]})
+		default:
+			return "", nil, fmt.Errorf("%s:%d: %s is not an index KEY", name, st.line, st.key)
 		}
 	}
 	// A channel is required rather than defaulted, so a dev pin can never be
 	// mistaken for a release one by omission.
-	if p.Channel != ChannelRelease && p.Channel != ChannelDev {
-		return Pin{}, fmt.Errorf("pin.txt: channel %q is not %s or %s", p.Channel, ChannelRelease, ChannelDev)
+	if channel != ChannelRelease && channel != ChannelDev {
+		return "", nil, fmt.Errorf("%s: channel %q is not %s or %s", name, channel, ChannelRelease, ChannelDev)
 	}
-	// The revision must be an immutable commit, never a branch. opencoti
-	// re-cuts a release in place: the c7 r2 re-cut replaced all five host
-	// binaries under their existing names on `main`, which turned every
-	// downstream pin that said `rev main` into a build that fetches bytes its
-	// own sha256 rows reject. Naming the commit is what makes a pin a pin.
-	if !isCommitRev(p.Rev) {
-		return Pin{}, fmt.Errorf("pin.txt: rev %q is not a 40-character commit sha; a branch or tag can be moved under the pinned sha256 rows", p.Rev)
+	if tag == "" {
+		return "", nil, fmt.Errorf("%s: no tag", name)
 	}
-	if len(p.Assets) == 0 {
-		return Pin{}, fmt.Errorf("pin.txt: no asset rows")
+	if !slices.ContainsFunc(entries, func(e indexEntry) bool { return e.name == "engine" }) {
+		return "", nil, fmt.Errorf("%s: an index needs the engine", name)
 	}
-	// Claiming acceleration for an arch whose engine is not shipped is the one
-	// inconsistency the format can catch on its own.
-	for _, a := range p.Accels {
-		if _, ok := p.Asset(a.Arch); !ok {
-			return Pin{}, fmt.Errorf("pin.txt: accel %s %s has no bin row for %s", a.Arch, a.Backend, a.Arch)
+	return channel, entries, nil
+}
+
+// parseComponent reads one component pin.
+func parseComponent(name, text string) (component, error) {
+	sts, err := statements(name, text)
+	if err != nil {
+		return component{}, err
+	}
+	c := component{abi: map[string]string{}}
+	var abiSource, builtFrom string
+	for _, st := range sts {
+		f := st.fields
+		switch st.key {
+		case "component":
+			c.name = f[0]
+		case "version":
+			c.version = f[0]
+		case "repo":
+			c.repo = f[0]
+		case "rev":
+			c.rev = f[0]
+		case "built-from":
+			builtFrom = f[0]
+		case "engine-min":
+			c.engineMin = f[0]
+		case "abi-source":
+			abiSource = f[0]
+		case "abi":
+			if !isSHA256(f[1]) {
+				return component{}, fmt.Errorf("%s:%d: abi %s digest is not 64 lowercase hex characters", name, st.line, f[0])
+			}
+			c.abi[f[0]] = f[1]
+		case "sass":
+			for _, v := range f {
+				cc, err := strconv.Atoi(v)
+				if err != nil || cc < 10 {
+					return component{}, fmt.Errorf("%s:%d: sass %q is not a compute capability written as major*10+minor (86, 120)", name, st.line, v)
+				}
+				c.sass = append(c.sass, cc)
+			}
+		case "feature":
+			if len(f) == 0 {
+				return component{}, fmt.Errorf("%s:%d: feature needs a name", name, st.line)
+			}
+			c.features = append(c.features, f)
+		case "file":
+			row := fileRow{platform: f[0], kind: f[1], path: f[2], sha256: f[3]}
+			if row.platform != "any" && !slices.Contains(platforms, row.platform) {
+				return component{}, fmt.Errorf("%s:%d: unknown platform %q", name, st.line, row.platform)
+			}
+			// The file is staged under this name and found by it, so a row
+			// whose path or digest is off ships an engine without the file.
+			if strings.HasPrefix(row.path, "/") || strings.Contains(row.path, "..") {
+				return component{}, fmt.Errorf("%s:%d: path %q must be a plain repo-relative path", name, st.line, row.path)
+			}
+			if row.bytes, err = strconv.ParseInt(f[4], 10, 64); err != nil || row.bytes < 0 || !isSHA256(row.sha256) {
+				return component{}, fmt.Errorf("%s:%d: bad sha256 or size for %s", name, st.line, row.path)
+			}
+			if len(f) >= 7 && f[5] == "for" {
+				row.forKind = f[6]
+			}
+			for _, have := range c.files {
+				if have.platform == row.platform && have.kind == row.kind && path.Base(have.path) == path.Base(row.path) {
+					return component{}, fmt.Errorf("%s:%d: a second %s %s row for %s", name, st.line, row.platform, row.kind, path.Base(row.path))
+				}
+			}
+			c.files = append(c.files, row)
+		case "gated-with", "requires", "absent":
+			// What it was tested with, what the host must provide, and what
+			// was not built: stated for the reader, not gated on here.
+		default:
+			return component{}, fmt.Errorf("%s:%d: %s is not a component KEY", name, st.line, st.key)
 		}
 	}
-	p.deriveAccelsFromDSOs()
+	switch {
+	case !slices.Contains(components, c.name):
+		return component{}, fmt.Errorf("%s: unknown component %q", name, c.name)
+	case !isBuildID(c.version):
+		return component{}, fmt.Errorf("%s: version %q is not a 13-digit build id", name, c.version)
+	case c.repo == "":
+		return component{}, fmt.Errorf("%s: no repo", name)
+	// The revision must be an immutable commit, never a branch: opencoti has
+	// re-cut a release in place, which turned every pin that said `rev main`
+	// into a build that fetches bytes its own sha256 rows reject.
+	case !isCommitRev(c.rev):
+		return component{}, fmt.Errorf("%s: rev %q is not a 40-character commit sha; a branch or tag can be moved under the pinned sha256 rows", name, c.rev)
+	case abiSource != "computed" && abiSource != "exported":
+		return component{}, fmt.Errorf("%s: abi-source %q is not computed or exported", name, abiSource)
+	case len(c.abi) == 0:
+		return component{}, fmt.Errorf("%s: no abi line", name)
+	case len(c.files) == 0:
+		return component{}, fmt.Errorf("%s: no file row", name)
+	case c.name != "engine" && (!isBuildID(builtFrom) || !isBuildID(c.engineMin)):
+		return component{}, fmt.Errorf("%s: built-from or engine-min is missing or not a build id", name)
+	}
+	return c, nil
+}
+
+// rowsFor returns the rows of a component a platform stages. A component with
+// no row for the platform itself is not taken there at all (its BUILD_INFO
+// alone is not a payload); the engine is one file for every platform, so it
+// always is. A bin is the platform's own row when there is one, else `any`.
+func (c component) rowsFor(platform string) []fileRow {
+	own, ownBin := false, false
+	for _, r := range c.files {
+		if r.platform == platform {
+			own = true
+			ownBin = ownBin || r.kind == kindBin
+		}
+	}
+	if !own && c.name != "engine" {
+		return nil
+	}
+	var out []fileRow
+	for _, r := range c.files {
+		switch {
+		case r.platform != platform && r.platform != "any":
+		case r.kind == kindBin && r.platform == "any" && ownBin:
+		default:
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// assetOf turns a component's file row into the asset routing knows: the
+// engine, a GPU library labelled <arch>[-<backend>] with the bare label CUDA,
+// the CUDA 12 library, or a sidecar carrying the pin's own kind.
+func (c component) assetOf(platform string, r fileRow) Asset {
+	a := Asset{
+		Arch: platform, Path: r.path, SHA256: r.sha256, Bytes: r.bytes,
+		Component: c.name, Version: c.version, Repo: c.repo, Rev: c.rev,
+	}
+	switch r.kind {
+	case kindBin:
+		a.Kind = kindBin
+	case "cuda":
+		a.Kind = kindDSO
+	case "vulkan":
+		a.Kind, a.Arch = kindDSO, platform+"-vulkan"
+	case "cuda12":
+		a.Kind = kindCUDA12DSO
+	default:
+		a.Kind, a.Role, a.For = kindSidecar, r.kind, r.forKind
+	}
+	return a
+}
+
+// LoadPin reads a pin directory: the index and the component pins it names.
+//
+// It refuses what the format says a consumer must refuse: a vendored pin file
+// whose bytes are not the ones the index names, a component whose abi the
+// engine does not provide, and one built for a newer engine than the index
+// takes. A library and an engine that disagree on an interface do not fail to
+// load; they crash or run wrong.
+func LoadPin(fsys fs.FS, dir string) (Pin, error) {
+	read := func(name string) (string, error) {
+		b, err := fs.ReadFile(fsys, path.Join(dir, name))
+		return string(b), err
+	}
+	text, err := read("index.txt")
+	if err != nil {
+		return Pin{}, fmt.Errorf("pin: %w", err)
+	}
+	channel, entries, err := parseIndex("index.txt", text)
+	if err != nil {
+		return Pin{}, err
+	}
+
+	taken := make([]component, 0, len(entries))
+	for _, e := range entries {
+		text, err := read(e.file)
+		if err != nil {
+			return Pin{}, fmt.Errorf("pin: the index names %s: %w", e.file, err)
+		}
+		if got := fmt.Sprintf("%x", sha256.Sum256([]byte(text))); got != e.sha256 {
+			return Pin{}, fmt.Errorf("pin: %s is not the pin the index names: sha256 %s, the index says %s", e.file, got, e.sha256)
+		}
+		c, err := parseComponent(e.file, text)
+		if err != nil {
+			return Pin{}, err
+		}
+		if c.name != e.name || c.version != e.version {
+			return Pin{}, fmt.Errorf("pin: the index names %s %s, %s is %s %s", e.name, e.version, e.file, c.name, c.version)
+		}
+		taken = append(taken, c)
+	}
+	eng := taken[slices.IndexFunc(taken, func(c component) bool { return c.name == "engine" })]
+	for _, c := range taken {
+		if c.name == "engine" {
+			continue
+		}
+		for name, digest := range c.abi {
+			if eng.abi[name] != digest {
+				return Pin{}, fmt.Errorf("pin: %s %s needs abi %s %s, and engine %s provides %q", c.name, c.version, name, digest, eng.version, eng.abi[name])
+			}
+		}
+		// Build ids are decimal strings of one length, so they order as text.
+		if eng.version < c.engineMin {
+			return Pin{}, fmt.Errorf("pin: %s %s needs engine %s or newer, the index names %s", c.name, c.version, c.engineMin, eng.version)
+		}
+		if c.name == "sbsa" {
+			// Its sass line is aarch64's and CoversCUDA has one list; taking
+			// it unrouted would send an arm64 CUDA card to bytes nothing here
+			// has checked against it.
+			return Pin{}, fmt.Errorf("pin: the sbsa component is not routed by this build; the index must say `sbsa absent`")
+		}
+	}
+
+	p := Pin{Repo: eng.repo, Rev: eng.rev, Version: eng.version, Channel: channel, platformFeatures: map[string][]string{}}
+	for _, f := range eng.features {
+		if len(f) == 1 {
+			p.Features = append(p.Features, f[0])
+		} else {
+			p.platformFeatures[f[0]] = append(p.platformFeatures[f[0]], f[1:]...)
+		}
+	}
+	for _, c := range taken {
+		switch c.name {
+		case "cuda":
+			p.CUDASASS = c.sass
+		case "cuda12":
+			p.CUDA12SASS = c.sass
+		}
+		for _, platform := range platforms {
+			for _, r := range c.rowsFor(platform) {
+				a := c.assetOf(platform, r)
+				if a.Kind == kindBin && p.Tag == "" {
+					p.Tag = strings.TrimSuffix(path.Base(a.Path), ".exe")
+				}
+				p.Assets = append(p.Assets, a)
+			}
+		}
+	}
+	if p.Tag == "" {
+		return Pin{}, fmt.Errorf("pin: the engine component has no bin row")
+	}
+	// One staging directory: a name two components of a platform share would
+	// have one file overwrite the other beside the engine.
+	for _, platform := range platforms {
+		seen := map[string]string{}
+		for _, a := range p.Files(platform) {
+			if other, dup := seen[a.StagedName()]; dup {
+				return Pin{}, fmt.Errorf("pin: %s and %s both stage %s for %s", other, a.Component, a.StagedName(), platform)
+			}
+			seen[a.StagedName()] = a.Component
+		}
+	}
+	p.deriveAccels()
+
 	return p, nil
 }
 
-// deriveAccelsFromDSOs adds the (arch, backend) pairs the pin's OWN dso rows
-// prove, on top of any stated explicitly.
+// deriveAccels states the (arch, backend) pairs the pin's own rows prove: a
+// GPU library for a platform the pin ships an engine for.
 //
-// The payloads shipped are the ground truth about what the artifact can
-// accelerate, and an `accel` row merely restates them. opencoti's dev
-// publisher says so directly -- "key off the dso rows actually present" -- and
-// snapshot 2609242056001 carries no accel rows at all, stating its payload set
-// in a header comment instead. Keyed on accel rows alone that pin accelerates
-// NOTHING, so every GPU load would route to llama.cpp while the pinned engine
-// sat there holding a working Vulkan payload.
-//
-// Explicit rows are still honoured and still validated above: this only ever
-// ADDS, so a pin that states its accels keeps behaving exactly as before.
-func (p *Pin) deriveAccelsFromDSOs() {
+// The libraries shipped are the ground truth about what the engine can
+// accelerate. Without this a pin accelerates nothing, and every GPU load
+// routes to llama.cpp while the pinned engine sits there holding a working
+// payload.
+func (p *Pin) deriveAccels() {
 	for _, a := range p.Assets {
-		if a.Kind != "dso" {
+		var accel Accel
+		switch {
+		case a.Kind == kindDSO:
+			accel.Arch, accel.Backend = splitDSOLabel(a.Arch)
+		case a.Kind == kindSidecar && a.Role == SidecarMetal:
+			accel = Accel{Arch: a.Arch, Backend: BackendMetal}
+		default:
 			continue
 		}
-		arch, backend := splitDSOLabel(a.Arch)
 		// A payload for a platform this pin ships no engine for accelerates
-		// nothing here. Skipping rather than erroring keeps a cross-platform
-		// snapshot usable: a pin may carry a win-x86_64 CUDA dso and no
-		// win-x86_64 bin row, which is a Windows build's business, not ours.
-		if _, ok := p.Asset(arch); !ok {
+		// nothing here.
+		if _, ok := p.Asset(accel.Arch); !ok {
 			continue
 		}
-		if !slices.Contains(p.Accels, Accel{Arch: arch, Backend: backend}) {
-			p.Accels = append(p.Accels, Accel{Arch: arch, Backend: backend})
+		if !slices.Contains(p.Accels, accel) {
+			p.Accels = append(p.Accels, accel)
 		}
 	}
 }
 
-// splitDSOLabel reads a dso row's label as <arch>[-<backend>].
-//
-// The bare form is CUDA: it is the label opencoti has always used for the CUDA
-// payload (`dso x86_64`), and renaming it would break every consumer of an
-// existing snapshot, so the default has to stay what it already means.
+// splitDSOLabel reads a GPU library's label as <arch>[-<backend>]; the bare
+// form is CUDA.
 func splitDSOLabel(label string) (arch string, backend Backend) {
 	for suffix, b := range map[string]Backend{
 		"-vulkan": BackendVulkan,
@@ -298,51 +636,62 @@ func splitDSOLabel(label string) (arch string, backend Backend) {
 	return label, BackendCUDA
 }
 
-func isCommitRev(rev string) bool {
-	if len(rev) != 40 {
-		return false
-	}
-	return strings.TrimLeft(rev, "0123456789abcdef") == ""
+func isHex(s string, n int) bool {
+	return len(s) == n && strings.TrimLeft(s, "0123456789abcdef") == ""
 }
 
-// Asset returns the bin row for an arch label. dso rows are addressed with
-// DSO: an arch can have both, and the engine is always the bin.
+func isSHA256(s string) bool    { return isHex(s, 64) }
+func isCommitRev(s string) bool { return isHex(s, 40) }
+
+// isBuildID reports whether s is a build id: 13 decimal digits, a timestamp
+// and a counter, which is what lets two of them be compared as strings.
+func isBuildID(s string) bool {
+	return len(s) == 13 && strings.TrimLeft(s, "0123456789") == ""
+}
+
+// Asset returns the engine for an arch label. GPU libraries are addressed
+// with DSO: an arch has both, and the engine is always the bin.
 func (p Pin) Asset(arch string) (Asset, bool) {
 	for _, a := range p.Assets {
-		if a.Kind == "bin" && a.Arch == arch {
+		if a.Kind == kindBin && a.Arch == arch {
 			return a, true
 		}
 	}
 	return Asset{}, false
 }
 
-// DSO returns the side-loadable payload for an arch label, if the pin carries
-// one. Release bins embed their payloads and self-extract, so this is normally
-// empty; a dev snapshot ships the GPU payload beside the binary instead.
-func (p Pin) DSO(arch string) (Asset, bool) {
+// DSO returns the GPU library with a label (x86_64 is CUDA's,
+// x86_64-vulkan Vulkan's), if the pin carries one.
+func (p Pin) DSO(label string) (Asset, bool) {
 	for _, a := range p.Assets {
-		if a.Kind == "dso" && a.Arch == arch {
+		if a.Kind == kindDSO && a.Arch == label {
 			return a, true
 		}
 	}
 	return Asset{}, false
 }
 
-// URL is where the artifact is fetched from at build time. Hugging Face is the
-// only source: the artifacts are larger than GitHub's release-asset cap.
+// URL is where a file is fetched from at build time. Hugging Face is the only
+// source: the artifacts are larger than GitHub's release-asset cap.
 func (p Pin) URL(a Asset) string {
-	return "https://huggingface.co/" + p.Repo + "/resolve/" + p.Rev + "/" + a.Path
+	repo, rev := a.Repo, a.Rev
+	if repo == "" {
+		repo, rev = p.Repo, p.Rev
+	}
+	return "https://huggingface.co/" + repo + "/resolve/" + rev + "/" + a.Path
 }
 
-// PackageArch maps a build host onto the arch label packaged for it.
+// ArchMacOS is the arch label of the macOS arm64 package. Its engine is the
+// same APE file as everywhere else; what makes it a package of its own is the
+// loader and the Metal library beside it.
+const ArchMacOS = "macos-aarch64"
+
+// PackageArch maps a build host onto the arch label packaged for it: the
+// platform column of a pin's `file` rows.
 //
-// Windows takes the -gpu variant deliberately. The bare win-x86_64 artifact is
-// a tenth of the size but carries no GPU payload, and an installer that needs
-// a second download to use the GPU is not an installer. Linux needs no such
-// choice: those artifacts embed their payloads already.
-//
-// darwin is absent on purpose, not by omission: macOS keeps ollama's MLX path
-// and never routes to this engine, so nothing is packaged for it.
+// macOS is Apple silicon only: opencoti publishes its loader, Metal library and
+// media sidecars for arm64 and nothing for Intel, so darwin/amd64 has no label
+// and stays on llama.cpp.
 func PackageArch(goos, goarch string) (string, error) {
 	switch {
 	case goos == "linux" && goarch == "amd64":
@@ -350,29 +699,9 @@ func PackageArch(goos, goarch string) (string, error) {
 	case goos == "linux" && goarch == "arm64":
 		return "aarch64", nil
 	case goos == "windows" && goarch == "amd64":
-		return "win-x86_64-gpu", nil
+		return "win-x86_64", nil
+	case goos == "darwin" && goarch == "arm64":
+		return ArchMacOS, nil
 	}
 	return "", fmt.Errorf("no opencoti-llamafile artifact is packaged for %s/%s", goos, goarch)
-}
-
-// ArchFor is the arch label this pin packages for a build host: PackageArch,
-// except that Windows falls back to the bare win-x86_64 bin when the pin
-// carries no -gpu one. A dev snapshot publishes Windows that way -- the bare
-// APE plus its CUDA payload as a win-x86_64 dso row -- and the dso is what
-// deriveAccelsFromDSOs turns into Windows acceleration. The -gpu row still
-// wins whenever both are present. cmake/opencoti-engine.cmake and the release
-// workflow make the same choice.
-func (p Pin) ArchFor(goos, goarch string) (string, error) {
-	arch, err := PackageArch(goos, goarch)
-	if err != nil {
-		return "", err
-	}
-	if arch == "win-x86_64-gpu" {
-		if _, ok := p.Asset(arch); !ok {
-			if _, ok := p.Asset("win-x86_64"); ok {
-				return "win-x86_64", nil
-			}
-		}
-	}
-	return arch, nil
 }

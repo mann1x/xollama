@@ -2,6 +2,7 @@
 paths:
   - types/xollama/**
   - cmd/tweak/**
+  - create/xollama_media.go
   - docs/features/model-config.md
   - docs/xollama/tweak.mdx
 ---
@@ -10,16 +11,20 @@ paths:
 
 - `types/xollama/config.go` is the schema. It is written by `xollama tweak
   model` (`cmd/tweak/`) and by a Modelfile `XOLLAMA` line (`parser/parser.go`).
-  A feature block in its own file (`devices.go`, `council.go`) is a pointer
+  A feature block in its own file (`devices.go`, `council.go`, `engine_policy.go`, `media.go`) is a pointer
   field with its own `IsZero` and `validate`, wired into `Config.IsZero`,
   `Config.Validate` and `prune` in `cmd/tweak/fields.go` in the same commit.
-  `devices` is pruned through `IsZero`; the council has its own `Prune`.
+  `devices` is pruned through `IsZero`; the council and `media` each have their own `Prune`.
   Missing one leaves an empty block on disk that reads as a stated setting.
-- **The version written is the lowest that is true.** `SchemaVersion` is 4 and
+- **The version written is the lowest that is true.** `SchemaVersion` is 7 and
   `requiredVersion` raises the floor only for a block an older build would
   misread silently: v2 for `kv.unified` / `kv.residency_mode`, v3 for a
-  `devices` pin, v4 for a `council`. Never stamp `SchemaVersion` unconditionally
-  — that makes every model this build touched unreadable to an older xollama.
+  `devices` pin, v4 for a `council`, v5 for a role's own `num_ctx`
+  (`council.<role>.num_ctx`, `setsRoleWindow`), v6 for an engine policy (`fit`,
+  `kv.rolling_window`, `draft.auto_mtp_policy`; `setsEnginePolicies`), v7 for a
+  `media` block (`!c.Media.IsZero()`). Never stamp `SchemaVersion`
+  unconditionally — that makes every model this build touched unreadable to
+  an older xollama.
 - **Launch config versus request config.** A setting that changes how the model
   *loads* (engine, KV, slots, devices) belongs in the runner's config; one that
   changes how a *turn is answered* (the council) must not. `Config.LaunchConfig`
@@ -37,6 +42,14 @@ paths:
   no `XOLLAMA_*` fallback; `council.enabled` is the switch, and settings stated
   without it are refused by `validate`. `council.polykv on` requires the
   opencoti engine; `auto` is the default.
+- **A media component is a digest, and a layer.** The `media` block
+  (`types/xollama/media.go`: image, stt, tts, video) names each component by
+  digest; `syncMediaLayers` in `create/xollama_media.go` (called from
+  `ApplyModelfileLayers` in `create/manifest.go`) replaces the model's
+  `xollama.MediaTypeMedia` layers with one per component, named by
+  `MediaLayerName`, and refuses a digest missing from the store. In
+  `cmd/tweak/media.go` a `kindBlob` row takes a file path or a digest, and
+  `uploadMedia` sends the file before the create that names it.
 - `cmd/tweak/fields.go` rows: a field whose questions only make sense once a
   feature is on is `quiet` — skipped silently in the full walk, skipped *with
   the reason* when a flag names it. `kindText` takes free text or `@path` to

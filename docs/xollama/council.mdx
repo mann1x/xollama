@@ -6,9 +6,10 @@ description: One model name that answers every turn with a planner, researchers,
 A **council** is a model that answers each chat turn by consulting itself
 several times before it replies:
 
-1. a **planner** decides whether the message needs the council at all. A
-   greeting or a trivial fact it answers directly, in one short call;
-2. otherwise it writes a plan, and **researchers** work on it in parallel;
+1. the message is taken first by the **synthesizer** on a turn with tools, and
+   by a **planner** otherwise. Either decides whether it needs the council at
+   all, and a greeting, a trivial fact or a quick change is answered directly;
+2. otherwise the planner writes a plan, and **researchers** work on it in parallel;
 3. a **critic** reviews the plan and the findings, looking for errors, gaps
    and disagreements (more critics run in parallel, when configured);
 4. a **synthesizer** writes the one answer the client receives.
@@ -74,23 +75,31 @@ Every setting is optional; `xollama tweak model <name> --council` walks them.
 | `council.enabled` | `--council` | off | The switch. |
 | `council.researcher.count`, `council.critic.count` | `--council-researchers`, `--council-critics` | 2, 1 | How many run in parallel. A second critic pays when it is a different model. |
 | `council.<role>.prompt` | `--council-<role>-prompt` | built in | Replaces one role's instruction. `@file` reads it from a file. |
+| `council.<role>.instructions` | `--council-<role>-instructions` | unset | Added after the role's instruction, built in or replaced; replaces nothing. The builder's (`council.builder.instructions`) is how this council should be built, and shapes the builder's choices, never its reply format. |
 | `council.<role>.model` | `--council-<role>-model` | the council's model | Serves one role with another model, a cloud model (`…:cloud`) included. That role then shares no cache with the rest. |
 | `council.<role>.host` | `--council-<role>-host` | this server | Serves one role on another ollama or xollama server, such as `http://gpu2:11434`; needs `model`, named as that server names it. The server must allow the host (below). |
-| `council.<role>.max_tokens` | `--council-<role>-max-tokens` | 512 planner, 384 researcher, 256 critic, 1024 synthesizer | Caps one member's reply. |
-| `council.<role>.think` | `--council-<role>-think` | off | Lets that role reason before it replies: `on` (a 2048-token budget), a token budget such as `4096`, or a level (`minimal` … `max`, a share of the council's context: `medium` at 131k is 32k tokens per member). The budget comes on top of `max_tokens`. The reasoning is never shown, and the model's own `think_budget_message` closes it at the cap. A cloud model or a stock ollama takes no budget: that role is sent `think: true`, and only its reply cap (`max_tokens` + budget) bounds it. |
+| `council.<role>.max_tokens` | `--council-<role>-max-tokens` | a role on the council's own model: the council's output budget (`council.max_tokens`). A role on another model: that model's own template | Caps one member's reply, thinking included. A role on the council's own model is booked in the owner's window, so its cap is always a number; a role on another model (`council.<role>.model`, local, cloud or on another host) is sent no cap unless one is stated, and its model's Modelfile or the remote endpoint's template decides. The caps are room, not a target: the built-in prompts ask for terse replies. On a turn with tools, a member that writes (the synthesizer, and the planner when it answers) gets at least 16384, room for an edit: a change travels whole in one tool call. A writer's reply the cap cuts before its call is asked again once, for smaller steps. |
+| `council.<role>.num_ctx` | `--council-<role>-num-ctx` | that model's template | The context window of a role on another model (`council.<role>.model`), sent as its `num_ctx`. A role on the council's own model runs in the council's window and cannot set one. The client's `num_ctx` and `num_predict` are the council's and never reach a role on another model. Sets schema v5. |
+| `council.<role>.think` | `--council-<role>-think` | off | Lets that role reason before it replies: a level (`minimal` 1/16, `low` 1/8, `medium` 1/4, `high` 1/2, `max` 4/5) is that share of the member's reply cap, which includes the reasoning, as Cerebriline maps a level onto its output budget; `on` is `medium`; a token budget such as `4096` is held to four fifths of the cap, so the reply keeps room. Each member's instruction ends with an Output Budget section that states its cap and its thinking share. The reasoning is never shown. Where the budget is sent as a token count (this server's models, and a model another xollama serves) the member is also sent the `think_budget_message` of the council model's template (or the client's), which closes the reasoning at the cap. A role whose cap its own model sets takes a level as a share of its window, and `on` as 2048 tokens. A cloud model or a stock ollama takes no budget: that role is sent `think: true`, and its reply cap bounds it. The builder's levels are the same shares of each role's cap. |
 | `council.charter` | `--council-charter` | built in | The council's standing instruction. It opens the planner's route and plan requests, which every later member continues from; no member's system message carries it. |
+| `council.instructions` | `--council-instructions` | unset | Your standing guidance, read by every role after the charter, in the shared prefix. Replaces nothing. A harness adds its own per request ([integration guide](/xollama/council-integration)). |
 | `council.temperature_jitter` | `--council-jitter` | 0.02 | Researchers and critics each draw a temperature within ±2 % of the model's, so parallel members do not say the same thing. |
 | `council.seed` | `--council-seed` | random | A fixed seed makes a council reproducible; every member's seed is derived from it. |
+| `council.max_tokens` | `--council-max-tokens` | 16384 | The output ceiling. A member on the council's own model with no `max_tokens` of its own replies in at most the least of three quarters of the council's window, this ceiling and the model's `num_predict`, thinking included: Cerebriline's output budget with a lower ceiling, since a member writes one part of the work. Between 1024 and 96000. The owner's window books every such member's cap. |
 | `council.max_rounds` | `--council-max-rounds` | 1 | Lets the critics send the research back, up to 4 rounds in all. |
+| `council.cloud_parallel` | `--council-cloud-parallel` | 3 | How many members on a cloud model run at once, up to 16. They use no engine slot here. |
 | `council.show_deliberation` | `--council-show-deliberation` | on | Off sends the answer alone. |
 | `council.broadcast` | `--council-broadcast` | off | Members working beside a mate of the same role can leave each other short notes (below). Under evaluation. |
 | `council.polykv` | `--council-polykv` | `auto` | Shares the conversation's cache between members on opencoti (below). `on` refuses to serve without it, `off` never uses it. |
-| `council.context.window`, `.floor`, `.compact_at` | `--council-window`, `--council-floor`, `--council-compact-at` | the model's context, all or nothing, 0.85 | The conversation's window on opencoti, the least it accepts, and the context pressure at which a turn compacts. |
+| `council.context.window`, `.floor`, `.compact_at` | `--council-window`, `--council-floor`, `--council-compact-at` | the model's context, the window, 0.85 | The conversation's window on opencoti, the least it accepts, and the context pressure at which a turn compacts. A floor you state is all or nothing. Left unset, the council's first booking takes the largest window the engine can give, down to the room its roles need (at most half the window, at least 4096), so a model whose context is no larger than what its council asks for still runs; after that the window is not shrunk below what was granted. Give the model a context at least as large as what its roles may write (the sum of their `max_tokens`): a smaller one still answers, but with PolyKV at `auto` the turn then runs without it, each member on its own copy, and the server log says so. |
 | `council.context.idle_compact_at` | `--council-idle-compact-at` | 0.75 | The pressure at which the council compacts while it waits for your next message, so that message starts sooner. Not above `compact_at`. |
 | `council.context.compaction` | `--council-compaction` | `agentic` | How the older turns are folded: `agentic` has the model write it (below), `basic` keeps your requests and the answers that fit, with no model call. |
-| `council.context.review`, `.retrospective` | `--council-compaction-review`, `--council-compaction-retrospective` | on, on | Two critics and a synthesizer check the model's summary; a retrospective carries its reasoning forward. Off makes compaction cheaper. |
+| `council.context.review`, `.retrospective` | `--council-compaction-review`, `--council-compaction-retrospective` | off, off | On, two critics and a synthesizer check the model's summary, and a retrospective carries its reasoning forward. Off (the default) makes a fold one call. |
 
-`<role>` is `planner`, `researcher`, `critic` or `synthesizer`. The planner's
+`<role>` is `planner`, `researcher`, `critic` or `synthesizer`, and `builder`
+for everything but `prompt` and `count` (the builder's reply is JSON the council
+reads, so its prompt is built in). An unstated builder runs on the planner's
+model and host, and thinks as the planner does. The planner's
 `think` also covers a direct answer; its routing decision never reasons. The defaults
 are the ones measured while the feature was built; the prompts, in particular,
 are tuned to the planner's routing decision, so change them one at a time.
@@ -167,6 +176,20 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
   it yourself) and `council_tags_v1` (the tag above). Gate on these names, not
   on the version: a development build reports `0.0.0`. A name never changes
   meaning; a changed contract gets a new name.
+- **What each role spent** (`council_usage_v1`). The done chunk of a council
+  turn carries `council_usage`, one entry per role, and per model and host
+  when a role runs elsewhere. Each entry gives the calls, the prompt tokens
+  sent (`prompt_tokens`, including the part served from the cache,
+  `cached_tokens`), the tokens written (`eval_tokens`), and the engine's and
+  the wall durations in nanoseconds. A background reviewer's work arrives on
+  the next done chunk after it finished. A cloud model bills the whole
+  `prompt_tokens` on every call, so this is what tells you which role is
+  worth a bigger or a cloud model:
+
+  ```json
+  "council_usage":[{"role":"synthesizer","calls":3,"prompt_tokens":41200,
+    "cached_tokens":38900,"eval_tokens":610,"wall":48100000000}]
+  ```
 - **Driving PolyKV yourself** (`client_placement_v1`). A client that builds
   its own pools through `/api/engine` names one with `placement` on
   `/api/chat`: `{"pool_id": 0, "num_ctx": 16384, "num_ctx_min": 8192}`. On a
@@ -257,6 +280,18 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
     and its report points at the first read ("returned the same as
     `r1:call_x`") instead of carrying it twice. A result of a tool that is not
     read-only clears what was read before it.
+  - **A change whose quote the last read does not bear out never reaches
+    you.** When a change names the text it replaces (`old_text`,
+    `old_string`, `search`…) on a target (`path`, `file_path`…), and the
+    member's own last read of that target has a long start of the quote but
+    not the rest of it, the council answers the call in its place. The
+    member's own changes since that read, which went through, are applied to
+    it first, so the read stays current after an edit. The answer says where
+    the quote stops matching, what the read has there, and to quote only the
+    smallest span that occurs once. Line numbers in the read are ignored, and
+    a quote that copied them is answered with that, in place.
+    Up to four such answers per member; after that the change is sent to you
+    and your answer stands.
   - **A confirmed error goes straight to the synthesizer.** A critic that has
     checked where an error is ends its review with
     `VERDICT: CONFIRMED path:line`. The other critics stop, no further round
@@ -268,6 +303,142 @@ synthesizer are one of a kind: if either fails, the turn fails with its error.
      {"role":"assistant","content":"","tool_calls":[{"id":"r1:call_x","function":{"name":"read_files","arguments":{"path":"notes.txt"}}}]},
      {"role":"tool","tool_call_id":"r1:call_x","content":"Deadline: 14 October."}]}
   ```
+
+## A council shaped by the work
+
+A council is configured before anyone knows what it will be asked, so its own
+instructions are general. The first time a request goes to the council, a
+**builder** runs, where the planner does unless `council.builder` names its
+own model or host. It reads your system prompt, your
+requests so far and the tools your client offers, and judges what kind of work
+this is. Then it writes, for each role, an instruction that fits the work, and
+chooses how much each role thinks and how many check cycles the work deserves
+(below). A proof-reading job gets one cycle, a bug fix six, a feature across
+several files more, up to 12. It also writes a target: a few sentences saying
+what the council is set up for.
+
+The builder shapes the council you defined and never changes it:
+
+- The roles, their counts and models stay as they are.
+- A role prompt you set stands; the builder's instruction follows it.
+- A think setting you set stands; the builder chooses only for the roles you
+  left unset.
+- Researchers and critics still only read, and the synthesizer is still the
+  only member that changes anything.
+
+The build is kept with the council's deliberation, in the server's memory and
+in `council_chat_state`. On a later message, whoever takes the request reads
+the target and judges whether the message continues that work. New work the
+target does not fit goes to a council built again.
+
+On a turn with tools, the **synthesizer** takes each request first, in place
+of the planner's route decision. It is the member that answers you and the
+only one that changes anything, and it runs on the conversation's own session,
+so a quick request costs one call, as a plain chat turn does. It has two tools
+of its own, which never reach your client:
+
+- `council_forward` hands the request to the council. The first time, the
+  builder sets the council up before the planner starts.
+- `council_rebuild` has the builder set the council up again for new work.
+  The synthesizer is told the new target and instructions, then forwards.
+
+On a turn without tools, the planner's short route decision does the same job,
+with `rebuild` as one of its answers. A reply from the builder that is not the
+JSON asked for shapes nothing: the council runs as configured.
+
+## Researchers propose, the synthesizer checks
+
+On a turn with tools, the researchers and critics only read, and the
+synthesizer is the only member that changes anything. When the task needs a
+change and your client offers a tool that makes one, each researcher proposes
+it: what to change, where, and how to check that it worked. The synthesizer
+makes the changes it judges right and checks them with the tools.
+
+When a check fails and the findings leave nothing else to try, the synthesizer
+writes you a brief status (where things stand, and that the council is trying
+again), then `VERDICT: RETEST` with what it tried and what the check returned.
+You get the status as content. The report after the verdict goes to the
+council only. The planner then plans the work again from every failed check
+so far: it splits what is left into one workload per researcher and gives no
+one what a check refuted. The researchers propose, the critics review, and the
+synthesizer checks again. With thinking shown, you watch the deliberation
+start over. A turn runs at most 6 cycles, and the last synthesizer's reply is
+the answer.
+
+The synthesizer's part in a cycle is to apply the council's proposals and
+check them, not to investigate on its own. It has 6 tool steps per cycle (the
+builder may set 2 to 16). When they run out, what it tried goes back to the
+council as a failed check. A synthesizer that forgets the verdict is asked for
+it once, without you seeing the answer twice.
+
+Failed checks outlive the turn. On your next message about the same work,
+every member reads what was already tried and refuted. New work, which the
+synthesizer rebuilds the council for, starts clean. When the synthesizer
+takes a request first and finds it needs investigating, it forwards the
+request before digging in. It has at most 4 tool steps of its own, and what it
+tried reaches the council the same way: its calls and their results, not
+its own conclusions.
+
+Every message a member reads from the council names who wrote it, for example
+`[COUNCIL · FINDINGS OF THE RESEARCHERS]` or `[COUNCIL · INSTRUCTIONS FOR YOU]`.
+Your messages carry no header, so a member never takes another member's work
+for your request. Your client's record of earlier turns is shown to the
+members the same way: each tool call under the member that made it, without
+that member's working notes, and a long result already shown once is pointed
+at, not repeated. Your client sends the history as it always has.
+
+While the synthesizer works, the critics review its checks. After a check it
+sends what it changed to the critics with `council_review`, and keeps
+working. The critics take the checks in order, each judging what the calls
+actually returned, and every finished review reaches the synthesizer before
+its next step. Only a `VERDICT: DONE` waits: it stands once the reviews still
+out are in. When the synthesizer makes its next change without sending the
+check before it, the council sends that check for it, and a DONE sends its
+last check itself. With thinking shown, each review appears in the
+deliberation as it reaches the synthesizer, under "Reviewer 1", "Reviewer 2".
+Every review ends with `REVIEW: CONFIRMED`, `REFUTED` or `UNCLEAR`. A critic
+that leaves the verdict out is asked again with the structure, and a second
+miss counts as unclear.
+
+The planner keeps the council's task list: what each researcher is on, and
+what each task settled or refuted, with the evidence. Every member reads the
+list, the planner updates it after each failed check, and it carries over to
+your next message. When two checks in a row return the same output, the
+council is told to change approach instead of refining the same one. It then
+narrows down where the fault is, or replaces the failing part whole. A check
+whose output changed counts as progress.
+
+### Results are records, and reads have a limit
+
+On a turn with tools, each member ends with a call the council answers itself,
+not with a phrase it has to remember:
+
+| Member | Ends with | What it carries |
+|---|---|---|
+| Researcher | `council_report` | A summary, every change it proposes (the exact old text from what it read and the new text, why, how to check), what it established with the evidence, and the one open question |
+| Critic | `council_verdict` | `ready`, `revise` or `confirmed` (with the place), why, and any corrections |
+| Synthesizer, while checking | `council_done` or `council_retest` | What the check showed, or what it tried |
+
+A result counts only as a turn's one call: made beside reads, it waits for
+their results. The critics and the synthesizer read a researcher's report as
+fields, each proposal marked by whether the researcher's own reads show its old
+text, with the reads themselves by reference (`council_evidence`), not inline.
+The `VERDICT:` phrases above are still read from a member that writes them.
+
+A researcher has 4 tool steps and a critic 3, each step one round trip to your
+client, so members are told to put every read they need into one step. A step
+counts whether your client ran it or the council answered it from a read
+already made. At the limit the member's next call must be its result: it is
+sent with the result's schema as its format, so it cannot call a tool.
+
+An empty plan, or an empty report after thinking, is asked for once more
+without thinking. A member call that fails, or sends nothing for 5 minutes, is
+asked again, up to twice.
+
+Without tools there is nothing to check with, and the council answers once, as
+before. The cycles travel in `council_chat_state`, so a resumed turn starts at
+the cycle after the last failed check. A turn that continues the last
+deliberation (below) runs its synthesizer alone and does not go round again.
 
 ## One council for the whole conversation
 
@@ -300,12 +471,20 @@ role (two researchers, two critics) gets a `council_post` tool. A note says
 what works, what it found, or which part it takes, so the other can pick up
 the rest. It is kept short by construction:
 
-- at most 200 characters, and 4 notes per member in a turn;
+- at most 600 characters, and 4 notes per member in a turn;
 - delivered to the mates before their next model call, as one message headed
   "for your information; do not reply, do not wait";
 - never waited on: posting returns at once, and no member blocks on a reply;
 - answered in the server, never sent to your client; a member with no mate of
   its role cannot post.
+
+A note can also carry a **verdict**, a result the member checked: `confirmed`
+(it works) or `refuted` (it does not). A model cannot be handed text in the
+middle of a generation, so a verdict interrupts instead. The mates generating
+at that moment are stopped, what they had written is kept as their turn, and
+they read the verdict before going on, instead of pursuing something already
+settled. A member is interrupted at most twice a turn. Only verdicts
+interrupt; an ordinary note waits for the mate's next call.
 
 The board travels in `council_chat_state`, so a resumed turn neither repeats a
 note nor loses one. It is off by default while it is measured; if it costs
@@ -323,7 +502,10 @@ what was added. On a hybrid model, whose every
 cached sequence also holds a recurrent state, each stage's shared part is freed
 as soon as its members are done, so a turn fits in the few state slots the
 engine keeps. When the turn ends, the members' shared
-parts are freed and their sessions are closed. The conversation keeps its
+parts are freed, but their sessions stay open: the council lives as long as
+the conversation, and each member picks up from its own cache on the next
+trip or turn, instead of reading everything again. They close when your client
+leaves mid-turn, or at the engine's idle timeout. The conversation keeps its
 window, and its cache, for the next turn. On a hybrid model the conversation
 is cached afresh each turn, since a kept one would hold a state slot.
 
@@ -408,10 +590,11 @@ an agent's context:
   grows. What the older turns become is one message in front of them:
   every request you made, quoted word for word, then the summary.
 - **Who writes it.** The model itself, continuing the conversation: it
-  retells its own part so far. Two critics each check one half of that
-  against the conversation, and a synthesizer joins the halves. A
-  retrospective, when your client sent the model's thinking back, carries
-  what worked and what did not.
+  retells its own part so far, in one call. With `council.context.review`
+  on, two critics each check one half of that against the conversation and
+  a synthesizer joins the halves. With `council.context.retrospective` on,
+  and when your client sent the model's thinking back, a retrospective
+  carries what worked and what did not.
 - **Once.** The server remembers the fold for as long as your client resends
   the same history, and each later fold summarises only what came after the
   last. Edit or cut the history and the council starts again from what you
@@ -436,8 +619,12 @@ the council falls back to a plainer one, and at worst to `basic`.
 - A turn is several calls to the model, so it takes longer than a plain one:
   about a minute for a 27B model on one GPU, against a second or two for a
   greeting answered directly.
-- Parallel members need parallel slots. On opencoti they run at once, including
-  on the architectures upstream limits to one sequence; on stock `llama.cpp`
-  those take turns (see [Concurrent requests](/xollama/slots)).
+- Parallel members need parallel slots. On opencoti a council starts with every
+  slot the engine allows live: its parallel ceiling (4 by default, or
+  `slots.max`), and never fewer than its widest step. The members run at once,
+  including on the architectures upstream limits to one sequence; on stock
+  `llama.cpp` those take turns (see [Concurrent requests](/xollama/slots)).
+  Members on a cloud model take no slot here and are counted apart:
+  `council.cloud_parallel` at a time.
 - A model written with a council needs an xollama that reads config schema v4.
   An older one refuses the model instead of serving it without its council.

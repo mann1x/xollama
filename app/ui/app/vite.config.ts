@@ -5,6 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import postcssPresetEnv from "postcss-preset-env";
 import { resolve } from "path";
+import { xollamaBrand } from "./xollama-brand"; // xollama-hook: app-brand
 
 export default defineConfig(() => ({
   base: "/",
@@ -14,6 +15,7 @@ export default defineConfig(() => ({
     react(),
     tailwindcss(),
     tsconfigPaths(),
+    xollamaBrand(), // xollama-hook: app-brand
   ],
 
   resolve: {

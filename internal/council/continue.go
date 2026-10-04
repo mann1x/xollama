@@ -16,7 +16,6 @@ package council
 // messages say what the work is.
 
 import (
-	"encoding/json"
 	"errors"
 )
 
@@ -30,8 +29,6 @@ const RouteContinue = "continue"
 
 const routeMsgContinue = `ROLE: PLANNER. The council answered the user's previous message; the user's latest message replies to that answer. Decide what it asks for. Reply with JSON only: {"route":"direct"} when the work is done or the message is trivial (thanks, a greeting, a one-line fact), {"route":"continue"} when the work the council was doing goes on from where it stands (feedback, a correction, "continue", a result to act on), or {"route":"council"} when it is a new or different task that needs the council again.`
 
-var routeSchemaContinue = json.RawMessage(`{"type":"object","properties":{"route":{"type":"string","enum":["direct","continue","council"]}},"required":["route"]}`)
-
 // continueNote tells the synthesizer the turn goes on from its last answer.
 const continueNote = " The conversation above goes on after the council's last answer: the user's latest message replies to it. Continue the work from where it stands, from the plan, findings and critiques above as the council left them, and act on the reply; if the work is already complete, say so plainly."
 
@@ -42,7 +39,7 @@ func Kept(p Progress) *Progress {
 		return nil
 	}
 	last := p.Rounds[len(p.Rounds)-1]
-	k := Progress{Route: RouteCouncil, Plan: p.Plan, Rounds: []RoundProgress{last}}
+	k := Progress{Route: RouteCouncil, Plan: p.Plan, Rounds: []RoundProgress{last}, Build: p.Build, Prior: lastPrior(append(append([]string(nil), p.Prior...), p.Tests...)), Tasks: p.Tasks}
 	k = k.clone()
 	return &k
 }

@@ -57,8 +57,9 @@ Everything above those — scheduling, memory estimation, the `/api/*` surface,
 parsers, templates — is engine-agnostic. **Replacing the engine is replacing
 a binary path and an argv, not rewriting ollama.**
 
-macOS/MLX is a separate path entirely (`server/sched.go:588` →
-`x/mlxrunner.NewClient`) and is not touched.
+MLX is a separate path entirely (`server/sched.go:588` →
+`x/mlxrunner.NewClient`) and is not touched. GGUF models on Apple silicon go
+through this seam like any other: see "macOS" below.
 
 ## Compatibility — measured, not assumed
 
@@ -153,7 +154,9 @@ llama.cpp.
 | Windows x86_64 + CUDA/Vulkan | **opencoti** | `-win-gpu` artifact |
 | **NVIDIA below compute 7.5** | `llama-server` | engine has no code for it; see below |
 | **ROCm / Radeon** | `llama-server` | no tested opencoti backend |
-| macOS (Metal / MLX) | untouched | MLX path, `x/mlxrunner` |
+| macOS arm64 + Metal / CPU | **opencoti** | started through `ape-macos-aarch64`; see "macOS" |
+| macOS x86_64 | `llama-server` | opencoti publishes no Intel Mac files |
+| MLX models | untouched | MLX path, `x/mlxrunner` |
 | anything else | `llama-server` | default deny |
 
 The matrix lives in `policy.go` as data, with a test. Adding a backend to
@@ -194,8 +197,8 @@ The opencoti repo is private; the engine is published on Hugging Face, and the
 artifacts are 0.7–2 GB — too big to vendor in git and not ours to relicense.
 
 **Which repo is a variable, and nothing in the tree may assume it.** There are
-two, and `llm/engine/pin.txt` is the only place that says which one this branch
-follows:
+two, and the pin in `llm/engine/pin/` is the only place that says which one
+this branch follows:
 
 | Channel | Repo | What it holds |
 |---|---|---|
@@ -237,16 +240,70 @@ BUILD time, and ships inside the installation package beside `llama-server`.
 A model load must not be able to stall on a 650 MB fetch, and an installed
 package must work with no network at all.
 
+### A health check that could not reach the engine
+
+Upstream fails a request on the first failed dial to the engine's `/health`.
+On opencoti, while the engine process is still running, a check that could not
+reach it (a dial error, or refused) is tried up to four more times, with
+backoff from 0.25 to 2 s and a Warn each time (`engine-health-retry`,
+`llm/engine_health_retry.go`). Measured cause, on eleven2go with a0968aea: one
+loopback dial to a live engine timed out, the engine answered three seconds
+later, and a council turn was lost. Stock llama.cpp keeps upstream's single
+failure.
+
+On Windows an opencoti engine is tied to the server that started it
+(`engine-lifetime` hook, `engine.BindLifetime` in
+`llm/engine/lifetime_windows.go`): every engine, LLM or media, goes into one
+job object with kill-on-close, so a server that is killed or crashes takes its
+engines with it. Windows does not do that by itself, and an orphaned engine
+holding a model on an AMD discrete card through Vulkan hung the display driver
+within seconds (eleven2go, 2026-10-04: watchdog dump `0x141`, once the card
+gone until a reboot, once the machine frozen), while an engine terminated at
+once left the card fine. A binding that fails is a Warn, never a failed load.
+Stock llama.cpp is started as upstream starts it.
+
 ## Packaging
 
-`llm/engine/pin.txt` pins the artifact: `repo`/`rev`/`tag` plus one
-`bin <arch> <hf-path> <sha256>` row per published artifact. Two parsers read
-it - `cmake/opencoti-fetch.cmake` at build time and `llm/engine/pin.go` via
-`//go:embed` - and the format is deliberately trivial so they cannot drift.
-`llm/engine/pin_test.go` holds both honest, including an invariant that every
-platform in the routing matrix has an artifact row, and a guard that the file
-stays ASCII (CMake's regex `.` does not match multi-byte UTF-8, which once let
-a comment leak into the parser).
+The pin is opencoti's **pin format 2**, in `llm/engine/pin/`. The engine and
+everything that travels beside it are published as **components**, each with
+its own version, its own pin file and its own immutable commit: `engine`,
+`cuda`, `cuda12`, `sbsa`, `vulkan`, `macos`, `media`. An **index** composes
+them. opencoti publishes its recommended index per channel; xollama keeps its
+own, `llm/engine/pin/index.txt`, and vendors the component pin files it names
+byte-identical beside it (`sbsa` is absent: nothing here routes CUDA on
+arm64 servers). The build reads only this directory, then fetches each payload
+file by its component's `repo` / `rev` / `path` and verifies sha256 and size.
+No pin is fetched at build time.
+
+| File | Whose | What it states |
+|---|---|---|
+| `index.txt` | xollama's | `channel`, `tag`, and per component the pin file, the commit it is readable at, its sha256 and its version, or `absent` |
+| `engine.txt`, `cuda.txt`, `cuda12.txt`, `vulkan.txt`, `macos.txt`, `media.txt` | opencoti's, vendored unchanged | `repo`, `rev` (the payload commit), `abi` digests, `engine-min`, `sass`, `feature` rows, and one `file <platform> <kind> <path> <sha256> <bytes>` row per file |
+
+A staggered move is one index line and its pin file; nothing else changes.
+What makes that safe is checked in both parsers: every `abi` a component
+states must be one the engine's pin provides, name and digest, and the engine
+must not be older than the component's `engine-min`. A library and an engine
+that disagree on an interface do not fail to load; they crash or run wrong.
+
+Files are staged beside the engine under their **published names**, never
+renamed: that name is what the engine looks for in its own directory
+(`ggml-cuda-x86_64.so`, `ggml-cuda-cu12-x86_64.so`, `ggml-vulkan-x86_64.so`,
+`oc-codec-linux-x86_64.so`; on Windows the engine has a row of its own under
+the `.exe` name). A name is unique across the components of an
+index (each publishes its `BUILD_INFO.<component>.md`), and both parsers refuse
+two components that stage one name.
+
+Two parsers read the directory - `cmake/opencoti-fetch.cmake` at build time and
+`llm/engine/pin.go` via `//go:embed` - and `llm/engine/pin_cmake_test.go` runs
+the real script against a pin both read, per platform, and holds them to the
+same files, names and modes. `llm/engine/pin_test.go` keeps the committed pin
+honest: every platform in the routing matrix is served or refused for a stated
+reason, every library ships its licence text, and the files stay ASCII
+(CMake's regex `.` does not match multi-byte UTF-8, which once let a comment
+leak into the parser). Until engine `2610040837001` the pin was one file,
+`llm/engine/pin.txt` (`bin` / `dso` rows and `#!` comment rows); opencoti
+stopped writing that format on 2026-10-04.
 
 `cmake/opencoti-engine.cmake` stages the artifact into
 `${OLLAMA_PAYLOAD_INSTALL_PREFIX}/${OLLAMA_LIB_DIR}`, which the catch-all
@@ -263,6 +320,7 @@ Building without it, for Go iteration or offline:
 ```sh
 cmake -B build . -DXOLLAMA_OPENCOTI_ENGINE=OFF            # no engine at all
 cmake -B build . -DXOLLAMA_OPENCOTI_ENGINE_FILE=<path>    # verified local copy
+cmake -B build . -DXOLLAMA_OPENCOTI_SIDECAR_DIR=<dir>     # every other file, verified
 cmake -B build . -DXOLLAMA_OPENCOTI_ENGINE_CACHE=<dir>    # reuse one download
 ```
 
@@ -321,7 +379,7 @@ ollama's own library directory, beside `llama-server` and the ggml backends.
 |---|---|
 | Windows | `%LOCALAPPDATA%\Programs\Ollama\lib\ollama\engines\payload` |
 | Linux | `/usr/local/lib/ollama/engines/payload` |
-| macOS | `Ollama.app/Contents/Resources/lib/ollama/engines/payload` |
+| macOS | `~/.ollama/engines/payload` (never the app bundle) |
 
 giving, in full:
 
@@ -331,7 +389,9 @@ giving, in full:
 
 It is not always writable, and that is expected rather than an error. A packaged
 Linux install leaves that directory owned by `root` while the service runs as
-`ollama`; a macOS install puts it inside a signed application bundle. Where the
+`ollama`. On macOS the runtime directory is inside the signed application
+bundle, which a user-owned install leaves writable and which a write would
+break, so it is not offered at all (`payloadRoots`). Where the
 preferred root cannot be written, xollama falls back to
 `~/.ollama/engines/payload` — still its own directory, never your `~/.llamafile`.
 Whether a root is writable is **checked before any work**, so a root that cannot
@@ -368,7 +428,7 @@ failing the load.
 A **split** artifact — a bare APE with its `ggml-cuda.so` staged beside it, the
 shape the `dev` channel publishes — extracts nothing at all, so none of this
 applies to it. That is the better arrangement, because both halves can then be
-pinned by sha256 in `llm/engine/pin.txt` and verified at fetch, where a fat
+pinned by sha256 in `llm/engine/pin/` and verified at fetch, where a fat
 bin's payload is unverifiable once unpacked.
 
 ## Queued for the next pin (reported 2026-09-21, not published)
@@ -452,3 +512,36 @@ What the A/B settled about the engines themselves: single-stream throughput is
 parity (within 2%), concurrency at `-np 4` is 27% slower on opencoti, and the
 VRAM-overflow path aborts rather than spilling. See
 [`docs/evaluations/phase2-engine-ab.md`](../evaluations/phase2-engine-ab.md).
+
+## macOS
+
+Apple silicon only. opencoti publishes its macOS files for arm64 and nothing
+for Intel, so `PackageArch` has `darwin/arm64` → `macos-aarch64` and no label
+for `darwin/amd64`, which stays on llama.cpp in a universal app.
+
+- **The package** is the engine (the same APE file as Linux, the engine
+  pin's `file any bin` row), the `macos` component's `ape` (the loader) and
+  `metal` (`ggml-metal-aarch64.dylib`), and the `media` component's
+  `macos-aarch64` rows: `codec`, `audiocpp`, `espeak` and the licence texts.
+  The `metal` row is what routes Metal to the engine.
+- **The launch** is `<dir>/ape-macos-aarch64 <engine> --server …` (`run` in
+  `llm/engine/opencoti.go`, shared by the launch, the device listing and the
+  link probe). Started any other way the engine compiles a loader with `cc`
+  on first use, which a Mac without the Xcode tools cannot do. A missing
+  loader is a Warn and stock llama.cpp, never a failed load.
+- **`--gpu apple`** selects Metal (`gpuFlag`). Discovery takes the engine's
+  own device line (`MTL0`), as it does for CUDA and Vulkan.
+- **The build** stages the files with `cmake/opencoti-fetch.cmake` from
+  `scripts/build_darwin.sh` (`_stage_opencoti_engine`) into
+  `Contents/Resources/engines`; the loader is staged executable. The same
+  script signs them (`_sign_opencoti_engine`): the loader with
+  `app/darwin/engine-loader.entitlements`
+  (`com.apple.security.cs.allow-unsigned-executable-memory`; without it the
+  hardened runtime kills it at start), and the libraries with the same
+  identity, because library validation refuses another team's. The engine
+  file is not a Mach-O and is sealed as a resource.
+- **Limits on Metal** (opencoti's, not xollama's): KVarN cache types are
+  refused by name, DCA attention runs on the host, and the rolling KV window
+  has no meaning on unified memory.
+
+Registry row `macos-engine`.

@@ -27,7 +27,7 @@ import "fmt"
 // featureSWACacheTypes is --cache-type-k-swa / --cache-type-v-swa, which let
 // the sliding-window half of the cache take a different type from the global
 // half. Added by opencoti patch 0288; absent from every cut through c7.
-const featureSWACacheTypes = "swa-cache-types"
+const featureSWACacheTypes = "cache_type_swa_v1"
 
 // HasSlidingWindowRing reports whether the engine this build ships can be told
 // to quantise the sliding-window half of the cache separately.

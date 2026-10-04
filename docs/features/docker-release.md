@@ -18,10 +18,11 @@ script.
 
 | Layer | Source | Pinned by |
 |---|---|---|
-| llama.cpp CPU runtime (`llama-server`, CPU `ggml`, built with `llama/compat`) | the fork's release `v0.34.4-thinkbudget`, `ollama-linux-amd64-runtime.tgz` | `llama/runtime-pin-linux.txt`: sha256, plus the inputs digest |
-| CUDA v12, CUDA v13, Vulkan, MLX CUDA v13 | upstream `v0.34.4`: `ollama-linux-amd64.tar.zst`, `ollama-linux-amd64-mlx.tar.zst` | `llama/runtime-pin-linux.txt`: sha256; upstream's `LLAMA_CPP_VERSION` must equal ours |
-| opencoti engine | HF, whatever `llm/engine/pin.txt` names | `llm/engine/pin.txt` via `cmake/opencoti-fetch.cmake` |
-| opencoti CUDA 12 payload (older cards, e.g. V100) | HF, the pin's `#! dso-cuda12` row, staged with a copy of the engine in `lib/ollama/engines/cuda_v12` | `llm/engine/pin.txt` (sha256 checked by `scripts/docker-assemble.sh`) |
+| llama.cpp CPU runtime (`llama-server`, CPU `ggml`, built with `llama/compat`) | the fork's release `v0.35.1-thinkbudget`, `ollama-linux-amd64-runtime.tgz` and `ollama-linux-arm64-runtime.tgz` | `llama/runtime-pin-linux.txt` and `llama/runtime-pin-linux-arm64.txt`: sha256, plus the inputs digest |
+| CUDA v12, CUDA v13, Vulkan, MLX CUDA v13 | upstream `v0.35.1`: `ollama-linux-amd64.tar.zst`, `ollama-linux-amd64-mlx.tar.zst` | `llama/runtime-pin-linux.txt`: sha256; upstream's `LLAMA_CPP_VERSION` must equal ours |
+| opencoti engine and its GPU libraries (CUDA 13, Vulkan) | HF, the components `llm/engine/pin/index.txt` names, staged in `lib/ollama` under their published names | `llm/engine/pin/` via `cmake/opencoti-fetch.cmake` (sha256 and size), re-checked by `scripts/docker-assemble.sh` against the fetch's manifest |
+| opencoti media sidecars (`oc-codec`: mp3, opus, aac, mp4; `oc-audiocpp`: Kokoro, Supertonic, KittenTTS) | HF, the `media` component, staged beside the engine under their published names with their licence texts | as the engine |
+| opencoti CUDA 12 payload (older cards, e.g. V100) | HF, the `cuda12` component: `ggml-cuda-cu12-x86_64.so` beside the same engine, which loads it for a load on such cards (`OPENCOTI_CUDA_LEGACY=1`) | as the engine |
 | `xollama` | Go-only build in AlmaLinux 8 (glibc 2.28), `-buildmode=pie` | the commit; the Go toolchain is the newest patch on `go.mod`'s line |
 
 The overlay order matters. Upstream's tarball goes down first, and the fork's
@@ -80,20 +81,27 @@ docker run -d --gpus all -p 22434:22434 -v xollama:/root/.ollama ghcr.io/mann1x/
 
 | run | environment | tags published |
 |---|---|---|
-| on a branch (`dev`) | `dev` | `:<upstream>-dev.<sha>`, `-amd64`, `:dev` |
-| on a tag whose GitHub release is a **pre-release** | `dev` | `:<version>`, `-amd64`, `:dev` |
-| on a tag whose GitHub release is a **full release** | `release` | `:<version>`, `-amd64`, `:latest` |
+| on a branch (`dev`) | `dev` | `:<upstream>-dev.<sha>`, `-<arch>`, `:dev` |
+| on a tag whose GitHub release is a **pre-release** | `dev` | `:<version>`, `-<arch>`, `:dev` |
+| on a tag whose GitHub release is a **full release** | `release` | `:<version>`, `-<arch>`, `:latest` |
+
+`:<version>` and the moving tag are a manifest list over the
+`:<version>-<arch>` images the run built (the `manifest` job).
 
 The channel is the **GitHub pre-release flag**, as it is for the desktop
-updater. It is not the hyphen in the tag: every `v<upstream>-xollama.<n>` tag
-has one, so under the old hyphen rule every release would have landed on `:dev`.
+updater. It is not the hyphen in the tag: every xOllama tag has one
+(`v<upstream>-rc.<k>.xollama`, `v<upstream>-xollama`, `v<upstream>-xollama.<n>`;
+see `docs/protocols/RELEASE.md`), and a release candidate is always a
+pre-release, so it only ever moves `:dev`; so under the old hyphen rule every release would have landed on `:dev`.
 `:latest` never moves from a branch. The `channel: release` input is refused
 unless the run is on a tag. A tag with no release, or with a draft, counts as a
 pre-release.
 
-A release that `xollama-release.yaml` creates with `GITHUB_TOKEN` triggers no
-other workflow, so a release's image is a manual run on its tag, made after
-promotion:
+A tag that `xollama-release.yaml` creates with `GITHUB_TOKEN` raises no push
+event, so its `publish` job starts this workflow on the tag itself: every
+candidate and release gets its image, on `:dev` because it is a pre-release
+at that moment. Promotion rebuilds nothing, so `:latest` moves with one more
+run on the tag, made after promotion:
 
 ```shell
 gh workflow run docker-release.yaml --ref v0.34.2-xollama.2
@@ -111,9 +119,32 @@ default branch, and it does.
 
 ## Architectures
 
-**amd64 only**, for now. arm64 follows once the amd64 image has been through
-user testing. The per-architecture `:<version>-amd64` tag is published already,
-so a later multi-arch manifest can be assembled from it without rebuilding.
+**amd64 and arm64.** Each architecture has its own runtime pin
+(`llama/runtime-pin-linux.txt`, `llama/runtime-pin-linux-arm64.txt`), is
+assembled by `ARCH=<arch> scripts/docker-assemble.sh` and built on a runner of
+its own kind (`ubuntu-latest`, `ubuntu-24.04-arm`), and is pushed as
+`:<version>-<arch>`. The `plan` job builds arm64 only while the arm64 pin
+carries the fork's runtime rows; an incomplete pin gives an amd64-only image
+and an assembly that refuses arm64, naming the missing rows. The Go binary is
+built with clang on arm64, as upstream does: AlmaLinux 8's gcc lacks a header
+the MLX bindings include.
+
+The arm64 payload: the fork's arm64 CPU runtime, upstream's arm64 CUDA 12,
+CUDA 13 and JetPack 5/6 tarballs, and the engine's `aarch64` rows of
+`llm/engine/pin/` (the engine and its three media libraries; no GPU
+library, so on arm64 the engine serves the CPU and llama.cpp serves CUDA).
+The engine's arm64 audio library needed the system's `libatomic` up to
+snapshot `2610031615001`; from `2610040710001` it does not, and the image no
+longer installs it (run on the Pi with the package removed).
+
+Measured on a Raspberry Pi 5 (8 GB, Debian 13, 16K pages), 2026-10-04, in the
+published `:dev` image: `qwen2.5:1.5b`, 512 tokens, the two engines
+interleaved over four rounds, 9.8-10.0 tok/s on the engine and 10.9-11.0 on
+llama.cpp; Kokoro, Supertonic and
+KittenTTS each transcribed back by Whisper. The CUDA and JetPack payloads
+have not been run on arm64 hardware. `ALLOW_UPSTREAM_RUNTIME=1` (local only,
+refused in CI) assembles with upstream's CPU runtime when a pin has no runtime
+rows.
 
 ROCm is deliberately absent: the pinned engine declares no ROCm acceleration,
 and an image advertising it would be untested.

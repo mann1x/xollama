@@ -12,7 +12,7 @@ engine.
 > routing and policy, the pinned artifact and its build-time fetch, argv
 > translation, dynamic slots, engine sessions, shared prefix pools and the
 > `XOLLAMA_ENGINE_ARGS` argv passthrough. The
-> pinned engine is opencoti c7 r2 (`llm/engine/pin.txt`); a `dev` branch pins a
+> pinned engine is opencoti c7 r2 (`llm/engine/pin/`); a `dev` branch pins a
 > development snapshot for integration testing. With `XOLLAMA_ENGINE=llamacpp`
 > and no xollama flags the launch is byte-identical to upstream, which is what
 > keeps the A/B honest. Measurements are in
@@ -50,8 +50,9 @@ and [`docs/xollama/default-port.mdx`](docs/xollama/default-port.mdx).
 
 ## Docker
 
-An amd64 image with the CUDA v12, CUDA v13 and Vulkan backends and the
-opencoti engine is published to Docker Hub and GHCR. `:latest` is the newest
+An image for amd64 and arm64 (a Raspberry Pi 5 runs it on the CPU) with the
+CUDA v12, CUDA v13 and Vulkan backends and the opencoti engine is published
+to Docker Hub and GHCR. `:latest` is the newest
 full release, `:dev` the newest pre-release or `dev` build, and every build
 also has its own version tag.
 
@@ -106,11 +107,31 @@ a rolling-KV window, shared KV pools, DCA long context, MTP speculative
 decode.
 
 Routing is by *tested* platform and backend — CUDA, Vulkan and CPU go to
-opencoti; ROCm and anything unvalidated stay on stock `llama-server`; macOS
-keeps ollama's MLX path untouched. `XOLLAMA_ENGINE=opencoti|llamacpp|auto`
+opencoti, as does Metal on Apple silicon; ROCm, Intel Macs and anything
+unvalidated stay on stock `llama-server`; MLX models keep ollama's MLX path. `XOLLAMA_ENGINE=opencoti|llamacpp|auto`
 overrides it, which also makes an honest A/B possible against vanilla.
 
 Design: [`docs/features/engine-opencoti-llamafile.md`](docs/features/engine-opencoti-llamafile.md).
+
+### AMD Radeon on Windows: use AMD Software 26.9.2 or later for Vulkan
+
+On a Radeon RX 9070 XT under Windows 11, AMD Software 26.8.1 (display driver
+32.0.31041.1004) loses the card once a model has been loaded through Vulkan
+and left idle: within a minute or two Windows logs a display driver timeout
+(live kernel dump 0x141 in `amdkmdag.sys`), the runner dies on its next
+request, and the card can stay disabled until a reboot. It is a driver fault,
+not xollama's or the engine's: a small standalone Vulkan program with no llama.cpp
+code reproduces it by keeping several GiB of host-visible video memory mapped,
+which is what llama.cpp's Vulkan backend does by default, and stock
+`llama-server` fails the same way.
+
+AMD Software 26.9.2 (display driver 32.0.32015.2008) ran the same tests
+clean, so that is the minimum for Vulkan on that card. The driver that matters
+is the graphics card's own: the chipset package updates only the integrated
+GPU. If you cannot update, `GGML_VK_DISABLE_HOST_VISIBLE_VIDMEM=1` in the
+server's environment avoided the fault at a cost of about 6% in tokens per
+second. Measured on one machine and one card (2026-10-04); other Radeon cards
+on 26.8.1 were not tested.
 
 ## Settings that belong to the model
 

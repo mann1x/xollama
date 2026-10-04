@@ -329,7 +329,11 @@ def sideloaded_dso_sha(artifact):
     # cache reported a release cut's leftover extraction as though it were the
     # dev build's payload -- which reads as though the wrong engine had been
     # measured, and would have been believed.
-    beside = pathlib.Path(artifact).parent / "ggml-cuda.so"
+    # Pin format 2 stages it under its published name; the classic pin staged
+    # it as ggml-cuda.so.
+    beside = pathlib.Path(artifact).parent / "ggml-cuda-x86_64.so"
+    if not beside.is_file():
+        beside = pathlib.Path(artifact).parent / "ggml-cuda.so"
     if beside.is_file():
         h = hashlib.sha256()
         with open(beside, "rb") as fh:

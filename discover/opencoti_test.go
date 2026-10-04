@@ -2,7 +2,6 @@ package discover
 
 import (
 	"context"
-	"os"
 	"runtime"
 	"testing"
 
@@ -43,16 +42,27 @@ func solidPCLlamaCppDevices() []ml.DeviceInfo {
 	}
 }
 
+// onLinux makes discovery list backends as a Linux amd64 host does, so a test
+// about CUDA or Vulkan devices holds on a macOS runner too, where only Metal
+// is listed (existsOn).
+func onLinux(t *testing.T) {
+	t.Helper()
+	restore := opencotiHost
+	t.Cleanup(func() { opencotiHost = restore })
+	opencotiHost = func() engine.Platform { return engine.Platform{OS: "linux", Arch: "amd64"} }
+}
+
 func withOpencoti(t *testing.T, listings map[engine.Backend]string) {
 	t.Helper()
-	restoreList, restoreFind, restore12 := opencotiListDevices, opencotiArtifact, opencotiCUDA12Artifact
+	restoreList, restoreFind, restoreHas := opencotiListDevices, opencotiArtifact, opencotiHasCUDA12
 	t.Cleanup(func() {
-		opencotiListDevices, opencotiArtifact, opencotiCUDA12Artifact = restoreList, restoreFind, restore12
-		cudaLister.artifact = ""
+		opencotiListDevices, opencotiArtifact, opencotiHasCUDA12 = restoreList, restoreFind, restoreHas
+		cudaLister.known, cudaLister.legacy = false, false
 	})
-	cudaLister.artifact = ""
+	onLinux(t)
+	cudaLister.known, cudaLister.legacy = false, false
 	opencotiArtifact = func() (string, error) { return "/lib/ollama/opencoti", nil }
-	opencotiCUDA12Artifact = func() (string, error) { return "", os.ErrNotExist }
+	opencotiHasCUDA12 = func(string) bool { return false }
 	opencotiListDevices = func(_ context.Context, _ string, b engine.Backend) (string, error) {
 		return listings[b], nil
 	}

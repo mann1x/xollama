@@ -60,9 +60,20 @@ const (
 
 // councilReserve is the room a turn needs on top of the conversation, in
 // tokens, for the plan and the members' replies to live in the owner's window.
+// Only the roles on the council's own model live there: a role on another
+// model, local, cloud or remote, runs on its own and books nothing here. A
+// member may write its whole reply cap, its thinking inside it, so the cap is
+// booked.
 func councilReserve(cfg council.Config) int {
-	n := cfg.MaxTokens[council.Planner] + cfg.MaxTokens[council.Synthesizer]
-	n += cfg.Researchers*cfg.MaxTokens[council.Researcher] + cfg.Critics*cfg.MaxTokens[council.Critic]
+	n := 0
+	for _, r := range []struct {
+		role  council.Role
+		count int
+	}{{council.Planner, 1}, {council.Synthesizer, 1}, {council.Researcher, cfg.Researchers}, {council.Critic, cfg.Critics}} {
+		if cfg.OnLead(r.role) {
+			n += r.count * cfg.Cap(r.role)
+		}
+	}
 	return n + 1024 // the role instructions and the templates around them
 }
 
@@ -77,7 +88,11 @@ type councilTree struct {
 	tokenize func(ctx context.Context, s string) ([]int, error)
 	owner    string
 	// window and floor are the ask; grant is what the engine gave, once known.
+	// floorStated is whether the model's settings name a floor: an unstated
+	// one is the window for every later decision (the owner is never shrunk
+	// below it), but the first booking does not insist on it (firstFloor).
 	window, floor int
+	floorStated   bool
 	compactAt     float64
 	idleCompactAt float64
 	// unowned is the whole-pool council (num_ctx 0, pool_unowned_v1): the
@@ -88,6 +103,8 @@ type councilTree struct {
 	canUnown bool
 	// reserve is the turn's room on top of the conversation (councilReserve).
 	reserve int
+	// roomMu makes one member at a time ask the owner for room (roomFor).
+	roomMu sync.Mutex
 	// numCtx is the conversation's num_ctx, the loaded context for num_ctx 0.
 	numCtx int
 	// clientPool is the pool the client named (client_placement_v1). The
@@ -118,6 +135,17 @@ type councilTree struct {
 	// state cells, so a stage's layer is released once its members are done.
 	recurrent bool
 	workers   map[string]*councilLayer // worker session -> the layer it attached to
+	// stashTurn is set when the request ends with the members' tool calls:
+	// its layers are kept for the turn's next round trip (council_layers_kept.go).
+	// stashed is the last round trip's, until the turn is known (adopt);
+	// adopted is what adopt took, until the root is settled (buildRoot).
+	stashTurn string
+	stashed   *councilStash
+	adopted   []*councilLayer
+	// flying counts the owner-bound members in flight, landings those that
+	// finished; landed is closed as each lands (council_owner_full.go).
+	flying, landings int
+	landed           chan struct{}
 }
 
 type councilLayer struct {
@@ -129,6 +157,8 @@ type councilLayer struct {
 	users    int  // workers attached and not yet closed
 	root     bool // the conversation's own layer, kept for the whole turn
 	released bool
+	used     bool          // asked for by this request (council_layers_kept.go)
+	parent   *councilLayer // the layer it forks, nil for a root
 	// keep outlives the turn: the conversation's root, owned by the owner,
 	// for the next turn to extend. chain is the older roots it was forked
 	// from, oldest first.
@@ -246,10 +276,7 @@ func (t *councilTree) ownerPlacement(ctx context.Context, msgs []api.Message) *l
 	case t.grant > 0:
 		p = &llm.Placement{NumCtx: t.grant, NumCtxMin: t.grant}
 	default:
-		p = &llm.Placement{NumCtx: t.window, NumCtxMin: t.floor}
-		if root != nil && !root.keep {
-			p.NumCtxMin = min(t.floor, max(4096, roundUp(t.reserve, 256)))
-		}
+		p = &llm.Placement{NumCtx: t.window, NumCtxMin: t.firstFloor(root != nil && !root.keep)}
 	}
 	if root != nil {
 		id := root.id
@@ -266,7 +293,32 @@ func (t *councilTree) ownerWindow() *llm.Placement {
 	if t.grant > 0 {
 		return &llm.Placement{NumCtx: t.grant, NumCtxMin: t.grant}
 	}
-	return &llm.Placement{NumCtx: t.window, NumCtxMin: t.floor}
+	return &llm.Placement{NumCtx: t.window, NumCtxMin: t.firstFloor(false)}
+}
+
+// firstFloor is the least window the owner's first booking accepts.
+//
+// A floor the model states is kept: the operator asked for all of it or
+// nothing. Unstated, it used to be the whole window, and a model whose context
+// is no larger than what its council asks for could then never be booked: the
+// conversation's root pool is cut from the same cells, so the largest window
+// the engine can give is the context less the pool (measured: a 16,384 model,
+// a 13-cell root, "largest admissible 16371 < num_ctx_min 16384", refused
+// every 2 s until the turn failed with a 503). An unstated floor is now the
+// turn's reserve, never more than half the window nor less than 4096, and
+// the engine grants the largest window it has above that.
+//
+// rootUnowned is a root no session owns yet (the first turn): it sits outside
+// the window, so a stated floor comes down to the reserve too.
+func (t *councilTree) firstFloor(rootUnowned bool) int {
+	room := max(4096, roundUp(t.reserve, 256))
+	if !t.floorStated {
+		return min(t.window, room, max(4096, roundUp(t.window/2, 256)))
+	}
+	if rootUnowned {
+		return min(t.floor, room)
+	}
+	return t.floor
 }
 
 // rootFor is the root pool msgs can attach to: this turn's, else the one kept
@@ -321,8 +373,14 @@ func (t *councilTree) rootText(ctx context.Context, conv []api.Message) (string,
 // compacting when it is llm.ErrSessionFull.
 func (t *councilTree) buildRoot(ctx context.Context, conv []api.Message) error {
 	text, err := t.rootText(ctx, conv)
-	if err != nil || text == "" {
-		slog.Debug("council: no conversation root", "error", err)
+	if err != nil {
+		// Not the engine's refusal (the caller compacts on that): the root's
+		// text could not be made, so no member shares the conversation.
+		slog.Warn("council: could not render the conversation root; each member holds its own copy", "error", err)
+		return nil
+	}
+	if text == "" {
+		slog.Debug("council: no conversation root")
 		return nil
 	}
 	t.mu.Lock()
@@ -360,6 +418,9 @@ func (t *councilTree) buildRoot(ctx context.Context, conv []api.Message) error {
 		}
 	}
 	if prev != nil {
+		// The layers adopted from the last round trip stand on the old
+		// root: they go first, or the engine keeps it for its children.
+		t.dropAdopted(ctx)
 		// Let the old root go before building afresh: it counts against the
 		// same allocation. Still the owner's: begin found its allocation live,
 		// and nobody else books this session between turns.
@@ -413,10 +474,18 @@ func (t *councilTree) releaseRoot(ctx context.Context, r *councilRoot) {
 	ids := append(slices.Clone(r.chain), r.id)
 	for i := len(ids) - 1; i >= 0; i-- {
 		if err := t.kv.ReleasePool(ctx, ids[i]); err != nil {
-			slog.Debug("council: could not release the last turn's root", "pool", ids[i], "error", err)
+			unreleased("the last turn's root", ids[i], err)
 			return
 		}
 	}
+}
+
+// unreleased names a pool the engine did not let go. Its cells stay booked in
+// the owner's allocation until the session ends, and a later stage or the
+// synthesizer may then not be seated (bug-118), so it is said at Warn: the
+// line that explains a refusal minutes later.
+func unreleased(what string, pool int, err error) {
+	slog.Warn("council: could not release "+what+"; its cells stay booked in the owner", "pool", pool, "error", err)
 }
 
 // dropKept lets the kept root go before the conversation is compacted from
@@ -426,6 +495,7 @@ func (t *councilTree) releaseRoot(ctx context.Context, r *councilRoot) {
 // private"). The idle fold builds the root again from the compacted
 // conversation; a fold that fails costs the next turn a rebuild.
 func (t *councilTree) dropKept(ctx context.Context) {
+	t.dropAdopted(ctx) // they stand on the root
 	t.mu.Lock()
 	r := t.kept
 	t.kept = nil
@@ -473,17 +543,25 @@ func (t *councilTree) learnGrant(k llm.KVStatus) (llm.KVAllocation, bool) {
 // workerPlacement attaches a worker to the pool of its layer. Nil means the
 // worker could not be pooled and runs on its own, sized booking.
 func (t *councilTree) workerPlacement(ctx context.Context, msgs []api.Message, session string) *llm.Placement {
-	// The layer is what precedes the member's own instruction, the last user
-	// message: the stage every member of its step shares. A member resumed
+	// The layer is what precedes the member's own instruction: the stage
+	// every member of its step shares. A member resumed
 	// after tool calls (9.5) carries its turns and results after that; a
 	// layer cut after them would be a pool of its own on every round trip,
 	// and with two results in a row -- which a template may render as one
 	// block -- no prefix at all (measured on b137: unpooled, it booked its
 	// own cells beside an owner holding the whole cache, and waited out
 	// admission).
-	own := len(msgs) - 1
-	for own > 0 && msgs[own].Role != "user" {
-		own--
+	// The member's own part starts at its instruction, not at the last user
+	// message: its mates' notes, the user's system prompt and the council's
+	// nudges come after it, and a layer cut there held the member's own
+	// instruction -- two researchers of one step built two layers (569747788,
+	// hard: pools 13 and 14, one per researcher, each 6724 long).
+	own := council.OwnPart(msgs)
+	if own < 0 {
+		own = len(msgs) - 1
+		for own > 0 && msgs[own].Role != "user" {
+			own--
+		}
 	}
 	if own < 1 {
 		return nil
@@ -502,7 +580,7 @@ func (t *councilTree) workerPlacement(ctx context.Context, msgs []api.Message, s
 	}
 	l, err := t.layer(ctx, text, layerMsgs)
 	if err != nil {
-		slog.Info("council: pool not built, member runs unpooled", "error", err)
+		slog.Warn("council: pool not built, member runs unpooled and prefills its own copy", "session", session, "error", err)
 		return nil
 	}
 	t.mu.Lock()
@@ -537,6 +615,7 @@ func (t *councilTree) layer(ctx context.Context, text string, msgs []api.Message
 	key := layerKey(text)
 	t.mu.Lock()
 	if l, ok := t.layers[key]; ok {
+		l.used = true
 		t.mu.Unlock()
 		select {
 		case <-l.ready:
@@ -545,7 +624,7 @@ func (t *councilTree) layer(ctx context.Context, text string, msgs []api.Message
 			return nil, ctx.Err()
 		}
 	}
-	l := &councilLayer{text: text, ready: make(chan struct{})}
+	l := &councilLayer{text: text, ready: make(chan struct{}), used: true}
 	t.layers[key] = l
 	idle := t.idleLeavesLocked(text)
 	t.mu.Unlock()
@@ -571,9 +650,15 @@ func (t *councilTree) layer(ctx context.Context, text string, msgs []api.Message
 	l.id, l.err = p.ID, err
 	if err == nil {
 		t.mu.Lock()
+		l.parent = parent
 		t.order = append(t.order, l)
 		t.mu.Unlock()
-		slog.Debug("council: pool built", "pool", p.ID, "parent", pid, "len", p.Len, "own", p.OwnLen, "warning", p.Warn)
+		parentID := -1
+		if pid != nil {
+			parentID = *pid
+		}
+		slog.Debug("council: pool built", "pool", p.ID, "parent", parentID, "len", p.Len, "own", p.OwnLen, "key", key, "warning", p.Warn)
+		t.logLayerText(l) // council_layer_log.go
 	}
 	close(l.ready)
 	return l, err
@@ -647,7 +732,7 @@ func (t *councilTree) hasChildLocked(p *councilLayer) bool {
 func (t *councilTree) releaseLayers(ctx context.Context, ls []*councilLayer) {
 	for _, l := range ls {
 		if err := t.kv.ReleasePool(ctx, l.id); err != nil {
-			slog.Debug("council: could not release a finished layer", "pool", l.id, "error", err)
+			unreleased("a finished layer", l.id, err)
 			continue
 		}
 		slog.Debug("council: released a finished layer", "pool", l.id)
@@ -687,6 +772,7 @@ func (t *councilTree) release() {
 			order = append(order, l)
 		}
 	}
+	order = t.stashLocked(order, keep)
 	t.order, t.layers = nil, map[string]*councilLayer{}
 	if keep != nil {
 		// The idle council summarises on it; the next turn extends it.
@@ -701,7 +787,7 @@ func (t *councilTree) release() {
 	t.mu.Unlock()
 	for i := len(order) - 1; i >= 0; i-- {
 		if err := t.kv.ReleasePool(ctx, order[i].id); err != nil {
-			slog.Debug("council: could not release a pool", "pool", order[i].id, "error", err)
+			unreleased("a pool", order[i].id, err)
 		}
 	}
 }
@@ -750,7 +836,7 @@ func (t *councilTree) promoteRoot(ctx context.Context) {
 		// sessions).
 		slog.Info("council: the owner's root came back unowned; releasing it", "session", t.owner, "pool", p.ID, "warning", p.Warn)
 		if err := t.kv.ReleasePool(ctx, p.ID); err != nil {
-			slog.Debug("council: could not release an unowned root", "pool", p.ID, "error", err)
+			unreleased("an unowned root", p.ID, err)
 		}
 		return
 	}
@@ -761,15 +847,21 @@ func (t *councilTree) promoteRoot(ctx context.Context) {
 	slog.Debug("council: conversation root kept for the owner", "session", t.owner, "pool", p.ID, "len", p.Len)
 }
 
-// closeWorker ends a worker's session. The guide's rule: every session a
-// council opens is closed when its member is done.
-func (t *councilTree) closeWorker(id string) {
+// leaveWorker takes a worker off its layer. Its session stays open: the
+// member comes back on it, and an open session prefix-matches its own
+// continuation and rebases onto its pool when one is sent again (opencoti
+// #526; cell membership, not the pool, holds its cells).
+func (t *councilTree) leaveWorker(id string) {
 	t.mu.Lock()
+	defer t.mu.Unlock()
 	if l, ok := t.workers[id]; ok {
 		l.users--
 		delete(t.workers, id)
 	}
-	t.mu.Unlock()
+}
+
+// closeSession ends a worker's session, once its client has left.
+func (t *councilTree) closeSession(id string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := t.kv.CloseSession(ctx, id); err != nil {
@@ -800,11 +892,15 @@ func (t *councilTree) begin(ctx context.Context) (pressure float64) {
 	// owner's allocation lives: closing it releases its pools, and the id can
 	// then name another conversation's pool. So it is adopted only while live,
 	// and only on the runner that made it.
+	var root *councilRoot
 	if r, had := councilRoots.take(t.owner); had && ok && !t.unowned && r.kv == t.kv {
 		t.mu.Lock()
 		t.kept = &r
 		t.mu.Unlock()
+		root = &r
 	}
+	// The last round trip's layers stand on that root, under the same rule.
+	t.takeStash(ctx, root)
 	if !ok {
 		return 0
 	}
@@ -855,8 +951,9 @@ func (t *councilTree) finish(reserve int) {
 func roundUp(n, to int) int { return (n + to - 1) / to * to }
 
 // councilWindow resolves the owner's ask from the model's council settings:
-// the window defaults to the request's context, the floor to the window (all
-// or nothing), compaction to 0.85.
+// the window defaults to the request's context, the floor to the window (the
+// owner is never shrunk below it; see firstFloor for the first booking),
+// compaction to 0.85.
 func councilWindow(cc *xollama.CouncilContext, numCtx int) (window, floor int, compactAt float64) {
 	window, floor, compactAt = numCtx, 0, defaultCompactAt
 	if cc != nil {
@@ -944,6 +1041,7 @@ func (s *Server) councilTreeFor(ctx context.Context, m *Model, req api.ChatReque
 		owner:         session,
 		window:        window,
 		floor:         floor,
+		floorStated:   cc.Context != nil && cc.Context.Floor > 0 && cc.Context.Floor <= window,
 		compactAt:     compactAt,
 		idleCompactAt: councilIdleCompactAt(cc.Context, compactAt),
 		layers:        map[string]*councilLayer{},
@@ -983,10 +1081,14 @@ func (t *councilTree) tokens(ctx context.Context, msgs []api.Message) (int, erro
 func (cm *councilMembers) place(ctx context.Context, r council.Request, req *api.ChatRequest) (*llm.Placement, string, func()) {
 	t := cm.tree
 	none := func() {}
+	if p := cm.ownWindow(ctx, r); p != nil && r.Model == "" {
+		t.roomFor(ctx, p.NumCtxMin)
+		return p, "", none
+	}
 	if t == nil || r.Model != "" {
 		return nil, "", none
 	}
-	if r.Role == council.Planner || r.Role == roleCompactWriter {
+	if r.Role == council.Planner || r.Role == council.Front || r.Role == roleCompactWriter {
 		req.SessionID = t.owner
 		return t.ownerPlacement(ctx, r.Messages), "", none
 	}
@@ -1027,21 +1129,27 @@ func (cm *councilMembers) place(ctx context.Context, r council.Request, req *api
 	return &llm.Placement{NumCtx: size, NumCtxMin: size}, req.SessionID, none
 }
 
-// councilSlots is the live slots a council's widest parallel step needs on
-// this server: its researchers or its critics, whichever is wider, counting
-// only the members served here (a role with a host runs elsewhere). Zero for
-// a model that is not a council. See llm/engine_council_slots.go.
+// councilSlots is the least live slots a council needs on this engine: its
+// widest local step -- the researchers, or the synthesizer beside the critics
+// reviewing its checks -- counting only the members served by this engine. A
+// role with a host runs elsewhere and a role on a cloud model takes no slot
+// here (council_cloud.go counts those). At least one for a council, zero for a
+// model that is not one. The launch raises it to the engine's parallel
+// ceiling; see llm/engine_council_slots.go.
 func councilSlots(m *Model) int {
 	if m == nil || m.Xollama == nil || !m.Xollama.Council.On() {
 		return 0
 	}
 	cfg := council.FromModel(m.Xollama.Council, 0)
-	width := 0
-	if cfg.Hosts[council.Researcher] == "" {
-		width = cfg.Researchers
+	local := func(r council.Role) bool {
+		return cfg.Hosts[r] == "" && (cfg.Models[r] == "" || !councilModelIsCloud(cfg.Models[r]))
 	}
-	if cfg.Hosts[council.Critic] == "" {
-		width = max(width, cfg.Critics)
+	width := 1
+	if local(council.Researcher) {
+		width = max(width, cfg.Researchers)
+	}
+	if local(council.Critic) {
+		width = max(width, cfg.Critics+1)
 	}
 	return width
 }

@@ -36,7 +36,10 @@ hunk in an upstream file.
 3. Every member is an ordinary chat turn through `ChatHandler`, in process,
    thinking off unless its role states `think` (then `think` is an explicit
    token budget from `council.ThinkBudget` against the member's window, and
-   `num_predict` = `max_tokens` + budget; only `Message.Content` is read, so
+   `num_predict` = `max_tokens` + budget, where `max_tokens` is the role's
+   own on its own model, the council model's `num_predict` or the built-in cap
+   on the council's model, and nothing -- the model's own template -- on
+   another model; only `Message.Content` is read, so
    the reasoning is dropped; the routing call never reasons), with its own seed; researchers and critics draw a temperature
    within `temperature_jitter`. The planner runs on the conversation's session;
    the others on `<session>~researcher-N`, `~critic-N`, `~synthesizer`.
@@ -50,7 +53,10 @@ When the runner implements `llm.PolyKV` (opencoti with `polykv_subpools_v1`
 and `kv_status_v1`, `CouncilPools > 0`, affinity on) a turn builds one tree:
 
 - the planner is the **owner**: it books the window on the conversation's
-  session (`num_ctx`, `num_ctx_min` = the floor), **attached to P1**, the
+  session (`num_ctx`, `num_ctx_min` = the floor; an unstated floor asks for
+  the turn's reserve, at most half the window and at least 4096, `firstFloor`,
+  because P1 is cut from the same cells and the whole window is then never
+  admissible), **attached to P1**, the
   conversation's root, so the conversation is held once (guide §6.2, arm C).
   `buildRoot` makes P1 before the planner's first call. On the first turn the
   owner has no allocation yet: P1 is unowned (`pool_unowned_v1`, else no root
@@ -66,8 +72,11 @@ and `kv_status_v1`, `CouncilPools > 0`, affinity on) a turn builds one tree:
   forked from the longest prefix already built, pinned to the owner. A layer is the rendered prompt cut at `councilSentinel` and
   must be a byte prefix of the member's own prompt, or the member runs
   unpooled;
-- workers attach with `pool_id` and no window, and are closed when done; the
-  pools are released newest first; the owner is never closed;
+- workers attach with `pool_id` and no window. Their sessions stay open for
+  the council's life, across calls, trips and turns, and resume from their own
+  cache (opencoti #526). They are closed only when the client leaves mid-turn
+  (`closeSessions`). The pools are released newest first; the owner is never
+  closed;
 - on a recurrent-state engine (`/kv` has an `rs` block) each pool costs a
   state cell, so a finished stage's layer (no worker, no child, not P1) is
   released before the next is built, and the next forks P1; otherwise the
@@ -148,6 +157,19 @@ council turn 3,139 → 525 tokens, peak KV cells about −40 %, wall time at par
   `TestTheOwnerWindowFollowsThePressure`, `TestCouncilSeatsFollowTheRounds`.
 - `llm/engine_council_test.go` — placement gating and pool 0, resize answers,
   session routing, pressure, seats.
+- `internal/council/checks_test.go` — tool turns that test (ab-5, plan 11.6):
+  a missing verdict asked for once and never streamed twice, a synthesizer's
+  step budget, a front forwarded with its attempts, failed checks carried to
+  the next turn and dropped on a rebuild.
+- `internal/council/history_test.go` — earlier turns attributed per member,
+  working notes dropped, repeats pointed at; every council message headed by
+  its source. `server/council_tools_test.go`
+  `TestEarlierTurnsReachTheMembersAttributed` covers the hook.
+- `internal/council/tasks_test.go` — the planner's task list and its rules
+  (plan 11.10), checks that stop moving (11.11), a review without its verdict
+  sent back (11.12), the builder's coordinator instruction.
+- `server/council_usage_test.go` — the done chunk's per-role usage, and a
+  cached prompt counted as sent.
 - `cmd/council_run_test.go` — a one-shot prompt reaches the council.
 - `app/ui/council_test.go` — a council keeps `think:false`, and every other
   request is left as upstream built it. `app/ui/app/src/hooks/useCouncil.test.ts`

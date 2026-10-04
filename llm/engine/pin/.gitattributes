@@ -1,0 +1,3 @@
+# The component pins are verified by the sha256 of their bytes (index.txt), so
+# a checkout must never convert their line endings.
+*.txt -text

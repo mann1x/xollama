@@ -23,6 +23,7 @@ import (
 	"github.com/ollama/ollama/app/dialog"
 	"github.com/ollama/ollama/app/store"
 	"github.com/ollama/ollama/app/webview"
+	"github.com/ollama/ollama/app/wintray" // xollama-hook: app-brand
 )
 
 const (
@@ -65,7 +66,7 @@ func (w *Webview) Run(path string) unsafe.Pointer {
 		wv := webview.New(debug)
 		// start the window hidden
 		hideWindow(wv.Window())
-		wv.SetTitle("Ollama")
+		wv.SetTitle(wintray.AppName) // xollama-hook: app-brand
 
 		// TODO (jmorganca): this isn't working yet since it needs to be set
 		// on the first page load, ideally in an interstitial page like `/token`

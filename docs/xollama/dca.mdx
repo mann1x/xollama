@@ -100,14 +100,11 @@ model was trained in", which is the right answer almost always: a smaller chunk
 keeps more distances inside the window at the cost of more chunk boundaries, a
 larger one does the reverse.
 
-xollama picks the number for you on a past-native load rather than leaving it on
-the engine's own auto, and the reason is a trap worth knowing about. The engine
-resolves auto to the model's original context — which it reads from the same
-metadata field xollama has just overridden to the *longer* figure. Left on auto,
-the chunk would become the whole requested context: one chunk, no distances
-between chunks, and DCA doing nothing at all while every log line still says
-`--dca on`. xollama therefore pins the chunk to the model's real trained window,
-read before the override.
+On a past-native load xollama passes the chunk explicitly, as the model's
+trained window read from its GGUF, so it can round it to `num_batch` (below).
+The model's own metadata is never rewritten: with `--dca on` the engine allows
+a context above the trained one by itself and logs that DCA extends it
+(opencoti c8 and later).
 
 If you set the value yourself it must be a multiple of `num_batch`, or the engine
 refuses the context at startup. xollama checks this first and tells you which two

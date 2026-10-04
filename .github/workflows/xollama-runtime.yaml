@@ -8,7 +8,7 @@
 # small xOllamaUpdate.exe. Measured: two dry runs whose second commit changed
 # only Go code produced payload ids 213e5a… and cd3148…. A pinned runtime makes
 # the payload a function of three pins -- this one, upstream's GPU backends,
-# and llm/engine/pin.txt -- so it changes only when one of them moves.
+# and llm/engine/pin -- so it changes only when one of them moves.
 #
 # The release tag carries a digest of exactly the files that decide what gets
 # built (LLAMA_CPP_VERSION, llama/server, llama/compat). xollama-release.yaml

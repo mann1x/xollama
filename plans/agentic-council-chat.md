@@ -1741,6 +1741,985 @@ request's system and user messages drive it.
 **Next:** 10.7 ab-4 on eleven2go (v0.34.4-xollama.1 + a dev build): simple, then
 medium and hard, 3 pairs each.
 
+## Phase 11 — a council that works like its members can (ab-4, 2026-09-28)
+
+ab-4 simple on eleven2go (b177, kvarn3, `-c 393216`, two live slots, broadcast
+on): the council had not fixed Manic Miner after 1463 s, where plain fixed it in
+233 s. What went wrong:
+
+- The researchers made one call each. They cannot edit or run anything, their
+  instruction was "report", and their reply cap was 384 tokens.
+- The diagnosis was wrong (template literals; the real bug was `})};` → `});}`),
+  and nothing tested it before the synthesizer acted on it.
+- The synthesizer sent the same failing edit 15 times.
+- Every synthesizer resume re-prefilled about 18k of 20.9k tokens (~20 s a step):
+  its worker session is closed after each call, and the pool layer it attaches
+  on resume ends before its own turns.
+
+The owner's direction (2026-09-28): researchers propose, the synthesizer tests,
+work is split with broadcast on, and every test result goes back to the
+researchers. The council must not be starved. Beyond that, a council is not set
+up in advance for a goal it does not know yet: it adapts to the request.
+
+### 11.1 Caps (built 2026-09-28)
+- Reply caps: planner 2048, researcher 2048, critic 1024, synthesizer 2048 (were
+  512/384/256/1024). The researcher and critic prompts ask for terse replies.
+- Evidence: a result is carried whole up to 4000 characters (was 1500); the
+  preview is 30 lines / 2000 characters (was 10 / 800); one `council_evidence`
+  answer is 16000 characters (was 8000); an evidence entry is capped at 16000
+  (was 4000).
+- A broadcast note is 600 characters (was 200).
+- Left as they are: the 2048 default think budget, `maxLookups` 6,
+  `maxRefusals` 2, and the `ResultBudget` of 1.5 windows. `max_rounds` 1 becomes
+  the test-loop bound in 11.4.
+
+### 11.2 A repeated call is pointed out (built 2026-09-28)
+When a result matches, word for word, the one an earlier call with the same
+tool and arguments got in the member's own transcript, a generic note follows
+it. The note says that repeating the call will not change the outcome, and to
+re-read what it acts on or try something different. The note works for any
+tool. Guard: `TestARepeatedCallWithTheSameResultIsPointedOut` (checked by
+removal).
+
+### 11.3 A resumed member keeps its cache (built 2026-09-28)
+opencoti #526 traced it in code: an open session prefix-matches its own
+continuation and rebases onto its pool when one is sent again. The owner's
+ruling: the council is a living thing until its client leaves. Member
+sessions are no longer closed after a call. They live across calls, trips and
+turns, and `closeSessions` closes them only when the request context ends,
+i.e. the client left. Guards: `TestAResumedMemberReattachesToItsStage`,
+`TestAClientThatLeavesClosesItsCouncilsSessions`. The live check is ab-5's
+next run (measure the prefill of a resumed synthesizer step).
+
+Original note:
+The plan is to keep a suspended member's worker session, and its layer, alive
+across the client's tool round trip, and resume on the same session. This waits
+on opencoti's answer: does a resume without placement reuse the session's own
+cached tokens, and must a pool outlive its attached sessions? Measured goal: a
+resumed synthesizer step prefills only its new tokens.
+
+### 11.4 Researchers propose, the synthesizer tests (loop built 2026-09-28; split and preemption open)
+- Built: a synthesizer ends a failed check with `VERDICT: RETEST`. The report,
+  with its calls' evidence, becomes `Progress.Tests` (state field 7) and
+  starts the next cycle. `base` gives every member of that cycle all failed
+  checks after the plan. Researchers are asked to propose (what, where, how to
+  check) when a tool that changes something exists. `MaxTests` defaults to 6.
+  The continue route does not loop. Guards:
+  `TestAFailedCheckGoesBackToTheResearchers`,
+  `TestATurnResumesPastAFailedCheck` and
+  `TestTheFailedChecksTravelInTheState` (loop and prefix checked by removal).
+- Owner's answers (2026-09-28): the planner re-plans each cycle from the
+  failed checks, splitting what is left into workloads. The user gets a brief
+  status and the council goes on in the same response. With thinking on, the
+  user sees the deliberation restart. Built: `Replan` (`Progress.Replans`,
+  state field 8), and `holdBack`, which streams the synthesizer up to the
+  verdict only (`TestTheReportAfterTheVerdictIsHeldBack`). The retry bound
+  becomes the builder's to set (11.5); 6 is the default until then.
+- Watch live: each cycle builds its own layers, since the failed checks
+  change the prefix. A cycle that runs within one trip holds more pools than
+  `councilPoolSeats` counts. A pool that can't be built runs on the owner, so
+  this is slower, not wrong.
+- Design:
+- A researcher's reply is a proposal: the change, where it goes, and how to tell
+  whether it worked. Researchers and critics keep read-only tools, and the
+  synthesizer stays the only writer.
+- The synthesizer applies and tests the proposals. Every result, failed or
+  successful, goes back to the researchers as the next round's input, with the
+  proposal it tested. Up to 6 test cycles run per user turn.
+- With broadcast on, researchers split the work (one part each) and post what
+  has been refuted or confirmed. A running generation cannot take tokens, so a
+  test result or verdict preempts: the member's stream is cancelled at a safe
+  point, its partial output is kept, the result is appended, and it resumes
+  (cheap once 11.3 holds). Only test results and verdicts preempt.
+
+### 11.5 The builder: a council shaped by the request (design)
+Owner's answers (2026-09-28):
+- The council record, the target summary included, is kept by xollama in
+  `council_chat_state`, like everything else.
+- The synthesizer replaces the planner's first-step routing, which saves a
+  hop. The planner schedules the researchers' work, splits it into
+  workloads, and re-plans when a request comes back to the council.
+- The builder sets instructions, think budgets and the retry bound, with some
+  freedom: a prose fix needs few retries, coding or science more. Roles and
+  counts stay as the user defined them; the builder gets that architecture
+  and builds on it. Tool rules are fixed: one writer.
+- Preemption only for test results and verdicts. The examples are built into
+  xollama.
+
+Built 2026-09-28: the builder (`internal/council/build.go`). It runs on the
+owner before the first plan and on a `rebuild` route. Its instructions,
+unset-role think budgets and `MaxTests` (0..12) are applied over the user's
+council. `Progress.Build` is state field 9, kept across turns. The route
+decision reads the target and offers `rebuild`. Also built the same day: the
+synthesizer's front turn on tool turns (`internal/council/front.go`). It
+replaces the route decision and the direct answer there. It answers on the
+conversation's session, or calls `council_forward` (the builder first when
+there is no build) or `council_rebuild` (it is told the new setup, then
+forwards). Turns without tools keep the planner's route decision, with
+`rebuild`. Preemption (11.4) is built too. A verdict note (`kind`
+confirmed/refuted) cancels the mates' calls in flight; they keep their partial
+text, read the verdict and go on, at most twice
+(`TestAVerdictInterruptsTheMateGenerating`). The pipeline has no member
+generating while the synthesizer checks, so test results reach the next cycle
+through 11.4's loop. Open: 11.3, then the live A/B.
+
+The earlier draft, where these differ:
+- A council starts with only the synthesizer. The first request it forwards to
+  the council summons the **builder** on the planner's slot. The builder reads
+  the system prompt, the user's requests so far, and the tool and MCP surface.
+  It judges what kind of council the task needs and writes each role's
+  instructions, plus a short target summary.
+- The builder decides instructions, member counts and think budgets, within the
+  model's configured maximums. Tool policy is fixed: researchers and critics
+  read, the synthesizer writes.
+- The target summary is kept by the council runtime, in the session and in the
+  sealed `council_chat_state`.
+- On every later user turn, the synthesizer gets the summary and a nudge: is
+  this a continuation or new work, and does the target still fit? Two tools
+  replace the planner's routing: `council_forward` (send the request to the
+  council as it is) and `council_rebuild` (summon the builder; the synthesizer
+  is told when the new instructions are ready, then forwards). Only the
+  synthesizer is given them.
+- The builder carries built-in worked examples, one detailed for coding. They
+  can be replaced with `council.builder.prompt`.
+
+### 11.6 ab-5 and the fixes it asked for (built 2026-09-28)
+ab-5, simple: plain fixed it on solidPC in 339 s and 30 trips. On eleven2go
+plain took 162 s and 20 trips, while the council declared done without a fix
+(659 s, 24 trips); on solidPC the council ran 3405 s and 60 trips unfixed.
+Read from the transcripts, the members are served exactly as a plain turn is
+(same ChatHandler, template and options; only 2 of 140 replies hit a cap).
+What differs is what they read:
+- At trip 28, the synthesizer's request is 65 messages and 144k characters.
+  The client's history shows every member's calls as one assistant, and holds
+  five copies of the 30 KB file and the front's wrong claims.
+- The plan, findings and critiques arrive as user messages and are obeyed as
+  instructions.
+- The builder copied the front's template-literal theory into every role.
+- The first cycle's synthesizer investigated on its own for 16 trips instead
+  of testing proposals.
+- Failed checks were lost between user turns, and the loop depended on the
+  model writing `VERDICT: RETEST`.
+- Critics tried `edit_file`.
+
+The fixes (owner: "do A–H"; I and J from the same reading):
+- A: the builder never names a cause, place or fix, only the kind of work
+  and how to do it well.
+- B: failed checks outlive the turn while its work stands (`Kept` →
+  `Progress.Prior`, state field 10, at most 6 of 6000 characters). A rebuild
+  drops them, keeping this turn's front attempts. Every member reads them
+  ahead of the plan (`withPrior`).
+- C: a testing synthesizer that ends without a verdict is asked for one once.
+  The nudged reply is unseen, and only its verdict joins the reply the user
+  already read.
+- D: a cycle's tool steps are bounded (`MaxSteps`, default 6, the builder's
+  `max_steps` 2..16, Build field 5). At the bound the synthesizer is told; two
+  steps later its report is taken as a failed check.
+- E: the synthesizer's test note says to apply the council's proposals one at
+  a time, never to investigate on its own, and to end with `VERDICT: DONE` or
+  `VERDICT: RETEST`.
+- F: the front's own attempts before it forwards reach the council as a
+  failed check (`frontReport`).
+- G: the coding example asks researchers to localize before theorizing and
+  the planner to locate first.
+- H: critics are told they cannot make or test a change.
+- I: findings and critiques are introduced as claims, not facts or
+  instructions.
+- J: the front answers only when the answer or change is already in view,
+  and calls `council_forward` before investigating. It is told to forward
+  after 4 tool steps, and forwarded two later.
+
+Guards: `TestASynthesizerWithoutAVerdictIsAskedForOne`,
+`TestASynthesizerThatKeepsInvestigatingRunsOutOfSteps`,
+`TestAFrontThatInvestigatesIsForwardedWithItsAttempts`,
+`TestFailedChecksCarryToTheNextTurn` and `TestTheFailedChecksTravelInTheState`.
+Each guard was checked by removing its fix. Next: rerun simple on eleven2go,
+then medium and hard once each to look for a cliff.
+
+### 11.7 Who said what (built 2026-09-28)
+The simple rerun on eleven2go (b96e3c96) stayed unfixed at 667 s and 24
+trips. The engine asserted in cycle 3 (opencoti #530, position-window
+scatter with two sequences prefilling), after cycle 2 had found the right
+line and both missing functions. The bounds held. The first cycle still
+chased the front's first guess, which F had carried as "what it concluded
+last". The owner's points on the delta, and what was built for each:
+- **The client's history should show the member.** `council.History` rewrites
+  the earlier turns once, the same for every member:
+  - each forwarded call is split out under its member (`[COUNCIL · RESEARCHER
+    1, ROUND 2 · TOOL CALLS]`), with that member's results;
+  - a long result identical to an earlier one becomes a pointer.
+  It runs in `server/council.go` before compaction, after the session id and
+  `councilToolTurn`.
+- **Wrong claims must not stay in view.** The member's own text beside its
+  calls is dropped from the history. The front's report (F) carries only its
+  calls and what they returned.
+- **Every council message names the role that wrote it; the user's stay
+  plain.** A template has only system, user, assistant and tool turns, so
+  another member's work can only arrive as a user turn. That is why the
+  findings read as orders. Each council message now opens with its source
+  (`sources.go`: instructions for you, the planner's plan, the researchers'
+  findings, the critics' reviews, the synthesizer's failed checks, checks
+  from before, notes from mates, the user's system prompt). `sourcesNote`
+  tells every member that only unheaded messages are the user's. The
+  re-plan's failed checks are their own message, apart from the planner's
+  instruction.
+- **The builder's anchoring** is covered by A (it never names a cause) and by
+  F above: the builder reads the conversation only, and the front's prose no
+  longer reaches anyone.
+
+Guards: `TestEarlierTurnsShowWhichMemberCalled`,
+`TestEveryCouncilMessageNamesItsSource`,
+`TestEarlierTurnsReachTheMembersAttributed` (server), and the front-attempts
+test, which now refuses the front's conclusion. Each was checked by removal.
+Relief for #530 on eleven2go: `XOLLAMA_ENGINE_ARGS=--kv-residency-mode head`,
+an operator setting on the test host, until opencoti's fix.
+
+### 11.8 A council follows the engine's parallel slots; cloud members apart (built 2026-09-28)
+The owner, on hearing the council ran with 2 live slots of the engine's 4:
+"the council should follow the parallel or max parallel slots, which are 4
+default with opencoti engine; the cloud models should not count the same
+slots; default 3 slots in parallel, configurable in the council setup".
+- `councilLive` now starts a council with the engine's parallel ceiling live
+  (`slots.max`, `XOLLAMA_MAX_PARALLEL` or 4). Its local width is the floor,
+  not the count: max(researchers, critics + 1, since the critics' reviews run
+  beside the synthesizer, 11.9), at least 1.
+- A role on a cloud model or another host takes no engine slot, so it is left
+  out of the width. Cloud members run `council.cloud_parallel` at a time
+  (default 3, at most 16; `xollama tweak model --council-cloud-parallel`),
+  one count per council model (`server/council_cloud.go`).
+
+Guards: `TestACouncilStartsWithTheEnginesParallelSlots`,
+`TestACouncilsWidthCountsOnlyLocalMembers`,
+`TestCloudMembersRunCloudParallelAtATime` and
+`TestOnlyCloudMembersTakeACloudSlot`. Each was checked by removal.
+
+### 11.9 The critics review the synthesizer's checks, asynchronously (built 2026-09-28)
+The owner, on the synthesizer doing nearly every call, checks included: "why
+not telling him to ask the critics to review its checks?", then: "they should
+be async, the synthesizer sends to the critic something to review and they
+got queued, every time a critic completes a review, the synthesizer gets back
+those processed."
+
+The third simple run on eleven2go (311010f9, `head` relief) shows why. It
+stayed unfixed at 60 trips and 3466 s with no engine fault, and the
+synthesizer made 27 edits against 11 checks.
+
+Built:
+- `council_review` (`internal/council/review.go`, synthesizer only, answered
+  in place) queues a job: the change it states, and what its calls actually
+  returned since the check it sent before.
+- A `Desk` per conversation (`server/council_review.go`, `councilDesks`) runs
+  one reviewer per critic, on the critic's model and think settings, each on
+  its own session (`~reviewer-N`). The reviewers carry no tools and state
+  their own window on opencoti (`reviewPlacement`).
+- Before each synthesizer call, the reviews finished since its last call
+  arrive under `[COUNCIL · REVIEWS OF YOUR CHECKS BY THE CRITICS]`.
+- Nothing waits on a review except a DONE verdict. A DONE sends its last
+  check itself when it wasn't sent, and waits up to 3 minutes for the reviews
+  still out. When there are reviews, the synthesizer reads them and either
+  goes back to work or repeats DONE; a DONE that stands keeps the answer the
+  user already read.
+- Reviews are scoped to the turn (`Config.Turn`, the turn's hash), so an
+  earlier turn's review never reaches a later synthesizer. The desk ends when
+  the client leaves, or after 15 minutes with nothing sent.
+
+Guards: `TestTheCriticsReviewAChecksWhileTheSynthesizerWorks`. Its reviewer
+holds the review until the synthesizer's next call has started, so a blocking
+review would hang it. The others are `TestADoneSendsItsLastCheckForReview`,
+`TestTheDeskWorksItsQueue`, `TestOnlyTheSynthesizerSendsChecksForReview`,
+`TestAReviewerStatesAWindowOfItsOwn` and `TestAToolTurnKeepsAReviewDesk`.
+Each was checked by removal.
+
+Followed the same day, on the fourth simple run (5b331d1b):
+- The synthesizer never called `council_review`, so a check it moves on from
+  is now sent for it. That happens when its next call makes a change; another
+  read is still part of checking. The DONE gate sends its last check under
+  that same id, so no check is reviewed twice, and a change never checked is
+  sent with the DONE.
+- Reviews stream as thinking when they reach the synthesizer, under
+  "Reviewer N" (the owner: "stream the reviews as thinking too"). A review
+  that finishes while the client runs a tool has no response open, so
+  delivery is the moment it can always be shown.
+
+Guards: `TestACheckLeftUnsentIsSentForTheSynthesizer`,
+`TestACheckIsReviewedOnce` (found a double review first) and
+`TestAReviewHasItsReviewersHeading`. Each was checked by removal.
+
+The builder anchored again on that run, with a place taken from an earlier
+turn's tool results ("likely in the Level class methods on lines 115-126").
+So the builder now reads only the system prompt and the user's own messages
+(`builderConversation`), as the 11.5 design has it. It runs on its own
+session (`~builder`) with a window of its own (`ownWindow`), so it no longer
+disturbs the owner's cache. Guarded in
+`TestEarlierTurnsReachTheMembersAttributed` (checked by removal) and
+`TestACouncilOnPolyKVBuildsItsTreeOnce`.
+
+### 11.10 The planner keeps the council's task list (built 2026-09-28)
+The owner: "is the planner keeping history? he should act as a coordinator
+and program/task manager … consider if we need to give him a task manager as
+a tool so he can only plan and schedule work on the researchers with it".
+
+Before this, the planner did not keep history. A re-plan saw its first plan
+and the failed checks, but not its own re-plans or what the researchers had
+settled. Nothing recorded which hypothesis a check had refuted, so the same
+fix was tried again.
+
+Built (`internal/council/tasks.go`):
+- The plan's JSON schema requires `"tasks"`: id, task, status (open,
+  assigned, done, refuted), the researcher it is assigned to, and the outcome.
+  Every member reads the list under
+  `[COUNCIL · THE COUNCIL'S TASK LIST, KEPT BY THE PLANNER]`, and each re-plan
+  reads it and updates it (`replanRequest`, `ledgerRules`).
+- The runtime keeps the rules, whatever the planner writes (`mergeTasks`):
+  - no task is deleted;
+  - done or refuted needs an outcome, or the task is open again;
+  - assigned needs a researcher that exists;
+  - refuted stays refuted;
+  - new tasks are numbered after the last.
+  There are at most 24 tasks of 400 characters.
+- The list travels in `Kept` and in `council_chat_state` (Progress fields
+  12 tasks and 13 carried, Plan field 3), so the next turn's planner starts
+  from it. A rebuild (the front's or `RouteRebuild`) drops it with the
+  earlier checks.
+- The builder must write the planner's instruction as a coordinator's. It
+  says what one task is for this kind of work and what evidence closes one,
+  and that the planner reads the list and every failed check before
+  planning again (`builderPrompt`).
+
+The choice: a field in the plan, not a tool. The planner answers in one
+structured reply and has no tool loop. A task-manager tool would give it one,
+a round trip per update, for the same operations. The field lets it do
+nothing but plan and schedule, and the runtime enforces the manager's rules
+either way.
+
+Guards: `TestTheTaskListKeepsItsRules`, `TestThePlannerKeepsTheTaskList`
+(carried, shown at the re-plan, dropped on both rebuilds) and
+`TestTheBuilderMakesThePlannerTheCoordinator`. Each was checked by removal.
+
+The sixth simple run (34924cbe) fixed the task: 40 trips, 1401 s, against
+plain's 27. Two cycles chased the wrong theory against one unchanged output.
+Then the stuck note fired, and the third cycle replaced the faulty method
+whole. It followed each moved error (`sX`, then `collide`) to the fix.
+
+Fixed the same day, from the same run: the planner numbered
+its re-plan's list from 0 again (0, 1, 2 against the list's #1, #2, #3), so
+each update landed on another task. It had read two numberings: the list's,
+and the `id 0`s of its own first plan, which the re-plan request repeats as
+it wrote them. Now:
+- every plan and re-plan is kept with the list's ids, so no member and no
+  re-plan reads the planner's 0s;
+- `mergeTasks` matches a task by its words first (`updates`), and an id stands
+  only for a task whose text is left out or shares at least half its words;
+- the rule says to keep the id the list shows (#3 is id 3), never renumbered.
+
+Guard: `TestARenumberedListUpdatesTheTasksItNames` (the run's shape), checked
+by removal of each of the three.
+
+### 11.13 What each role spends (built 2026-09-28)
+The owner's aim: find the role worth a bigger or a cloud model. That is
+"best" meaning both helpful and cheap: a role that spends little and helps a
+small synthesizer much is the one to upgrade first.
+
+That needs each role's cost, so every council turn now reports it
+(`council_usage_v1`). The done chunk carries one entry per role (and per
+model and host): calls, prompt tokens sent (with the cached part), tokens
+written, and engine and wall durations. The manic harness records it per
+trip and sums it per role in the run's summary.
+
+First reading, from the eleven2go debug log (characters, 032db6c2):
+
+| role | medium: calls, prompt share, output share | hard (so far) |
+|---|---|---|
+| researcher | 30, 45 %, 39 % | 29, 32 %, 24 % |
+| synthesizer | 30, 43 %, 28 % | 29, 45 %, 40 % |
+| critic | 7, 7 %, 11 % | 12, 14 %, 11 % |
+| planner | 3, 2 %, 12 % | 5, 4 %, 11 % |
+| front, builder, reviewer | 8, 3 %, 10 % | 8, 4 %, 13 % |
+
+The prompts are about 68× the output. On a cloud model the cost is the
+prompts sent again on every call; locally PolyKV serves most of them from
+the cache.
+
+Guards: `TestACouncilTurnReportsWhatEachRoleSpent` and
+`TestAUsageBookCountsTheCachedPromptAsSent`, each checked by removal.
+
+Helpfulness is the other half. Measuring it takes swapping one role at a time
+to a bigger model on the same tasks (a role-upgrade matrix), which is
+proposed, not run.
+
+### 11.14 The synthesizer applies the proposals together (built 2026-09-28)
+Medium on 032db6c2: the council fixed it in 1101 s and 27 trips, plain in
+91 s and 11. Plain read the file once, made four edits in a row and checked
+once. The council paid one whole cycle (re-plan, research, critique,
+synthesizer) per fault. The consultants council (csl-2026-09-28-1441-4bbf)
+found the cause in our own prompt. `testNote` said "apply the council's
+proposals and check them, one at a time … After each change, run its
+check", and the builder's coding example repeated it. The researchers were
+asked to "propose it", one change.
+
+Now:
+- The synthesizer makes every proposed change that does not conflict in one
+  reply (several tool calls travel in one trip), then checks once.
+- A new failure whose place and fix the check's output and the material
+  already show, the synthesizer fixes itself and checks again. RETEST is left
+  for a fault that needs investigating.
+- Researchers propose every fault they find in their part, not only the first.
+- The builder's example says the same.
+
+Guard: `TestTheSynthesizerAppliesTheProposalsTogether` (and the researcher
+wording in `TestResearchersAreToldWhichToolsOnlyRead`), checked by removal.
+Next: medium on this build, against plain's 91 s.
+
+### 11.15 Less waiting: the consultants' #3–#6 (built 2026-09-28)
+The owner took the consultants' proposals #3–#6, with #3 and #5 as Cerebriline
+has them ("we are paying exceptional latency so anything that helps is
+welcome"). #2, overlapping the stages, waits for the follow-up on flow modes.
+
+- **#3, a change that changes nothing** (`internal/council/loops.go`, ported
+  from Cerebriline's editor): a call to a writing tool whose old and new text
+  are the same (`old_text`/`new_text` and the usual pairs) is refused in place
+  with "No change: …". It is never forwarded, so it costs no trip.
+- **Anti-loop** (Cerebriline's `loop-detection.ts`): a writing call that a
+  member sends again with the same arguments, and that gets the same result
+  back, carries Cerebriline's steering ladder with a strike count (look at the
+  target with a read tool; change what produces it; leave it and take the
+  next thing). At `loopStrikes` (4) the member's steps end, with a report (a
+  RETEST in a testing cycle). A different result starts the count again.
+- **#5, a refused change** (Cerebriline's first steering step): the
+  synthesizer is told to read the target as it is now and make the change
+  again from that text, never the same call unchanged. The builder's example
+  no longer says "never resend an edit that failed". On hard, the one edit to
+  `dDec` (where the fault was) was refused and never tried again.
+- **#4, the front's handoff**: `frontSteps` goes from 4 to 3. The front's
+  reads that nothing changed since reach every member as research
+  (`[COUNCIL · WHAT THE SYNTHESIZER ALREADY READ]`, read back by ref with
+  `council_evidence`; state Progress field 14, this turn only). Its failed
+  attempt is only its changes and what followed them; a front that only read
+  made no attempt.
+- **#6, no idle researchers**: the planner's rules say every researcher gets a
+  workload of about the same size, all at once, and none is left without a
+  task while tasks are open. Work stealing in the runtime (a researcher that
+  finishes early takes the next open task) goes with #2.
+
+Guards: `TestANoOpChangeIsRefusedInPlace`,
+`TestTheSameChangeSentAgainEndsTheSteps`,
+`TestARepeatedCallWithTheSameResultIsPointedOut`,
+`TestTheCouncilIsToldToRedoARefusedChangeAndKeepResearchersBusy`,
+`TestAFrontsReadsAreResearchAndItsChangesAnAttempt` and
+`TestAFrontThatInvestigatesIsForwardedWithItsAttempts`, each checked by
+removal. The test driver now accumulates results as `councilToolTurn` does.
+
+### 11.16 The builder on its own model (built 2026-09-28)
+
+The owner's cloud plan runs the builder on `glm-5.3-turbo:cloud` while one
+other role at a time moves there. The builder ran on the planner's model and
+host (`build.go`), so the setting did not exist.
+
+- `council.builder` (`types/xollama/council.go`): `model`, `host`, `think`,
+  `max_tokens`. No `count` (there is one) and no `prompt`: the builder's reply
+  is JSON the runtime parses, so its prompt is a contract, not a persona.
+- `builderOn` (`internal/council/build.go`): the builder's own model/host,
+  else the planner's; its own think, else the planner's. Unstated, nothing
+  changes. `tweak` gains the `--council-builder-*` rows but `prompt`.
+- Tests: `TestTheBuilderRunsOnItsOwnModel` (mutation-checked: pointing it back
+  at the planner fails "its own"), validation, clone, prune and lookup cases.
+
+### 11.17 A writer has room for its edit, and a cut reply is asked again (built 2026-09-29)
+
+The medium council on 837a1fce + b208 (eleven2go 3090) ended unfixed after
+57 trips. Plain fixed the same task in 12 trips / 114 s: it read the file and
+rewrote the whole broken class in one `edit_file`. The council's front and
+synthesizer set out to make the same rewrite, the one stuck detection (11.11)
+recommends. The front's last three calls each stopped at exactly 3,072 output
+tokens, the cap. Every call was cut inside the tool call it was writing, so
+only the prose before it survived ("I'll rewrite the … class"). The class is
+~10.6 k characters, about 3.3 k tokens, and an edit carries the old text and
+the new, about 6.6 k. The cap made the fix impossible.
+
+Built (`internal/council/cut.go`, additive):
+- `writeTok`: a member that writes (`writes`: synthesizer, planner, front) gets
+  a reply cap of at least `writeMaxTokens` = 16384 on a tool turn (in
+  `callTools` and the front's call). Room for an edit of a part twice the size
+  of the one that was cut. Replies without tools keep their caps.
+- `Reply.Cut`: `server/council.go` carries the engine's `done_reason
+  "length"` into the member's reply. A writer's reply that was cut and holds
+  no call is asked again once (`maxCuts`), with `cutNote`: the call was not
+  made and nothing changed, so make the change in smaller steps. The note
+  names no topic. Cut again right after the note, the reply stands, so the
+  council does not loop.
+- Tests: `TestACutWriterIsAskedAgainForASmallerChange` (front and
+  synthesizer), `TestACutWriterIsAskedAgainOnlyOnce`,
+  `TestOnlyAWriterIsAskedAgain`, and `TestACutReplyReachesTheCouncil` (server:
+  done_reason → re-ask, and the cap on the wire). Each was checked by removal:
+  without the retry, without the raised cap, and without reading
+  `DoneReason`.
+
+### 11.18 The owner makes room for a member booked beside it (built 2026-09-29)
+
+The builder and the reviewers are booked on sessions of their own, beside the
+conversation's owner. The owner books the whole window by default and grows
+back to it before every turn (`begin`). On eleven2go, with the context cut to
+one slot's size by the placement fault, the builder was refused for its whole
+admission budget ("base 0/196608 free need 5632"), and the turn failed after
+2 minutes.
+
+Built (`server/council_room.go`, additive):
+- `roomFor`: before a member with its own window is booked, `/kv`'s
+  `largest_admissible` (now read, `KVStatus.LargestAdmissible`) is compared
+  with the member's window.
+- Short of it, the owner gives back the difference. It never goes below its
+  used cells plus the turn's reserve. The resize is applied at once where the
+  engine allows it, else deferred to the owner's next idle moment, and the
+  member's admission wait seats it.
+- A shrink already queued counts as room. One member at a time asks
+  (`roomMu`). The next turn's `begin` grows the owner back when nobody is
+  refused.
+- On an engine that does not report `largest_admissible`, nothing changes.
+- Tests: `TestTheOwnerMakesRoomForAMemberBookedBesideIt` (full, room already,
+  nothing to give, not reported) and `TestTheBuilderIsGivenRoomBesideAFullOwner`.
+  The latter was checked by removing the call.
+
+### 11.19 The check is the read after the change (built 2026-09-29)
+
+The transcripts of the medium council on 96edc4ae show the plan held on to an
+explanation its checks had refuted, one cycle after another. It converted one
+kind of syntax, then more of it, then another kind. Every check returned the
+same error.
+
+The runtime told it to. Each cycle's "check" was taken as the last read-only
+call, and the synthesizer searched the file after running the check. The
+search answered something new each time, so the planner read "Its check's
+output changed from the one before: progress, and the new output is the lead
+to follow". The stuck note (11.11) never fired.
+
+Built:
+- `lastCheck` (`internal/council/stuck.go`) takes the first read-only call
+  after the cycle's last writing call: the check of the change. A later read
+  is investigation. With no change in the cycle, the last read stands.
+- `stuckNote` also says the explanation behind the unmoved changes is
+  refuted: mark its tasks refuted and assign no more changes of the same kind.
+  It still names no topic.
+- Guard: `TestTheCheckIsTheReadAfterTheLastChange`. With the old `lastCheck`
+  it fails exactly as live ("more search results").
+
+### 11.20 A misquoted change is answered with the text the read shows (built 2026-09-29)
+
+On e75c7c3e run 2, 6 of 21 edits named text the file did not have. `dIt` is
+one 564-character minified line; to change its last characters the
+synthesizer quoted the whole line, copied 560 characters exactly, then wrote
+the tail as code usually looks (`}}})`, `});}}`, ...) instead of the file's
+`} })};`. Seven attempts, a trip each, on text that was not even a fault. The
+"read the target and quote from it" note (11.15) did not help. The
+consultants (`csl-2026-09-29-0846-320d`) ranked this second, as deterministic.
+
+Built (`internal/council/quote.go`):
+- Before a writer's change is forwarded, the member's own reads of the same
+  target (the `path`-like argument), latest first, back to its last change to
+  that target the tool did not refuse, are searched for the change's quote
+  (the `old_text`-like argument, `noOpPairs`). Line-number gutters are dropped
+  first (`N: `, tab, `|`).
+- A read with the whole quote lets it go. One with at least `minQuoted` (32)
+  characters of its start, a mismatch inside a line and text after it answers
+  the call in place: where the match stops, what the read has there and what
+  the quote has, verbatim, and "quote only the smallest span around the
+  change that occurs once". No trip.
+- A mismatch at a line's end, a read that ends there, or too short a match
+  lets the call go: that read showed only part, or the quote is of
+  something else (an insert written as a replace).
+- At most `maxMisquotes` (4) per member are answered in place; past that the
+  client's own answer stands. An answer in place costs a step, not a
+  refusal.
+- Guards (`quote_test.go`), each failing with the guard off:
+  `TestAMisquotedChangeIsAnsweredWithTheActualText`,
+  `TestARefusedChangeKeepsTheRead`,
+  `TestMisquotesAreAnsweredInPlaceOnlySoOften`; and
+  `TestAChangeTheReadBearsOutGoesOut` (exact across lines with gutters, too
+  little matched, a change in between).
+
+Measured (eleven2go, medium): FIXED in 26 trips on `96ff1f5d`, then
+UNFIXED at 60 on `cf223635`, with 13 of 32 edits missing their text. The
+misses followed the member's own successful edits, after which its read
+counts as stale. Built the same day: the member's own changes since its read
+are replayed onto it (`replay` in `quote.go`; a whole write is the text
+itself), so the read stays current across them. Guard:
+`TestTheReadFollowsTheMembersOwnChanges`, which fails with the replay off.
+
+### 11.29 Cerebriline's budgets and structural enforcement (in progress, 2026-09-30)
+
+**Why.**
+- The all-glm council fixed hard at 13x plain's cost (10,866 s, 60 trips, 875k tokens out):
+  - one critic made 50 finds in 26 trips;
+  - researchers averaged 10.6k tokens per call;
+  - the synthesizer broke the file 3 times.
+- Plain omni, run through Cerebriline's harness, fixed it in 1,125 s (23/23).
+- Owner's ruling:
+  - adopt Cerebriline's output budget, with a low default ceiling;
+  - map think levels onto the output;
+  - replay and condense reasoning;
+  - compact in one step;
+  - replace prompt directives and hand-written guards with structural enforcement.
+  Routing stays: a coding task always goes to the council, and it has to solve it efficiently.
+- Inputs (in `/srv/ml/xollama-phase2/consult-council/`):
+  - Cerebriline mail #575;
+  - `claude-hooks-review-2026-09-30.md`;
+  - `langgraph-mapping.md` (Part 2: structural features);
+  - `research-scout.md`.
+
+**Scope, in build order** (each ticked when built and tested):
+- [x] Researcher and critic tool steps bounded (4 and 3).
+  - A step is a turn that called a client tool, forwarded or answered from the shared reads.
+  - Past the bound the call is not made, and a second try ends the member's turn (`TestAMembersToolStepsAreBounded`).
+  - The notes tell members to batch reads.
+- [x] The critic spot-checks rather than researches (claude-hooks P3).
+- [x] An empty or unreadable plan, and an empty researcher or critic report, are asked again once without thinking.
+  - Briefs the plan left out are numbered, never shared (`TestAnEmptyPlanIsAskedAgainWithoutThinking`, `TestAnEmptyReportIsAskedAgainWithoutThinking`).
+- [x] One-step compaction: a fold is the writer's pass only (Cerebriline `councilEnabled: false`, `thinkingSummaryEnabled` off).
+  - `council.context.review` and `.retrospective` now default to off; the review path stays opt-in.
+  - `TestCompactionSettings` covers the default, review off and review on.
+- [x] One model-call wrapper for every role (`server/council_retry.go`, around `councilMembers.StreamTools`):
+  - a member that sends nothing for 5 min, or runs past 20 min, is ended;
+  - a failed call is asked again up to twice (2 s, then 4 s);
+  - a full owner, a 4xx refusal and a host the operator has not allowed are not retried;
+  - the council's own fallback (a researcher or critic elsewhere, answered by the council's model) follows after these tries;
+  - guards: `TestAFailedOrStalledMemberIsAskedAgain` and `TestAMemberThatKeepsFailingIsAskedAgainOnlyTwice`, each failing with its part removed.
+- [x] Runner-issued check after a synthesizer turn that wrote and ran none (`internal/council/checkcall.go`).
+  - Cerebriline's check, `./run_game`, runs through `run_commands`, a shell tool, so the council counted it as a change and never saw a check (#581).
+  - A directive's `check_call` (`{tool, arguments}`, `council_check_call_v1`) is the check, and the only call that is: `cfg.readOnly` answers true for it, so the check finder, the review queue and the loop guards take it as a check. The shared-read cache does not, so a check is never answered from an earlier run.
+  - A synthesizer turn that ends after a change with no check since has the council make the call for it. The synthesizer goes on from the result.
+  - Guards: `TestAWriteWithoutTheStatedCheckHasItMade` (fails with the issue removed), `TestOnlyTheStatedCheckCountsAsOne`, `TestACheckCallMustNameItsTool`.
+- [x] A generic harness drives the council (owner, 2026-09-30): the council measured through native.sh is a council tag served to a client that does not know it is one, with no xOllama fields.
+  - Tools with no `council_chat_state` are served by the council. The server holds the resume point by session (`server/council_held.go`).
+  - Read-only is inferred from tool names when the client marks none.
+  - The check is inferred as the non-reading call repeated unchanged across a change.
+  - A client's resent thinking is not read by members.
+  - `check_call` stays as an optional extra; no arm depends on it.
+- [~] `council_read_many`: dropped. Cerebriline's `read_files` already takes several files, and a step may carry several calls, which the tool notes ask for. A batch tool would duplicate both.
+- [x] Typed results (`internal/council/report.go`):
+  - researchers end with `council_report` (summary, proposals `{path, old_text, new_text, why, check}`, claims with evidence, open);
+  - critics end with `council_verdict` (ready, revise or confirmed + place);
+  - a checking synthesizer ends with `council_done` or `council_retest`.
+  - The council answers these itself, and renders them into the text and markers the flow already routes on. A result counts only as a turn's one call.
+  - A report marks each proposal by whether the researcher's own reads show its `old_text`, and carries its reads by ref only.
+  - The text markers are still accepted.
+  - Guards: `TestAResearchersReportIsTyped`, `TestACriticsVerdictIsTyped`, `TestAReportBesideAReadWaitsForIt`, `TestTheSynthesizersVerdictsAreTyped`. Four fail with `takeResult` off.
+- [x] Forced answer by schema at the step bound.
+  - The reader's call carries its result's schema as `Format`, so the grammar admits no call; the tool list, and the prefix, stay (`TestTheForcedAnswerIsTheReportsFormat`).
+  - Live, run 0415: the report schema's `maxLength` 2000 made the engine refuse the format ("failed to parse grammar"), ending the turn at 692 s. The text bound is now applied at rendering, and a refused format is asked again once without it (`TestNoResultSchemaBoundsItsText`, `TestARefusedFormatIsAskedAgainWithout`).
+- [x] Output budget per member: min(0.75 x window, ceiling, model num_predict) (`Config.OutputBudget`).
+  - The rule is the VS Code plugin's (#578). The CLI's 49,152 / 12,288 was its gateway fallback, ¼ of the window, now aligned with the plugin.
+  - The ceiling defaults to 16,384 (owner's choice). It is set council-wide by `council.max_tokens` [1024, 96000]; a role's own `max_tokens` replaces it.
+  - The thinking is inside the cap: `num_predict` is the cap, no longer cap + budget.
+  - A level is its share of the cap (minimal 1/16, low 1/8, medium 1/4, high 1/2, max 4/5); `on` is medium. A token budget is held to 4/5 of the cap. The builder's levels are the same shares.
+  - A role whose model sets its cap keeps the old window share, and `on` = 2048.
+  - Each member's instruction ends with Cerebriline's Output Budget section: its cap and its thinking share (`budgetNote`).
+  - The reserve books each lead member's cap only. At the default that is 5 × 16,384 + 1,024 on the 384k omni council.
+  - Guards: `TestTheOutputBudgetIsTheLeastOfWindowCeilingAndNumPredict`, `TestThinkBudgetResolvesARoleSetting`, `TestAMemberIsToldItsOutputBudget`, `TestTheReserveBooksTheCapsWithTheThinkingInside`, `TestAThinkingRoleReasonsWithinItsBudgetAndHidesIt`.
+- [x] Reasoning replay `last` (`internal/council/replay.go`).
+  - A member's step carries the reasoning it followed (`Reply.Thinking`, read from the stream); its earlier steps carry none.
+  - Guard: `TestAMembersLastReasoningIsReplayed`.
+- [x] Capped-thinking condensation (Cerebriline `capped-thinking.ts`).
+  - A step's reasoning is condensed when it ends on the model's `think_budget_message`: the longest line, whitespace collapsed, in the last 400 characters.
+  - Once the step's results are in, the reasoning is replaced by a note from a `Condenser` call: thinking off, 2,000 tokens, Cerebriline's prompts, run on its own session beside the owner with no tools and no pool.
+  - The note opens with `condensedLeadIn`, so it is condensed only once.
+  - Guard: `TestCappedReasoningIsCondensed`.
+  - Not ported: the measured-token proximity test (0.9 x budget); the marker alone decides.
+
+**Measure.** Through Cerebriline's `native.sh` on the eleven2go lane (hard, oracle v3, `ARM=manual`, THINKING=medium): plain omni, plain glm, then the council.
+
+### 11.28 The reserve books thinking, and a budget goes with its message (built 2026-09-30)
+
+**Why.** The omni council runs' own logs (a0968aea, council runs 1-3) show
+the 2048 think budget exhausted on 22-29% of thinking calls, with the p90
+spent at the budget. A member is sent `num_predict` = cap + budget, but
+`councilReserve` booked only the cap, so it undercounted what a thinking
+member can write into the owner's window. Owner's ruling: count the budget,
+and pass the budget cap with the model template's budget message to local
+and xollama members.
+
+**Built.**
+- `Config.ThinkRoom(role, window)` (`internal/council/build.go`): a stated
+  think setting against the member's window, else the harness's stated
+  build, else `maxBuiltThink` (4096, the builder's "high").
+- `councilReserve(cfg, window)` adds it for every lead role.
+- `councilBudgetMessage`: the client's `think_budget_message`, else the
+  council model's. `stream` sends it with every budget sent as a token count.
+- Tests: `TestTheReserveBooksTheThinkingToo`,
+  `TestABudgetGoesWithTheModelsBudgetMessage`. Each fails with its line
+  removed (reserve 11264, want 25600; no message reached the remote).
+  `TestThePlannerAttachesTheConversationRoot` now expects the floor capped at
+  the window. `TestTheOwnerWindowFollowsThePressure` states `think: off`: with
+  the builder's thinking booked, its default council's reserve is the whole
+  16k window and there is nothing to give back.
+- Measure next: plain omni with thinking on (the council's roles have only
+  ever thought under a 1024-2048 budget), to set the limits the owner will
+  rule on.
+
+### 11.27 A role's reply cap and window are its own model's (built 2026-09-30)
+
+**Why.** The first cloud councils put glm-5.3-flash:cloud on some roles. The
+plain arm measured what glm needs with thinking on (hard, harness v3, three
+runs, all fixed and passing the logic traps): its longest reply in each run was
+59,086, 47,512 and 24,484 tokens. A council role left without `max_tokens` took
+the built-in cap, 1024-3072 plus the 2048 think budget, and would have been cut
+before its answer, starving the council. A stated 128k cap, in turn, was added
+into `councilReserve`, the room booked in the owner's window, although a cloud
+role never runs there.
+
+**Owner's ruling (2026-09-30).** PolyKV sizing matters only for the roles on
+PolyKV, the lead model's. Every role needs its own `max_tokens`; unstated, it
+inherits its model's template, local or at the remote endpoint. glm is forced
+to 128k. Every role also needs a `num_ctx` override.
+
+**Built.**
+- `maxTok(cfg, role, model, host)` resolves a cap against the model the
+  request runs on. A stated cap holds on the role's own model. On the lead
+  model an unstated cap is the council model's Modelfile `num_predict`
+  (`cfg.LeadMaxTokens`), else the built-in one: always a number, since the
+  owner's window is booked for it. On another model it is 0, and nothing is
+  sent. The front and the direct answer run on the lead and never borrow a
+  cloud synthesizer's cap.
+- `cfg.OnLead`, `cfg.Cap`; `councilReserve` counts only lead roles. With every
+  role on glm the reserve is the 1024 for instructions.
+- `council.<role>.num_ctx` (`xollama.CouncilRole.NumCtx`,
+  `--council-<role>-num-ctx`): the window of a role on another model, sent as
+  its `num_ctx`. It needs `model`, since a lead role runs in the council's
+  window, and it raises the schema to v5.
+- A member on another model sheds the client's `num_predict` and `num_ctx`,
+  which were the council's.
+- Tests: `TestAReplyCapFollowsTheModelItRunsOn`,
+  `TestARoleIsOnTheLeadOnlyWithoutAModelOfItsOwn`,
+  `TestTheReserveCountsOnlyTheRolesOnTheCouncilsModel`,
+  `TestARemoteRoleTakesItsOwnCapAndWindow` (fails with the strip removed:
+  num_predict 999 reached the remote), `TestARoleWindowNeedsTheRolesOwnModel`,
+  `TestARoleWindowIsSchemaFive`. `TestAThinkingMemberGetsABudgetOnlyWhereOneIsUnderstood`
+  now states the 2048 cap it adds the budget to.
+- The local councils are unchanged: none of the omni council models sets
+  `num_predict`, so their roles keep the built-in caps.
+- **Found by the first all-glm smoke run:** its two trips were both the
+  front's, and both ran on omni. The route decision, the direct answer and
+  the front (11.5) never named their role's model, so a council with every
+  role on glm still routed and took every tool turn on the lead. Now the route
+  and the direct answer run on the planner's model, and the front on the
+  synthesizer's, with their host, window and cap. With the planner on the
+  lead, the direct answer keeps the synthesizer's cap, as before. Guard:
+  `TestEveryCallRunsOnItsRolesModel`, which fails with either model dropped.
+
+### 11.26 A full owner compacts, and the turn resumes (built 2026-09-30)
+
+Council run 4 of hard on eleven2go (a0968aea) failed at trip 118. The
+conversation's root had grown to about 120k tokens and the synthesizer's stage
+to 39k, inside a 196608-cell owner. The next worker needed 39662 cells with
+37121 free. The engine answered "session allocation full … compact the
+session", and xollama waited out admission for two minutes as it does for a
+busy server. Nothing ran that would give cells back, and the turn failed.
+Compaction had not fired: the owner stood at 81 %, under its 85 % trigger.
+
+Built (the owner's choice, "compact on the refusal and retry the member"):
+- **Refused at once.** `llm.WithCompactOnFull` marks a member that holds the
+  owner's cells (attached to an owner's pool, or running on the owner;
+  `ownerBound`). Its full-owner refusal comes back at once as
+  `llm.ErrOwnerFull`, mapped to 507, instead of being waited out. A request
+  over the whole window is still `ErrNeverFits`. Reviewers, the builder and
+  compaction calls are unmarked and wait as before.
+- **Wait for a sibling first.** The refused member asks again once another
+  owner-bound member finishes, since that gives cells back (`retryOwnerFull`;
+  in-flight count `takeoff`/`land` on the tree, at most 30 waits). Its own
+  landing does not count; a test caught that.
+- **Fold and resume.** When none is in flight, the error reaches the turn. The
+  turn lets every pool go, newest first (`dropForCompaction`), folds the
+  conversation (the forced `refused` fold of the conversation as the members
+  read it, before any earlier fold), rebuilds the root from the fold, and
+  resumes `RunFrom` from the last checkpoint. Settled members are not asked
+  again. This happens once per request; a fold that changes nothing leaves the
+  error as it was.
+- **Guards (mutation-checked):**
+  - `TestAFullOwnerIsAnsweredAtOnceForACouncilMember` (llm);
+  - `TestAFullOwnerCompactsAndTheTurnResumes`, which fails without the marker,
+    the fold, the pool release, or the resume from the checkpoint;
+  - `TestAFullOwnerWaitsForAMemberThatGivesCellsBack`;
+  - `TestOnlyOwnerBoundMembersAreRefusedAtOnce`.
+- Not measured live yet: deploy after the a0968aea batch ends.
+
+### 11.25 A member's layer ends at its own instruction (built 2026-09-30)
+
+On solidPC's hard run (569747788), pools 13 and 14 were built 7 s apart on one
+parent, both 6724 long. They were round 2's two researchers, one layer each.
+Their messages, from the member log, are equal up to each one's
+`ROLE: RESEARCHER n` instruction. After it comes
+`[COUNCIL · NOTES FROM YOUR MATES]` (`broadcast` is on in `omni-council-ab5`).
+The layer was cut before the last user message, the notes, so it held the
+member's own instruction and no two researchers ever shared their stage. The
+same cut failed wherever a user message follows the instruction: the user's
+system prompt after the synthesizer's role, and the council's nudges in a tool
+loop (budget, narrated call, verdict, reviews, a cut reply). Those put the
+member's own tool turns into its layer, which is then a private pool on every
+round trip.
+
+Built:
+- `council.OwnPart` (`internal/council/sources.go`): a member's own part starts
+  at its first instruction after the last plan. `workerPlacement` cuts the
+  layer there. The last-user rule remains only for messages that carry no plan.
+- `server/council_layer_log.go` logs each built layer's text past its parent
+  (`council: pool text`). For a sibling on the same parent, it logs where the
+  two diverge (`council: pool shares a prefix with a sibling`), so a sharing
+  miss can be read off the log.
+- The build line logs the parent's id (it printed a pointer) and the layer's
+  key.
+- Guards: `TestOwnPartIsTheMembersInstruction` and
+  `TestResearchersWithNotesShareTheirStage`. The latter fails on the old cut.
+  bug-184.
+
+### 11.24 A turn's layers are kept across its round trips (built 2026-09-29)
+
+Hard on eleven2go (5ce5f7e7): the pool builds prefilled 582,509 tokens, and
+265,334 of them were a layer the previous request had just released. Each
+harness tool round trip is its own HTTP request. Each request built its tree
+and released everything at its end except the conversation's root (pool 1,
+kept on all 47 requests). So after every resume the members' stage layer was
+built again: one 6,636-token layer five times in 78 s, 4.7 s each. The
+reviewers, the first suspect, were 15.6k tokens (1.1 % of the prefill).
+
+Built (`server/council_layers_kept.go`, part of the `council` hook):
+- A request that ends with the members' calls (`suspend`) puts its layers
+  aside for the owner (`stashLocked`, from `release`). It keeps only the layers
+  this request used and the ones they stand on (`used`). An adopted layer that
+  is not asked for again is a stage the turn has moved past, and it is released.
+- The next request takes them in `begin` under the kept root's rules: only on
+  the runner that made them, only while the owner's allocation lives, and only
+  on the same kept root. It adopts them once the turn is known (`adopt`, same
+  turn hash). The members then attach to them, as `layer` finds them by text.
+- Anything else releases them, newest first. That covers another turn, another
+  runner, another root, a rebuilt root (`dropAdopted` runs before the old root
+  goes, since the engine keeps a pool with a child), and a client that does not
+  come back within `councilStashIdle` (10 min).
+- Guards, each mutation-checked (the rule removed, the test fails):
+  `TestARoundTripKeepsItsStageLayers` (the fake engine, two requests of one
+  turn), `TestAnotherTurnReleasesTheKeptLayers`,
+  `TestKeptLayersGoWhenTheClientDoesNotComeBack`,
+  `TestAStashKeepsOnlyTheLayersInUse`, `TestAStashIsAdoptedOnlyWhereItStands`
+  and `TestARebuiltRootDropsTheAdoptedLayersFirst`.
+- Measured on solidPC's 3090 (569747788, `omni-council-ab5`, hard, 40 trips,
+  2026-09-29):
+  - 37 requests kept their layers and 36 were adopted; the last stash waited
+    for the idle release.
+  - Resumes built nothing.
+  - 275,292 pool tokens in 34 builds, 6.9k a trip, against 12.1k a trip on
+    eleven2go's run (a different host and model).
+  - No release failed.
+  - Open: pools 13 and 14 have the same parent and the same length, built
+    7 s apart in one request.
+
+### 11.23 A member sized to its request is sized in tokens (built 2026-09-29)
+
+Hard on eleven2go (5ce5f7e7): four requests ran in a 12800-token engine
+window, and one, a critic's background review of 13196 tokens, was refused
+(`exceeds the available context size`), so that review was lost. These are
+the members that run on a session of their own with a window fitted to their
+request (`ownWindow`: a background reviewer, the builder); the researchers,
+critics and synthesizer worked in 196608-token windows on the pool tree (116
+requests). The fitted window counted a third of the request's characters as
+its tokens; code and JSON run near two characters a token (the refused review:
+about 1.9).
+
+Built (`ownWindow`, `server/council_review.go`): the request is counted as the
+member sends it (rendered and tokenized, `councilTree.tokens`, the count the
+unpooled path already used); the background reviewer's member set carries the
+tree's counter (`councilMembers.count`). Half the characters is the estimate
+only when counting fails. Guards: `TestAReviewersWindowHoldsItsRequestInTokens`
+(fails when the count is ignored) and `TestAReviewerStatesAWindowOfItsOwn`.
+Open: a reviewer still prefills its whole request on its own session, sharing
+nothing with the tree; attaching it to a pool layer is the efficiency step.
+
+### 11.22 A change of approach has to show in the task list (built 2026-09-29)
+
+Hard on eleven2go (5ce5f7e7, 120 trips): plain fixed it in 24 trips by writing
+the whole file at trip 22 (it passes `run_gamefull.js` as `reference.html`
+does); the council made 16 local changes and never wrote a whole part. The
+stuck note fired (58 times in the log). The planner's round-2 plan said
+"instead of piecemeal fixes, I'll replace the entire JavaScript section", and
+its list kept all four tasks `open`, assigned the refuted template-literal
+task again and gave the replacement to nobody. The synthesizer applies what
+the members propose, so the cycle made local changes again. Round 5 narrowed
+to the right place two minutes before the engine died (host out of virtual
+memory, not the council).
+
+Built (`approachKept`, `keptNote` in `internal/council/stuck.go`,
+`ReplanAgain` in `steps.go`, the replan in `run.go`):
+- When the stuck note is in force for a re-plan, the list's update must mark
+  at least one task refuted and add at least one task. Otherwise the planner is
+  asked once more, with its plan and a note that says which of the two it left
+  undone, and that a whole-part replacement is a task: a researcher writes it
+  out in full and the synthesizer applies it in one write. The second answer
+  stands, whatever it is. One extra planner call, only on a stuck cycle.
+- Structural, no topic words (the stuck test's word ban covers `keptNote`).
+- Guards: `TestAReplanThatKeepsTheRefutedApproachIsNamed` (the real round-2
+  list) and `TestAStuckReplanIsAskedAgainOnce` (asked again once when stuck,
+  never while checks move; fails when the rule is disabled).
+- Not yet measured live: eleven2go is lent to opencoti.
+
+### 11.21 The check is the call the member checks with (built 2026-09-29)
+
+On 4770e33b run 2 the council never found the stray `}` ending `dGrid`. All 7
+checks returned the same `SyntaxError: Unexpected token '{'`, yet the planner
+was told "changed from the one before: progress" every cycle (149 such notes
+in that log, none "same"), so the stuck note never fired. The first theory
+(template literals, read into the `{` of the error) was never refuted, and
+every cycle rewrote more template literals.
+
+11.19's rule, "the first read after the cycle's last change", took the
+wrong call again. The synthesizer ran the check, edited again, then read the
+file it had edited, so the recorded "check" was the file's own text, which
+differs after every edit. The e75c7c3e logs show the same thing: `moved`
+140 times, `same` never.
+
+Built (`lastCheck`, `internal/council/stuck.go`):
+- Among the read-only calls after the member's first change, the check is
+  the one (tool and arguments) it called most, the earliest on a tie. One
+  whose latest output is the previous cycle's check is taken first. The
+  harness's named check tool (`council.check`) still restricts the choice.
+- Replayed over run 2's trips, it records the same `run_game` error every
+  cycle, so the stuck note fires from cycle 3.
+- Guard: `TestTheCheckIsTheCallTheMemberChecksWith`. On the old rule it
+  returns the edited file's text, exactly as live.
+  `TestTheCheckIsTheReadAfterTheLastChange` (11.19) still passes.
+
+### 11.11 Checks that stop moving change the approach (built 2026-09-28)
+The fifth simple run (b336b144) returned the same "missing ) after argument
+list" from every check for 60 trips. The plain arm fixed the task in 27 trips:
+it rewrote the file whole at trip 20, then followed each new error. The
+council's own rules had forbidden that larger change.
+
+Built (`internal/council/stuck.go`):
+- The last read-only call's result of each failed cycle is recorded
+  (`Progress.Checks`, state Progress field 11; 2000 characters each).
+- The failed-check list marks each check as the same output as the one
+  before it or a changed one (`sameNote`, `movedNote`). A changed output is
+  progress, and the lead to follow.
+- After two checks in a row with the same output (whitespace ignored), every
+  member of the next cycle reads `stuckNote`: change approach, find where the
+  fault is by narrowing what the check exercises, or replace the failing part
+  whole. The note names no topic (the owner: "make sure the nudge is agnostic
+  of the topic"); a test holds it free of domain words.
+- Researchers may propose a whole-part replacement (`wholeNote`), and the
+  synthesizer's check wording says a changed error is progress (`checkNote`).
+
+Guard: `TestACouncilThatDoesNotMoveTheCheckChangesApproach` (same outputs →
+stuck; changing outputs → moved, never stuck), checked by removal.
+
+### 11.12 A review always ends with its verdict (built 2026-09-28)
+On the fifth run, one of the six reviews carried the `REVIEW:` line. The
+owner: "That's what a critic does, always … reject the output of the critic
+and tell him to output his answer with the format that was requested, giving
+him the structure to follow."
+
+Built: the reviewer is given the structure (`CHANGE:`, `CHECK:`, then one
+`REVIEW:` line). A reply without its verdict (`verdictOf`) is sent back once,
+with `reviewFormatNudge` repeating the structure. A second miss is delivered
+marked `REVIEW: UNCLEAR (the critic gave no verdict)`, so it is never read as
+a confirmation.
+
+Guard: `TestAReviewWithoutAVerdictIsSentBack`, checked by removal.
+
 ## Decision log
 
 - 2026-09-25 — The target is opencoti b111 (the owner moved it from b109).

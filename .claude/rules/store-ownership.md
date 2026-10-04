@@ -25,6 +25,18 @@
 - The mirror case — an unprivileged user against a service-owned store — cannot
   be chowned. `fsowner.Preflight` warns once from `Serve`, naming owner, current
   account, consequence and fix. Do not turn it into a refusal.
+- **The engine writes too, and not through `fsowner`.** opencoti creates
+  `.cosmo/` (its dlopen helper), `.nv/` and `.cache/` in the HOME xollama gives
+  it, as whoever it runs as. A root-run server left them root-owned and the
+  service's next engine failed every GPU load with "dlopen() isn't supported on
+  this platform" (xo-17). So `engine.AdoptPayloadHome` hands the tree over when
+  the engine exits and when the HOME is prepared (root only, only a directory
+  holding the payload marker, never the inherited HOME), and an unprivileged
+  server that finds such files warns once and takes the next root
+  (`payloadForeign`, `llm/engine/payload_owner_unix.go`). Every engine run
+  (launch, device listing, link probe) gets its HOME from `engine.PayloadHome`.
+  Verified on solidPC by a root run then an `ollama` run of one install:
+  `/srv/ml/xo17/run.sh`.
 - Registry row `store-ownership`; prose in `docs/features/store-ownership.md`.
 - Verify changes here against a real root-run `pull` into an `ollama`-owned
   store, not only unit tests: with adoption 0 files are foreign, without it 11

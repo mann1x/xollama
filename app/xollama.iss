@@ -19,7 +19,6 @@
 #define MyAppPublisher "ManniX"
 #define MyAppURL "https://github.com/mann1x/xollama"
 #define MyAppExeName "xOllama app.exe"
-#define LlamaServerExeName "llama-server.exe"
 #define MyIcon ".\assets\app.ico"
 
 [Setup]
@@ -124,6 +123,11 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 DialogFontSize=12
 
 [Files]
+; xollama-stop.ps1 stops xOllama's own processes and nothing else: it runs from
+; PrepareToInstall (extracted to {tmp}) before any file is replaced, and from
+; [UninstallRun] (installed below) before any file is removed.
+Source: ".\xollama-stop.ps1"; Flags: dontcopy
+Source: ".\xollama-stop.ps1"; DestDir: "{app}"; Flags: ignoreversion
 #if FileExists("..\dist\windows-xollama-app-amd64.exe")
 Source: "..\dist\windows-xollama-app-amd64.exe"; DestDir: "{app}"; DestName: "{#MyAppExeName}" ;Check: not IsArm64();  Flags: ignoreversion 64bit; BeforeInstall: TaskKill('{#MyAppExeName}')
 Source: "..\dist\windows-amd64\xollama.exe"; DestDir: "{app}"; Check: not IsArm64(); Flags: ignoreversion 64bit; BeforeInstall: TaskKill('xollama.exe')
@@ -181,12 +185,10 @@ Filename: "{cmd}"; Parameters: "{code:AppRunParams}"; Flags: postinstall nowait 
 [UninstallRun]
 ; Filename: "{cmd}"; Parameters: "/C ""taskkill /im ''{#MyAppExeName}'' /f /t"; Flags: runhidden
 ; Filename: "{cmd}"; Parameters: "/C ""taskkill /im xollama.exe /f /t"; Flags: runhidden
-Filename: "taskkill"; Parameters: "/im ""{#MyAppExeName}"" /f /t"; Flags: runhidden
-Filename: "taskkill"; Parameters: "/im ""xollama.exe"" /f /t"; Flags: runhidden
-Filename: "taskkill"; Parameters: "/im ""{#LlamaServerExeName}"" /f /t"; Flags: runhidden
-; HACK!  need to give the server and app enough time to exit
-; TODO - convert this to a Pascal code script so it waits until they're no longer running, then completes
-Filename: "{cmd}"; Parameters: "/c timeout 5"; Flags: runhidden
+; Stops the tray app, the server and the engines and runners they started, and
+; waits for them to exit. Not `taskkill /im llama-server.exe`: that also stopped
+; a stock Ollama's runners, and never reached the opencoti engine.
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\xollama-stop.ps1"" -App ""{app}"""; Flags: runhidden; RunOnceId: "StopXollama"
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{%TEMP}\xollama*"
@@ -472,14 +474,33 @@ begin
   end;
 end;
 
-procedure TaskKill(FileName: String);
+// StopXollama stops xOllama's own processes (xollama-stop.ps1) and waits for
+// them to exit. It never stops a stock Ollama beside it.
+procedure StopXollama(Script: String);
 var
   ResultCode: Integer;
 begin
-    Exec('taskkill.exe', '/f /t /im ' + '"' + FileName + '"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    if FileName <> '{#LlamaServerExeName}' then begin
-      Exec('taskkill.exe', '/f /t /im "{#LlamaServerExeName}"', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    end;
+  if not Exec('powershell.exe', '-NoProfile -ExecutionPolicy Bypass -File "' + Script + '" -App "' + ExpandConstant('{app}') + '"',
+              '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    Log('xollama-stop.ps1 could not be started')
+  else
+    Log('xollama-stop.ps1 exited ' + IntToStr(ResultCode));
+end;
+
+// Runs before any file is replaced: the engine and the runners live under
+// lib\ollama, which the installer overwrites after the executables.
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  ExtractTemporaryFile('xollama-stop.ps1');
+  StopXollama(ExpandConstant('{tmp}\xollama-stop.ps1'));
+  Result := '';
+end;
+
+// Kept as each executable's BeforeInstall: the stop already ran in
+// PrepareToInstall, so this only catches a process started since.
+procedure TaskKill(FileName: String);
+begin
+  StopXollama(ExpandConstant('{tmp}\xollama-stop.ps1'));
 end;
 
 #ifndef CORE

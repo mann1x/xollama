@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,6 +27,7 @@ import (
 	"github.com/ollama/ollama/internal/council"
 	"github.com/ollama/ollama/llm"
 	"github.com/ollama/ollama/types/model"
+	"github.com/ollama/ollama/types/xollama"
 )
 
 // councilMemberKey marks a chat request the council itself made. A member is
@@ -88,8 +90,29 @@ func councilServes(c *gin.Context, m *Model, req api.ChatRequest) bool {
 	if c.GetBool(councilMemberKey) {
 		return false
 	}
-	return len(req.Messages) > 0 && (len(req.Tools) == 0 || req.CouncilChatState != nil) && len(req.Format) == 0 && !req.DebugRenderOnly
+	// A reply cap no council answer fits in is a probe of the model itself
+	// (Cerebriline's template probe: num_predict 1, read for its
+	// prompt_eval_count): the model answers it alone.
+	if n, ok := optionAsInt(req.Options["num_predict"]); ok && n > 0 && n < councilMinReply {
+		return false
+	}
+	// A request without tools, in a conversation tools have worked in, is a
+	// generic client's own housekeeping -- its compaction summary, a title --
+	// not a step of the task: the model answers it alone. Through the council
+	// each of Cerebriline's compactions took 13.5 minutes (native.sh 0427).
+	// A client that keeps the council's state is taken at its word.
+	if len(req.Tools) == 0 && req.CouncilChatState == nil && slices.ContainsFunc(req.Messages, func(m api.Message) bool { return len(m.ToolCalls) > 0 }) {
+		return false
+	}
+	// Tools with no council_chat_state are a generic client's: the server
+	// keeps its resume point (council_held.go).
+	return len(req.Messages) > 0 && len(req.Format) == 0 && !req.DebugRenderOnly
 }
+
+// councilMinReply is the least reply cap a council turn is run for: below it
+// no deliberation's answer fits, and the request is the client probing the
+// model, not asking it.
+const councilMinReply = 64
 
 // councilChat answers one chat turn with the model's council.
 func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
@@ -97,6 +120,14 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	cc := m.Xollama.Council
 
 	cfg := council.FromModel(cc, councilTemperature(m, req))
+	// An unstated reply cap on the council's own model is that model's
+	// num_predict first (council.maxTok).
+	if n, ok := optionAsInt(m.Options["num_predict"]); ok && n > 0 {
+		cfg.LeadMaxTokens = n
+	}
+	// The window a member's output budget is sized against: num_ctx for now,
+	// the tree's once it is made (below).
+	cfg.Window = councilMemberWindow(m, req, nil)
 	// A client that turned thinking off gets the answer alone.
 	if req.Think != nil && !req.Think.Bool() {
 		cfg.ShowDeliberation = false
@@ -105,12 +136,34 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// A harness's directive (council_directive_v1, plans/council-harness.md).
+	// It implies a client that resumes, so the turn sends its state.
+	cfg, err := cfg.Direct(req.Council)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Council != nil && req.CouncilChatState == nil {
+		req.CouncilChatState = new(string)
+	}
 
 	// Tools (9.5): the members carry the client's and the council's own
 	// evidence lookup, one list for all, so the shared prefix holds it once.
-	req.Tools = council.WithEvidence(req.Tools)
+	// A generic client marks no tool read-only: the council reads it from
+	// the names (council.InferReadOnly).
+	req.Tools = council.WithReports(council.WithEvidence(council.InferReadOnly(req.Tools)))
 	if cfg.Broadcast {
 		req.Tools = council.WithBroadcast(req.Tools) // 10.6, behind council.broadcast
+	}
+	// 11.5: the synthesizer takes a tool turn's request first, and forwards it
+	// or has the council rebuilt with these.
+	if req.Council == nil || req.Council.Mode == "" || req.Council.Mode == api.CouncilModeAuto {
+		// A stated mode is never left, so there is nothing to route.
+		req.Tools = council.WithRouting(req.Tools)
+	}
+	if cfg.Critics > 0 {
+		// 11.9: the synthesizer sends its checks to the critics with it.
+		req.Tools = council.WithReview(req.Tools)
 	}
 
 	conv, system := councilConversation(m, req.Messages)
@@ -119,6 +172,21 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		s:       s,
 		base:    req,
 		session: sessionIDForRequest(req.SessionID, m, conv, nil),
+		cloud:   councilCloud.slots(req.Model, councilCloudParallel(m)),
+	}
+
+	// A new task starts clean, though its derived session may be a past
+	// run's (council_fresh.go). A session the client names is its own.
+	if req.SessionID == "" && councilFreshTask(req.Messages) {
+		councilForget(members.session)
+	}
+
+	// A generic client: tools, no council_chat_state. The server holds the
+	// turn's resume point for it and sends it none (council_held.go).
+	held := req.CouncilChatState == nil && len(req.Tools) > 0
+	if held {
+		blob := councilHeld.get(members.session)
+		req.CouncilChatState = &blob
 	}
 
 	// PolyKV: the members share the conversation's KV through a pool tree
@@ -129,8 +197,28 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		return
 	}
 	members.window = councilMemberWindow(m, req, tree)
+	cfg.Window = members.window
+	members.budgetMessage = councilBudgetMessage(m, req)
 	reserve := councilReserve(cfg)
-	full := conv // the conversation as the client sent it
+	if councilOutgrowsContext(reserve, members.window) {
+		// The model's context should hold at least what its council's roles
+		// may write. A smaller one still runs, but not on a pool tree: the
+		// owner's window takes the whole context and nothing can be booked
+		// beside it (measured on a 16,384 model: the builder needed 14,336
+		// cells, 185 were free, and every call waited out admission).
+		if tree != nil && m.Xollama.Council.PolyKV != xollama.CouncilPolyKVOn {
+			tree = nil
+			members.window = councilMemberWindow(m, req, nil)
+			cfg.Window = members.window
+			reserve = councilReserve(cfg)
+			slog.Warn("council: the roles' output room is larger than the model's context, so this turn runs without PolyKV, each member on its own copy. Raise num_ctx or lower council.max_tokens to share the conversation's KV",
+				"model", m.ShortName, "roles_room", reserve, "context", members.window)
+		} else {
+			slog.Warn("council: the roles' output room is larger than the model's context; the turn runs in what the engine grants. Raise num_ctx or lower council.max_tokens",
+				"model", m.ShortName, "roles_room", reserve, "context", members.window, "polykv", tree != nil)
+		}
+	}
+	sent := conv // and kept so, for the size the done chunk reports
 	// answer is set by the turn and read once the response is written; a
 	// client that left may leave the turn still running, hence atomic.
 	var answer atomic.Pointer[string]
@@ -162,26 +250,59 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 	// Tools (9.5): every member carries them; a resumed turn's own calls and
 	// results leave the conversation for the members that made them.
 	cfg.Tools, members.tools = req.Tools, req.Tools
+	cfg.BudgetMessage = members.budgetMessage
+	cfg.Turn = fmt.Sprintf("%x", turnHash)
+	if tree != nil {
+		tree.adopt(ctx, cfg.Turn) // the last round trip's layers (council_layers_kept.go)
+	}
+	if len(req.Tools) > 0 && cfg.Critics > 0 && members.session != "" {
+		cfg.Reviews = councilDesks.get(members.session, cfg, members)
+	}
 	if from.Route != "" {
 		all := conv
 		conv, cfg.Results = councilToolTurn(conv)
 		cfg.Reads = council.SharedReads(cfg.Tools, all[len(conv):])
-		full = conv
+		if cfg.CheckCall == nil {
+			// The check is the turn's, whoever ran it: the front and each
+			// cycle of the synthesizer start their own turns (generic.go).
+			cfg.CheckCall = council.InferTurnCheck(cfg.Tools, all[len(conv):])
+		}
 	}
+	// The earlier turns as the members read them: each forwarded call under
+	// the member that made it, without its working notes (internal/council
+	// History).
+	conv = council.History(conv)
+	hist := conv // before any fold: what a fold of a full owner starts from
 	compactor := s.councilCompactorFor(ctx, m, req, members, tree, cfg, reserve)
 	if compactor != nil {
 		conv = compactor.compact(ctx, conv, "", false, pressure)
+		members.setConvTokens(compactor.sentTokens(ctx, sent))
 	}
+	conv = councilMembersView(conv)
 	if tree != nil {
 		// The planner runs attached to the conversation's root, so the
 		// conversation is held once (guide §6.2, arm C). An engine that
 		// answers "compact the session" gets exactly that, once.
-		if err := tree.buildRoot(ctx, conv); errors.Is(err, llm.ErrSessionFull) && compactor != nil {
+		err := tree.buildRoot(ctx, conv)
+		if errors.Is(err, llm.ErrSessionFull) && compactor != nil {
 			before := councilCompactions.get(compactor.key)
-			if short := compactor.compact(ctx, full, "refused", false, pressure); councilCompactions.get(compactor.key) != before {
-				conv = short
-				_ = tree.buildRoot(ctx, conv)
+			// The members' view (hist), as the fold above and every later
+			// request's apply: a record of the raw messages never matches it,
+			// and was dropped by the next request (native.sh 0428).
+			if short := compactor.compact(ctx, hist, "refused", false, pressure); councilCompactions.get(compactor.key) != before {
+				conv = councilMembersView(short)
+				members.setConvTokens(compactor.sentTokens(ctx, sent))
+				err = tree.buildRoot(ctx, conv)
+			} else {
+				err = fmt.Errorf("%w, and the conversation did not fold", err)
 			}
+		}
+		if err != nil {
+			// The turn still runs, but without the shared root: every member
+			// prefills its own copy of the conversation, and a full owner
+			// refuses them sooner. Said where it is decided, at Warn.
+			slog.Warn("council: no conversation root for this turn; each member holds its own copy",
+				"session", members.session, "error", err)
 		}
 	}
 	defer func() {
@@ -199,7 +320,7 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 				cancel()
 			}
 			if a != nil && compactor != nil {
-				s.councilIdleCompact(compactor, full, *a)
+				s.councilIdleCompact(compactor, hist, *a) // the members' view, as every apply
 			}
 		}()
 	}()
@@ -227,6 +348,10 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 				return blob
 			}
 			checkpoint = func(p council.Progress) {
+				if held {
+					councilHeld.put(members.session, state(p))
+					return
+				}
 				if blob := state(p); blob != "" {
 					select {
 					case ch <- api.ChatResponse{Model: req.Model, CreatedAt: time.Now().UTC(), Message: api.Message{Role: "assistant"}, CouncilChatState: blob}:
@@ -235,7 +360,18 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 				}
 			}
 		}
-		res, err := council.RunFrom(c.Request.Context(), cfg, members, conv, from, checkpoint, func(e council.Event) {
+		// The last point the turn settled, to resume from after a fold.
+		var latestMu sync.Mutex
+		latest := from
+		settled := func(p council.Progress) {
+			latestMu.Lock()
+			latest = p
+			latestMu.Unlock()
+			if checkpoint != nil {
+				checkpoint(p)
+			}
+		}
+		emit := func(e council.Event) {
 			if e.Kind == council.Content {
 				if e.Text != "" {
 					send(api.Message{Role: "assistant", Content: e.Text})
@@ -245,9 +381,35 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 			for _, seg := range th.add(e) {
 				sendTagged(api.Message{Role: "assistant", Thinking: seg.text}, &seg.tag)
 			}
-		})
+		}
+		res, err := council.RunFrom(c.Request.Context(), cfg, members, conv, from, settled, emit)
+		if errors.Is(err, llm.ErrOwnerFull) && tree != nil && compactor != nil {
+			// The owner is full and no member runs to give cells back: fold
+			// the conversation, rebuild the root from it and resume from the
+			// members that settled, once (council_owner_full.go).
+			tree.dropForCompaction(c.Request.Context())
+			before := councilCompactions.get(compactor.key)
+			if short := compactor.compact(c.Request.Context(), hist, "refused", false, 0); councilCompactions.get(compactor.key) != before {
+				conv = councilMembersView(short)
+				members.setConvTokens(compactor.sentTokens(c.Request.Context(), sent))
+				if rerr := tree.buildRoot(c.Request.Context(), conv); rerr != nil {
+					slog.Warn("council: no root after the fold; members hold their own copies", "session", members.session, "error", rerr)
+				}
+				latestMu.Lock()
+				resume := latest
+				latestMu.Unlock()
+				slog.Info("council: owner was full; compacted and resuming the turn", "session", members.session, "error", err)
+				res, err = council.RunFrom(c.Request.Context(), cfg, members, conv, resume, settled, emit)
+			} else {
+				slog.Warn("council: owner full and the conversation did not fold; the turn fails with the refusal", "session", members.session, "error", err)
+			}
+		}
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
+				if c.Request.Context().Err() != nil {
+					members.closeSessions() // the client left
+					councilDesks.close(members.session)
+				}
 				return
 			}
 			select {
@@ -262,6 +424,9 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 		var carry council.Progress
 		if len(res.Calls) > 0 {
 			carry = res.Progress
+			if tree != nil {
+				tree.suspend(cfg.Turn) // its layers wait for the next round trip
+			}
 			select {
 			case ch <- api.ChatResponse{Model: req.Model, CreatedAt: time.Now().UTC(), Message: api.Message{Role: "assistant", ToolCalls: res.Calls}}:
 			case <-c.Request.Context().Done():
@@ -279,7 +444,12 @@ func (s *Server) councilChat(c *gin.Context, req api.ChatRequest, m *Model) {
 			Message: api.Message{Role: "assistant"}, Done: true, DoneReason: "stop",
 		}
 		final.Metrics = members.metrics(time.Since(start))
+		final.CouncilUsage = append(members.usage.take(), councilDesks.usage(members.session)...)
 		final.CouncilChatState = state(carry)
+		if held {
+			councilHeld.put(members.session, final.CouncilChatState)
+			final.CouncilChatState = ""
+		}
 		select {
 		case ch <- final:
 		case <-c.Request.Context().Done():
@@ -302,6 +472,10 @@ func councilMemberWindow(m *Model, req api.ChatRequest, tree *councilTree) int {
 	_ = opts.FromMap(req.Options)
 	return opts.NumCtx
 }
+
+// councilOutgrowsContext reports a council whose roles may write more than
+// the model's context holds.
+func councilOutgrowsContext(reserve, window int) bool { return window > 0 && reserve > window }
 
 func councilTemperature(m *Model, req api.ChatRequest) float64 {
 	opts := api.DefaultOptions()
@@ -345,6 +519,25 @@ func councilConversation(m *Model, msgs []api.Message) ([]api.Message, string) {
 		turns = append(turns, msg)
 	}
 	return append([]api.Message{{Role: "system"}}, turns...), strings.TrimSpace(system)
+}
+
+// councilMembersView is the conversation as the members read it: the past
+// turns without their thinking. A council's thinking is its deliberation,
+// streamed to the client and never read back, and a generic client that
+// sends it again would hand every member the last turn's whole deliberation.
+// The compactor still reads it (its retrospective folds reasoning), so this
+// comes after the fold.
+func councilMembersView(conv []api.Message) []api.Message {
+	if !slices.ContainsFunc(conv, func(m api.Message) bool { return m.Role == "assistant" && m.Thinking != "" }) {
+		return conv
+	}
+	out := slices.Clone(conv)
+	for i := range out {
+		if out[i].Role == "assistant" {
+			out[i].Thinking = ""
+		}
+	}
+	return out
 }
 
 func councilSeeds(d council.Draws) []int64 {
@@ -461,7 +654,7 @@ func (t *thinkingTags) forget(key string) {
 
 func memberName(e council.Event) string {
 	name := strings.ToUpper(string(e.Role[:1])) + string(e.Role[1:])
-	if e.Role == council.Researcher || e.Role == council.Critic {
+	if e.Role == council.Researcher || e.Role == council.Critic || e.Role == council.Reviewer {
 		name = fmt.Sprintf("%s %d", name, e.Index+1)
 	}
 	if e.Round > 0 {
@@ -491,7 +684,57 @@ type councilMembers struct {
 	mu     sync.Mutex
 	m      api.Metrics
 	cached int // prompt tokens served from cache or a pool, over all members
-	last   int // the HTTP status of the last member error
+	// convPrompt and convCached are the prompt of the turn's last call that
+	// carries the conversation itself (the front, the planner, the
+	// synthesizer): what the done chunk reports as prompt_eval_count.
+	convPrompt, convCached int
+	// convTokens is the conversation's own size, measured by the compactor
+	// with the engine's tokenizer: reported ahead of any member's prompt.
+	convTokens int
+	// usage is what each role spent (council_usage.go).
+	usage usageBook
+	last  int // the HTTP status of the last member error
+	// sessions are the worker sessions this turn's members ran on.
+	sessions map[string]bool
+	// cloud counts the members on a cloud model running at once
+	// (council_cloud.go); nil counts nothing.
+	cloud chan struct{}
+	// reviewWindow bounds a background reviewer's window on opencoti
+	// (council_review.go); 0 states none.
+	reviewWindow int
+	// count is how many tokens a member's messages come to, for a member
+	// sized to its request (ownWindow); nil falls back to the tree's count,
+	// then to an estimate from their length.
+	count func(context.Context, []api.Message) (int, error)
+	// budgetMessage closes a member's reasoning at its token budget: the
+	// client's think_budget_message, else the council model's own. It goes
+	// with every budget sent as a token count -- this server's models and a
+	// model another xollama serves -- so the member stops the way the model
+	// was set up to.
+	budgetMessage string
+}
+
+func (cm *councilMembers) opened(id string) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+	if cm.sessions == nil {
+		cm.sessions = map[string]bool{}
+	}
+	cm.sessions[id] = true
+}
+
+// closeSessions ends the member sessions of a turn whose client left: the
+// council lives until then.
+func (cm *councilMembers) closeSessions() {
+	if cm.tree == nil {
+		return
+	}
+	cm.mu.Lock()
+	ids := slices.Sorted(maps.Keys(cm.sessions))
+	cm.mu.Unlock()
+	for _, id := range ids {
+		cm.tree.closeSession(id)
+	}
 }
 
 func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken func(string)) (string, error) {
@@ -500,13 +743,34 @@ func (cm *councilMembers) Stream(ctx context.Context, r council.Request, onToken
 }
 
 // StreamTools is Stream with the tools the member calls (council.ToolModel).
+// Every member call goes through here, so this is where a failed or stalled
+// call is asked again (council_retry.go).
 func (cm *councilMembers) StreamTools(ctx context.Context, r council.Request, onToken func(string)) (council.Reply, error) {
-	out, calls, err := cm.stream(ctx, r, onToken)
-	return council.Reply{Content: out, Calls: calls}, err
+	var thinking string
+	out, calls, cut, err := cm.retrying(ctx, r, onToken, func(ctx context.Context) (string, []api.ToolCall, bool, error) {
+		// A full owner is asked again while another member may give cells
+		// back (council_owner_full.go).
+		return cm.retryOwnerFull(ctx, r, func() (string, []api.ToolCall, bool, error) {
+			return cm.stream(ctx, r, onToken, &thinking)
+		})
+	})
+	return council.Reply{Content: out, Thinking: thinking, Calls: calls, Cut: cut}, err
 }
 
-func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken func(string)) (string, []api.ToolCall, error) {
+// councilBudgetMessage is the message that closes a member's reasoning at its
+// budget: the client's, else the one on the council model's template.
+func councilBudgetMessage(m *Model, req api.ChatRequest) string {
+	for _, opts := range []map[string]any{req.Options, m.Options} {
+		if s, ok := opts["think_budget_message"].(string); ok && s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken func(string), thinking *string) (string, []api.ToolCall, bool, error) {
 	cm.calls.Add(1)
+	began := time.Now()
 	stream, off := true, api.ThinkValue{Value: false}
 	opts := maps.Clone(cm.base.Options)
 	if opts == nil {
@@ -514,6 +778,18 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 	}
 	opts["seed"] = r.Seed
 	opts["temperature"] = r.Temperature
+	// The client's reply cap and window are the council's, on the council's
+	// own model. A role on another model takes its own: the role's stated
+	// max_tokens and num_ctx, else that model's template -- its Modelfile, or
+	// the remote endpoint's.
+	onLead := r.Model == ""
+	if !onLead {
+		delete(opts, "num_predict")
+		delete(opts, "num_ctx")
+		if r.NumCtx > 0 {
+			opts["num_ctx"] = r.NumCtx
+		}
+	}
 	if r.MaxTokens > 0 {
 		opts["num_predict"] = r.MaxTokens
 	}
@@ -537,38 +813,57 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 		// in 384 tokens. False is accepted by a model that cannot think.
 		req.Model = r.Model
 	}
-	// A role that reasons gets its budget as a token count, and room for it
-	// on top of its reply cap: a level sent as is would be a share of
-	// num_predict, the reply cap, and bound nothing useful. The reasoning is
-	// read nowhere below; only the reply joins the deliberation.
-	if budget := council.ThinkBudget(r.Think, cm.window); budget > 0 {
+	// A role that reasons gets its budget as a token count, inside its reply
+	// cap: num_predict is the whole reply, thinking included, and the budget
+	// its share (council.ThinkBudget), Cerebriline's output budget. The
+	// reasoning is read nowhere below except to condense it (replay.go); only
+	// the reply joins the deliberation.
+	window := cm.window
+	if !onLead && r.NumCtx > 0 {
+		window = r.NumCtx // a level is a share of the member's own window
+	}
+	if budget := council.ThinkBudget(r.Think, r.MaxTokens, window); budget > 0 {
 		req.Think = &api.ThinkValue{Value: budget}
 		// A cloud model or a stock ollama takes no token budget: ollama.com
 		// refuses one ("think must be a boolean or string"). There the member
-		// thinks, and num_predict, the reply cap plus the budget, bounds it.
+		// thinks, and num_predict, the reply cap, bounds it.
 		if !cm.councilTakesBudget(ctx, r) {
 			req.Think = &api.ThinkValue{Value: true}
-		}
-		if r.MaxTokens > 0 {
-			opts["num_predict"] = r.MaxTokens + budget
+		} else if cm.budgetMessage != "" {
+			opts["think_budget_message"] = cm.budgetMessage
 		}
 	}
 	if r.Host != "" {
 		// A member on another server shares no prefix and calls nothing.
 		out, err := cm.remote(ctx, r, req, onToken)
-		return out, nil, err
+		return out, nil, false, err
 	}
+	release, err := cm.takeCloud(ctx, req.Model)
+	if err != nil {
+		return "", nil, false, err
+	}
+	defer release()
 	req.Tools = cm.tools
+	if r.Role == council.Condenser {
+		req.Tools = nil // it writes a note; it calls nothing
+	}
 	placement, worker, done := cm.place(ctx, r, &req)
 	defer done()
+	if cm.ownerBound(r, req.SessionID, worker) {
+		// Refused at once when the owner is full, not waited out
+		// (council_owner_full.go).
+		ctx = llm.WithCompactOnFull(ctx)
+		cm.tree.takeoff()
+		defer cm.tree.land()
+	}
 	body, err := json.Marshal(req)
 	if err != nil {
-		return "", nil, err
+		return "", nil, false, err
 	}
 
 	hr, err := http.NewRequestWithContext(ctx, http.MethodPost, "/api/chat", bytes.NewReader(body))
 	if err != nil {
-		return "", nil, err
+		return "", nil, false, err
 	}
 	hr.Header.Set("Content-Type", "application/json")
 	pr, pw := io.Pipe()
@@ -579,8 +874,15 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 	if placement != nil {
 		gc.Set(councilPlacementKey, placement)
 	}
+	// A council is a living thing until its client leaves (the owner's ruling
+	// 2026-09-28): a member's session stays open across its calls, trips and
+	// turns, and the engine resumes it from its own cache (opencoti #526;
+	// closed after every call, a resumed synthesizer re-prefilled ~18k of 21k
+	// tokens on every step, ab-4). Only a client that leaves closes them
+	// (closeSessions).
 	if worker != "" {
-		defer cm.tree.closeWorker(worker)
+		cm.opened(worker)
+		defer cm.tree.leaveWorker(worker)
 	}
 	go func() {
 		cm.s.ChatHandler(gc)
@@ -594,45 +896,60 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 	// on the conversation waits on that.
 	stop := context.AfterFunc(ctx, func() { pr.CloseWithError(ctx.Err()) })
 	defer stop()
+	// A member that sends nothing for councilIdleTimeout has stalled: its
+	// read ends, and the call is asked again (council_retry.go).
+	idle := time.AfterFunc(councilIdleTimeout, func() { pr.CloseWithError(errMemberIdle) })
+	defer idle.Stop()
 
-	var out strings.Builder
+	var out, thought strings.Builder
+	defer func() { *thinking = thought.String() }()
 	var calls []api.ToolCall
+	cut := false
 	sc := bufio.NewScanner(pr)
 	sc.Buffer(make([]byte, 0, 64*1024), 16*1024*1024)
 	for sc.Scan() {
+		idle.Reset(councilIdleTimeout)
 		var line struct {
 			api.ChatResponse
 			Error string `json:"error"`
 		}
 		if err := json.Unmarshal(sc.Bytes(), &line); err != nil {
-			return out.String(), nil, fmt.Errorf("council %s: %w", r.Role, err)
+			return out.String(), nil, false, fmt.Errorf("council %s: %w", r.Role, err)
 		}
 		if line.Error != "" {
 			cm.mu.Lock()
 			cm.last = w.status()
 			cm.mu.Unlock()
-			return out.String(), nil, fmt.Errorf("council %s: %s", r.Role, line.Error)
+			return out.String(), nil, false, memberStatus{memberError(r.Role, line.Error), w.status()}
 		}
 		if t := line.Message.Content; t != "" {
 			out.WriteString(t)
 			onToken(t)
 		}
+		thought.WriteString(line.Message.Thinking)
 		calls = append(calls, line.Message.ToolCalls...)
 		if line.Done {
+			cut = line.DoneReason == "length"
+			cached := 0
+			if line.PromptEvalCachedCount != nil {
+				cached = *line.PromptEvalCachedCount
+			}
+			cm.usage.add(r, line.Metrics, cached, time.Since(began))
 			cm.mu.Lock()
 			cm.m.PromptEvalCount += line.PromptEvalCount
-			if line.PromptEvalCachedCount != nil {
-				cm.cached += *line.PromptEvalCachedCount
-			}
+			cm.cached += cached
 			cm.m.PromptEvalDuration += line.PromptEvalDuration
 			cm.m.EvalCount += line.EvalCount
 			cm.m.EvalDuration += line.EvalDuration
 			cm.m.LoadDuration += line.LoadDuration
+			if carriesConversation(r.Role) {
+				cm.convPrompt, cm.convCached = line.PromptEvalCount, cached
+			}
 			cm.mu.Unlock()
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		return out.String(), nil, err
+		return out.String(), nil, false, err
 	}
 	// The whole exchange, for reading a turn back member by member.
 	if slog.Default().Enabled(ctx, slog.LevelDebug) {
@@ -641,7 +958,7 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 		slog.Debug("council member", "role", r.Role, "index", r.Index, "round", r.Round, "session", req.SessionID,
 			"messages", string(msgs), "reply", out.String(), "calls", string(reply))
 	}
-	return out.String(), calls, sc.Err()
+	return out.String(), calls, cut, sc.Err()
 }
 
 // memberSession gives each member its own engine session, so parallel members
@@ -649,14 +966,26 @@ func (cm *councilMembers) stream(ctx context.Context, r council.Request, onToken
 // decision, a direct answer and the plan continue the conversation, and a
 // direct answer is then served from the same KV a plain chat would have used.
 func (cm *councilMembers) memberSession(r council.Request) string {
-	if cm.session == "" || r.Role == council.Planner || r.Role == roleCompactWriter {
+	if cm.session == "" || r.Role == council.Planner || r.Role == council.Front || r.Role == roleCompactWriter {
 		return cm.session
 	}
 	id := cm.session + "~" + string(r.Role)
-	if r.Role == council.Researcher || r.Role == council.Critic {
+	if r.Role == council.Researcher || r.Role == council.Critic || r.Role == council.Reviewer {
 		id = fmt.Sprintf("%s-%d", id, r.Index+1)
 	}
 	return id
+}
+
+// metrics is the done chunk's: durations and output over all members, but
+// the prompt of the last call on the conversation, as a plain model reports
+// its own. A client sizes its context from prompt_eval_count: the members'
+// sum (161,214 on native.sh run 0416, against a ~50k conversation) had
+// Cerebriline compact a conversation that did not need it, for 1,987 s. What
+// every role read is council_usage.
+func (cm *councilMembers) setConvTokens(n int) {
+	cm.mu.Lock()
+	cm.convTokens = n
+	cm.mu.Unlock()
 }
 
 func (cm *councilMembers) metrics(total time.Duration) api.Metrics {
@@ -664,11 +993,26 @@ func (cm *councilMembers) metrics(total time.Duration) api.Metrics {
 	defer cm.mu.Unlock()
 	m := cm.m
 	m.TotalDuration = total
-	if cm.cached > 0 {
-		cached := cm.cached
+	cached := cm.cached
+	switch {
+	case cm.convTokens > 0:
+		// The conversation as measured: no member's prompt is it, since
+		// each adds its own part (a synthesizer's reached 229k on 0418).
+		m.PromptEvalCount, cached = cm.convTokens, min(cm.convCached, cm.convTokens)
+	case cm.convPrompt > 0:
+		m.PromptEvalCount, cached = cm.convPrompt, cm.convCached
+	}
+	if cached > 0 {
 		m.PromptEvalCachedCount = &cached
 	}
 	return m
+}
+
+// carriesConversation reports whether role r's prompt is the conversation
+// and little else: the front's and the planner's. The synthesizer's adds the
+// plan and the findings, and can be far larger than the conversation.
+func carriesConversation(r council.Role) bool {
+	return r == council.Front || r == council.Planner
 }
 
 func (cm *councilMembers) status(error) int {

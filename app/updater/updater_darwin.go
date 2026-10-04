@@ -462,7 +462,7 @@ func alreadyMoved() string {
 	// Respect users intent if they chose "keep" vs. "replace" when dragging to Applications
 	installedAppPaths, err := filepath.Glob(filepath.Join(
 		strings.TrimSuffix(SystemWidePath, filepath.Ext(SystemWidePath))+"*"+filepath.Ext(SystemWidePath),
-		"Contents", "MacOS", "Ollama"))
+		"Contents", "MacOS", "xOllama")) // xollama-hook: app-brand
 	if err != nil {
 		slog.Warn("failed to lookup installed app paths", "error", err)
 		return ""

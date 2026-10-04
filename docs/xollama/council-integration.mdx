@@ -1,0 +1,290 @@
+---
+title: Integrating the council chat
+description: For harness and agent authors. The contract a client drives a council model through, the directive that states what the harness knows, and the three ways to use a council.
+---
+
+This page is for people writing a **harness**: an agent framework, an IDE
+extension, a chat client that runs tools. It assumes you know
+[the council chat](/xollama/council) from the user's side. It covers what your
+client must send and read, and how to use a council as a lead chat model, as
+an agent, and as the escalation path of a cheaper agent.
+
+The design is in
+[`plans/council-harness.md`](https://github.com/mann1x/xollama/blob/dev/plans/council-harness.md),
+and this page changes in the same commit as the code.
+
+## 1. Detect
+
+- `GET /api/xollama` answers `{"version": ..., "features": [...]}` on
+  xOllama and 404 on a stock Ollama. **Gate on feature names, never on the
+  version**: a development build reports `0.0.0`. A name never changes
+  meaning; a changed contract gets a new name.
+
+  | feature | what it promises |
+  |---|---|
+  | `council` | council models exist on this server |
+  | `council_compaction_v1` | the council compacts its own conversation: send the history as the user sees it, never a compacted one |
+  | `council_tags_v1` | every thinking chunk names its member |
+  | `client_placement_v1` | `placement.pool_id` on `/api/chat` |
+  | `chat_render_v1` | `_debug_render_only` renders what the members send |
+  | `council_chat_state_v1` | the resumable state blob |
+  | `council_tools_v1` | tools on council turns |
+  | `council_usage_v1` | per-role usage on the done chunk |
+  | `council_directive_v1` | `council` on `/api/chat`: the harness directive below |
+
+- `POST /api/show` on a model answers `xollama.council` when it is a council,
+  with `enabled`. That is how you tell a council tag from a plain one: the
+  name is arbitrary.
+
+## 2. The conversation
+
+- **One `session_id` per conversation**, stable across its turns. The council
+  keeps its deliberation, its build and its compaction record under it, and
+  each member runs on its own engine session named after it.
+- **Send the history as the user sees it**: user messages, the council's
+  answers, your tool calls and results. **Never send the council's thinking
+  back.** It is its deliberation, and it is kept server side and in the state.
+- **Do not compact the history yourself** (`council_compaction_v1`). The
+  council folds its own conversation, before a turn and after its answer.
+- **`format`** makes the turn a plain chat without the council: you are
+  steering the output yourself.
+- **A request without tools, in a conversation your tools have worked in,**
+  is answered by the model alone, with no council and no server-side fold:
+  it is your own housekeeping (a compaction summary, a title), not a step of
+  the task. Keep sending your tools on every step of a task. A client that
+  sends `council_chat_state` is taken at its word and keeps the council. The
+  same rule applies to a chat that used tools and then stops sending them,
+  such as the desktop app with web search switched off: its later turns are
+  answered by the model alone.
+- **A client that knows nothing of councils still gets one.** Tools with no
+  `council_chat_state` are served by the council: the server keeps the
+  turn's resume point for the conversation and sends none, tools you did not
+  mark `x_read_only` are judged read-only from their names, the check is the
+  call the synthesizer repeats unchanged after a change, and thinking you
+  send back is not read. Everything in this page makes it better; none of it
+  is required.
+- `think: false` asks for the answer only. The deliberation still happens; it
+  is just not streamed.
+
+## 3. Streaming: what arrives
+
+- **Thinking is the deliberation, content is the answer.** Content chunks
+  carry the answer and never a tag. The answer is the synthesizer's, or the
+  planner's when it answers directly.
+- **Every thinking chunk names its member** (`council_tags_v1`):
+
+  ```json
+  {"message":{"role":"assistant","thinking":"…"},
+   "council":{"role":"researcher","index":1,"round":0},"done":false}
+  ```
+
+  Parallel members run at once. A member's text reaches you whole once the
+  member streaming before it has finished. The `### Researcher 2` heading
+  stays in the text for clients that do not read the tag.
+- **The done chunk** carries the summed usage (`prompt_eval_count`,
+  `eval_count`, `prompt_eval_cached_count`), the newest state, and
+  `council_usage`, one entry per role (and per model and host when a role runs
+  elsewhere). Use it to decide which role deserves a bigger or a cloud model.
+  A cloud model bills the whole `prompt_tokens` on every call.
+
+## 4. The state loop (`council_chat_state_v1`)
+
+Send `"council_chat_state": ""` on the first council turn of a conversation,
+then always the newest blob you received:
+
+```text
+state = ""
+loop:
+  send  {model, session_id, messages, tools, council_chat_state: state}
+  for chunk in stream:
+    if chunk.council_chat_state: state = chunk.council_chat_state   # keep the NEWEST, even from a broken turn
+    if chunk.message.tool_calls: calls += chunk.message.tool_calls
+  if calls: run them, append {assistant with calls} + {tool results}, continue loop
+  else: the answer is complete
+```
+
+- Blobs arrive after every step a turn can resume from, on chunks of their
+  own with no text, and on the done chunk. If the connection drops, send the
+  same request again with the newest blob: finished members are not asked
+  again.
+- A blob is bound to the conversation before the last user message and to
+  that message. An edited last message drops the deliberation in flight and
+  keeps the rest. A rewind before the blob starts fresh.
+- A missing, damaged, foreign or stale blob is a **fresh start, never an
+  error**. The blob is sealed with a key the server keeps, so it is opaque to
+  you and useless to another server.
+- The done chunk's blob restores the council's compaction on a server that
+  lost it (a restart). Keep sending it.
+
+## 5. Tools (`council_tools_v1`)
+
+- **Mark what only reads.** `"x_read_only": true` in a tool's `function`
+  object (MCP's `annotations.readOnlyHint` there counts too). Researchers and
+  critics call only those. Everything unmarked is taken to change things, and
+  only the synthesizer (or the planner answering directly) calls it. The mark
+  is read on `/api/chat` only; the OpenAI-compatible endpoints have no field
+  for it.
+- **Calls arrive like a model's.** A step whose members call tools ends the
+  response: one chunk carries every member's calls in `message.tool_calls`,
+  and the done chunk (`done_reason: "stop"`) carries the state. Each call's
+  `id` names its member:
+
+  | prefix | member |
+  |---|---|
+  | `r1:` `r2:` | researcher 1, 2 |
+  | `c1:` | critic 1 |
+  | `s:` | the synthesizer |
+  | `f:` | the synthesizer's front turn |
+  | `d:` | the planner answering directly |
+  | `.2` after it | the second round |
+
+  Run them as you would any model's calls. Several calls in one chunk come
+  from members working side by side, so they can run in parallel.
+- **Send results back** as `tool` messages after an assistant message holding
+  those calls, with `tool_call_id` set to the id you received, and the newest
+  state. Each waiting member continues from its own calls. The calls and
+  results stay out of what the other members read.
+- **The council's own tools never reach you**: `council_forward`,
+  `council_rebuild`, `council_evidence`, and `council_post` and
+  `council_review` where enabled. Do not name a tool of yours after one of
+  them.
+- **The council answers some calls itself.** A read-only call repeated with
+  the same arguments in a turn is answered from the first result. An edit
+  whose old and new text are the same is refused in place. Neither reaches
+  you, so do not count calls to measure the council's work; read
+  `council_usage`.
+- **Results are yours to size.** A result over 1,500 characters travels
+  between members as a ref plus its first lines, and members read more with
+  `council_evidence`. You need not truncate, but a result the size of a
+  window still costs a prefill once.
+
+## 6. Between turns: continue
+
+The council behind a conversation stays alive between messages. The next
+message is feedback to it:
+- **done, or trivial:** answered directly, in one call;
+- **continue** (a correction, "still failing", a result to act on): the
+  synthesizer carries on from the findings it answered from;
+- **new work:** the council is built again.
+
+This is held under the `session_id` and in the state, so it survives a
+server restart when you send the state back. It is bound to the history, so
+an edited or rewound history starts a fresh council.
+
+## 7. Three ways to use a council
+
+### As the lead chat model
+
+Send the user's turns to the council model with the state loop. On a turn
+with tools, the synthesizer takes each request first and answers a quick one
+alone, at the cost of one call. It hands work that needs investigating to
+the council. On a turn without tools, a short route decision does the same.
+The chat is adaptive: the council decides per turn, and the user's own cues
+steer that decision ("just a quick answer", "take your time and check it").
+The latest cue holds until the user says otherwise. It is read from the
+user's words in the conversation, so it lasts as long as they are there. If
+your UI has its own control (a Deliberation toggle), send a `mode` instead. A
+stated mode wins over any cue.
+
+### As an agent
+
+Run your tool loop against the council model exactly as against any model,
+with `x_read_only` marks and the state loop. Your loop sees ordinary tool
+calls, with member prefixes on the ids, and ordinary answers. What it costs
+you: a council turn that convenes the members makes several calls and several
+trips for one answer. A step of parallel reads counts as one trip.
+
+### As the escalation path
+
+**Today.** Run your cheap agent on a plain model. When it is stuck, send the
+same conversation (its calls and results included), the same `session_id`
+and tools to the council model, with `"council_chat_state": ""`. The members
+read the conversation you send, the agent's work included. The synthesizer's
+front turn then decides whether to answer or convene.
+
+**With the directive** (`council_directive_v1`). Say what you already know
+instead of having the council work it out again:
+
+```json
+"council": {
+  "mode": "escalate",
+  "evidence": [{"tried": "…", "check": "…", "result": "<the check's output, verbatim>"}],
+  "check": "run_tests",
+  "build": {"target": "…", "planner": "", "researcher": "…", "critic": "", "synthesizer": "", "max_tests": 3, "max_steps": 8},
+  "instructions": {"council": "…", "builder": "…", "synthesizer": "…"}
+}
+```
+
+Send it on **every request of the turn**, as you send the tools: a resumed
+turn reads it again. A directive also asks for the state, so a turn with
+tools and a directive is served by the council even without
+`council_chat_state`. Send the state back anyway.
+
+- **`mode`**, which the council never leaves once stated:
+  - `escalate` starts the council at once, with no front turn and no route
+    decision. Your `evidence` becomes the checks that already failed, the
+    section the planner starts from.
+  - `answer` is the synthesizer alone, as a plain agent turn at plain cost.
+    No hand-off is offered, and your loop bounds the steps. On a turn
+    without tools it is one direct call.
+  - `deliberate` starts the council at once, without evidence.
+  - `auto` (or no `mode`) is the council deciding.
+
+  An unknown mode is a `400`, never a silent `auto`.
+- **`evidence`:** your agent's attempts, oldest first. Send each `result`
+  verbatim: under `escalate`, the council compares its first check with your
+  last one. The same output across the hand-off counts toward "the checks
+  stopped moving", which changes the council's approach.
+- **`check`:** the name of your tool whose result is the check of a change.
+  Without it, the council takes the first read-only call after the last
+  change.
+- **`check_call`** (`council_check_call_v1`): the check itself, as the call
+  that runs it, when you can state it:
+
+  ```json
+  "check_call": {"tool": "run_commands", "arguments": {"commands": ["./run_tests"]}}
+  ```
+
+  Only this call, the same tool with the same arguments, is the check, even
+  when its tool also makes changes (a shell tool does). A synthesizer that
+  changed something and ends its turn without running it has the council
+  make it: you receive it as the synthesizer's call, and the synthesizer goes
+  on from your result. It names `check` as well; a `check` naming another
+  tool is a `400`.
+- **`build`:** in the builder's own reply format, as above. When it has a
+  `target`, the builder is not called. It is held to the builder's bounds: no
+  role, model or tool-permission changes; `max_tests` from 0 to 12;
+  `max_steps` from 2 to 16. Its `max_tests` and `max_steps` are your user's
+  setting, and they stand, up or down, within those bounds. A build without a
+  `target` is ignored, and the builder runs.
+- **`instructions`:** added after the model owner's, by slot: `council`
+  (every role, after the charter, in the shared prefix), `builder`, or a role
+  (`planner`, `researcher`, `critic`, `synthesizer`). Each part reaches the
+  members under its source ("INSTRUCTIONS FROM THE CLIENT"). The model's own
+  are `council.instructions` and `council.<role>.instructions`, set with
+  `xollama tweak model`. An unknown slot is a `400`.
+
+## 8. Placement and PolyKV
+
+On opencoti, a harness that builds its own pools can name one with
+`placement.pool_id`. On a council turn only `pool_id` is read: the council
+forks its conversation root from it when the prompt starts with the pool's
+tokens, and never releases it. Render the pool with `/api/chat`
+`_debug_render_only`, and create it with the conversation's `session_id`.
+Details: [The council chat, what a client sees](/xollama/council#what-a-client-sees).
+
+## 9. Checklist
+
+- [ ] Gate on `features`, not the version, and on `/api/show`
+      `xollama.council.enabled`.
+- [ ] One `session_id` per conversation.
+- [ ] `council_chat_state: ""` first, then always the newest blob, kept even
+      from a broken turn.
+- [ ] Never send thinking back; never compact the history yourself.
+- [ ] Mark read-only tools with `x_read_only` (on `/api/chat`).
+- [ ] Return results with the exact `tool_call_id`s, prefixes included.
+- [ ] No tool of yours named `council_*`.
+- [ ] Read `council_usage` for cost, not the calls you saw.
+- [ ] No `format` on a turn you want the council for.
+- [ ] With `council_directive_v1`: the directive on every request of the
+      turn, and each `evidence[].result` verbatim.

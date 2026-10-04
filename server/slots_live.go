@@ -19,8 +19,9 @@ func liveSlots(m *Model, gpus []ml.DeviceInfo, completion bool, numParallel int)
 	if !completion || !llm.WouldUseOpencoti(llamaServerConfigForModel(m), gpus) {
 		return numParallel
 	}
-	if m.Xollama != nil && m.Xollama.Slots != nil && m.Xollama.Slots.Live > 0 {
-		return m.Xollama.Slots.Live
+	// The server's default counts as the model's own here (system-settings).
+	if x := launchXollama(m); x != nil && x.Slots != nil && x.Slots.Live > 0 {
+		return x.Slots.Live
 	}
 	return max(int(envconfig.Parallel()), 1)
 }

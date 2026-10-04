@@ -112,6 +112,11 @@ func (s *llamaServerRunner) postWaitingForAdmission(ctx context.Context, endpoin
 		if err := neverFits(body); err != nil {
 			return nil, err
 		}
+		if CompactsOnFull(ctx) {
+			if err := ownerFull(body); err != nil {
+				return nil, err
+			}
+		}
 
 		if time.Now().Add(wait).After(deadline) {
 			return nil, errNoAdmission
@@ -158,4 +163,41 @@ func neverFits(body []byte) error {
 		return nil
 	}
 	return fmt.Errorf("%w: it needs %d cells of a %d-cell window; shorten the conversation or raise num_ctx", ErrNeverFits, need, total)
+}
+
+// ErrOwnerFull is a council member refused because its owner's window is full
+// ("session allocation full ... -- compact the session"): the request fits the
+// window, but the conversation and the turn's layers hold the rest. Waiting
+// cures it only while another member of the turn holds cells; the council
+// knows when none does, and compacts (server/council_owner_full.go).
+var ErrOwnerFull = errors.New("the session's window is full; compact the session")
+
+type compactOnFullKey struct{}
+
+// WithCompactOnFull marks a council member's request: a refusal for a full
+// owner is answered at once with ErrOwnerFull instead of being waited out.
+func WithCompactOnFull(ctx context.Context) context.Context {
+	return context.WithValue(ctx, compactOnFullKey{}, true)
+}
+
+// CompactsOnFull reports whether ctx is marked by WithCompactOnFull.
+func CompactsOnFull(ctx context.Context) bool {
+	v, _ := ctx.Value(compactOnFullKey{}).(bool)
+	return v
+}
+
+// ownerFull reads an admission refusal for a full session window that the
+// request would fit (neverFits has the other kind).
+func ownerFull(body []byte) error {
+	m := sessionFull.FindSubmatch(body)
+	if m == nil {
+		return nil
+	}
+	free, _ := strconv.Atoi(string(m[1]))
+	total, _ := strconv.Atoi(string(m[2]))
+	need, _ := strconv.Atoi(string(m[3]))
+	if total <= 0 || need > total {
+		return nil
+	}
+	return fmt.Errorf("%w: %d of %d cells free, needs %d", ErrOwnerFull, free, total, need)
 }

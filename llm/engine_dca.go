@@ -25,16 +25,11 @@ import (
 // distances between chunks are clamped back into the window. The model is
 // therefore never asked a question it has not been trained to answer.
 //
-// Three flags go together, and none of them works alone:
-//
-//	--dca on                                     the chunked route itself
-//	--rope-scaling yarn                          the positional stretch
-//	--override-kv <arch>.context_length=int:N    what the engine believes
-//
-// The last one is the reason this is not just a flag. The engine reads the
-// model's own trained context out of the GGUF and sizes everything from it, so
-// without the override it would refuse the longer context for the same reason
-// ollama does. xollama writes all three, and only together.
+// The engine takes --dca on and an optional --dca-chunk-size. With --dca on it
+// allows a slot context above n_ctx_train by itself and logs "exceeds the
+// training context ... allowed: DCA extends context" (opencoti bug-3894, in
+// c8), so xollama no longer rewrites the model's context_length with
+// --override-kv to make it accept one.
 
 // dcaPlan is the resolved DCA setting for one load.
 type dcaPlan struct {
@@ -132,17 +127,11 @@ func checkDCAArchitecture(arch string, numCtx, trainCtx int) (warn string, refus
 // resolveDCAChunk returns the chunk length to pass, and refuses a length the
 // engine would throw on.
 //
-// Passing one explicitly is not optional on a past-native load, and the reason
-// is a trap worth spelling out. --dca-chunk-size 0 means "auto", and auto
-// resolves to the model's original context -- which the engine reads from
-// n_ctx_train, which is precisely the value the metadata override rewrites.
-// Leave it on auto and the chunk becomes the whole requested context: one
-// chunk, no inter-chunk distances, DCA doing nothing at all, while every log
-// line still says --dca on. Naive extension wearing the flag's name.
-//
-// So a past-native load derives the chunk from the context the model was
-// actually trained in, read before the override changes the engine's mind
-// about what that is.
+// A past-native load passes the chunk explicitly: the context the model was
+// trained in, as read from the GGUF. The engine's auto resolves to the same
+// n_ctx_train, but an explicit chunk is the one xollama can round to the batch
+// size below, and it keeps the chunk independent of any metadata the engine
+// may come to read differently.
 //
 // The engine requires chunk % n_ubatch == 0 and throws at context creation
 // otherwise. A derived chunk is rounded down to satisfy that -- a shorter chunk
@@ -181,10 +170,6 @@ func resolveDCAChunk(plan dcaPlan, numCtx, trainCtx, numBatch int) (int, error) 
 
 // appendDCAArgs writes the DCA arguments once the engine is known.
 //
-// The metadata override is written only when the requested context is actually
-// past the model's own. Below that the engine already believes the right thing
-// and rewriting it would change nothing except what auto-chunk resolves to.
-//
 // --rope-scaling yarn is deliberately NOT written. Without --yarn-orig-ctx or
 // --rope-scale it has nothing to scale against, and the engine's own validated
 // long-context runs do not use it: RULER-VT 0.984 at 256k is --dca on with an
@@ -203,9 +188,6 @@ func appendDCAArgs(args []string, plan dcaPlan, arch string, numCtx, trainCtx, n
 	args = append(args, "--dca", "on")
 	if chunk > 0 {
 		args = append(args, "--dca-chunk-size", strconv.Itoa(chunk))
-	}
-	if trainCtx > 0 && numCtx > trainCtx && arch != "" {
-		args = append(args, "--override-kv", fmt.Sprintf("%s.context_length=int:%d", arch, numCtx))
 	}
 	return args, nil
 }

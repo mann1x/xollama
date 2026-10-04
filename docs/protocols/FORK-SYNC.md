@@ -109,9 +109,49 @@ above happened.
 **R5 — A mail on every manifest bump**, to `xollama@solidpc`, naming the base
 tag and the shas that moved. Neither side polls.
 
-**R6 — Rebase cadence.** On every upstream tag we build against, all `up-*`
-branches are rebased onto it, the manifest is republished with the new `base`,
-and the mail goes out. One event to track instead of ten branches.
+**R6 — A sync delivers everything xollama consumes.** "Sync the fork to
+upstream tag X" is one job, and it is done only when xollama can move to X
+without asking the fork for anything. On every upstream tag we build against,
+the fork delivers all of the following, in this order:
+
+1. **The patch set.** Every `up-*` and PR-head branch rebased onto the tag, and
+   the manifest republished with the new `base` and shas.
+2. **The fork release for that tag**, `v<X>-thinkbudget`, cut from
+   `think-budget` by `thinkbudget-release.yaml` (`--ref think-budget`). It
+   carries `ollama-linux-amd64-runtime.tgz` and `ollama-linux-arm64-runtime.tgz`
+   (since 2026-10-04, built in the same run from the same commit), the Linux
+   CPU runtimes xollama pins in `llama/runtime-pin-linux.txt` and
+   `llama/runtime-pin-linux-arm64.txt`. Without either,
+   `scripts/docker-assemble.sh` refuses that architecture, and
+   `xollama-release.yaml` refuses the release. The fork publishes binaries
+   only; the container image, both architectures, is xollama's (owner,
+   2026-10-04).
+   - A release is required on **every** sync, even when `LLAMA_CPP_VERSION`,
+     `llama/server` and `llama/compat` did not change. That keeps the pin's
+     tag in step with the base and leaves nothing to decide per sync.
+   - The release commit may add only release notes and manifest commits on top
+     of `integration.sha`, so the llama inputs digest is unchanged.
+3. **The release recorded in the manifest**: `integration.release` with the
+   tag, the commit it was built at, the run, the asset's sha256 and the inputs
+   digest in xollama's definition (below).
+4. **One mail** naming the base tag, the shas that moved, the release tag, the
+   build commit, the asset sha256 and the inputs digest.
+
+The digest xollama checks is the sha256 of
+`git ls-tree -r <commit> -- LLAMA_CPP_VERSION llama/server llama/compat` with
+the `llama/compat/README.md` line removed. The fork computes it at the release
+commit and states it in the manifest and the mail. If the two sides disagree,
+the mail says which side moved.
+
+> **Why this is spelled out.** On 2026-10-03 the v0.35.1 sync stopped after
+> step 1: branches rebased, manifest `f430d02f` published, mail sent, no
+> release. xollama merged all 24 patches and then could not assemble rc.1's
+> Docker image, because its Linux pin still named `v0.34.4-thinkbudget`
+> (llama.cpp b11081, inputs `17ab8578…`) against a tree at b11232 (inputs
+> `57004c3c…`). It had to ask (mail #703), and the release was cut hours later
+> as `v0.35.1-thinkbudget` at `1040f03d`. The old wording of this rule,
+> "rebased, the manifest is republished, and the mail goes out", described
+> exactly the half that was done.
 
 **R7 — `mann1x/ollama@main` mirrors upstream, plus the release workflow.** It
 was six weeks stale, which is what made every fork PR a 451-file diff burying
@@ -147,6 +187,64 @@ never a base anyone reasons about.
 > the mirror was safe to do, so this verification is load-bearing in both
 > directions.
 
+## One branch, one worktree
+
+**A branch the sync moves is checked out in at most one worktree.** That covers
+`think-budget`, `main`, every `up-*` and PR-head branch, and `thinkbudget-*`.
+
+When a branch is checked out in two worktrees, moving it from one of them by
+commit, cherry-pick, reset or merge moves the shared ref. It does **not** touch
+the other worktree's index or files. From then on, `git status` there compares
+the new `HEAD` with the old tree and shows every change since as **staged**,
+reversing it. Two things follow:
+
+- **It looks like someone's work in progress, and it is not.** Nothing was
+  edited. The "changes" are the branch's own recent commits, shown backwards.
+- **A commit there reverts patches silently.** Any `git commit` in that
+  worktree, including `-a` or after an unrelated `git add`, records the old tree
+  and undoes every commit since, with no conflict and no warning.
+
+> **Measured 2026-10-03, during the v0.35.1 sync.** `ollama-pr` and
+> `ollama-wt-tb` both had `think-budget` checked out. On 2026-09-29 the branch
+> advanced from `ollama-wt-tb` by `64f1ae1c` + `23a43c77` (adding
+> `up-modelfile-roundtrip`). `ollama-pr` then showed five staged files
+> (`PATCHES.json`, `parser/parser.go`, `parser/swallowed_directive_test.go`
+> deleted, `server/images.go`, `server/images_test.go`) that removed that patch.
+> The sync reported them as someone's staged work. `git write-tree` in
+> `ollama-pr` was exactly the tree of `ec8b675d`, the commit before the patch
+> landed.
+
+`git worktree add` refuses a branch that is already checked out, so a duplicate
+was made with `--force`. Don't use it for these branches.
+
+**Before every sync**, in both repos:
+
+```sh
+git worktree list --porcelain | awk '/^branch /{print $2}' | sort | uniq -d
+```
+
+It must print nothing. If it prints a branch, detach every extra checkout before
+moving that branch (`git -C <worktree> switch --detach`), or remove the
+worktree. Do sync work in a worktree created for the sync and remove it
+afterwards.
+
+**When a worktree shows staged changes you did not make**, find out what they
+are before reporting or acting on them:
+
+```sh
+idx=$(git write-tree)
+for c in $(git rev-list -n 50 <branch>); do
+  [ "$(git rev-parse "$c^{tree}")" = "$idx" ] && git log -1 --oneline "$c"
+done
+git diff --stat        # unstaged
+git status --porcelain # untracked shows as ??
+```
+
+If the index matches a commit and there are no unstaged changes, the worktree is
+stale, not modified. `git reset --hard HEAD` brings it up to date and loses
+nothing, because the old tree is that commit. If nothing matches, the changes
+are real and belong to whoever made them: report them and leave them alone.
+
 ## llama.cpp comes from the fork — enforced
 
 Ruled 2026-09-25 by the repository owner: the fork **supplies** llama.cpp.
@@ -177,9 +275,10 @@ tree's 005.
 ## The rebase base is the upstream TAG
 
 `up-*` branches are rebased onto **the upstream release tag xollama builds**,
-currently `v0.34.2` — never upstream `main`.
+currently `v0.35.1` — never upstream `main`.
 
-This repo's `main` is upstream release v0.34.2 plus fork changes, carrying the
+This repo's `dev` is upstream release v0.35.1 plus fork changes (`main` follows
+at the next release), carrying the
 full upstream history so every `git merge upstream/main` has a real merge-base.
 A patch rebased onto upstream `main` drags unreleased upstream into that
 merge-base and costs the ~33% per-sync conflict rate the fork was restructured
@@ -233,6 +332,10 @@ not merged and the fork is asked, as before.
 
 ## What xollama does on receipt of a manifest bump
 
+A bump that moves `base` arrives with the fork release for that tag (R6). If the
+mail names no release, the sync is not finished: say so in the reply instead
+of working around it.
+
 1. `git fetch fork` and merge each named `up-<slug>` **at the manifest's sha**,
    in `patches[]` order, each as its own `--no-ff` merge — so retiring one stays
    a single revert of an identifiable range.
@@ -240,7 +343,11 @@ not merged and the fork is asked, as before.
    PR number, the branch, and **our** merge sha.
 3. Reply with those merge shas, so the fork's manifest and this registry can be
    reconciled from either end.
-4. Never hand-copy a hunk from `think-budget`. If something is needed before the
+4. Move `llama/runtime-pin-linux.txt` and `llama/runtime-pin-linux-arm64.txt`
+   to the release the mail names, in one commit, checking each asset's sha256
+   and that each pin's inputs digest equals this tree's. The release workflow
+   refuses two pins on different fork releases.
+5. Never hand-copy a hunk from `think-budget`. If something is needed before the
    manifest exists, ask for the branch and sha.
 
 ## Identifiers

@@ -149,6 +149,9 @@ func TestGpuFlag(t *testing.T) {
 
 func TestLaunchFallsBackToStockWhenNothingIsInstalled(t *testing.T) {
 	t.Setenv(EnvSelector, "opencoti")
+	// "Nothing installed" has to hold on a host with an engine in its own
+	// ~/.ollama/engines, which is the first place Launch looks.
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv(EnvPath, "")
 
 	params := []string{"--model", "m"}
@@ -314,6 +317,9 @@ func TestFallbackOnLoadFailureOptIn(t *testing.T) {
 
 func TestLaunchReportsWhichEngineItChose(t *testing.T) {
 	t.Setenv(EnvSelector, "llamacpp")
+	// "Nothing installed" has to hold on a host with an engine in its own
+	// ~/.ollama/engines, which is the first place Launch looks.
+	t.Setenv("HOME", t.TempDir())
 	if _, _, used := Launch("/stock/llama-server", []string{"--model", "m"}, []Device{ada()}, t.TempDir()); used {
 		t.Error("reported opencoti while forced to llama.cpp")
 	}

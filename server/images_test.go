@@ -378,6 +378,12 @@ func loadTestMetadata(t *testing.T, m *Model) {
 }
 
 func TestModelCapabilities(t *testing.T) {
+	decisionModelPath, _ := createBinFile(t, gguftest.KV{
+		"general.architecture":    "qwen35",
+		"qwen35.decision.type":    "clef",
+		"tokenizer.chat_template": `{% if tools %}{{ tools }}{% endif %}<think>{{ messages }}</think>`,
+	}, []*gguftest.Tensor{})
+
 	// Create completion model (llama architecture without vision)
 	completionModelPath, _ := createBinFile(t, gguftest.KV{
 		"general.architecture": "llama",
@@ -442,6 +448,22 @@ func TestModelCapabilities(t *testing.T) {
 		model        Model
 		expectedCaps []model.Capability
 	}{
+		{
+			name: "Clef exposes decision instead of completion",
+			model: Model{
+				ModelPath: decisionModelPath,
+			},
+			expectedCaps: []model.Capability{model.CapabilityDecision},
+		},
+		{
+			name: "Clef filters inherited generation capabilities",
+			model: Model{
+				ModelPath:      decisionModelPath,
+				ProjectorPaths: []string{visionModelPath},
+				Config:         model.ConfigV2{Capabilities: []string{"decision", "vision", "completion", "insert", "tools", "thinking"}},
+			},
+			expectedCaps: []model.Capability{model.CapabilityDecision, model.CapabilityVision},
+		},
 		{
 			name: "model with image generation capability via config",
 			model: Model{
@@ -1041,5 +1063,24 @@ func TestPullManifestRedirectPolicy(t *testing.T) {
 				t.Fatal("blocked redirect target received a request")
 			}
 		})
+	}
+}
+
+// A model with no template layer has template.DefaultTemplate in memory, and
+// show used to write it out as `TEMPLATE {{ .Prompt }}`; a create from that
+// Modelfile then gave the model a Go template it never had.
+func TestModelStringWritesOnlyACarriedTemplate(t *testing.T) {
+	m := &Model{ModelPath: "/blobs/sha256-x", Template: template.DefaultTemplate}
+	if got := m.String(); strings.Contains(got, "TEMPLATE") {
+		t.Fatalf("no template layer, but the Modelfile has one:\n%s", got)
+	}
+
+	carried, err := template.Parse("{{ .Prompt }}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = &Model{ModelPath: "/blobs/sha256-x", Template: carried, HasGoTemplate: true}
+	if got := m.String(); !strings.Contains(got, "TEMPLATE {{ .Prompt }}") {
+		t.Fatalf("carried template missing:\n%s", got)
 	}
 }
