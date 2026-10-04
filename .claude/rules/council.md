@@ -803,3 +803,15 @@ paths:
   shared reads would then answer a check from its earlier run. A synthesizer
   that ends a turn with a change unchecked (`uncheckedWrite`) has the call
   made for it (`issueCheck`); nothing is streamed to the answer for it.
+- **A model's context should hold at least what its council's roles may write**
+  (`councilReserve`: every local seat's cap plus 1024), with or without PolyKV;
+  a smaller one still runs. The owner's first booking asks `firstFloor`
+  (`server/council_polykv.go`): a stated `council.context.floor` as it is, an
+  unstated one the reserve, at most half the window and at least 4096. It used
+  to ask the whole window, which no engine can grant once the root pool holds
+  cells of the same context ("largest admissible 16371 < num_ctx_min 16384",
+  a 503 after two minutes on `omni-council-idle`, 2026-10-04, on two engines).
+  A reserve above the window is said at Warn. Guard:
+  `TestAnUnstatedFloorDoesNotAskForTheWholeWindow`. The release's council gate
+  is `scripts/council-gate.py` on the tags named in
+  `docs/protocols/RELEASE.md`.

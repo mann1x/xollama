@@ -3,7 +3,7 @@ component  cuda
 version    2610040656001
 built-from 2610040710001
 repo       ManniX-ITA/opencoti-llamafile-dev
-rev        b5dc5d72435403bf5f2fd6976aa5ad339d3832f2
+rev        771ce08f507b5207eac0974bb98e0211adfadee0
 abi        ggml 41ba479c24d7e3a624c7b13aa3cbe357e41fac04a504c54ec2ee170de0bff9a1
 abi-source computed
 engine-min 2610040710001
