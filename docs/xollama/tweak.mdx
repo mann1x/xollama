@@ -71,7 +71,12 @@ device-backend [unset]>
 Only backends with a device present are offered, plus `CPU`. The next question
 lists that backend's devices; pick one, or several by commas (`1,2`) to spread
 the model across them. A pick is written as the device's PCI ID, the one
-identity that survives a reboot or a card being added.
+identity that survives a reboot or a card being added. Where the server has no
+PCI ID for a device, which is every Vulkan device on Windows, the pick is written
+as its name instead: `name:AMD Radeon RX 9070 XT`, with `#2` after the name for
+the second of two identical cards. A device index is still accepted, but it is a
+position, and the backend may number its devices differently after a reboot; the
+server says so in its log each time such a model loads.
 
 From a script, name the values directly — a number here is a device index, not
 a menu line:
@@ -497,6 +502,7 @@ xollama tweak server gpu 0000:01:00.0 --priority 10      # first choice
 xollama tweak server gpu 0000:02:00.0 --disable          # keep models off it
 xollama tweak server gpu 0000:01:00.0 --backend CUDA     # it is also a Vulkan device
 xollama tweak server gpu 0000:01:00.0 --link 4x16        # plan with PCIe 4.0 x16
+xollama tweak server gpu "name:AMD Radeon RX 9070 XT" --priority 5   # a GPU with no PCI ID, by name
 xollama tweak server gpu --split single                  # never split a model
 ```
 

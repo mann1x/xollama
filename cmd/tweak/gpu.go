@@ -21,7 +21,7 @@ import (
 // model is split across them (plans/system-settings.md).
 func gpuCommand(opts Options) *cobra.Command {
 	gpuCmd := &cobra.Command{
-		Use:   "gpu [PCI-ID]",
+		Use:   "gpu [PCI-ID|name:NAME]",
 		Short: "Set which GPUs the server uses, their priority, backend, link speed and split",
 		Long: `Set the server's GPU policy.
 
@@ -31,8 +31,13 @@ func gpuCommand(opts Options) *cobra.Command {
     xollama tweak server gpu 0000:01:00.0 --backend CUDA    where it is also a Vulkan device
     xollama tweak server gpu 0000:01:00.0 --link 4x16       plan with PCIe 4.0 x16 (25.6 GB/s)
     xollama tweak server gpu 0000:01:00.0 --link auto       let the engine probe it again
+    xollama tweak server gpu "name:AMD Radeon RX 9070 XT" --priority 5
     xollama tweak server gpu --split single                 never split a model across GPUs
     xollama tweak server gpu --split spread --split-mode row
+
+A GPU is named by its PCI ID, or, where the server has none for it (Vulkan on
+Windows), by its name as ` + "`xollama tweak show server`" + ` lists it; "#2" after the
+name is the second card of that name. A link speed is forced by PCI ID only.
 
 Priority is fill order: a model that fits on one GPU goes to the
 highest-priority GPU with room, and a split fills GPUs in that order. A model
@@ -71,28 +76,25 @@ running models. Only from the server's own machine.`,
 
 // gpuEntry is one physical GPU: every backend it is reachable through.
 type gpuEntry struct {
-	PCI      string
+	// Key is how the policy names it: its PCI ID, else a name selector.
+	Key      string
 	Name     string
 	Total    uint64
 	Backends []string
 }
 
 // physicalGPUs groups the server's devices by PCI ID. A device without one
-// cannot be named in the policy, so it is left out.
+// is keyed by its name, and its place among the devices of that name.
 func physicalGPUs(devs []api.XollamaDevice) []gpuEntry {
 	var out []gpuEntry
 	for _, d := range devs {
-		pci, ok := xollama.CanonicalPCIID(d.PCIID)
-		if !ok {
+		key := selectorFor(d, devs)
+		if _, ok := xollama.CanonicalDeviceKey(key); !ok {
 			continue
 		}
-		i := slices.IndexFunc(out, func(e gpuEntry) bool { return e.PCI == pci })
+		i := slices.IndexFunc(out, func(e gpuEntry) bool { return strings.EqualFold(e.Key, key) })
 		if i < 0 {
-			name := d.Description
-			if name == "" {
-				name = d.Name
-			}
-			out = append(out, gpuEntry{PCI: pci, Name: name, Total: d.TotalMemory})
+			out = append(out, gpuEntry{Key: key, Name: apiDeviceName(d), Total: d.TotalMemory})
 			i = len(out) - 1
 		}
 		if !slices.Contains(out[i].Backends, d.Backend) {
@@ -190,13 +192,18 @@ func gpuFromFlags(cmd *cobra.Command, args []string, g *xollama.GPUSettings) err
 	perDevice := countSet(cmd, "disable", "enable", "priority", "backend", "link") > 0
 	if len(args) == 0 {
 		if perDevice {
-			return errors.New("--disable, --enable, --priority, --backend and --link need the GPU's PCI ID")
+			return errors.New("--disable, --enable, --priority, --backend and --link need the GPU's PCI ID or name")
 		}
 		return nil
 	}
-	pci, ok := xollama.CanonicalPCIID(args[0])
+	pci, ok := xollama.CanonicalDeviceKey(args[0])
 	if !ok {
-		return fmt.Errorf("%q is not a PCI ID (as `xollama tweak show server` lists them)", args[0])
+		return fmt.Errorf("%q is not a PCI ID or a device name, name:<name> (as `xollama tweak show server` lists them)", args[0])
+	}
+	if _, isPCI := xollama.CanonicalPCIID(pci); !isPCI && fl.Changed("link") {
+		if v, _ := fl.GetString("link"); v != "auto" {
+			return fmt.Errorf("--link: a link speed is forced by PCI ID, and the server has none for %s", pci)
+		}
 	}
 	d := device(g, pci)
 	if fl.Changed("disable") && fl.Changed("enable") {
@@ -242,10 +249,11 @@ func gpuFromFlags(cmd *cobra.Command, args []string, g *xollama.GPUSettings) err
 	return nil
 }
 
-// device returns the policy's entry for pci, adding one when it has none.
+// device returns the policy's entry for a key, a PCI ID or a name selector,
+// adding one when it has none.
 func device(g *xollama.GPUSettings, pci string) *xollama.GPUDevice {
 	for i := range g.Devices {
-		if id, _ := xollama.CanonicalPCIID(g.Devices[i].ID); id == pci {
+		if id, ok := xollama.CanonicalDeviceKey(g.Devices[i].ID); ok && strings.EqualFold(id, pci) {
 			return &g.Devices[i]
 		}
 	}
@@ -299,7 +307,7 @@ func askGPU(a *asker, g *xollama.GPUSettings, gpus []gpuEntry, links linkInfo) e
 		printGPUTable(a.out, g, gpus, links)
 		options := [][2]string{{"done", "done: write it"}}
 		for _, e := range gpus {
-			options = append(options, [2]string{e.PCI, fmt.Sprintf("%s %s", e.PCI, e.Name)})
+			options = append(options, [2]string{e.Key, fmt.Sprintf("%s %s", e.Key, e.Name)})
 		}
 		options = append(options,
 			[2]string{"split", "split: when a model is spread over several GPUs"},
@@ -341,8 +349,8 @@ func askGPU(a *asker, g *xollama.GPUSettings, gpus []gpuEntry, links linkInfo) e
 			}
 			g.SplitMode = v
 		default:
-			i := slices.IndexFunc(gpus, func(e gpuEntry) bool { return e.PCI == choice })
-			if err := askDevice(a, g, gpus[i], links[gpus[i].PCI]); err != nil {
+			i := slices.IndexFunc(gpus, func(e gpuEntry) bool { return e.Key == choice })
+			if err := askDevice(a, g, gpus[i], links[gpus[i].Key]); err != nil {
 				return err
 			}
 		}
@@ -368,8 +376,8 @@ func (a *asker) pick(name, title, current string, options [][2]string) (string, 
 
 // askDevice asks about one GPU.
 func askDevice(a *asker, g *xollama.GPUSettings, e gpuEntry, link *api.LinkProbeDevice) error {
-	d := device(g, e.PCI)
-	use, err := a.pick("use", fmt.Sprintf("%s %s: may models use it?", e.PCI, e.Name), map[bool]string{false: "yes", true: "no"}[d.Disabled], [][2]string{
+	d := device(g, e.Key)
+	use, err := a.pick("use", fmt.Sprintf("%s %s: may models use it?", e.Key, e.Name), map[bool]string{false: "yes", true: "no"}[d.Disabled], [][2]string{
 		{"yes", "yes"},
 		{"no", "no: keep models off it, unless a model pins it"},
 	})
@@ -408,6 +416,10 @@ func askDevice(a *asker, g *xollama.GPUSettings, e gpuEntry, link *api.LinkProbe
 		d.Backend = b
 	}
 
+	if _, ok := xollama.CanonicalPCIID(e.Key); !ok {
+		a.printf("\nlink: the server has no PCI ID for this GPU, so its link speed cannot be forced; the engine probes it.\n")
+		return nil
+	}
 	return askLink(a, d, link)
 }
 
@@ -476,14 +488,14 @@ func askLink(a *asker, d *xollama.GPUDevice, link *api.LinkProbeDevice) error {
 
 // printGPUTable lists the GPUs with their policy, and the split.
 func printGPUTable(out io.Writer, g *xollama.GPUSettings, gpus []gpuEntry, links linkInfo) {
-	header := []string{"PCI ID", "GPU", "MEMORY", "BACKENDS", "USE", "PRIORITY", "BACKEND", "LINK"}
+	header := []string{"ID", "GPU", "MEMORY", "BACKENDS", "USE", "PRIORITY", "BACKEND", "LINK"}
 	if links != nil {
 		header = append(header, "DETECTED", "MEASURED H2D")
 	}
 	rows := [][]string{header}
 	listed := map[string]bool{}
 	row := func(pci, name, mem, backends string) {
-		listed[pci] = true
+		listed[strings.ToLower(pci)] = true
 		d, _ := g.Device(pci)
 		use := "yes"
 		if d.Disabled {
@@ -512,11 +524,11 @@ func printGPUTable(out io.Writer, g *xollama.GPUSettings, gpus []gpuEntry, links
 		rows = append(rows, r)
 	}
 	for _, e := range gpus {
-		row(e.PCI, e.Name, format.HumanBytes2(e.Total), strings.Join(e.Backends, ","))
+		row(e.Key, e.Name, format.HumanBytes2(e.Total), strings.Join(e.Backends, ","))
 	}
 	if g != nil {
 		for _, d := range g.Devices {
-			if pci, _ := xollama.CanonicalPCIID(d.ID); !listed[pci] {
+			if pci, _ := xollama.CanonicalDeviceKey(d.ID); !listed[strings.ToLower(pci)] {
 				row(pci, "(not found now)", "-", "-")
 			}
 		}
@@ -524,7 +536,7 @@ func printGPUTable(out io.Writer, g *xollama.GPUSettings, gpus []gpuEntry, links
 	if len(rows) > 1 {
 		printRows(out, rows)
 	} else {
-		fmt.Fprintln(out, "no GPU with a PCI ID is visible to the server.")
+		fmt.Fprintln(out, "no GPU is visible to the server.")
 	}
 	split, mode := "auto (OLLAMA_SCHED_SPREAD decides)", "the engine's (layer)"
 	if g != nil && g.SplitPolicy != "" {

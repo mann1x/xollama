@@ -3,14 +3,15 @@ package xollama
 import (
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // GPUSettings are the server's GPU policy (plans/system-settings.md), set
 // with `xollama tweak server gpu`. A model's own device pin (Devices) still
 // decides which devices that model may use; the policy decides the rest.
 type GPUSettings struct {
-	// Devices holds the settings of individual GPUs, keyed by PCI ID. A GPU
-	// not listed is allowed, at priority 0, on its first backend.
+	// Devices holds the settings of individual GPUs, keyed by PCI ID, or by
+	// name where the GPU has none (device_name.go). A GPU not listed is allowed, at priority 0, on its first backend.
 	Devices []GPUDevice `json:"devices,omitempty"`
 
 	// SplitPolicy is when a model is spread over several GPUs: "auto" (or empty)
@@ -28,7 +29,8 @@ type GPUSettings struct {
 
 // GPUDevice is one GPU's settings.
 type GPUDevice struct {
-	// ID is the GPU's PCI ID ("0000:01:00.0").
+	// ID is the GPU's PCI ID ("0000:01:00.0"), or a name selector
+	// ("name:AMD Radeon RX 9070 XT") for a GPU discovery has no PCI ID for.
 	ID string `json:"id"`
 	// Disabled keeps every model off this GPU, unless a model's own pin
 	// names it.
@@ -69,17 +71,36 @@ func (g *GPUSettings) IsZero() bool {
 	return g == nil || (len(g.Devices) == 0 && g.SplitPolicy == "" && g.SplitMode == "")
 }
 
-// Device returns the settings for the GPU with this PCI ID, if any.
-func (g *GPUSettings) Device(pciID string) (GPUDevice, bool) {
+// Device returns the settings stored under this key, a PCI ID or a name
+// selector, if any.
+func (g *GPUSettings) Device(key string) (GPUDevice, bool) {
 	if g == nil {
 		return GPUDevice{}, false
 	}
-	want, ok := CanonicalPCIID(pciID)
+	want, ok := CanonicalDeviceKey(key)
 	if !ok {
 		return GPUDevice{}, false
 	}
 	for _, d := range g.Devices {
-		if id, _ := CanonicalPCIID(d.ID); id == want {
+		if id, ok := CanonicalDeviceKey(d.ID); ok && sameDeviceKey(id, want) {
+			return d, true
+		}
+	}
+	return GPUDevice{}, false
+}
+
+// Lookup returns the settings for a GPU as discovery describes it: by its
+// PCI ID when it has one, else by its name and its place among the GPUs of
+// that name (0 when not known).
+func (g *GPUSettings) Lookup(pciID, name string, ordinal int) (GPUDevice, bool) {
+	if g == nil {
+		return GPUDevice{}, false
+	}
+	if _, ok := CanonicalPCIID(pciID); ok {
+		return g.Device(pciID)
+	}
+	for _, d := range g.Devices {
+		if n, ord, ok := ParseNameSelector(d.ID); ok && NameSelects(n, ord, name, ordinal) {
 			return d, true
 		}
 	}
@@ -102,10 +123,11 @@ func (g *GPUSettings) Validate() error {
 	}
 	seen := map[string]bool{}
 	for _, d := range g.Devices {
-		id, ok := CanonicalPCIID(d.ID)
+		id, ok := CanonicalDeviceKey(d.ID)
 		if !ok {
-			return fmt.Errorf("gpu: %q is not a PCI ID", d.ID)
+			return fmt.Errorf("gpu: %q is not a PCI ID or a device name (name:<name>)", d.ID)
 		}
+		id = strings.ToLower(id)
 		if seen[id] {
 			return fmt.Errorf("gpu: %s is listed twice", id)
 		}
@@ -115,6 +137,9 @@ func (g *GPUSettings) Validate() error {
 		}
 		if d.LinkGBps < 0 || d.LinkGBps > 1024 {
 			return fmt.Errorf("gpu: %s: link_gbps %v is not a link speed", id, d.LinkGBps)
+		}
+		if _, pci := CanonicalPCIID(d.ID); d.LinkGBps > 0 && !pci {
+			return fmt.Errorf("gpu: %s: a link speed is forced by PCI ID, and this GPU is named, not addressed", d.ID)
 		}
 	}
 	return nil

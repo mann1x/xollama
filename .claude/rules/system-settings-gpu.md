@@ -1,6 +1,7 @@
 ---
 paths:
   - types/xollama/gpu.go
+  - types/xollama/device_name.go
   - server/xollama_gpu.go
   - server/xollama_gpu_test.go
   - server/xollama_settings.go
@@ -30,7 +31,13 @@ paths:
 - **A model's own device pin wins.** `applyGPUPolicy` skips the disabled and
   backend filters for a pinned model (`cfg.Devices`); it still orders the GPUs
   highest priority first.
-- GPUs are keyed by PCI ID (`CanonicalPCIID`). A GPU not listed is allowed, at
+- GPUs are keyed by PCI ID, or by name where discovery has none (Vulkan on
+  Windows): `name:<name>[#n]` (`types/xollama/device_name.go`),
+  `CanonicalDeviceKey`, looked up with
+  `GPUSettings.Lookup` through `policyFor` (`server/xollama_gpu.go`). Never by
+  index. A forced link needs a PCI ID (`Validate` refuses it on a name key).
+  `priorityOrder` compares two GPUs without their list, so two cards of one
+  name and no PCI ID are both read as the first. A GPU not listed is allowed, at
   priority 0, on its first backend. `preferredBackend` keeps a GPU on another
   backend only when its chosen one is not present.
 - **Split:** `schedSpread()` replaces `envconfig.SchedSpread()`. `spread`
@@ -80,5 +87,6 @@ paths:
   `server/xollama_linkprobe_test.go` (`TestTheLinkProbeReportsEachBackend`,
   `TestTheLinkProbeIsLocalOnly`, `TestABackendWithAModelGeneratingIsNotProbed`,
   `TestALinkProbeFailureSaysTheEnginesReason`) and `cmd/tweak/gpu_test.go`
-  (`TestTheLinkWizardStartsFromWhatWasDetected`). Plan
+  (`TestTheLinkWizardStartsFromWhatWasDetected`,
+  `TestAGPUWithoutAPCIIDIsWrittenByName`). Plan
   `plans/system-settings.md`; user prose in `docs/xollama/tweak.mdx`.

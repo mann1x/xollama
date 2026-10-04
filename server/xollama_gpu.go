@@ -60,7 +60,7 @@ func applyGPUPolicy(cfg *xollama.Config, gpus []ml.DeviceInfo) []ml.DeviceInfo {
 	out := make([]ml.DeviceInfo, 0, len(gpus))
 	for _, d := range gpus {
 		if !pinned {
-			if s, ok := g.Device(d.PCIID); ok && s.Disabled {
+			if s, ok := policyFor(g, d, gpus); ok && s.Disabled {
 				continue
 			}
 			if !preferredBackend(g, d, gpus) {
@@ -70,7 +70,7 @@ func applyGPUPolicy(cfg *xollama.Config, gpus []ml.DeviceInfo) []ml.DeviceInfo {
 		out = append(out, d)
 	}
 	slices.SortStableFunc(out, func(a, b ml.DeviceInfo) int {
-		return cmp.Compare(gpuPriority(g, b), gpuPriority(g, a))
+		return cmp.Compare(gpuPriority(g, b, gpus), gpuPriority(g, a, gpus))
 	})
 	return out
 }
@@ -78,7 +78,7 @@ func applyGPUPolicy(cfg *xollama.Config, gpus []ml.DeviceInfo) []ml.DeviceInfo {
 // preferredBackend says whether d is the entry to keep for its GPU: true
 // when the GPU appears under one backend only, or under its chosen one.
 func preferredBackend(g *xollama.GPUSettings, d ml.DeviceInfo, all []ml.DeviceInfo) bool {
-	s, ok := g.Device(d.PCIID)
+	s, ok := policyFor(g, d, all)
 	if !ok || s.Backend == "" || d.PCIID == "" {
 		return true
 	}
@@ -98,8 +98,15 @@ func samePCI(a, b string) bool {
 	return ok1 && ok2 && x == y
 }
 
-func gpuPriority(g *xollama.GPUSettings, d ml.DeviceInfo) int {
-	s, _ := g.Device(d.PCIID)
+// policyFor is the policy's entry for d: by PCI ID, else by name and d's
+// place among the GPUs of that name in all. With no all that place is not
+// known and d is taken for the first of its name.
+func policyFor(g *xollama.GPUSettings, d ml.DeviceInfo, all []ml.DeviceInfo) (xollama.GPUDevice, bool) {
+	return g.Lookup(d.PCIID, deviceName(d), nameOrdinal(d, all))
+}
+
+func gpuPriority(g *xollama.GPUSettings, d ml.DeviceInfo, all []ml.DeviceInfo) int {
+	s, _ := policyFor(g, d, all)
 	return s.Priority
 }
 
@@ -123,7 +130,9 @@ func priorityOrder(a, b ml.DeviceInfo) int {
 	if g.IsZero() {
 		return 0
 	}
-	return cmp.Compare(gpuPriority(g, a), gpuPriority(g, b))
+	// The scheduler compares two GPUs here without the list they came from:
+	// two cards of one name and no PCI ID are both read as the first.
+	return cmp.Compare(gpuPriority(g, a, nil), gpuPriority(g, b, nil))
 }
 
 // gpuPolicyEnvs are the engine variables the policy sets for a launch on

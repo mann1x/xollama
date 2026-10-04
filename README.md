@@ -113,6 +113,26 @@ overrides it, which also makes an honest A/B possible against vanilla.
 
 Design: [`docs/features/engine-opencoti-llamafile.md`](docs/features/engine-opencoti-llamafile.md).
 
+### AMD Radeon on Windows: use AMD Software 26.9.2 or later for Vulkan
+
+On a Radeon RX 9070 XT under Windows 11, AMD Software 26.8.1 (display driver
+32.0.31041.1004) loses the card once a model has been loaded through Vulkan
+and left idle: within a minute or two Windows logs a display driver timeout
+(live kernel dump 0x141 in `amdkmdag.sys`), the runner dies on its next
+request, and the card can stay disabled until a reboot. It is a driver fault,
+not xollama's or the engine's: a small standalone Vulkan program with no llama.cpp
+code reproduces it by keeping several GiB of host-visible video memory mapped,
+which is what llama.cpp's Vulkan backend does by default, and stock
+`llama-server` fails the same way.
+
+AMD Software 26.9.2 (display driver 32.0.32015.2008) ran the same tests
+clean, so that is the minimum for Vulkan on that card. The driver that matters
+is the graphics card's own: the chipset package updates only the integrated
+GPU. If you cannot update, `GGML_VK_DISABLE_HOST_VISIBLE_VIDMEM=1` in the
+server's environment avoided the fault at a cost of about 6% in tokens per
+second. Measured on one machine and one card (2026-10-04); other Radeon cards
+on 26.8.1 were not tested.
+
 ## Settings that belong to the model
 
 Which cache type a model tolerates, whether flash attention helps or breaks it,

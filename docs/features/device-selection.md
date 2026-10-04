@@ -11,7 +11,25 @@ A model's `xollama.json` can say where it runs (schema v3):
 | field | meaning |
 |---|---|
 | `backend` | `CUDA`, `Vulkan`, `ROCm` or `CPU`, any case. One backend per model: an engine runs one ggml backend per process. Required when `ids` is set, because the same PCI device is listed under more than one backend — a 3090 is both a CUDA and a Vulkan device. |
-| `ids` | PCI IDs (`0000:18:00.0`, or `18:00.0`), the backend's device index, `integrated` or `discrete`. Empty is every device of the backend; several spread the model across them. |
+| `ids` | PCI IDs (`0000:18:00.0`, or `18:00.0`), device names (`name:AMD Radeon RX 9070 XT`, `#2` after the name for the second device of that name), `integrated` or `discrete`, or the backend's device index. Empty is every device of the backend; several spread the model across them. |
+
+**A pin names a device, not a position.** The PCI ID is the identity to pin by
+where discovery has one. Vulkan on Windows gives none, and the index is an
+enumeration order: on eleven2go (RTX 3090, RX 9070 XT, Radeon iGPU) the 9070 XT
+was `Vulkan1`, `Vulkan2` and `Vulkan1` again across three boots of 2026-10-04,
+so a model pinned by index was refused, correctly, after each reorder. There the
+pin is the device's name (`types/xollama/device_name.go`): `name:<name>`,
+compared without regard to case or runs of spaces, within the pinned backend.
+Several devices of one name are all selected by the bare name and told apart by
+`#n`, their place among namesakes in the backend's order; with no PCI ID nothing
+else distinguishes two identical cards, and that order can change. Both tweak
+menus write the PCI ID when there is one and the name otherwise, never the
+index (`selectorFor`, `cmd/tweak/devices.go`). An index pin still loads, and
+every load on one says at Warn that it is positional. The server's GPU policy
+(`xollama tweak server gpu`) keys a GPU the same way; a forced link speed needs
+a PCI ID, because that is how the engine reads it. Guards:
+`server/device_select_name_test.go`, `types/xollama/device_name_test.go`,
+`TestAGPUWithoutAPCIIDIsWrittenByName`.
 
 `selectModelDevices` (`server/device_select.go`, `device-select` hook in
 `server/sched.go`) narrows the discovered devices to the pin before placement.
