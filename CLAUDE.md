@@ -61,6 +61,10 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   install check — promotion (the `released` event, never a pre-release) posts
   the notes to Discord via `.github/workflows/discord-announce.yaml`.
   Never push a `v*` tag, never copy exes onto a host as an "update".
+- `docs/protocols/VALIDATION.md` — the gates of a release (G1 to G12): host,
+  steps, expected result and the last measured baseline of each; the first
+  release passes all, a later one the delta its changes touch, and a gate that
+  is run updates its row. Scripts as run: `scripts/gates/`.
 - `docs/features/engine-opencoti-llamafile.md` · `docs/features/rebrand.md` ·
   `docs/features/store-ownership.md` · `docs/features/windows-installer.md` ·
   `docs/features/model-config.md` · `docs/features/modelfile-roundtrip.md` ·

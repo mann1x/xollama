@@ -225,7 +225,9 @@ source to this table in the same commit.
 The usual rules apply (UPSTREAM-SYNC hooks, FORK-SYNC merges, tests). Push
 `origin/dev`.
 
-Before a candidate, run [the council gate](#the-council-gate) on that tree.
+Before a candidate, run the gates [`VALIDATION.md`](VALIDATION.md) asks for:
+all of them for the first release, the delta after that. [The council
+gate](#the-council-gate) is one of them.
 
 ### 2. Open the release PR
 
