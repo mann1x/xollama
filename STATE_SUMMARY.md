@@ -5,6 +5,14 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-04 — The draft of `v0.35.1-rc.1.xollama` installed and measured on eleven2go (owner's instruction).**
+> - Install (RELEASE.md steps 6–7): `xOllamaSetup.exe` (sha256 `3037c046…9e54`) through a one-time interactive scheduled task, exit 0 in 30 s. `xollama.exe --version` is `0.35.1-rc.1.xollama`, `lib\ollama\PAYLOAD_ID` equals `payload-id.txt` (`af8547b7…aa7f`), 22434 listens and `/api/xollama` answers, `/api/xollama/devices` lists the RTX 3090 (CUDA) and the RX 9070 XT and the Radeon iGPU (Vulkan), all on the engine; the think-budget ollama still answers on 11434 (same process).
+> - **The host overrides the engine.** Its user environment sets `XOLLAMA_ENGINE_PATH` to `opencoti-b208\opencoti-0.10.5-c7-2609281805001.exe` (and `XOLLAMA_ENGINE_ARGS`), so the installed server runs that engine and its 311 MB CUDA DLL, not the draft's; a Vulkan load there fails loudly ("Vulkan is not usable": that directory has no Vulkan library). Left as the owner set it. The draft's own engine was measured from a second server on 22498, started from the installed files without the two variables, then stopped.
+> - Measured, `qwen3:8b` Q4_K_M, 512 tokens, one cold and four warm runs: RTX 3090 through the six-architecture `ggml-cuda.dll` 123.4–123.6 tok/s, 37/37 layers (the older DLL: 121.6–123.4); RX 9070 XT through `ggml-vulkan.dll` 101.3–104.3 tok/s warm, 37/37 layers.
+> - **Found: the engine crashes on the Radeon iGPU through Vulkan on Windows** (`0xc0000028`, in the fit step, and at tensor load with `-fit off`). Stock llama.cpp loads the same model on the same iGPU in the same session (5.0 tok/s). An unpinned model is kept off an integrated GPU when a discrete one exists, so this host is not affected by default; a Windows machine with only an AMD iGPU would be. Reported to opencoti, noted in PR #5, not worked around.
+> - Also seen: the engine numbers the Vulkan devices differently from the listing the b208 override produces (RX 9070 XT is `Vulkan1` on the pinned engine, `Vulkan2` there), so a device pin by index does not survive an engine override.
+> - Left: the owner's call on merging PR #5 with the iGPU defect open; Linux arm64 is not packaged (see Known gaps).
+>
 > **2026-10-04 — Draft build of `v0.35.1-rc.1.xollama` from `7d5769833` (release PR #5, not merged).**
 > - `gh workflow run xollama-release.yaml --ref dev -f pr=5` (run 37170880018): plan, linux, windows and publish green; a **draft** release, no tag, invisible to the updater. Assets: `xOllamaSetup.exe` 1.30 GB (797 MB in v0.34.4-xollama.2: the six-architecture CUDA DLL is 790 MB), `xOllamaUpdate.exe` 14.8 MB, both binaries, `payload-id.txt` `af8547b7…aa7f`.
 > - Verified from the downloaded draft (`backup_models/release-check/v0.35.1-rc.1.xollama`): every `sha256sum.txt` line OK; `xollama-linux-amd64 --version` names `0.35.1-rc.1.xollama`. The Windows payload carries, in `lib\ollama\engines`, the engine, `ggml-cuda.dll` (790,682,112 bytes), `ggml-vulkan.dll`, the three media DLLs, the four licence texts and `BUILD_INFO.md`.
@@ -1838,6 +1846,18 @@ turns, measured on the manic benchmark on eleven2go). The engine pin is b208
 
 ## Known gaps
 
+- **No Linux arm64 package** (Raspberry Pi, Jetson, Ampere). The code serves it:
+  `PackageArch` maps `linux/arm64` to the pin's `bin aarch64` row, the three
+  media libraries and their licence texts have aarch64 rows, and
+  `linux/arm64` CUDA and CPU are in the tested matrix. What is missing is
+  packaging: `xollama-release.yaml` builds only `xollama-linux-amd64`,
+  `llama/runtime-pin-linux.txt` and the image are amd64, and the fork, which
+  supplies llama.cpp, publishes no `ollama-linux-arm64-runtime.tgz`. Today a
+  Pi is served by a source build on the Pi (`cmake -B build . && cmake --build
+  build`), never yet run by us on one.
+- **The engine crashes on an AMD integrated GPU through Vulkan on Windows**
+  (eleven2go, 2026-10-04, `0xc0000028`); stock llama.cpp serves it. Reported
+  to opencoti. A machine with a discrete GPU is unaffected by default.
 - The Docker image is published to `:dev` (run 36221348282). It is amd64
   only, and b111 carries no Vulkan payload, so Vulkan loads go to llama.cpp.
 - Upstream's `Dockerfile` still sets `OLLAMA_HOST`/`EXPOSE 11434`, which

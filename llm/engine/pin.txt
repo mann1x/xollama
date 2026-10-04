@@ -165,9 +165,24 @@ channel  dev
 #   Renoir iGPU through the Vulkan library (CUDA hidden): ggml-vulkan.so
 #   loaded from the engine's directory, 29/29 layers, qwen2.5:1.5b 512 tokens
 #   at 35.6 / 36.0 / 35.7 / 34.4 tok/s.
-# NOT MEASURED through xollama: the six-arch Windows DLL (opencoti: 30/30 on a
-# Windows 11 RTX 3090), the Windows Vulkan DLL (nobody), CUDA 12 (nobody), any
-# card of the newly covered generations 7.5, 8.0, 9.0.
+# MEASURED on Windows, 2026-10-04: eleven2go (Windows 11 26200, RTX 3090, RX
+# 9070 XT, Ryzen 9 9950X3D and its Radeon iGPU), the draft installer of
+# v0.35.1-rc.1.xollama (payload af8547b7), a second server from the installed
+# files on port 22498 because the host's own XOLLAMA_ENGINE_PATH names an
+# older engine. qwen3:8b Q4_K_M, 512 tokens, one cold and four warm runs:
+#   RTX 3090, the six-arch ggml-cuda.dll (790,682,112 bytes, loaded from the
+#   engine's directory), 37/37 layers: 123.4 / 123.6 / 123.6 / 123.5 / 123.4
+#   tok/s. The older 8.6-only DLL gave 121.6-123.4 in the same half hour.
+#   RX 9070 XT, ggml-vulkan.dll, 37/37 layers: 98.8 cold, then 101.3 / 101.3 /
+#   101.3 / 104.3 tok/s.
+# FOUND: on that Windows host the engine dies on the Radeon iGPU through
+# Vulkan (uma: 1, AMD driver 32.0.21045.5002): exit 0xc0000028 in the fit
+# step, and with "-fit off" at "loading model tensors". Stock llama.cpp loads
+# 37/37 layers on the same iGPU in the same session (5.0 tok/s), and the
+# engine serves a Renoir iGPU on Linux. Reported to opencoti; not worked
+# around here.
+# NOT MEASURED through xollama: CUDA 12 (nobody), any card of the newly
+# covered generations 7.5, 8.0, 9.0.
 # FOUND: eSpeak-ng keeps its data path in 160 bytes. With the engine's HOME 145
 # characters deep, <cache>/espeak-ng-data is 160 and no longer fits, and Kokoro
 # and KittenTTS fail at load ("phontab: No such file"). Reported to opencoti.
