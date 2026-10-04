@@ -1,12 +1,12 @@
 format     2
 component  engine
-version    2610040837001
+version    2610040950001
 repo       ManniX-ITA/opencoti-llamafile-dev
-rev        21462d105075e8d0a3f511d5519077761a1e2efb
+rev        b5dc5d72435403bf5f2fd6976aa5ad339d3832f2
 abi        ggml 41ba479c24d7e3a624c7b13aa3cbe357e41fac04a504c54ec2ee170de0bff9a1
 abi        media b099409b3029a6e380268e31d1caefa6706569961d32e72b3543fbc73903d95c
 abi        loader d6ff34022f1d3fb5af56ca0c80e3f4e552bf09f1bebdf0cb5f314a454bf38dbc
-abi-source computed
+abi-source exported
 feature    attach_in_response_v1
 feature    audio_speech_content_format_v1
 feature    audio_speech_v1
@@ -14,6 +14,7 @@ feature    audio_speech_voice_files_v1
 feature    audio_transcriptions_v1
 feature    audio_translations_v1
 feature    boot_id_v1
+feature    cache_type_swa_v1
 feature    capacity_readonly_v1
 feature    ctx_min_negotiation_v1
 feature    elastic_drain_k_v1
@@ -30,6 +31,7 @@ feature    kv_resize_live_v1
 feature    kv_resize_v1
 feature    kv_status_v1
 feature    lock_v1
+feature    log_memory_plan_v1
 feature    polykv_private_window_v1
 feature    polykv_rebase_v1
 feature    polykv_sampling_route_v1
@@ -57,6 +59,6 @@ feature    images_edit_v1 x86_64 win-x86_64
 feature    videos_generate_v1 x86_64 win-x86_64
 feature    videos_i2v_v1 x86_64 win-x86_64
 feature    sdcpp_vid_gen_v1 x86_64 win-x86_64
-file  any            bin        components/engine/2610040837001/opencoti-0.10.5-c7-2610040837001  7652ec1212045e8aeb73804f79aab201c359612164fbd1441d67ae82ddc58a41  134618362
-file  win-x86_64     bin        components/engine/2610040837001/opencoti-0.10.5-c7-2610040837001.exe  7652ec1212045e8aeb73804f79aab201c359612164fbd1441d67ae82ddc58a41  134618362
-file  any            build-info components/engine/2610040837001/BUILD_INFO.md  0b52883f708a56cad915c24ca254e974a3dbb70d5ea525f63dd31a99d5261f23  3199
+file  any            bin        components/engine/2610040950001/opencoti-0.10.5-c7-2610040950001  a4150e998c52878307f06d3641c3e40b25e6c33fd8ccd99ca5ba3c97dd238d81  134642944
+file  win-x86_64     bin        components/engine/2610040950001/opencoti-0.10.5-c7-2610040950001.exe  a4150e998c52878307f06d3641c3e40b25e6c33fd8ccd99ca5ba3c97dd238d81  134642944
+file  any            build-info components/engine/2610040950001/BUILD_INFO.engine.md  8e50b3ecf91b7c4fbbbbf06217d393d02cd093284bbee3854aecd28d389fa237  3661

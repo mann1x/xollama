@@ -214,8 +214,8 @@ const logVerbosity = "5"
 // quietLogVerbosity is ollama's own threshold, used with --log-memory-plan.
 const quietLogVerbosity = "4"
 
-// featureLogMemoryPlan names --log-memory-plan in pin/xollama.txt.
-const featureLogMemoryPlan = "log-memory-plan"
+// featureLogMemoryPlan names --log-memory-plan in the engine's pin.
+const featureLogMemoryPlan = "log_memory_plan_v1"
 
 // logArgs is the logging argv for the pinned engine: ollama's threshold plus
 // --log-memory-plan when the pin declares it, else threshold 5.

@@ -27,10 +27,11 @@ func TestSlidingWindowRingFollowsTheDeclaration(t *testing.T) {
 		{"a build on the newer line that does not carry them yet", "opencoti-0.10.6-c8-1", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			files := pinFiles(enginePin(row("any", "bin", "components/engine/v/"+tc.engine, "engine")))
+			engine := []string{row("any", "bin", "components/engine/v/"+tc.engine, "engine")}
 			if tc.declared {
-				files[consumerFile] = "feature " + featureSWACacheTypes + "\n"
+				engine = append(engine, "feature "+featureSWACacheTypes)
 			}
+			files := pinFiles(enginePin(engine...))
 			p, err := loadFiles(files)
 			if err != nil {
 				t.Fatal(err)

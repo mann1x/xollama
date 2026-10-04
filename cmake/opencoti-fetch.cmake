@@ -33,9 +33,8 @@
 # inside an installer is not a thing to warn about and continue past.
 #
 # Files are staged under their published names, never renamed: that name is
-# what the engine looks for in its own directory. The one exception is not a
-# file the engine reads: every component publishes a BUILD_INFO.md, so in one
-# directory they are staged as BUILD_INFO.<component>.md.
+# what the engine looks for in its own directory, and it is unique across the
+# components of an index.
 
 cmake_minimum_required(VERSION 3.24)
 
@@ -351,6 +350,7 @@ foreach(_stale "${DEST_DIR}/engines/cuda_v12" "${DEST_DIR}/cuda_v12")
 endforeach()
 
 set(_manifest "")
+set(_staged_names "")
 list(LENGTH _s_path _count)
 math(EXPR _last "${_count} - 1")
 foreach(_i RANGE ${_last})
@@ -365,11 +365,12 @@ foreach(_i RANGE ${_last})
 
     get_filename_component(_published "${_path}" NAME)
     set(_name "${_published}")
-    if(_kind STREQUAL "build-info")
-        get_filename_component(_stem "${_published}" NAME_WLE)
-        get_filename_component(_ext "${_published}" LAST_EXT)
-        set(_name "${_stem}.${_c}${_ext}")
+    # One staging directory: a name two components share would have one file
+    # overwrite the other. The format says names are unique across an index.
+    if(_name IN_LIST _staged_names)
+        message(FATAL_ERROR "opencoti-fetch: two components stage ${_name} for ${ARCH}")
     endif()
+    list(APPEND _staged_names "${_name}")
     set(_dest "${DEST_DIR}/${_name}")
     set(_what "${_c} ${_version} ${_kind} ${_published}")
 
@@ -388,9 +389,6 @@ foreach(_i RANGE ${_last})
             endif()
         elseif(DEFINED LOCAL_SIDECAR_DIR AND NOT "${LOCAL_SIDECAR_DIR}" STREQUAL "")
             set(_local "${LOCAL_SIDECAR_DIR}/${_name}")
-            if(NOT EXISTS "${_local}")
-                set(_local "${LOCAL_SIDECAR_DIR}/${_published}")
-            endif()
             if(NOT EXISTS "${_local}")
                 message(FATAL_ERROR "opencoti-fetch: LOCAL_SIDECAR_DIR=${LOCAL_SIDECAR_DIR} has no ${_published} (${_what})")
             endif()

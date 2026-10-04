@@ -59,7 +59,7 @@ func TestEveryVendoredPinIsNamedByTheIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		if e.Name() == "index.txt" || e.Name() == consumerFile {
+		if e.Name() == "index.txt" {
 			continue
 		}
 		if !strings.Contains(string(index), " pin/"+e.Name()+" ") {
@@ -84,7 +84,7 @@ func TestEveryLicensedSidecarShipsItsText(t *testing.T) {
 			if s.Role == SidecarLicence {
 				licensed[s.For] = true
 			}
-			info = info || (s.Role == kindBuildInfo && s.Component == "media")
+			info = info || (s.Role == "build-info" && s.Component == "media")
 		}
 		for _, lib := range []string{"espeak", SidecarCodec} {
 			if have[lib] && (!licensed[lib] || !info) {

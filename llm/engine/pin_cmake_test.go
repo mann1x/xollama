@@ -78,7 +78,7 @@ func cmakeComps() []string {
 		// The index lists the engine last: the order is not the format's.
 		libPin("cuda", "sass 86 120", "requires x86_64 glibc 2.27",
 			row("x86_64", "cuda", "components/cuda/v/ggml-cuda-x86_64.so", b["ggml-cuda-x86_64.so"]),
-			row("any", "build-info", "components/cuda/v/BUILD_INFO.md", b["BUILD_INFO.cuda.md"])),
+			row("any", "build-info", "components/cuda/v/BUILD_INFO.cuda.md", b["BUILD_INFO.cuda.md"])),
 		libPin("cuda12", "sass 70", "absent win-x86_64 not built",
 			row("x86_64", "cuda12", "components/cuda12/v/ggml-cuda-cu12-x86_64.so", b["ggml-cuda-cu12-x86_64.so"])),
 		libPin("vulkan", row("win-x86_64", "vulkan", "components/vulkan/v/ggml-vulkan-win-x86_64.dll", b["ggml-vulkan-win-x86_64.dll"])),
@@ -91,7 +91,7 @@ func cmakeComps() []string {
 			row(ArchMacOS, "codec", "components/media/v/oc-codec-macos-aarch64.dylib", b["oc-codec-macos-aarch64.dylib"]),
 			row("x86_64", "new-kind", "components/media/v/oc-new-kind-linux-x86_64.so", b["oc-new-kind-linux-x86_64.so"]),
 			row("any", "licence", "components/media/v/COPYING.codec", b["COPYING.codec"], "for", "codec"),
-			row("any", "build-info", "components/media/v/BUILD_INFO.md", b["BUILD_INFO.media.md"])),
+			row("any", "build-info", "components/media/v/BUILD_INFO.media.md", b["BUILD_INFO.media.md"])),
 		enginePin("feature kv_status_v1", "feature images_generate_v1 x86_64 win-x86_64",
 			row("any", "bin", "components/engine/v/opencoti-1", b["engine"]),
 			row("win-x86_64", "bin", "components/engine/v/opencoti-1.exe", b["engine"])),

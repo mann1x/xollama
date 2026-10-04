@@ -279,7 +279,6 @@ No pin is fetched at build time.
 |---|---|---|
 | `index.txt` | xollama's | `channel`, `tag`, and per component the pin file, the commit it is readable at, its sha256 and its version, or `absent` |
 | `engine.txt`, `cuda.txt`, `cuda12.txt`, `vulkan.txt`, `macos.txt`, `media.txt` | opencoti's, vendored unchanged | `repo`, `rev` (the payload commit), `abi` digests, `engine-min`, `sass`, `feature` rows, and one `file <platform> <kind> <path> <sha256> <bytes>` row per file |
-| `xollama.txt` | xollama's | `feature` rows xollama has measured and the engine's pin does not state |
 
 A staggered move is one index line and its pin file; nothing else changes.
 What makes that safe is checked in both parsers: every `abi` a component
@@ -291,8 +290,9 @@ Files are staged beside the engine under their **published names**, never
 renamed: that name is what the engine looks for in its own directory
 (`ggml-cuda-x86_64.so`, `ggml-cuda-cu12-x86_64.so`, `ggml-vulkan-x86_64.so`,
 `oc-codec-linux-x86_64.so`; on Windows the engine has a row of its own under
-the `.exe` name). The one exception is not a file the engine reads: every
-component publishes a `BUILD_INFO.md`, staged as `BUILD_INFO.<component>.md`.
+the `.exe` name). A name is unique across the components of an
+index (each publishes its `BUILD_INFO.<component>.md`), and both parsers refuse
+two components that stage one name.
 
 Two parsers read the directory - `cmake/opencoti-fetch.cmake` at build time and
 `llm/engine/pin.go` via `//go:embed` - and `llm/engine/pin_cmake_test.go` runs

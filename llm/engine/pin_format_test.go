@@ -12,7 +12,7 @@ func TestTheEngineIsItsPlatformsRowElseTheAnyRow(t *testing.T) {
 	p := mustLoad(t, enginePin(
 		row("any", "bin", "components/engine/v/opencoti-1", "engine"),
 		row("win-x86_64", "bin", "components/engine/v/opencoti-1.exe", "engine"),
-		row("any", "build-info", "components/engine/v/BUILD_INFO.md", "info")))
+		row("any", "build-info", "components/engine/v/BUILD_INFO.engine.md", "info")))
 	for arch, want := range map[string]string{
 		"x86_64": "opencoti-1", "aarch64": "opencoti-1", ArchMacOS: "opencoti-1", "win-x86_64": "opencoti-1.exe",
 	} {
@@ -38,7 +38,7 @@ func TestFileKindsBecomeTheAssetsRoutingKnows(t *testing.T) {
 			"feature kv_status_v1", "feature images_generate_v1 x86_64 win-x86_64"),
 		libPin("cuda", "sass 86 120", "requires x86_64 glibc 2.27",
 			row("x86_64", "cuda", "components/cuda/v/ggml-cuda-x86_64.so", "cuda"),
-			row("any", "build-info", "components/cuda/v/BUILD_INFO.md", "cuda info")),
+			row("any", "build-info", "components/cuda/v/BUILD_INFO.cuda.md", "cuda info")),
 		libPin("cuda12", "sass 52 61 70", "absent win-x86_64 not built",
 			row("x86_64", "cuda12", "components/cuda12/v/ggml-cuda-cu12-x86_64.so", "cuda12")),
 		libPin("vulkan", "gated-with "+fixEngine,
@@ -101,17 +101,6 @@ func TestFileKindsBecomeTheAssetsRoutingKnows(t *testing.T) {
 			t.Errorf("aarch64 stages %s of the cuda component, which has nothing for it", f.StagedName())
 		}
 	}
-	// Every component publishes a BUILD_INFO.md; in one directory each is its
-	// component's.
-	var infos []string
-	for _, f := range p.Files("x86_64") {
-		if f.Role == kindBuildInfo {
-			infos = append(infos, f.StagedName())
-		}
-	}
-	if strings.Join(infos, " ") != "BUILD_INFO.cuda.md" {
-		t.Errorf("x86_64 BUILD_INFO files = %v", infos)
-	}
 	if u := p.URL(p.Sidecars("x86_64")[1]); u != "https://huggingface.co/o/r/resolve/"+fixRev+"/components/media/v/oc-codec-linux-x86_64.so" {
 		t.Errorf("URL = %s", u)
 	}
@@ -132,24 +121,6 @@ func TestALibraryForAPlatformWithNoEngineIsNotAnAccelClaim(t *testing.T) {
 		libPin("cuda", row("win-x86_64", "cuda", "components/cuda/v/ggml-cuda-win-x86_64.dll", "cuda")))
 	if p.Accelerates("win-x86_64", BackendCUDA) || p.Accelerates("x86_64", BackendCUDA) {
 		t.Errorf("accels = %v, want none", p.Accels)
-	}
-}
-
-// xollama's own rows: what it measured the engine to do and the pin does not
-// state. Declared, never inferred from the cut number in the engine's name.
-func TestXollamasOwnRowsAddFeatures(t *testing.T) {
-	files := pinFiles(enginePin(row("any", "bin", "components/engine/v/opencoti-0.10.5-c7-1", "engine")))
-	p, err := loadFiles(files)
-	if err != nil || p.HasFeature(featureSWACacheTypes) {
-		t.Fatalf("without the row: %v, has it = %v", err, p.HasFeature(featureSWACacheTypes))
-	}
-	files[consumerFile] = "# measured\nfeature " + featureSWACacheTypes + "\n"
-	if p, err = loadFiles(files); err != nil || !p.HasFeature(featureSWACacheTypes) {
-		t.Fatalf("with the row: %v, has it = %v", err, p.HasFeature(featureSWACacheTypes))
-	}
-	files[consumerFile] = "file any bin x y 1\n"
-	if _, err = loadFiles(files); err == nil {
-		t.Fatal("a pin statement in xollama's own file was accepted")
 	}
 }
 
@@ -225,6 +196,11 @@ func TestLoadPinRefuses(t *testing.T) {
 		},
 		"a library pin without engine-min": func() map[string]string {
 			return pinFiles(enginePin(bin), replace(libPin("cuda", lib), "engine-min "+fixEngine+"\n", ""))
+		},
+		// One staging directory: two components cannot stage one name.
+		"a file name two components share": func() map[string]string {
+			return pinFiles(enginePin(bin, row("any", "build-info", "c/BUILD_INFO.md", "a")),
+				libPin("cuda", lib, row("any", "build-info", "c/BUILD_INFO.md", "b")))
 		},
 		// Its sass line is aarch64's; nothing here routes on it yet.
 		"the sbsa component": func() map[string]string {

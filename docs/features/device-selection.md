@@ -130,7 +130,7 @@ ships — see `pinUncovered`. A dev snapshot is a bare APE that accelerates only
 what the GPU libraries pinned beside it provide (a `cuda`, `vulkan` or `metal`
 file row for the platform is the claim), so Vulkan reached opencoti for the first time with
 snapshot `2609242056001`, the first to publish `ggml-vulkan-x86_64.so`.
-The current pin (engine `2610040837001`, `llm/engine/pin/index.txt`) carries
+The current pin (engine `2610040950001`, `llm/engine/pin/index.txt`) carries
 CUDA and Vulkan for Linux x86_64 and Windows x86_64; its Vulkan library is the
 first that runs an AMD integrated GPU on Windows (measured on eleven2go with
 engine `2610040710001`, 2026-10-04; the library is the same bytes).

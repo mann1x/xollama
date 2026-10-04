@@ -16,8 +16,7 @@ import (
 // docs/protocols/PIN_FORMAT.md). pin/index.txt is OUR index -- which
 // components this tree takes, each by the sha256 of its pin file -- and the
 // component pin files beside it are byte-identical copies of the published
-// ones. pin/xollama.txt is ours alone: what xollama has measured the pinned
-// engine to do and opencoti's pin does not state.
+// ones.
 //
 // It is embedded rather than read from disk because its consumers are a
 // running server and a test, neither of which can assume the source tree is
@@ -29,9 +28,6 @@ var pinFS embed.FS
 
 // pinDir is where the pin lives in pinFS.
 const pinDir = "pin"
-
-// consumerFile holds xollama's own rows, beside the index.
-const consumerFile = "xollama.txt"
 
 // Asset is one published file of the pinned engine.
 type Asset struct {
@@ -55,17 +51,9 @@ type Asset struct {
 }
 
 // StagedName is the file name the asset has beside the engine: the name it was
-// published with, which is the one the engine looks for. The exception is not
-// a file the engine reads: every component publishes a BUILD_INFO.md, so in
-// one directory they are BUILD_INFO.<component>.md.
-func (a Asset) StagedName() string {
-	name := path.Base(a.Path)
-	if a.Role == kindBuildInfo {
-		ext := path.Ext(name)
-		return strings.TrimSuffix(name, ext) + "." + a.Component + ext
-	}
-	return name
-}
+// published with, never another. That name is the one the engine looks for,
+// and it is unique across the components of an index.
+func (a Asset) StagedName() string { return path.Base(a.Path) }
 
 // Pin is the parsed pin: where the files live, which bytes are the right ones,
 // and what that build can be asked to do.
@@ -81,8 +69,7 @@ type Pin struct {
 	// guessed from the repo name because the two channels may share a repo.
 	Channel string
 	// Features are the capabilities the engine's pin states for every
-	// platform, plus xollama's own measured rows. See HasFeatureOn for the
-	// ones a pin limits to some platforms.
+	// platform. See HasFeatureOn for the ones a pin limits to some.
 	Features         []string
 	platformFeatures map[string][]string
 	// Accels are the backends the pinned files accelerate, per arch: a GPU
@@ -193,7 +180,6 @@ const (
 	SidecarAudioCpp = "audiocpp"
 	// SidecarLicence is a licence text; Asset.For names what it covers.
 	SidecarLicence = "licence"
-	kindBuildInfo  = "build-info"
 )
 
 // Sidecars returns the files the pin stages beside the engine for an arch
@@ -502,8 +488,7 @@ func (c component) assetOf(platform string, r fileRow) Asset {
 	return a
 }
 
-// LoadPin reads a pin directory: the index, the component pins it names and,
-// when present, xollama's own rows.
+// LoadPin reads a pin directory: the index and the component pins it names.
 //
 // It refuses what the format says a consumer must refuse: a vendored pin file
 // whose bytes are not the ones the index names, a component whose abi the
@@ -592,23 +577,19 @@ func LoadPin(fsys fs.FS, dir string) (Pin, error) {
 	if p.Tag == "" {
 		return Pin{}, fmt.Errorf("pin: the engine component has no bin row")
 	}
-	p.deriveAccels()
-
-	if text, err := read(consumerFile); err == nil {
-		for n, raw := range strings.Split(text, "\n") {
-			if i := strings.IndexByte(raw, '#'); i >= 0 {
-				raw = raw[:i]
+	// One staging directory: a name two components of a platform share would
+	// have one file overwrite the other beside the engine.
+	for _, platform := range platforms {
+		seen := map[string]string{}
+		for _, a := range p.Files(platform) {
+			if other, dup := seen[a.StagedName()]; dup {
+				return Pin{}, fmt.Errorf("pin: %s and %s both stage %s for %s", other, a.Component, a.StagedName(), platform)
 			}
-			f := strings.Fields(raw)
-			if len(f) == 0 {
-				continue
-			}
-			if f[0] != "feature" || len(f) != 2 {
-				return Pin{}, fmt.Errorf("%s:%d: only `feature <name>` rows live here", consumerFile, n+1)
-			}
-			p.Features = append(p.Features, f[1])
+			seen[a.StagedName()] = a.Component
 		}
 	}
+	p.deriveAccels()
+
 	return p, nil
 }
 
