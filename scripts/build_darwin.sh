@@ -50,8 +50,16 @@ _build_darwin() {
 
     SOURCE_BUILD=build/darwin-sources
     status "Preparing shared native sources"
+    # xollama-hook: macos-mlx-pin -- MLX is taken as a pinned artifact
+    # (llama/runtime-pin-darwin.txt), so its sources are not fetched and it is
+    # not compiled. XOLLAMA_MLX=compile builds it as upstream does.
+    if _mlx_pinned; then
+        cmake -S . -B "$SOURCE_BUILD" -DOLLAMA_MLX_BACKENDS= -DOLLAMA_LLAMA_BACKENDS=
+        cmake --build "$SOURCE_BUILD" --target ollama-llama-cpp-source
+    else
     cmake -S . -B "$SOURCE_BUILD" -DOLLAMA_MLX_BACKENDS=metal_v3 -DOLLAMA_LLAMA_BACKENDS=
     cmake --build "$SOURCE_BUILD" --target ollama-llama-cpp-source --target ollama-mlx-sources
+    fi
     LLAMA_CPP_SHARED_SRC="$(pwd)/$SOURCE_BUILD/_deps/llama_cpp-src"
     MLX_SHARED_SRC="$(pwd)/$SOURCE_BUILD/_deps/mlx-src"
     MLX_C_SHARED_SRC="$(pwd)/$SOURCE_BUILD/_deps/mlx-c-src"
@@ -74,6 +82,8 @@ _build_darwin() {
             MLX_CGO_CFLAGS="-O3 -mmacosx-version-min=14.0"
             MLX_CGO_LDFLAGS="-lc++ -framework Metal -framework Foundation -framework Accelerate -mmacosx-version-min=14.0"
         fi
+        MLX_TARGET="--target ollama-mlx-backends"
+        if _mlx_pinned; then MLX_BACKENDS=; MLX_TARGET=; fi # xollama-hook: macos-mlx-pin
 
         cmake -S . -B "$BUILD_DIR" \
             -DCMAKE_BUILD_TYPE=Release \
@@ -91,8 +101,49 @@ _build_darwin() {
             $MLX_EXTRA_ARGS
 
         GOOS=darwin GOARCH=$ARCH CGO_ENABLED=1 CGO_CFLAGS="$MLX_CGO_CFLAGS" CGO_LDFLAGS="$MLX_CGO_LDFLAGS" \
-            cmake --build "$BUILD_DIR" --target ollama-local --target ollama-mlx-backends --parallel "$BUILD_JOBS" -- -l "$BUILD_LOAD"
+            cmake --build "$BUILD_DIR" --target ollama-local $MLX_TARGET --parallel "$BUILD_JOBS" -- -l "$BUILD_LOAD"
     done
+    if _mlx_pinned; then _take_mlx_runtime; fi # xollama-hook: macos-mlx-pin
+}
+
+# xollama-hook: macos-mlx-pin
+# Whether MLX comes from the pin. Apple silicon only: the archive's Metal 4
+# library is arm64, and an Intel build is upstream's universal app.
+_mlx_pinned() {
+    [ "${XOLLAMA_MLX:-pin}" = "pin" ] && [ -f llama/runtime-pin-darwin.txt ] && [ "$ARCHS" = "arm64" ]
+}
+
+# xollama-hook: macos-mlx-pin
+# Unpacks the pinned MLX runtime where the compiled one would have been
+# installed. Refused when the archive is not the pinned bytes, or when it was
+# built from another MLX or MLX-C than this tree names.
+_take_mlx_runtime() {
+    PIN=llama/runtime-pin-darwin.txt
+    pin() { awk -v k="$1" '$1==k {print $2; exit}' "$PIN"; }
+    [ "$(pin mlx)" = "$(tr -d '[:space:]' < MLX_VERSION)" ] && [ "$(pin mlx_c)" = "$(tr -d '[:space:]' < MLX_C_VERSION)" ] || {
+        echo "$PIN was built from MLX $(pin mlx) / MLX-C $(pin mlx_c), but this tree names $(cat MLX_VERSION) / $(cat MLX_C_VERSION): move the pin to the fork release for this base (docs/protocols/FORK-SYNC.md)" >&2
+        exit 1
+    }
+    CACHE=${XOLLAMA_MLX_RUNTIME_CACHE:-build/mlx-runtime}
+    ARCHIVE=$CACHE/$(pin sha256)-$(pin asset)
+    mkdir -p "$CACHE"
+    if [ ! -f "$ARCHIVE" ] || [ "$(shasum -a 256 "$ARCHIVE" | cut -c1-64)" != "$(pin sha256)" ]; then
+        status "Fetching the pinned MLX runtime ($(pin repo) $(pin tag))"
+        curl -fsSL --retry 5 --retry-all-errors -o "$ARCHIVE.part" "https://github.com/$(pin repo)/releases/download/$(pin tag)/$(pin asset)"
+        mv "$ARCHIVE.part" "$ARCHIVE"
+    fi
+    GOT=$(shasum -a 256 "$ARCHIVE" | cut -c1-64)
+    [ "$GOT" = "$(pin sha256)" ] || { echo "$(pin asset) is $GOT, the pin says $(pin sha256)" >&2; exit 1; }
+    DEST=dist/darwin-arm64/lib/ollama
+    mkdir -p "$DEST"
+    rm -rf "$DEST"/mlx_metal_v3 "$DEST"/mlx_metal_v4
+    tar -xzf "$ARCHIVE" -C "$DEST"
+    # AppleDouble files of upstream's packaging, not part of the runtime.
+    find "$DEST" -name '._*' -delete
+    for V in mlx_metal_v3 mlx_metal_v4; do
+        [ -f "$DEST/$V/libmlx.dylib" ] && [ -f "$DEST/$V/mlx.metallib" ] || { echo "the pinned MLX runtime has no $V" >&2; exit 1; }
+    done
+    status "MLX runtime: upstream $(pin upstream), from $(pin repo) $(pin tag)"
 }
 
 _merge_darwin_payload() {

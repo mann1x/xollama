@@ -159,6 +159,11 @@ the fork delivers all of the following, in this order:
 5. **One mail** naming the base tag, the shas that moved, the release tag, the
    build commit, the asset sha256, the inputs digest and the MLX pin rows.
 
+   xollama pins the macOS archive in `llama/runtime-pin-darwin.txt` (tag,
+   sha256, the two MLX versions) and `scripts/build_darwin.sh` unpacks it
+   instead of compiling MLX; the release workflow's `plan` refuses a pin whose
+   versions are not the tree's. It moves with the two Linux runtime pins.
+
 > **Why step 3 exists.** Upstream dropped safetensors-to-GGUF conversion in
 > `98acec40a` (2026-09-14, in v0.35.x): `ollama create` from safetensors now
 > imports an MLX model, so safetensors support is the MLX runtime, on every

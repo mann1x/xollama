@@ -47,7 +47,7 @@ Notarization uses an App Store Connect API key: `APPLE_NOTARY_KEY`,
 | 3 | Developer ID signing, engine inside the bundle under the hardened runtime | done 2026-10-03, measured |
 | 4 | the app's macOS names: login item, CLI link, state directory, stock Ollama not an instance | done 2026-10-03: confirmed at the screen (server starts after the dialog, `/usr/local/bin/xollama`, login item registered, state in `Application Support/xOllama`) |
 | 5 | notarization, staple, DMG | done 2026-10-03: app (submission `e793062d`) and DMG (`c95ba8de`) accepted and stapled; Gatekeeper says "Notarized Developer ID" for both. The Apple silicon build of `7870ebef` went through `build_darwin.sh build sign app` in one pass, notarization on (14 minutes) |
-| 6 | hosted or scripted release of the macOS assets, updater feed for macOS | open |
+| 6 | hosted or scripted release of the macOS assets, updater feed for macOS | done 2026-10-05: `macos` job in `xollama-release.yaml` (hosted `macos-26`, Xcode 26.6), signed and notarized from the repository's secrets; first dry run on PR #12 passed in 42 minutes with MLX compiled, then MLX moved to the pin `llama/runtime-pin-darwin.txt`. The CI-built app passed G11 on the Mac mini. |
 | 7 | image, video and edit models, vision, MTP on Metal | open: untested by opencoti and by us |
 
 ## Measured (2026-10-03, opencoti 2610031615001)

@@ -26,10 +26,10 @@
 # on -- changes only when one of those three pins moves. Only the Go binaries,
 # the tray app and the installers are built.
 #
-# macOS is the exception, in the `macos` job: its runtime (llama.cpp on Metal
-# and MLX) has no pinned artifact, so scripts/build_darwin.sh compiles it on
-# the runner, exactly as the Mac mini built every release before this job
-# existed. The app is signed with the Developer ID certificate and notarized
+# macOS is the one exception, in the `macos` job: llama.cpp for Metal
+# (llama-server, llama-quantize) has no pinned artifact, so
+# scripts/build_darwin.sh compiles that on the runner. MLX is not compiled:
+# it is upstream's build, pinned in llama/runtime-pin-darwin.txt. The app is signed with the Developer ID certificate and notarized
 # with the App Store Connect key held in the repository's secrets.
 #
 # No third-party actions, not even actions/checkout: git and gh are on every
@@ -236,6 +236,18 @@ jobs:
           [ "$(tr ' ' '\n' <<< "$ltags" | sort -u | grep -c .)" = 1 ] \
             || fail "the two Linux runtime pins name different fork releases ($ltags); they move together"
           out linux_runtime_tag "${ltags##* }"
+
+          # The macOS app takes MLX as upstream built it, republished by the
+          # fork (llama/runtime-pin-darwin.txt). Refuse here a pin that the
+          # macOS job would refuse forty lines into its build.
+          dpin=$(git show "$sha:llama/runtime-pin-darwin.txt") || fail "no llama/runtime-pin-darwin.txt at $sha; the macOS app has no MLX runtime"
+          dfield() { awk -v k="$1" '$1==k {print $2; exit}' <<< "$dpin"; }
+          [ "$(dfield mlx)" = "$(git show "$sha:MLX_VERSION" | tr -d '[:space:]')" ] && [ "$(dfield mlx_c)" = "$(git show "$sha:MLX_C_VERSION" | tr -d '[:space:]')" ] \
+            || fail "llama/runtime-pin-darwin.txt names another MLX or MLX-C than this commit; move it to the fork release for this base"
+          [ "$(dfield upstream)" = "v$upstream" ] || fail "llama/runtime-pin-darwin.txt is upstream $(dfield upstream)'s MLX, this release is on v$upstream"
+          gh release view "$(dfield tag)" --repo "$(dfield repo)" --json assets --jq '.assets[].name' | grep -qx "$(dfield asset)" \
+            || fail "llama/runtime-pin-darwin.txt: $(dfield repo) $(dfield tag) publishes no $(dfield asset)"
+          echo "macOS MLX runtime: $(dfield repo) $(dfield tag), upstream v$upstream's bytes"
           echo "Linux CPU runtimes: fork ${ltags##* }, amd64 and arm64 (inputs match)"
 
           # The Go toolchain: upstream's LINE, the newest PATCH. go.mod stays
@@ -768,7 +780,7 @@ jobs:
             echo "| Go | \`$GO_TOOLCHAIN\` (go.mod: \`go $GO_MOD\`, upstream's line with its newest patch release) |"
             echo "| llama.cpp | \`$llama\`: CPU runtime \`$RUNTIME_TAG\`, CUDA 13 and Vulkan backends from upstream v$UPSTREAM |"
             echo "| engine | $engine |"
-            echo "| macOS | \`xOllama.dmg\` (Apple silicon, Developer ID signed, notarized and stapled); \`xOllama-darwin.zip\` is what the app's updater takes |"
+            echo "| macOS | \`xOllama.dmg\` (Apple silicon, Developer ID signed, notarized and stapled); \`xOllama-darwin.zip\` is what the app's updater takes. MLX runtime: upstream v$UPSTREAM's, from \`mann1x/ollama $LINUX_RUNTIME_TAG\` |"
             echo "| Linux | \`xollama-linux-amd64\`, \`xollama-linux-arm64\` (glibc 2.28 and newer; the binary alone, no runtime) |"
             echo "| container image | \`mannixita/xollama:$VERSION\` and \`ghcr.io/mann1x/xollama:$VERSION\`, amd64 and arm64; CPU runtime \`mann1x/ollama $LINUX_RUNTIME_TAG\`. Built from this tag after the release is published |"
             echo "| payload id | \`$id\` |"

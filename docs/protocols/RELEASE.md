@@ -559,24 +559,34 @@ installed release passes step 7, never before. They are the fallback until then.
   `VersionInfoVersion` must be numeric. Every candidate, release and re-release on one base shows
   the same version in Add/Remove Programs. Upgrades still work. Use
   `xollama --version` to tell them apart.
-- **macOS is attached by hand.** The workflow has no macOS job: the Developer
-  ID certificate and the notary key are on the Mac mini only. Until they are
-  repository secrets, a release is not complete without two files built there
-  from the release's tree (`sh build-release.sh` with `VERSION` set, then the
-  G11 gate): `xOllama.dmg`, the download, and `xOllama-darwin.zip`, the only
-  name the app's updater takes. Check both with `spctl` and `xcrun stapler
-  validate`, upload them with `gh release upload <tag>`, then download the
-  release's `sha256sum.txt`, append `sha256sum xOllama-darwin.zip xOllama.dmg`
-  and upload it with `--clobber`: the updater refuses an asset with no
-  published checksum. Before promoting, run the update on the Mac mini from
-  the previous release's app: `open --env XOLLAMA_UPDATE_PRERELEASE=1
+- **macOS is built by the workflow** (`macos` job, hosted `macos-26`, since
+  `v0.35.1-xollama.5`): `scripts/build_darwin.sh build sign app` with the
+  Developer ID certificate and the App Store Connect notary key from the
+  repository's secrets (`MACOS_SIGNING_KEY`, `MACOS_SIGNING_KEY_PASSWORD`,
+  `APPLE_IDENTITY`, `APPLE_NOTARY_KEY`, `APPLE_NOTARY_KEY_ID`,
+  `APPLE_NOTARY_ISSUER`; set from the Mac mini with
+  `~/dev/xollama/set-ci-secrets.sh`, run at its Terminal because `gh` over
+  ssh cannot read its token there). The job checks the app, the DMG and the
+  app inside `xOllama-darwin.zip` with Gatekeeper and the stapler, and
+  `publish` puts both files in `sha256sum.txt`: the updater takes only
+  `xOllama-darwin.zip` and refuses an asset with no published checksum. MLX is
+  not compiled: it is upstream's build from `llama/runtime-pin-darwin.txt`,
+  which moves with the two Linux runtime pins on every fork sync. llama.cpp for
+  Metal is still compiled on the runner. The certificate's `.p12` must be made
+  with `/usr/bin/openssl`: Homebrew's OpenSSL 3 writes one that `security
+  import` refuses as "MAC verification failed".
+- **The Mac mini checks what the workflow built.** Download the draft's
+  `xOllama-darwin.zip` and `xOllama.dmg`, check them against `sha256sum.txt`
+  and run `ci-gate.sh` there (G11 on the unpacked app: Gatekeeper, the engine
+  on Metal, bench, speech). Before promoting, run the update from the previous
+  release's app: `open --env XOLLAMA_UPDATE_PRERELEASE=1
   /Applications/xOllama.app`, wait for `update checksum verified` and `bundle
   passed verification` in `~/Library/Logs/xOllama/app.log` (`~/.ollama/logs/app.log`
   for an app older than `v0.35.1-xollama.4`), quit it, start it with
   `--args hidden` (a normal start only offers "Restart to update") and read
-  the version. First done whole for `v0.35.1-xollama.3`; `.2` got the disk
-  image alone, after promotion, when the owner asked where the macOS download
-  was.
+  the version. Releases up to `.4` were built on the Mac mini
+  (`sh build-release.sh`) and attached by hand; that still works if the hosted
+  job cannot run.
 - **No Windows arm64, no Linux runtime archive.** On Linux
   the image is the delivery with a runtime; `xollama-linux-<arch>` is the
   binary alone. Bare Linux hosts (solidPC) are still deployed from a local

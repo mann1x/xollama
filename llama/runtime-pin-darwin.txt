@@ -1,0 +1,28 @@
+# llama/runtime-pin-darwin.txt
+#
+# The MLX runtime the macOS app ships, pinned as a published artifact instead
+# of built: read by scripts/build_darwin.sh (`_take_mlx_runtime`). It is
+# upstream's own MLX build for macOS, republished byte for byte by the fork
+# (docs/protocols/FORK-SYNC.md, step 3); xollama never compiles MLX. The Linux
+# and Windows counterparts are llama/runtime-pin-linux.txt and
+# llama/runtime-pin.txt.
+#
+#   repo          GitHub repository that publishes the archive (the fork)
+#   tag           its release carrying the asset
+#   asset         archive name: mlx_metal_v3/, mlx_metal_v4/ and licence texts
+#   sha256        of the asset, checked before it is unpacked
+#   upstream      ollama/ollama release the bytes were cut from
+#   mlx, mlx_c    upstream's MLX_VERSION and MLX_C_VERSION at that release.
+#                 They must equal this tree's, or the build refuses: the Go
+#                 side is compiled against this tree's MLX-C headers.
+#
+# llama.cpp for Metal (llama-server, llama-quantize) is NOT here: there is no
+# pinned macOS build of it, so build_darwin.sh still compiles it.
+
+repo      mann1x/ollama
+tag       v0.35.1-thinkbudget
+asset     ollama-darwin-mlx.tgz
+sha256    79bd8b877f14f0ff3e1defceee769fd1356130e3319625a41b35d9f41283b3dc
+upstream  v0.35.1
+mlx       64ea011cb65f14d9ce2737e60db9a4ae91ed7441
+mlx_c     ebc88f10caa1b625e6b581437a8dea6df8a70085
