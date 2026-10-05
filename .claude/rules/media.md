@@ -44,6 +44,13 @@ paths:
   is launched with a `--gpu` backend the engine may not have (solidPC, b117,
   2026-10-03). Another engine beside it still decides for itself. Guard:
   `TestAudioCppSpeechIsNeverPlacedOnAGPU`.
+- **A media model's device pin travels on its twin** (`mediaTwin`,
+  `server/media.go`): the scheduler runs `selectModelDevices` on the twin, and
+  a twin without `Devices` is an unpinned model, so `tweak model
+  --device-backend/--devices` was silently ignored and every media engine took
+  the GPU with the most free memory (found 2026-10-05, validating c9). Anything
+  new in `xollama.Config` that the scheduler reads must be copied there too.
+  Guard: `TestAMediaModelsDevicePinReachesTheScheduler`.
 - **A failed load reports the engine's last `tailLines` (4) lines**, joined
   with ` | ` (`tailWriter.last`), never only the last: the engine states the
   cause first and its advice last. Guard:

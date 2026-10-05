@@ -5,6 +5,24 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-05 — a media model's device pin is applied, and every media kind was run on each backend with c9.**
+> - Defect: `mediaTwin` (`server/media.go`) dropped the model's `devices`, so `tweak model --device-backend/--devices` did nothing for a media model and its engine always took the GPU with the most free memory. The twin now carries the pin and the scheduler's `selectModelDevices` applies it. Guard `TestAMediaModelsDevicePinReachesTheScheduler`. In the tree after `.4`; not in a release yet.
+> - Proven on eleven2go with a side build of the tree beside the installed `.4` runtime, server in the logged-in session, every media model pinned by `tweak model`: pinned to CUDA the engines ran on `CUDA0`; pinned to `name:AMD Radeon RX 9070 XT` on that card; with CUDA hidden and pinned to `name:NVIDIA GeForce RTX 3090` on the 3090 through Vulkan. Kokoro pinned to a GPU stayed on the CPU (`--gpu disable`), as intended.
+> - Media matrix, opencoti c9, one 512x512 picture each from flux2-klein:4b and z-image:turbo, one edit, Kokoro and OuteTTS speech transcribed back by Whisper large-v3-turbo, one Wan 2.1 1.3B clip (640x352, 33 frames):
+>
+> | backend | host | images | edit | speech | Whisper | video |
+> |---|---|---|---|---|---|---|
+> | CUDA, RTX 3090 | solidPC (Linux) | 7 s, 8 s | 5 s | pass | on `CUDA0` | 234 s |
+> | CUDA, RTX 3090 | eleven2go (Windows) | 8 s, 8 s | 4 s | pass | on `CUDA0` | 384 s wall, cold weights |
+> | Vulkan, RTX 3090 | eleven2go | 30 s, 27 s (cold) | 4 s | pass | on Vulkan | 384 s wall, 139.6 s generating |
+> | Vulkan, RX 9070 XT | eleven2go | 10 s, 19 s | 13 to 16 s | pass | on Vulkan | **engine SIGSEGV at `generate_video`, 2 of 2** |
+> | Metal, M4 | Mac mini, installed `.4` | 18 s, 25 s | 26 s | pass | on `MTL0` | 1284 s |
+> | Vulkan, Renoir integrated (RADV) | solidPC | flux2 78 s; **z-image `vk::DeviceLostError`** | 106 s | Kokoro pass; **OuteTTS audio is noise** | on Vulkan, **device lost on the first of two** | not finished when written |
+>
+> - Whisper is on the GPU on every backend (its own log line names the device). audio.cpp speech is CPU by design.
+> - macOS serves image generation, edit and video on Metal although the pin's `images_*` / `videos_*` rows name only `x86_64 win-x86_64`; opencoti asked to declare them for `macos-aarch64` (owner: the pin should list them). The pin is theirs; nothing was edited here.
+> - Left, all engine side and reported to opencoti: the 9070 XT video crash; the Renoir failures (an integrated GPU, never chosen for an unpinned model). Scripts: `/srv/ml/xc9/media/` (`media-all.sh`, `run-linux.sh`, `win-media.ps1`).
+
 > **2026-10-05 — `v0.35.1-xollama.4` is the release: published, checked on every platform and both images, promoted to latest.**
 > - PR #11, merge `37ba94ec3` (tree of `f433d0bc4`), payload id `3ac8a57c…` as `.3`, opencoti c9. `.2` + the c9 pin, the Clef routing, the macOS cache folder and the macOS log folder. Dry run first (the first dispatch on the final commit was cancelled by my own edit of the PR text while it was queued; do not touch an open release PR while a dry run waits).
 > - Draft, then the published files, eleven2go: small installer over `.3` applied (same payload), full installer, small over full, all exit 0; RTX 3090 123.5 to 123.8 tok/s, RX 9070 XT 102.9 to 103.2, integrated GPU 5.0 to 5.1; speech 4 of 4; installed server 0 failed of 34 Vulkan loads, twice more. Images, `:dev` of the tree and then the tag: amd64 85.6 to 86.0 tok/s on opencoti, speech 4 of 4, both decision models, no crash line; Pi 9.8 to 10.0 tok/s, speech 3 of 3. opencoti kept off eleven2go meanwhile (#810) and was told when it was free (#811).

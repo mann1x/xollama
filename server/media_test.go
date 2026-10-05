@@ -253,3 +253,36 @@ func TestAMissingMediaBlobIsRefusedByName(t *testing.T) {
 	}
 	r.Close()
 }
+
+// A media model pinned to a device is loaded there, and only there: the twin
+// the scheduler sees carries the pin, and the pin selects as for any model.
+func TestAMediaModelsDevicePinReachesTheScheduler(t *testing.T) {
+	m := &Model{Name: "m", ShortName: "m", Digest: "d", Xollama: &xollama.Config{
+		Version: 7,
+		Media:   &xollama.Media{Image: &xollama.ImageMedia{Model: "sha256:aa"}},
+		Devices: &xollama.Devices{Backend: "Vulkan", IDs: []string{"0000:03:00.0"}},
+	}}
+	twin := mediaTwin(m)
+	if twin.Xollama.Devices.IsZero() {
+		t.Fatal("the media twin lost the model's device pin")
+	}
+	gpus := []ml.DeviceInfo{
+		{DeviceID: ml.DeviceID{ID: "0", Library: "CUDA"}, PCIID: "0000:01:00.0", FreeMemory: 24 << 30},
+		{DeviceID: ml.DeviceID{ID: "0", Library: "Vulkan"}, PCIID: "0000:01:00.0", FreeMemory: 24 << 30},
+		{DeviceID: ml.DeviceID{ID: "1", Library: "Vulkan"}, PCIID: "0000:03:00.0", FreeMemory: 16 << 30},
+	}
+	got, err := selectModelDevices(twin.Xollama, gpus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].PCIID != "0000:03:00.0" || got[0].Library != "Vulkan" {
+		t.Fatalf("pinned to the Vulkan card at 03:00.0, the scheduler was offered %+v", got)
+	}
+
+	// Unpinned, nothing changes: every GPU is offered and the engine takes
+	// the one with the most free memory.
+	m.Xollama.Devices = nil
+	if got, _ := selectModelDevices(mediaTwin(m).Xollama, gpus); len(got) != len(gpus) {
+		t.Fatalf("an unpinned media model was offered %d of %d GPUs", len(got), len(gpus))
+	}
+}

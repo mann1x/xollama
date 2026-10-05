@@ -175,6 +175,20 @@ or a request has waited 10 minutes, the answer is `503` with `Retry-After`.
 The engines run in an opencoti process of their own, started by the first media
 request and unloaded after the model's keep-alive like any other model.
 
+## Which GPU runs it
+
+A media model goes to the GPU with the most free memory among those the server
+may use. To choose, pin the model like any other:
+
+```sh
+xollama tweak model mannix/flux2-klein:4b --device-backend=vulkan --devices="name:AMD Radeon RX 9070 XT"
+xollama tweak model mannix/whisper:large-v3-turbo --device-backend=cuda
+```
+
+A pinned device that is not there refuses the request, as it does for a chat
+model. Transcription, image and video engines run on the GPU; audio.cpp speech
+(Kokoro, Supertonic, KittenTTS) always runs on the CPU, whatever the pin says.
+
 ## Audio formats
 
 xollama never re-encodes audio. With no `response_format` the engine's default
