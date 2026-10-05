@@ -576,8 +576,25 @@ jobs:
           fi
           xcrun --find metal
           cmake --version | head -1
-          go version
           node --version
+
+      # The hosted image has no go on its PATH, and this workflow uses no
+      # setup action: the planned toolchain itself, checked against go.dev's
+      # own digest, the same release the other platforms build with.
+      - name: install the planned Go toolchain
+        run: |
+          set -euo pipefail
+          f="$GOTOOLCHAIN.darwin-arm64.tar.gz"
+          want=$(curl -fsSL --retry 3 'https://go.dev/dl/?mode=json&include=all' \
+            | jq -r --arg f "$f" '.[].files[] | select(.filename == $f) | .sha256' | head -1)
+          [ -n "$want" ] || { echo "::error::go.dev lists no $f"; exit 1; }
+          curl -fsSL --retry 3 "https://go.dev/dl/$f" -o "$RUNNER_TEMP/$f"
+          got=$(shasum -a 256 "$RUNNER_TEMP/$f" | cut -c1-64)
+          [ "$got" = "$want" ] || { echo "::error::$f is $got, go.dev says $want"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/goroot" && tar -C "$RUNNER_TEMP/goroot" -xzf "$RUNNER_TEMP/$f"
+          rm -f "$RUNNER_TEMP/$f"
+          echo "$RUNNER_TEMP/goroot/go/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/goroot/go/bin/go" version
 
       # A keychain of this run's own, under a password made here, first on the
       # search list so codesign finds the identity. The .p12 is removed as soon
