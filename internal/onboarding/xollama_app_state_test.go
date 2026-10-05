@@ -22,7 +22,13 @@ var stockAppState = regexp.MustCompile(`(?i)` +
 	// The tray window's class is how the app finds a running instance
 	// (FindWindowW): a stock app's "OllamaClass" window made xOllama, started
 	// at logon after it, focus the stock app and exit (eleven2go, 2026-09-28).
-	`|"OllamaClass"`)
+	`|"OllamaClass"` +
+	// macOS: the app's, the server's and the upgrade log were ~/.ollama/logs,
+	// the files a stock Ollama app writes and rotates at every start, and the
+	// updater staged in ~/Library/Caches/ollama, where each app deleted the
+	// other's downloaded update (2026-10-05).
+	`|"\.ollama"\s*,\s*"logs"` +
+	`|cacheDir\s*,\s*"ollama"`)
 
 // The paths live in Windows-only files that this platform does not compile, so
 // the guard reads the source. It covers every non-test Go file under app/ and
@@ -72,6 +78,8 @@ func TestTheStockAppStatePatternMatchesWhatItGuardsAgainst(t *testing.T) {
 		`appPath = filepath.Join(os.Getenv("LOCALAPPDATA"), "Programs", "Ollama")`,
 		`startupShortcut = filepath.Join(os.Getenv("APPDATA"), "Microsoft", "Windows", "Start Menu", "Programs", "Startup", "Ollama.lnk")`,
 		`shortcutOrigin := filepath.Join(appPath, "lib", "Ollama.lnk")`,
+		`appLogPath = filepath.Join(os.Getenv("HOME"), ".ollama", "logs", "app.log")`,
+		`appDataDir := filepath.Join(cacheDir, "ollama")`,
 	} {
 		if !stockAppState.MatchString(line) {
 			t.Errorf("pattern misses %s", line)
