@@ -5,6 +5,13 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-05 — `v0.35.1-xollama.2` is the first release: published, checked on every platform and both images, promoted to latest. One known bug shipped by the owner's decision.**
+> - PR #9, merge `fbf40c889`, payload id `9702e4d6…`, opencoti c8. Dry run first (a draft from the open PR; its first Windows job died on a Hugging Face download, "Stream error in the HTTP/2 framing layer", and passed on a rerun): the new CI step ran `xOllamaSetup.exe` and then `xOllamaUpdate.exe` on the runner, both exit 0, and the draft's small installer took eleven2go from `.1` to `.2` in 4 s.
+> - Checks on the published `.2`: artifact (six checksums, version, amd64 and arm64 on Docker Hub and GHCR); eleven2go: small installer over `.1`, full installer, small installer over it, all exit 0; RTX 3090 123.2 to 123.5 tok/s, RX 9070 XT 102.9 to 103.2, integrated GPU 5.2, speech 4 of 4; amd64 image 85.3 to 85.7 tok/s on opencoti and 85.8 to 86.2 on llama.cpp, speech 4 of 4; Pi 5 image 9.9 to 10.0 and 10.9 to 11.0, speech 3 of 3; Mac mini signed build 128.6 to 128.9 and 31.9 to 32.0, speech 7 of 7 answered.
+> - Promoted with `gh release edit v0.35.1-xollama.2 --prerelease=false --latest`; the Discord announcement ran; `docker-release.yaml` rerun on the tag to move `:latest`.
+> - **Known bug** (owner, 2026-10-05: "we promote anyway and record it as known bug"; "the fix for vulkan probe will go in c9"): on the installed Windows server a Vulkan engine start fails now and then, "Vulkan is not usable on this system", 5 of about 33 starts on eleven2go; a retry works. Never on a side server over ssh (0 of 32 on c8, 0 of 32 on the previous engine). In the release notes, in `docs/protocols/VALIDATION.md` (G9) and under Known gaps. opencoti's patch 0560 retries the probe and prints the reason; it ships in c9.
+> - Left: pin c9 when it is published and rerun G9's Vulkan starts on the installed server; send opencoti one `--verbose` capture of a failure on c8 (asked in #798); the engine fetch in `cmake/opencoti-fetch.cmake` has no retry, so one failed download fails a release job; `v0.35.1-xollama` and `.1` are still listed as pre-releases (the owner's call whether to delete them).
+>
 > **2026-10-05 — `v0.35.1-xollama.1` published and NOT promoted either: its update installer refuses every install. A second bug behind the first; fixed, and CI now runs both installers.**
 > - `v0.35.1-xollama.1` (PR #8, merge `3d0978f4c`, all 13 hosted checks green, payload id `9702e4d6…` unchanged): artifact OK, both image architectures on Docker Hub and GHCR. The Mac mini build of this tree, signed and notarized: `qwen2.5:1.5b` 128.5 to 129.0 tok/s, `llama3` 31.7 to 31.9, speech 7 of 7 answered, no crash line. On eleven2go the full installer passed (exit 0 in 30 s, version, `PAYLOAD_ID`, 22434, devices).
 > - Its `xOllamaUpdate.exe` exits 7, "This update was built against a different inference engine than the one installed", over an install whose `PAYLOAD_ID` equals the release's `payload-id.txt`. Cause: `payloadId` in `scripts/build_windows.ps1` ends with `Write-Output "Engine payload id …"` and `return $id`; a PowerShell function returns both, `$env:PKG_PAYLOAD_ID` became the two joined by a space, and the update installer was compiled against that string. `payload-id.txt` and the installed marker were always right, because the function writes the file itself. Shown on eleven2go with a four-line script (`count=2`). Present since the update installer was added; the `{app}` runtime error had kept anyone from reaching it.
@@ -1957,6 +1964,12 @@ turns, measured on the manic benchmark on eleven2go). The engine pin is b208
 
 ## Known gaps
 
+- **Windows, Vulkan: a model load can fail with "Vulkan is not usable on this
+  system"** on the installed server (5 of about 33 engine starts on
+  eleven2go; a retry works). Shipped in `v0.35.1-xollama.2` as a known bug.
+  The engine's probe is one attempt; opencoti's patch 0560 (three attempts,
+  the reason printed) comes with c9. Details in
+  `docs/protocols/VALIDATION.md`, G9.
 - **Linux arm64** is in `:dev` (2026-10-04) and in the next release as
   `xollama-linux-arm64`. `:latest` is still an amd64-only image of the last
   release. The arm64 image's CUDA and JetPack payloads have never run on such
