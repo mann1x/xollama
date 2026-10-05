@@ -114,6 +114,19 @@ and 31.5 to 31.7 tok/s, speech 7/7 answered.
 - **Expected:** every line `PASS`, `kv-reservation refusals: 0`.
 - **Baseline:** six turns, the stream, the tool call and its result pass; 0
   refusals.
+- **Decision models:** `scripts/gates/decision.sh`, on a side server whose
+  `lib/ollama` is the fork's pinned stock runtime and whose engine is the pinned
+  opencoti. `nimble` and `clef-flash` are listed with the single capability
+  `decision`; `/v1/systemone` answers a `choice`, a `noul` with a `score`, and
+  for `clef-flash` a question about an image. Expected: every line `PASS`;
+  `nimble` loads on opencoti; a Clef model loads on stock for as long as the pin
+  has no `clef_score_v1`, and on opencoti from the pin that declares it.
+  Baseline (c9, 2026-10-05): `nimble` on opencoti "bug" 0.9793, noul 0.9989,
+  score 0.8306 (stock 0.9778, 0.9989, 0.8245); `clef-flash` on stock "bug"
+  0.8509, noul 0.9317, score 1.0620, the red image "red" 0.9855. Without the
+  routing a Clef model fails on opencoti c9 at load, "wrong number of tensors;
+  expected 549, got 427", and every call is a 500: that shipped in
+  `v0.35.1-xollama.2`.
 
 ### G5. Council
 

@@ -148,7 +148,9 @@ opencoti's granted window (`X-Context-Window`) reaches the client through the
 `llm/llama_server_score.go`); a model whose GGUF carries `decision.type` gets the
 `decision` capability (`types/model/capability.go`), and the CLEF head in
 `llama/clef/` is compiled into `llama-server` by `llama/server/CMakeLists.txt` —
-see `docs/capabilities/decision.mdx`.
+see `docs/capabilities/decision.mdx`. A Clef model (`decision.type = clef`) is served by stock
+`llama-server` while the pinned opencoti declares no `clef_score_v1` (`clefEngine`,
+`server/decision_engine.go`; `engine.HasClefHead`); `nimble` stays on opencoti.
 **Prompting**: `model/renderers/` (per-model `Render`) ↔ `model/parsers/`
 (streaming output), plus `template/`, `thinking/`, `harmony/`; a model's named
 thinking efforts are `types/model/thinking.go`.
