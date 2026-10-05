@@ -17,8 +17,9 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 > | Vulkan, RTX 3090 | eleven2go | 30 s, 27 s (cold) | 4 s | pass | on Vulkan | 384 s wall, 139.6 s generating |
 > | Vulkan, RX 9070 XT | eleven2go | 10 s, 19 s | 13 to 16 s | pass | on Vulkan | **engine SIGSEGV at `generate_video`, 2 of 2** |
 > | Metal, M4 | Mac mini, installed `.4` | 18 s, 25 s | 26 s | pass | on `MTL0` | 1284 s |
-> | Vulkan, Renoir integrated (RADV) | solidPC | flux2 78 s; **z-image `vk::DeviceLostError`** | 106 s | Kokoro pass; **OuteTTS audio is noise** | on Vulkan, **device lost on the first of two** | not finished when written |
+> | Vulkan, Renoir integrated (RADV) | solidPC | flux2 78 s; **z-image `vk::DeviceLostError`** | 106 s | Kokoro pass; **OuteTTS audio is noise** | on Vulkan, **first of two answered 502 (engine gone)** | **`vk::DeviceLostError` at `generate_video`** (a later lone run was still generating after 180 s: not deterministic) |
 >
+> - Second defect, found because the crashed clips left their clients polling: a video job whose engine exited was dropped, so the status route answered 502 and then 404, never `failed` (my Linux script polled 2400 s). `videoJob.lose` keeps the job for the keep as `failed` / `engine_exited`, content 409. Guard `TestAVideoWhoseEngineExitedIsAFailedJobNotAMissingOne` (fails with 404 without the fix); live on solidPC, engine killed by PID mid-clip: `failed` within 3 s (`/srv/ml/xc9/media/lost-check.sh`). Seen and left: `/api/ps` lists the dead engine's model until its keep-alive ends.
 > - Whisper is on the GPU on every backend (its own log line names the device). audio.cpp speech is CPU by design.
 > - macOS serves image generation, edit and video on Metal although the pin's `images_*` / `videos_*` rows name only `x86_64 win-x86_64`; opencoti asked to declare them for `macos-aarch64` (owner: the pin should list them). The pin is theirs; nothing was edited here.
 > - Left, all engine side and reported to opencoti: the 9070 XT video crash; the Renoir failures (an integrated GPU, never chosen for an unpinned model). Scripts: `/srv/ml/xc9/media/` (`media-all.sh`, `run-linux.sh`, `win-media.ps1`).

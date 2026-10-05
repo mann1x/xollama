@@ -168,6 +168,43 @@ func TestAClipNobodyFetchesLetsItsEngineGoAfterTheKeep(t *testing.T) {
 	waitDone(t, held(), "a finished clip nobody polls")
 }
 
+// An engine that dies under a clip leaves a failed job, not a 502 and then a
+// job that was never there.
+func TestAVideoWhoseEngineExitedIsAFailedJobNotAMissingOne(t *testing.T) {
+	mediaStore(t)
+	shortVideoTimes(t, 10*time.Millisecond, time.Hour, time.Hour)
+	s, e := mediaServer(t, map[string]*xollama.Media{"wan": wanMedia(t)})
+	r := videoRouter(s)
+	held := watchHolds(t)
+	_, obj := videoDo(t, r, http.MethodPost, "/v1/videos", `{"model":"wan","prompt":"x"}`)
+	id, _ := obj["id"].(string)
+	if videoJobs.get(id) == nil {
+		t.Fatalf("create = %v", obj)
+	}
+	e.exited.Store(true)
+	e.srv.CloseClientConnections()
+	e.srv.Close()
+	// Nobody polls: the watcher finds the engine gone and lets its slot go.
+	waitDone(t, held(), "after the engine exited")
+
+	w, got := videoDo(t, r, http.MethodGet, "/v1/videos/"+id, "")
+	if w.Code != http.StatusOK || got["status"] != "failed" || got["id"] != id {
+		t.Fatalf("status of a job whose engine exited = %d %v, want 200 failed", w.Code, got)
+	}
+	if er, _ := got["error"].(map[string]any); er["code"] != "engine_exited" {
+		t.Errorf("error = %v, want code engine_exited", got["error"])
+	}
+	if w, _ := videoDo(t, r, http.MethodGet, "/v1/videos/"+id+"/content", ""); w.Code != http.StatusConflict {
+		t.Errorf("content of a failed job = %d, want 409", w.Code)
+	}
+	if w, _ := videoDo(t, r, http.MethodDelete, "/v1/videos/"+id, ""); w.Code != http.StatusOK {
+		t.Errorf("delete of a failed job = %d", w.Code)
+	}
+	if videoJobs.get(id) != nil {
+		t.Error("a deleted job stayed in the table")
+	}
+}
+
 func TestAClipLargerThanTheTemplateIsRefused(t *testing.T) {
 	mediaStore(t)
 	s, e := mediaServer(t, map[string]*xollama.Media{"wan": wanMedia(t)})
