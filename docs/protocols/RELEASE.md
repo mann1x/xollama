@@ -577,7 +577,7 @@ installed release passes step 7, never before. They are the fallback until then.
   import` refuses as "MAC verification failed".
 - **The Mac mini checks what the workflow built.** Download the draft's
   `xOllama-darwin.zip` and `xOllama.dmg`, check them against `sha256sum.txt`
-  and run `ci-gate.sh` there (G11 on the unpacked app: Gatekeeper, the engine
+  put them in `~/dev/xollama/ci-app` and run `scripts/gates/mac-ci.sh` there (G11 on the unpacked app: Gatekeeper, the engine
   on Metal, bench, speech). Before promoting, run the update from the previous
   release's app: `open --env XOLLAMA_UPDATE_PRERELEASE=1
   /Applications/xOllama.app`, wait for `update checksum verified` and `bundle
