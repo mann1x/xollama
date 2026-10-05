@@ -5,6 +5,13 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-05 — `v0.35.1-xollama.4` is the release: published, checked on every platform and both images, promoted to latest.**
+> - PR #11, merge `37ba94ec3` (tree of `f433d0bc4`), payload id `3ac8a57c…` as `.3`, opencoti c9. `.2` + the c9 pin, the Clef routing, the macOS cache folder and the macOS log folder. Dry run first (the first dispatch on the final commit was cancelled by my own edit of the PR text while it was queued; do not touch an open release PR while a dry run waits).
+> - Draft, then the published files, eleven2go: small installer over `.3` applied (same payload), full installer, small over full, all exit 0; RTX 3090 123.5 to 123.8 tok/s, RX 9070 XT 102.9 to 103.2, integrated GPU 5.0 to 5.1; speech 4 of 4; installed server 0 failed of 34 Vulkan loads, twice more. Images, `:dev` of the tree and then the tag: amd64 85.6 to 86.0 tok/s on opencoti, speech 4 of 4, both decision models, no crash line; Pi 9.8 to 10.0 tok/s, speech 3 of 3. opencoti kept off eleven2go meanwhile (#810) and was told when it was free (#811).
+> - macOS: dmg `0b5b10a3…` and zip `bc61fc45…` attached, both in `sha256sum.txt`. Before the merge the built app was run from `/Applications` on the Mac mini with planted leftovers: our zip, backup and marker removed, a fake stock download kept, logs in `~/Library/Logs/xOllama`. After publication the installed `.3` app updated itself to `.4`. The old shared folder was empty afterwards, fake stock download included: that was `.3`'s own last `cleanupOldDownloads`, the bug; planted again under the published `.4`, a stock download, backup and marker all survived a restart.
+> - Promoted with `gh release edit v0.35.1-xollama.4 --prerelease=false --latest`; the Discord announcement ran; `docker-release.yaml` rerun on the tag for `:latest`. `.0`, `.1` and `.3` stay pre-releases (deleting them is the owner's call).
+> - Left: the fork's MLX runtimes and the macOS `llama-server` removal come with the release on opencoti c10 (owner, 2026-10-05), with the Clef head; CI macOS job once the six signing secrets exist; the engine fetch still has no retry.
+
 > **2026-10-05 — `v0.35.1-xollama.3` published as a pre-release, checked everywhere, and held: the macOS updater shared its staging folder with a stock Ollama. Fixed for `v0.35.1-xollama.4`.**
 > - `.3`: PR #10, merge `f881f06f8`, payload id `3ac8a57c…`, opencoti c9. Dry run first. eleven2go, draft and then the published files: the small installer over `.2` refused (exit 7, the payload differs), full installer and small one over it exit 0; RTX 3090 123.2 to 123.5 tok/s, RX 9070 XT 102.9 to 103.1, integrated GPU 5.0 to 5.2, speech 4 of 4; **installed server, 14 stale signal files in place, 0 failed of 34 alternating Vulkan loads, twice** (`.2` on c8: 5 of about 33). Sent to opencoti as #809; their op-62 is closed on it. `:dev` image of the tree: x86 85.5 tok/s on opencoti, 86 on llama.cpp, speech 4 of 4, `nimble` on opencoti and `clef-flash` on stock inside the image; Pi 10 tok/s. One line matching the crash pattern in the first x86 speech run, its text lost with the container, none in four reruns; `scripts/gates/image-x86.sh` now prints such lines.
 > - macOS, the owner's question ("why can't you attach by hand the xOllama-darwin.zip with checksum"): nothing prevented it. `xOllama.dmg` and `xOllama-darwin.zip` built on the Mac mini from `a911136ff` (same tree as the merge), signed, notarized, stapled, attached, both added to the release's `sha256sum.txt`. **The app's own update ran for the first time against a release:** the published `.2` app with `XOLLAMA_UPDATE_PRERELEASE=1` found `.3`, downloaded the zip, `update checksum verified`, `bundle passed verification`; a normal start only offers "Restart to update", a start with `--args hidden` applied it; the app then reports `0.35.1-xollama.3`, passes `spctl` and `stapler`, 128 tok/s on opencoti c9. `docs/protocols/RELEASE.md` has the steps.
@@ -1946,10 +1953,11 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
 ## Where we are
 
-`v0.34.4-xollama.2` is the latest pre-release; `v0.34.4-xollama.3` (engine
-b208) is being cut. The Agentic Council Chat is in Phase 11 (agentic tool
-turns, measured on the manic benchmark on eleven2go). The engine pin is b208
-(`2609281805001`), measured 2026-09-28.
+`v0.35.1-xollama.4` is the latest release (2026-10-05): upstream v0.35.1, the
+fork's carried patches, opencoti c9 (`2610050707001`), every platform with a
+download, macOS included and updating itself. The next release follows
+opencoti c10: the Clef head, the fork's MLX runtimes in the release, and on
+macOS no stock `llama-server`. The Agentic Council Chat is in Phase 11.
 
 ## What exists today
 
@@ -1978,20 +1986,13 @@ turns, measured on the manic benchmark on eleven2go). The engine pin is b208
 
 ## Known gaps
 
-- **Windows, Vulkan: a model load can fail with "Vulkan is not usable on this
-  system"** on the installed server (5 of about 33 engine starts on
-  eleven2go; a retry works). Shipped in `v0.35.1-xollama.2` as a known bug.
-  Cause (opencoti, mail #799): stale `C:\ProgramData\cosmo\sig\<pid>.pid`
-  files left by an elevated process make the engine's probe child crash at
-  exit when the pid is reused; delete them from an elevated shell. Fixed in
-  the engine, with c9, which `dev` pins since 2026-10-05 (0 of 34 starts
-  failed, c8 3 of 34): gone with `v0.35.1-xollama.3`. Details in
-  `docs/protocols/VALIDATION.md`, G9.
-- **Clef decision models fail in `v0.35.1-xollama.2`** wherever opencoti
-  serves (`clef`, `clef-flash`: 500 from `/v1/systemone`, the engine cannot
-  load them). Fixed on `dev` by serving them on stock `llama-server` until the
-  pinned engine has the Clef head (c10); in `.2`, set the model's engine with
-  `xollama tweak model <clef model>` to `llamacpp`. `nimble` is not affected.
+- **Clef decision models are served by stock `llama-server`**, not by
+  opencoti, until the pinned engine declares `clef_score_v1` (c10). Where no
+  stock runtime serves a host's GPU they run on what stock has there.
+- **Releases before `v0.35.1-xollama.4` have known bugs:** `.2` fails Clef
+  models and, on Windows, a Vulkan load now and then; `.3` (pre-release) is
+  the first macOS build that updates itself and stages in the folder a stock
+  Ollama uses, deleting its staged update. Update to `.4`.
 - **Linux arm64** is in `:dev` (2026-10-04) and in the next release as
   `xollama-linux-arm64`. `:latest` is still an amd64-only image of the last
   release. The arm64 image's CUDA and JetPack payloads have never run on such

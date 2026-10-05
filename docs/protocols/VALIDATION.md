@@ -260,7 +260,13 @@ GPU, the stock ollama on 11434 untouched).
   RTX 3090 on CUDA 123.2 cold, 123.2 to 123.5 tok/s warm; RX 9070 XT on Vulkan
   102.6 cold, 102.9 to 103.2 warm; integrated GPU 5.2; speech 4 of 4
   transcribed back; all three display devices `OK`; ollama on 11434 untouched.
-- **Known bug, open (owner, 2026-10-05: promote and record it):** on the
+- **Fixed in `v0.35.1-xollama.4` (opencoti c9, patch 0560):** the bug below
+  shipped in `.2`. Measured on c9 with the same 14 stale files in place,
+  34 alternating loads on the installed server (`inst-vk.ps1`, the tags
+  created by the script itself): 0 failed on the `.3` draft, on the `.3`
+  release, on the `.4` draft and on the `.4` release. Keep the run in G9: it is
+  the only one that starts the engine in the logged-in user's session.
+- **Known bug of `.2` (owner, 2026-10-05: promote and record it):** on the
   INSTALLED server (started by the tray app, Windows session 1) a Vulkan
   engine start fails now and then with "fatal error: --gpu vulkan was
   explicitly requested but Vulkan is not usable on this system", exit 256
@@ -362,6 +368,28 @@ the owner's containers up; the Mac mini, signed and notarized:
 `qwen2.5:1.5b` 128.6 to 128.9 tok/s, `llama3` 31.9 to 32.0, speech 7 of 7
 answered, no crash line. `v0.35.1-xollama` and `v0.35.1-xollama.1` stay
 pre-releases with a broken update installer (G9).
+
+`v0.35.1-xollama.4`, promoted 2026-10-05 (merge `37ba94ec3`, payload id
+`3ac8a57c…`, opencoti c9): the delta gates of a pin move and of a macOS app
+change, on the draft and again on the published files. G3 to G7 on c9 as in
+`llm/engine/pin/index.txt`; G4's decision check 7 of 7. G8/G9 on eleven2go:
+small installer over `.2` refused (exit 7), over `.3` applied, full installer
+and small one over it exit 0; RTX 3090 123.5 to 123.8 tok/s, RX 9070 XT 102.9
+to 103.2, integrated GPU 5.0 to 5.1, speech 4 of 4, Vulkan loads as above.
+G10 on the published tag: amd64 85.6 tok/s on opencoti, 85.2 to 86.3 on
+llama.cpp, speech 4 of 4, `nimble` on opencoti and `clef-flash` on stock in
+the image, no crash line; Pi 5 (48.8 °C to 76.3 °C) 9.8 to 10.0 tok/s on
+opencoti, 10.8 to 11.0 on llama.cpp, speech 3 of 3, the owner's containers up.
+G11: signed and notarized from `f433d0bc4`, `qwen2.5:1.5b` 128.6 to 128.9
+tok/s, `llama3` 31.7 to 31.9, no crash line; **and the update path, new in
+this release:** the installed `.3` app found `.4`, verified
+`xOllama-darwin.zip` against `sha256sum.txt`, applied it on a hidden start,
+passes `spctl` and `stapler`, 127 tok/s; its stage, backup and marker are in
+`~/Library/Caches/xOllama`, its logs in `~/Library/Logs/xOllama`, and a stock
+Ollama's download, backup and marker planted in `~/Library/Caches/ollama`
+survive its start (`mac-update-34.sh` on the Mac mini). `v0.35.1-xollama.3`
+stays a pre-release: it is the build that would delete a stock Ollama's staged
+update on macOS.
 
 ## Not gated
 
