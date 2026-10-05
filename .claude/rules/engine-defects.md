@@ -23,15 +23,13 @@ paths:
   `TestKnownDefectsMatchThePinnedArtifact` fails until you do — but only on the
   release channel: it skips when `pin.Channel` is not `engine.ChannelRelease`,
   because a dev pin carries different bytes and a row is inert there anyway.
-- **The live row is queued for opencoti c8, not another c7 patch** (agreed
-  2026-09-20). Build 18 of the c7 **dev** line already loads the recipe model at
-  4.25 tok/s through the same POSITION_WINDOW path (opencoti patch 0308) — a
-  reason to expect the retirement to succeed, not to skip it. When the pin moves
-  to c8, re-run the recipe — 70B q3_K_S on a 24 GiB card, `POSITION_WINDOW mode
-  ON` in the log — and only if it loads under `--kv-residency-mode auto`, drop
-  the row and the `LLAMA_ARG_KV_RESIDENCY_MODE=head` workaround together in one
-  commit, the Warning in `docs/xollama/slots.mdx` included. Append the c8 result
-  to `docs/evaluations/phase2-engine-ab.md`; never delete what it supersedes.
+- **The table is empty since 2026-10-05.** The c7 r2 row (partial-offload abort
+  under the rolling-KV POSITION_WINDOW tactic) was retired when the pin moved
+  to opencoti c8 (engine `2610042347001`): the recipe, 70B q3_K_S on a 24 GiB
+  card at 32k with `POSITION_WINDOW mode ON (--kv-residency-mode auto)` in the
+  log, loads. The result is appended to `docs/evaluations/phase2-engine-ab.md`
+  and the `LLAMA_ARG_KV_RESIDENCY_MODE=head` advice left `docs/xollama/slots.mdx`
+  in the same commit.
 - **Retire on a measurement, never on a changelog.** On 2026-09-20 the c7 row
   was retired on opencoti's word that patch 0253 fixed it; retaking the Phase 2
   overflow axis on the r2 bytes that same day reproduced the abort with

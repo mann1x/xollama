@@ -51,7 +51,18 @@ logs of the baseline run: `/srv/ml/xb140`.
 
 Baseline: **2026-10-04**, tree `4db0bcedb`, engine `2610041714001`, vulkan
 `2610041656001`, cuda `2610040656001`, media `2610040945001`, macos
-`2610041000001`.
+`2610041000001`; candidate rows from `v0.35.1-rc.1.xollama`.
+
+**On opencoti c8** (2026-10-05, engine `2610042347001`, the libraries
+unchanged; working directory `/srv/ml/xc8`), every engine gate was run again
+on the new bytes before candidate 2. G3: compat 8/8, llama3 77.3 tok/s, 4
+slots 304, and the overflow model loads, which retired the last known-defect
+row. G4: all pass, 0 refusals. G5: see its row. G6: speech 8/8, video 33/33
+on both models. G7: 34.7 tok/s, polls 200. G8: RTX 3090 123.3 to 123.5 tok/s,
+RX 9070 XT 103.2 warm and clean after the idle, engine gone 830 ms after the
+kill, integrated GPU 5.4 to 5.5, speech 4/4. G10 (engine replaced in the rc.1
+image on the Pi): 10.0 to 10.2 against 11.1, speech 5/5. G11: 125.0 to 127.9
+and 31.5 to 31.7 tok/s, speech 7/7 answered.
 
 ### G1. Repository checks
 
@@ -111,9 +122,22 @@ are in [`RELEASE.md`, "The council gate"](RELEASE.md#the-council-gate).
 Wrapper: `scripts/gates/council.sh <tag>...`, which runs
 `scripts/council-gate.py`.
 
+- **Run the PolyKV tag at least four times, each on a fresh server.** A
+  council turn depends on what the builder writes, and one pass proves little:
+  on 2026-10-05 the tag failed 4 runs of 7, on two engines, only when the
+  builder gave the planner a think level (the schema conversion of a thinking
+  member with a format was refused for room; fixed, `llm.GrammarWindow`). The
+  gate prints calls, tokens and tok/s per turn: a slow turn with many tokens
+  is the council working (40 to 60 tok/s is normal here), a slow turn with few
+  is a fault.
 - **Baseline:** `gate/council-kv3-384k` three PASS, 5 pools, 0 refusals, 8 /
   33 / 32 s; `gate/council-kv3-nopolykv` three PASS, 0 pools, 9 / 43 / 40 s;
   `omni-council-idle` three PASS through the unpooled turn, 7 / 357 / 7 s.
+  On c8 with the fix: the PolyKV tag 4 runs of 4, 5 pools and 0 refusals
+  each, convened turns of 55 to 291 s (2,400 to 14,500 tokens), second turns
+  of 8 to 197 s; the other two tags three PASS each (51 / 340 s and 198 /
+  157 s). Turn times vary with how much the council decides to do and are not
+  a criterion.
 
 ### G6. Media on Linux
 
@@ -137,7 +161,9 @@ Wrapper: `scripts/gates/council.sh <tag>...`, which runs
   (`bench.sh`), then `/api/engine?endpoint=props` and `kv` twice with the
   model loaded, then one more generation.
 - **Expected:** every layer offloaded, `props` and `kv` answer 200, the
-  generation after them works, `crash lines in the server log: 0`.
+  generation after them works. `crash lines in the server log` reads 4 on a
+  good run: they are the CUDA probes failing with the card hidden, as the
+  test intends.
 - **Baseline:** 33.5 tok/s (`qwen2.5:1.5b`), 200 on all four polls. The engine
   before (`2610040950001`) answered 502 with the engine dead (bug-3921).
 
@@ -175,7 +201,22 @@ interactive scheduled task, and the full check (version, `PAYLOAD_ID`, 22434
 and `/api/xollama`, `/api/xollama/devices`, a 512-token generation on the
 GPU, the stock ollama on 11434 untouched).
 
-- **Baseline:** to be recorded from `v0.35.1-rc.1.xollama`.
+- **Scripts:** `scripts/gates/windows-install-pre.ps1`, `windows-install.ps1`
+  and `windows-install-check.ps1` on stdin; `windows-install-measure.ps1`
+  copied to the host and run with `-File`, because it has multi-line blocks
+  and stdin runs none of them (it printed three lines and nothing else the
+  first time).
+- **Baseline** (`v0.35.1-rc.1.xollama`, 2026-10-04, AMD Software 26.9.2): the
+  installer exits 0 in 29 s; version and `PAYLOAD_ID` (`4ece3b6d…`) match the
+  release; 22434 answers `/api/xollama`; the engines directory holds engine
+  `2610041714001` with its CUDA, Vulkan and three media libraries; five
+  512-token runs each of `qwen3:8b`: RTX 3090 on CUDA (pinned by PCI ID) 123.2
+  cold, 123.4 to 123.6 tok/s warm; RX 9070 XT on Vulkan (pinned by name) 100.6
+  cold, 102.9 to 103.0 warm; integrated GPU 5.1 tok/s; 37/37 layers on each;
+  all three display devices `OK` afterwards; ollama on 11434 untouched.
+  Seen, open: at the load on the integrated GPU, right after the RX 9070 XT
+  unload, the free-memory refresh warned "context deadline exceeded" after
+  504 µs and the load went on with the old values.
 
 ### G10. The image
 
@@ -193,7 +234,13 @@ GPU, the stock ollama on 11434 untouched).
   back.
 - **Baseline:** arm64 with the engine replaced: opencoti 9.8 to 9.9 tok/s,
   llama.cpp 10.8 to 10.9 (`qwen2.5:1.5b`, interleaved), speech 5 of 5. The
-  candidate's own images: to be recorded from `v0.35.1-rc.1.xollama`.
+  candidate's images (`mannixita/xollama:0.35.1-rc.1.xollama`,
+  `scripts/gates/image-x86.sh` and `image-pi.sh` with `IMG=` set): amd64 on
+  solidPC with the RTX 3090, `llama3`, four 512-token runs: opencoti 85.6 to
+  85.9 tok/s, llama.cpp 85.6 to 86.1, speech 4 of 4 transcribed back; arm64
+  on the Pi 5: opencoti 10.1 tok/s, llama.cpp 11.0 to 11.1, speech 3 of 3;
+  `PAYLOAD` names the fork's runtime and every pinned engine file on both;
+  the owner's containers and the stock ollama on the Pi untouched.
 
 ### G11. macOS
 
@@ -217,7 +264,13 @@ GPU, the stock ollama on 11434 untouched).
 each binary names, both image architectures, the installer naming the fork's
 releases endpoint.
 
-- **Baseline:** to be recorded from `v0.35.1-rc.1.xollama`.
+- **Baseline** (`v0.35.1-rc.1.xollama`, merge commit `3284571c5`): the release
+  run's five jobs succeeded; seven assets, every `sha256sum.txt` line OK; the
+  amd64 binary on solidPC and the arm64 binary on the Pi name the version; the
+  image is `linux/amd64` and `linux/arm64` on Docker Hub and GHCR; the
+  provenance block names engine `2610041714001`. `strings` finds no releases
+  endpoint in the compressed installer (expected; the installed app is checked
+  in G9).
 
 ## Not gated
 

@@ -483,6 +483,11 @@ scripts/council-gate.py --host 127.0.0.1:22498 --timeout 600 \
     gate/council-kv3-384k gate/council-kv3-nopolykv omni-council-idle
 ```
 
+Run `gate/council-kv3-384k` at least four times, each on a fresh server
+(`scripts/gates/council.sh` starts one per tag and keeps its log): the turn
+depends on what the builder writes, and a fault that needs one particular
+choice (a think level for the planner, 2026-10-05) passes more often than not.
+
 For each tag it makes three `/api/chat` calls, not streamed: `Hello!` (the
 direct path), a tank question whose answer is 26.67 minutes (convened), and a
 follow-up in the same conversation whose answer is 30. Between tags, unload

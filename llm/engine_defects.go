@@ -60,119 +60,16 @@ type knownEngineDefect struct {
 // artifact without the defect is pinned -- it describes a specific build, not a
 // permanent property of the engine.
 var knownEngineDefects = []knownEngineDefect{
-	{
-		// The partial-offload abort, RE-INSTATED 2026-09-20 after measuring it.
-		//
-		// It was retired earlier the same day along with opencoti bug-3369, on
-		// the assumption that their patch 0253 -- the whole difference between
-		// c7 and c7 r2 -- fixed this too, because they had told us the two
-		// failures were the same bug reaching us by different paths. Retaking
-		// the Phase 2 overflow axis on the r2 bytes disproved that: with
-		// llama3.1:70b-instruct-q3_K_S on a 24 GiB card, r2 aborts in 2.7 s
-		// with byte-identical numbers to r1 (needed 118128, available 117760)
-		// while placing KV cache layers 30..53 on the CPU. Stock llama.cpp
-		// loads the same model on the same host at 56.8% resident, and r2
-		// itself serves a model that fits at 75.5 tok/s, so it is this path
-		// and not the artifact. Measurements in
-		// docs/evaluations/phase2-engine-ab.md.
-		//
-		// Narrowed the same day, after opencoti asked (logged by them as
-		// bug-3515, later found to be a duplicate of their bug-3470 -- same
-		// abort, same 118128/117760, same model; 3515 had been filed without
-		// matching the error string): the
-		// failing load logs "rolling-kv POSITION_WINDOW mode ON
-		// (--kv-residency-mode auto) -- window 256 / 32768 cells", and
-		// forcing the other tactic with LLAMA_ARG_KV_RESIDENCY_MODE=head
-		// loads the same model on the same card at 2.85 tok/s -- faster than
-		// stock llama.cpp's 2.71 on that arm. So the defect is in the
-		// POSITION_WINDOW path, not in partial offload as such, and the
-		// workaround below keeps the user on this engine rather than off it.
-		// It also explains why opencoti could not reproduce it on a roomy
-		// card: auto only picks the window under real VRAM pressure.
-		//
-		// RE-MEASURED 2026-09-23 against dev build 24 (2609230556001), when
-		// the pin moved there, and again against build 29 (2609230917001).
-		// "POSITION_WINDOW mode ON (--kv-residency-mode auto)" is in the log,
-		// so it is this path, and on both dev builds the load SUCCEEDS where
-		// the release bytes this row names abort. That binary outcome --
-		// loads / does not load -- is the whole claim, and it holds.
-		//
-		// THE RATES FIRST WRITTEN HERE WERE WRONG AND ARE WITHDRAWN. This
-		// comment said "auto 7.70 tok/s, head 5.04" and concluded the head
-		// workaround had INVERTED on the dev line. opencoti attributed both
-		// on 2026-09-23 and neither survives:
-		//   - 7.70 was derived from a TWO-token generation ("Say ok" -> "OK").
-		//     At that length the first-token and graph-warmup cost dominates;
-		//     it is not a decode rate. The b21 figure it was compared against
-		//     came from 64 tokens, so the "nearly doubled" was a comparison
-		//     between two different measurements, not two builds.
-		//   - The inversion rested on the same two-token runs.
-		//   - The recipe never ran at the context it claimed: the 32k load
-		//     fails with "failed to allocate CUDA0 buffer of size 8187281408"
-		//     and the harness silently retries at -c 4096, so the axis
-		//     measured a 62/81-layer fallback under a 32k name.
-		// Re-run on the same argv with n_predict 256 and ignore_eos on a quiet
-		// card: b21 3.54, b24 3.47, b29 3.43 tok/s, and head 3.19 against
-		// auto. Within about 3% -- no regression, no improvement, no
-		// inversion, nothing to fix engine-side.
-		//
-		// A decode rate needs at least 256 generated tokens (512 where
-		// practical) with ignore_eos, and a GPU nothing else is touching. Do
-		// not take one from a short answer again. On a model whose thinking is
-		// enabled, size n_predict and num_ctx for the full thinking block as
-		// well -- it can run to tens of thousands of tokens, and a budget
-		// sized for the answer truncates inside it.
-		//
-		// None of that is a reason to retire this row: it accuses the RELEASE
-		// bytes, and the distinction is the whole point of the sha256 half of
-		// the table -- see the retirement condition below.
-		//
-		// RETIREMENT CONDITION, agreed with the user 2026-09-20, narrowed by
-		// the build-24 measurement. This row accuses 4f4102d6... , the c7 r2
-		// RELEASE x86_64 binary that `main` pins and ships. A dev snapshot of
-		// the same cut carrying the fix says the fix exists on the dev line --
-		// which build 18 already said -- and says nothing about the bytes this
-		// row names. So the condition is not "a c8 artifact" as first written;
-		// it is a RELEASE artifact carrying opencoti patch 0308, whatever cut
-		// that turns out to be. The day the pin on `main` moves to one,
-		// RE-RUN the recipe -- 70B q3_K_S on a 24 GiB card, confirming
-		// "POSITION_WINDOW mode ON" appears in the log -- and
-		// if it loads under --kv-residency-mode auto, remove three things
-		// together in one commit:
-		//   1. this row;
-		//   2. the LLAMA_ARG_KV_RESIDENCY_MODE=head workaround wherever it is
-		//      offered, including the Warning in docs/xollama/slots.mdx;
-		//   3. the measured tables in docs/evaluations/phase2-engine-ab.md get
-		//      the c8 result appended, not deleted -- the history is the point.
-		// Do NOT remove any of it on the strength of a c8 changelog. That
-		// mistake has already been made once with this exact row; see
-		// .claude/rules/engine-defects.md.
-		//
-		// The expectation is good, though, and it is measured rather than
-		// promised: build 18 of the c7 DEV line already loads the same model
-		// on the same card, through the same POSITION_WINDOW tactic, where
-		// the release bytes abort outright. It is the LOAD that carries the
-		// claim, not a rate -- see the withdrawn figures above. So patch 0308
-		// is the fix and the next release should carry it. That is a reason to
-		// expect the retirement to succeed -- not a reason to skip re-running
-		// it against the release bytes that actually ship.
-		//
-		// So they are two defects, not one. bug-3369's own signature is gone
-		// from r2 and is deliberately NOT listed below -- accusing bytes of a
-		// fault nobody has shown they still have is exactly what the sha256
-		// half of this table exists to prevent.
-		SHA256: []string{"4f4102d6d8dd39bf794dee4f4d9000120766fd1fccc42090feff2e710a48104e"},
-		Signatures: []string{
-			"ggml_new_object: not enough space in the context's memory pool",
-		},
-		Summary: "this build of the opencoti engine (0.10.5-c7 r2) aborts while placing KV cache layers on the CPU, under the rolling-KV POSITION_WINDOW residency tactic that --kv-residency-mode auto selects when a model is too large for VRAM",
-		Workaround: "set LLAMA_ARG_KV_RESIDENCY_MODE=head, which forces the other residency " +
-			"tactic and is measured to load the same model on the same card. Failing that, keep " +
-			"the load resident -- a smaller model or quantisation, a lower num_ctx, or a " +
-			"compressed cache with OLLAMA_KV_CACHE_TYPE=q8_0 (or XOLLAMA_K_CACHE_TYPE / " +
-			"XOLLAMA_V_CACHE_TYPE per half). Stock llama.cpp serves it too, with " +
-			"XOLLAMA_ENGINE=llamacpp",
-	},
+	// Empty since 2026-10-05, on a measurement. The one row here named the
+	// bytes of opencoti c7 r2 (sha256 4f4102d6...): a model too large for
+	// VRAM aborted with "ggml_new_object: not enough space in the context's
+	// memory pool" under the rolling-KV POSITION_WINDOW tactic that
+	// --kv-residency-mode auto selects. Re-run on the c8 release bytes
+	// (engine 2610042347001) with the same recipe, llama3.1:70b q3_K_S on a
+	// 24 GiB RTX 3090 at 32768: "POSITION_WINDOW mode ON (--kv-residency-mode
+	// auto)" in the log, 62/81 layers offloaded, the load succeeds and
+	// generates (docs/evaluations/phase2-engine-ab.md). A row comes back only
+	// for bytes that are pinned and measured to fail.
 }
 
 // describeEngineDefect returns an explanation when a failure matches a known

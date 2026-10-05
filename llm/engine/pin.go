@@ -62,7 +62,9 @@ type Pin struct {
 	Repo string
 	Rev  string
 	// Tag is the engine's file name, which names its cut and build
-	// (opencoti-0.10.5-c7-2610040837001). Version is the build id alone.
+	// (opencoti-0.10.5-c7-2610040837001 on the dev channel,
+	// opencoti-llamafile-0.10.5-c8-bare.llamafile on a release). Version is
+	// the build id alone.
 	Tag     string
 	Version string
 	// Channel is release or dev, from the index. It is declared rather than

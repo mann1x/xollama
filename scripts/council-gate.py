@@ -47,6 +47,21 @@ def chat(host, model, messages, timeout):
     return status, data, time.time() - start
 
 
+def spent(d):
+    """The roles of a turn and what they cost: calls, generated tokens, and the
+    rate over the time spent generating. A slow turn with many calls is the
+    council working; a slow turn with few is the engine."""
+    usage = d.get("council_usage") or []
+    if isinstance(usage, dict):
+        usage = usage.get("roles", [])
+    usage = [r for r in usage if isinstance(r, dict)]
+    calls = sum(r.get("calls", 0) for r in usage)
+    tokens = sum(r.get("eval_tokens", 0) for r in usage)
+    seconds = sum(r.get("eval_duration", 0) for r in usage) / 1e9
+    rate = f"{tokens / seconds:.0f} tok/s" if seconds > 0 else "no rate"
+    return {r.get("role") for r in usage}, f"calls={calls} tokens={tokens} {rate}"
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--host", default="127.0.0.1:22434")
@@ -69,13 +84,10 @@ def main():
 
         status, d, took = chat(args.host, model, [{"role": "user", "content": QUESTION}], args.timeout)
         text = d.get("message", {}).get("content", "")
-        usage = d.get("council_usage") or []
-        if isinstance(usage, dict):
-            usage = usage.get("roles", [])
-        roles = {r.get("role") for r in usage if isinstance(r, dict)}
+        roles, work = spent(d)
         line(f"{model} convened",
              status == 200 and d.get("done") is True and not d.get("error") and ANSWER in text and ROLES <= roles,
-             f"http {status} {took:.0f}s roles={sorted(r for r in roles if r)} answer has {ANSWER!r}: {ANSWER in text} {text[-90:]!r} {d.get('error', '')}")
+             f"http {status} {took:.0f}s {work} roles={sorted(r for r in roles if r)} answer has {ANSWER!r}: {ANSWER in text} {text[-90:]!r} {d.get('error', '')}")
         if status != 200 or not d.get("message"):
             continue
 
@@ -84,7 +96,7 @@ def main():
         text = d.get("message", {}).get("content", "")
         line(f"{model} second turn",
              status == 200 and d.get("done") is True and not d.get("error") and FOLLOW_UP_ANSWER in text,
-             f"http {status} {took:.0f}s answer has {FOLLOW_UP_ANSWER!r}: {FOLLOW_UP_ANSWER in text} {text[-90:]!r} {d.get('error', '')}")
+             f"http {status} {took:.0f}s {spent(d)[1]} answer has {FOLLOW_UP_ANSWER!r}: {FOLLOW_UP_ANSWER in text} {text[-90:]!r} {d.get('error', '')}")
 
     print("COUNCIL-GATE-PASS" if passed else "COUNCIL-GATE-FAIL")
     return 0 if passed else 1

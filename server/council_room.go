@@ -6,7 +6,22 @@ package server
 import (
 	"context"
 	"log/slog"
+
+	"github.com/ollama/ollama/internal/council"
+	"github.com/ollama/ollama/llm"
 )
+
+// grammarRoom makes room for the schema conversion of a thinking member with
+// a format on the council's own model: the engine converts the schema in a
+// window of its own before the member's call, once per process, and with the
+// owners holding the pool it was refused and the turn failed
+// (llm.GrammarWindow). A schema already converted asks the engine nothing.
+func (cm *councilMembers) grammarRoom(ctx context.Context, r council.Request) {
+	if len(r.Format) == 0 || r.Model != "" || r.Host != "" || llm.SchemaGrammarKnown(r.Format) {
+		return
+	}
+	cm.tree.roomFor(ctx, llm.GrammarWindow)
+}
 
 // roomFor makes room for a member booked on a session of its own beside the
 // owner (the builder, a reviewer): need is its window. The owner books the

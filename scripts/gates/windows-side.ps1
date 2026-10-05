@@ -1,5 +1,5 @@
-$i = "$env:LOCALAPPDATA\Programs\xOllama"; $x = "$i\xollama-xo20.exe"; $d = "$env:USERPROFILE\xollama-b140"; $u = 'http://127.0.0.1:22498'; $log = "$d\serve-w140.log"
-$eng = "$d\engines\opencoti-0.10.5-c7-2610041714001.exe"
+$i = "$env:LOCALAPPDATA\Programs\xOllama"; $x = "$i\xollama-c8.exe"; $d = "$env:USERPROFILE\xollama-c8"; $u = 'http://127.0.0.1:22498'; $log = "$d\serve-w140.log"
+$eng = "$d\engines\opencoti-llamafile-0.10.5-c8-win-x86_64.llamafile.exe"
 function Card { (Get-PnpDevice -Class Display -PresentOnly | Where-Object FriendlyName -match '9070').Status }
 function Dumps { @(Get-ChildItem C:\Windows\LiveKernelReports -Recurse -File -Filter *.dmp -ErrorAction SilentlyContinue).Count }
 $d0 = Dumps
@@ -14,7 +14,7 @@ Remove-Item $log, "$log.err" -ErrorAction SilentlyContinue
 $p = Start-Process -FilePath $x -ArgumentList 'serve' -WindowStyle Hidden -RedirectStandardOutput $log -RedirectStandardError "$log.err" -PassThru
 $ok = $false; for ($n = 0; $n -lt 60 -and -not $ok; $n++) { Start-Sleep 1; try { [void](Invoke-RestMethod "$u/api/version" -TimeoutSec 2); $ok = $true } catch {} }
 (Invoke-RestMethod "$u/api/xollama/devices" -TimeoutSec 60).devices | ForEach-Object { "  device {0} #{1} pci='{2}' {3} -> {4}" -f $_.backend, $_.id, $_.pci_id, $_.description, $_.engine }
-& $x cp qwen3:8b rc1/qwen3-igpu 2>&1 | Out-Null
+& $x cp qwen3:8b rc1/qwen3-igpu 2>&1 | Out-Null; & $x cp qwen3:8b rc1/qwen3-vk9070 2>&1 | Out-Null
 & $x tweak model rc1/qwen3-igpu '--device-backend=Vulkan' '--devices=integrated' 2>&1 | Select-Object -Last 1
 & $x tweak model rc1/qwen3-vk9070 '--device-backend=Vulkan' '--devices=name:AMD Radeon RX 9070 XT' 2>&1 | Select-Object -Last 1
 function Gen($tag, $n, $seed) { $b = @{ model = $tag; prompt = 'Write a detailed 1500-word essay on the history of the steam engine, from Newcomen to the end of the age of steam. Do not stop early.'; stream = $false; think = $false; options = @{ num_predict = $n; seed = $seed } } | ConvertTo-Json -Depth 5
