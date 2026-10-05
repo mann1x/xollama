@@ -12,8 +12,12 @@ ok=0; for i in $(seq 60); do curl -s --max-time 2 $H/api/version >/dev/null && {
 curl -s $H/api/xollama; echo; curl -s $H/api/version; echo
 docker exec $N sh -c 'cat /usr/lib/ollama/PAYLOAD' | cut -c1-150
 gen() { curl -s $H/api/generate -d "{\"model\":\"$1\",\"prompt\":\"Write a long, detailed essay about the history of the steam engine.\",\"stream\":false,\"options\":{\"num_predict\":512,\"seed\":7,\"temperature\":0}}" | python3 -c 'import sys,json; d=json.load(sys.stdin); print("  %s tokens=%d %.1f tok/s" % (sys.argv[1], d.get("eval_count",0), d.get("eval_count",0)/max(d.get("eval_duration",1),1)*1e9) if "eval_count" in d else (sys.argv[1], d))' "$1"; }
+# The Pi throttles when hot, on both engines alike: note the temperature, and
+# rerun after it has cooled if the rates fall from one pair to the next.
+echo "  before: $(vcgencmd measure_temp 2>/dev/null) $(vcgencmd get_throttled 2>/dev/null)"
 gen pi/q15-oc >/dev/null; gen pi/q15-lcpp >/dev/null
 for r in 1 2 3; do gen pi/q15-oc; gen pi/q15-lcpp; done
+echo "  after: $(vcgencmd measure_temp 2>/dev/null) $(vcgencmd get_throttled 2>/dev/null)"
 docker logs $N 2>&1 | grep -E "using opencoti|using stock|falling back" | cut -c1-160 | sed 's/time=[^ ]* //' | sort | uniq -c | tail -4
 tags=$(curl -s $H/api/tags | python3 -c 'import sys,json; print("\n".join(m["name"] for m in json.load(sys.stdin)["models"]))')
 W=$(echo "$tags" | grep -i whisper | head -1)

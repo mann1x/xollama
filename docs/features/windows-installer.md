@@ -197,8 +197,10 @@ back to the full installer**: no core asset for this platform, no marker on
 disk, no `payload-id.txt` in the release, a marker that is not a bare sha256, or
 a mismatch. Not knowing costs bytes; it never costs correctness.
 
-The update-only installer checks the same thing again in `InitializeSetup` and
-refuses with a message naming `xOllamaSetup.exe` — because it can also be run by
+The update-only installer checks the same thing again in `PrepareToInstall`
+(`PayloadRefusal`; `{app}` does not exist in `InitializeSetup`, and asking there
+ended every run of the v0.35.1-xollama update with a runtime error) and
+refuses, before it stops anything, with a message naming `xOllamaSetup.exe` — because it can also be run by
 hand, and an install with executables but no engine is worse than no install. It
 also must never appear in `[InstallDelete]`'s sweep of `{app}\lib\ollama`,
 which is why that entry is `#ifndef CORE`.

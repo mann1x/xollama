@@ -247,6 +247,13 @@ workflow's **check** job only. It validates the title, the version order, the
 tag, the non-empty body and the upstream GPU source, and it builds nothing.
 Fix whatever it reports before going further.
 
+The release made from a candidate has nothing to merge: `dev` is already the
+candidate's tree, and GitHub opens no pull request between two equal branches.
+Give `dev` an empty commit (`git commit --allow-empty -m "RELEASE: cut
+v<upstream>-xollama from the tree of v<upstream>-rc.<k>.xollama"`), check that
+`git rev-parse HEAD^{tree}` still equals the candidate tag's tree, and open the
+PR from that. The workflow prints `tree matches` when it agrees.
+
 The inherited `test.yaml` also runs on the PR. Its native legs target upstream's
 self-hosted `linux`/`windows` runners, which this repository does not have, so
 they stay queued. They are not required checks, so cancel them. The hosted legs
@@ -388,6 +395,14 @@ not enough.
   models need a generous `num_ctx`/`num_predict`.
 - Anything else on the host is untouched (see below). On eleven2go that means
   the think-budget ollama still answers on **11434**.
+- **The small installer of the same release runs over that install**
+  (`scripts/gates/windows-update.ps1`, copied to the host and run with `-File`):
+  `xOllamaUpdate.exe /SILENT /SUPPRESSMSGBOXES /NORESTART` exits 0, the version
+  is unchanged and the server is back on 22434. The payload id is the
+  install's own, so it must be accepted. This is the only place a candidate
+  runs the file every later update is delivered by: `v0.35.1-xollama` shipped
+  one that ended in a runtime error on every machine, behind two candidates
+  that had only ever been installed with `xOllamaSetup.exe`.
 
 The image on dietpi5 (candidates and re-releases; the release made from a
 candidate needs only the first two):
