@@ -225,6 +225,20 @@ GPU, the stock ollama on 11434 untouched).
   with a wrong payload id exits 7 and the server keeps its pid; the fixed one
   exits 0 in 4 s and `xollama --version` goes from `0.35.1-rc.2.xollama` to
   `0.35.1-xollama`, a new server on 22434.
+- **Failed again, `v0.35.1-xollama.1`, 2026-10-05:** the full installer
+  passed (exit 0 in 30 s, version, `PAYLOAD_ID` `9702e4d6…`, 22434), and the
+  small one no longer crashed but refused: exit 7, "built against a different
+  inference engine", over the older install and over its own full install.
+  `payloadId` in `scripts/build_windows.ps1` wrote its progress line with
+  `Write-Output`, so it returned that line and the id, and the update
+  installer was compiled against the two joined by a space. Not promoted.
+  Fixed (`Write-Host`, and `requirePayloadId` stops a build whose id is not a
+  bare sha256). The first bug had hidden this one.
+- **In CI since then:** the release workflow's Windows job runs
+  `xOllamaSetup.exe` and then `xOllamaUpdate.exe` on the runner before
+  anything is attached (step "the installers install"): both must exit 0, the
+  installed `PAYLOAD_ID` must equal `payload-id.txt` and the version must be
+  the release's. G9 on eleven2go still runs both; CI is the earlier net.
 - **Baseline** (`v0.35.1-rc.1.xollama`, 2026-10-04, AMD Software 26.9.2): the
   installer exits 0 in 29 s; version and `PAYLOAD_ID` (`4ece3b6d…`) match the
   release; 22434 answers `/api/xollama`; the engines directory holds engine

@@ -197,6 +197,13 @@ back to the full installer**: no core asset for this platform, no marker on
 disk, no `payload-id.txt` in the release, a marker that is not a bare sha256, or
 a mismatch. Not knowing costs bytes; it never costs correctness.
 
+`payloadId` reports its progress with `Write-Host`: a PowerShell function
+returns everything it writes to the output stream, and with `Write-Output` the
+update installer of v0.35.1-xollama.1 was compiled against the progress line
+and the id together, so it refused every install. `requirePayloadId` now stops
+a build whose id is not a bare sha256, and the release workflow runs both
+installers on the runner (step "the installers install") before attaching them.
+
 The update-only installer checks the same thing again in `PrepareToInstall`
 (`PayloadRefusal`; `{app}` does not exist in `InitializeSetup`, and asking there
 ended every run of the v0.35.1-xollama update with a runtime error) and

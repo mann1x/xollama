@@ -440,6 +440,37 @@ jobs:
           }
           Get-ChildItem dist -File | ForEach-Object { "{0}  {1:N1} MB" -f $_.Name, ($_.Length/1MB) }
 
+      # Both installers are RUN here, before anything is attached: the full
+      # one, then the update-only one over it, which must accept the payload
+      # the first laid down. v0.35.1-xollama shipped an update installer that
+      # ended in a runtime error and v0.35.1-xollama.1 one that refused every
+      # install; no step had ever started the file.
+      - name: the installers install
+        shell: pwsh
+        working-directory: repo
+        run: |
+          $inst = "$env:LOCALAPPDATA\Programs\xOllama"
+          function runInstaller($exe, $name) {
+            $log = "$env:RUNNER_TEMP\$name.log"
+            $p = Start-Process -FilePath $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=`"$log`"" -PassThru
+            $null = $p.Handle
+            if (-not $p.WaitForExit(900000)) { $p.Kill(); throw "$name did not finish in 15 minutes" }
+            if (Test-Path $log) { Get-Content $log -Tail 12 }
+            if ($p.ExitCode -ne 0) { throw "$name exited $($p.ExitCode)" }
+            "$name exited 0"
+          }
+          runInstaller (Resolve-Path dist\xOllamaSetup.exe).Path 'xOllamaSetup'
+          $want = (Get-Content dist\payload-id.txt -Raw).Trim()
+          $got = (Get-Content "$inst\lib\ollama\PAYLOAD_ID" -Raw).Trim()
+          if ($got -cne $want) { throw "installed PAYLOAD_ID [$got] is not payload-id.txt [$want]" }
+          $v = (& "$inst\xollama.exe" --version 2>&1 | Out-String)
+          if ($v -notmatch [regex]::Escape($env:VERSION)) { throw "installed xollama says [$v], not $env:VERSION" }
+          runInstaller (Resolve-Path dist\xOllamaUpdate.exe).Path 'xOllamaUpdate'
+          $v = (& "$inst\xollama.exe" --version 2>&1 | Out-String)
+          if ($v -notmatch [regex]::Escape($env:VERSION)) { throw "after the update xollama says [$v], not $env:VERSION" }
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$inst\xollama-stop.ps1" -App $inst
+          "both installers ran; payload id $got"
+
       - name: attach to the draft
         working-directory: repo
         run: |

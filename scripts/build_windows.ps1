@@ -1070,7 +1070,12 @@ function payloadId {
     $id = ($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($joined)) | ForEach-Object { $_.ToString("x2") }) -join ""
     $out = "${script:SRC_DIR}\dist\payload-id.txt"
     [System.IO.File]::WriteAllText($out, $id)
-    Write-Output "Engine payload id $id over $($lines.Count) files -> $out"
+    # Write-Host, never Write-Output: everything a function writes to the output
+    # stream is part of what it returns, so the caller got this line AND the id,
+    # and the update installer was built against the two joined by a space. It
+    # then refused every install as "a different inference engine"
+    # (v0.35.1-xollama.1, 2026-10-05).
+    Write-Host "Engine payload id $id over $($lines.Count) files -> $out"
     return $id
 }
 
@@ -1090,9 +1095,20 @@ function runISCC($defines) {
     if ($LASTEXITCODE -ne 0) { exit($LASTEXITCODE)}
 }
 
+# requirePayloadId stops a build whose payload id is not a bare sha256: both
+# installers are compiled against it, and the update-only one compares it to
+# the installed lib\ollama\PAYLOAD_ID byte for byte.
+function requirePayloadId {
+    if ("$($script:PKG_PAYLOAD_ID)" -cnotmatch '^[0-9a-f]{64}$') {
+        Write-Output "ERROR: the payload id is not a bare sha256: [$($script:PKG_PAYLOAD_ID)]"
+        exit 1
+    }
+}
+
 function installer {
     Write-Output "Building xOllama Installer"
     $script:PKG_PAYLOAD_ID = payloadId
+    requirePayloadId
     runISCC @()
 }
 
@@ -1105,6 +1121,7 @@ function installerUpdate {
         Write-Output "ERROR: run the installer step first; the update installer is built against its payload id"
         exit 1
     }
+    requirePayloadId
     Write-Output "Building xOllama update-only Installer"
     runISCC @("/DCORE=1")
 }
