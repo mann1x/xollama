@@ -422,6 +422,7 @@ func (s *Scheduler) processCompleted(ctx context.Context) {
 			runner.refMu.Lock()
 			runner.refCount--
 			if runner.refCount <= 0 {
+				mediaEngineGone(runner) // xollama-hook: media — a media engine that exited is unloaded now, not after its keep-alive
 				if runner.sessionDuration <= 0 {
 					slog.Debug("runner with zero duration has gone idle, expiring to unload", "runner", runner)
 					if runner.expireTimer != nil {

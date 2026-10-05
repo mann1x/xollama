@@ -59,6 +59,13 @@ paths:
   engine crashes on the RX 9070 XT and the Renoir iGPU, 2026-10-05). Guard:
   `TestAVideoWhoseEngineExitedIsAFailedJobNotAMissingOne`; live:
   `/srv/ml/xc9/media/lost-check.sh`.
+- **A media engine that exited is unloaded as its last request ends**
+  (`mediaEngineGone`, `server/media_gone.go`, one hook line in
+  `processCompleted`): left to its keep-alive it stayed in `/api/ps` as loaded
+  and its memory stayed booked. Media keys only, by design: a text runner that
+  exited is upstream's to find on the next request, and widening this would
+  change stock llama.cpp. Guard: `TestAMediaEngineThatExitedIsUnloadedAtOnce`
+  (both halves: the media key goes, the text key stays).
 - **A failed load reports the engine's last `tailLines` (4) lines**, joined
   with ` | ` (`tailWriter.last`), never only the last: the engine states the
   cause first and its advice last. Guard:

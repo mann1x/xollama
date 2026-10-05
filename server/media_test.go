@@ -286,3 +286,50 @@ func TestAMediaModelsDevicePinReachesTheScheduler(t *testing.T) {
 		t.Fatalf("an unpinned media model was offered %d of %d GPUs", len(got), len(gpus))
 	}
 }
+
+// exitedLlm is a runner whose process is gone.
+type exitedLlm struct{ mockLlm }
+
+func (*exitedLlm) HasExited() bool { return true }
+
+// A media engine that exited is unloaded as its last request ends: it is not
+// listed as loaded for the rest of its keep-alive. A text runner is left to
+// upstream's own handling.
+func TestAMediaEngineThatExitedIsUnloadedAtOnce(t *testing.T) {
+	for _, tc := range []struct {
+		key  string
+		gone bool
+	}{
+		{mediaKeyPrefix + "abc", true},
+		{"/models/blobs/sha256-text", false},
+	} {
+		s := &Scheduler{
+			pendingReqCh:    make(chan *LlmRequest, 1),
+			finishedReqCh:   make(chan *LlmRequest, 1),
+			expiredCh:       make(chan *runnerRef, 1),
+			unloadedCh:      make(chan any, 1),
+			loaded:          make(map[string]*runnerRef),
+			getGpuFn:        getGpuFn,
+			getSystemInfoFn: getSystemInfoFn,
+			waitForRecovery: 10 * time.Millisecond,
+		}
+		m := &Model{ModelPath: tc.key}
+		key := schedulerModelKey(m)
+		s.loaded[key] = &runnerRef{
+			modelKey: key, modelPath: tc.key, refCount: 1, sessionDuration: time.Hour,
+			llama: &exitedLlm{mockLlm{modelPath: tc.key}},
+		}
+		go s.Run(t.Context())
+		s.finishedReqCh <- &LlmRequest{model: m}
+		gone := false
+		for i := 0; i < 100 && !gone; i++ {
+			time.Sleep(10 * time.Millisecond)
+			s.loadedMu.Lock()
+			gone = len(s.loaded) == 0
+			s.loadedMu.Unlock()
+		}
+		if gone != tc.gone {
+			t.Errorf("%s: unloaded = %v, want %v", tc.key, gone, tc.gone)
+		}
+	}
+}
