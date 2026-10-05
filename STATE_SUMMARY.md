@@ -1968,8 +1968,10 @@ turns, measured on the manic benchmark on eleven2go). The engine pin is b208
 - **Windows, Vulkan: a model load can fail with "Vulkan is not usable on this
   system"** on the installed server (5 of about 33 engine starts on
   eleven2go; a retry works). Shipped in `v0.35.1-xollama.2` as a known bug.
-  The engine's probe is one attempt; opencoti's patch 0560 (three attempts,
-  the reason printed) comes with c9. Details in
+  Cause (opencoti, mail #799): stale `C:\ProgramData\cosmo\sig\<pid>.pid`
+  files left by an elevated process make the engine's probe child crash at
+  exit when the pid is reused; delete them from an elevated shell. Fixed in
+  the engine, with c9. Details in
   `docs/protocols/VALIDATION.md`, G9.
 - **Linux arm64** is in `:dev` (2026-10-04) and in the next release as
   `xollama-linux-arm64`. `:latest` is still an amd64-only image of the last

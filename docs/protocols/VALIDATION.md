@@ -255,13 +255,19 @@ GPU, the stock ollama on 11434 untouched).
   the integrated GPU; the next start works, displays stay `OK`. A side server
   started over ssh (session 0): 0 of 32 on c8 and 0 of 32 on engine
   `2610041714001`; the engine's own device listing: 0 of 76. So not a c8
-  regression as far as measured; the cause in the interactive session is
-  unknown (OBS, RTSS and Steam Vulkan layers are registered on eleven2go,
-  untested). The engine's probe was one attempt with its reason printed only
-  under `--verbose`; opencoti's patch 0560 (three attempts, the reason always
-  printed) ships in c9 (mails #797, #798). When c9 is pinned, run this: the
-  installed server, about 33 alternating Vulkan starts, and grep `server.log`
-  for "device probe attempt". Scripts of the chase:
+  regression as far as measured. Cause, measured by opencoti (mail #799,
+  which withdraws #798): the engine's runtime opens
+  `C:\ProgramData\cosmo\sig\<pid>.pid` at start; a stale file with the same
+  pid left by an ELEVATED process cannot be reopened by a normal user, and
+  the process then crashes at exit, so the GPU probe child returns no device
+  count. eleven2go had 471 such files, 405 owned by Administrators. Nothing
+  to do with the driver or Vulkan layers. An ssh session on eleven2go is
+  elevated, which is why the side server never failed: a Windows test of
+  this must run in the logged-in user's session. Released c8 fails 8 and 9
+  of 40 probes there; opencoti's fixed dev engine 0 of 120. Workaround:
+  delete the dead processes' files under that directory from an elevated
+  shell. Fix: patch 0560-win-sigfile-exit, in c9. When c9 is pinned, run
+  about 33 alternating Vulkan starts on the installed server. Scripts of the chase:
   `C:\Users\ManniX\xollama-c8\gates` on eleven2go, logs
   `/srv/ml/xc8/rerel-win-*.log`.
 - **Baseline** (`v0.35.1-rc.1.xollama`, 2026-10-04, AMD Software 26.9.2): the
