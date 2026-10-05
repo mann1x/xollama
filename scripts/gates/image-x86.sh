@@ -28,4 +28,5 @@ for m in mannix/kokoro:82m mannix/kittentts:mini-0.8 mannix/supertonic:3 mannix/
   code=$(curl -s -o $f -w '%{http_code}' $H/v1/audio/speech -d "{\"model\":\"$m\",\"input\":\"The first ship came in at dawn.\"}")
   echo "  $m http=$code [$(file -b $f | cut -c1-30)] -> $(curl -s $H/v1/audio/transcriptions -F model=mannix/whisper:large-v3-turbo -F file=@$f | cut -c1-120)"; done
 docker logs $N 2>&1 | grep -a -c -i "signal: \|unexpectedly\|panic" | sed 's/^/crash lines: /'
+docker logs $N 2>&1 | grep -a -i "signal: \|unexpectedly\|panic" | cut -c1-400 | sed 's/^/  crash: /'
 docker rm -f $N >/dev/null; echo IMAGE-X86-DONE

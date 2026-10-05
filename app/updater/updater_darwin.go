@@ -90,10 +90,15 @@ func init() {
 		slog.Warn("unable to determine user cache dir, falling back to tmpdir", "error", err)
 		cacheDir = os.TempDir()
 	}
-	appDataDir := filepath.Join(cacheDir, "ollama")
+	// xollama-hook: app-state -- xOllama's own folder, not the one a stock
+	// Ollama stages its updates in (app/updater/fork_stage.go).
+	appDataDir := forkCacheDir(cacheDir)
 	UpgradeMarkerFile = filepath.Join(appDataDir, "upgraded")
 	appBackupDir = filepath.Join(appDataDir, "backup")
 	UpdateStageDir = filepath.Join(appDataDir, "updates")
+	if purgeLegacyStage(filepath.Join(cacheDir, upstreamCacheName), "updates", []string{Installer}, updateArchiveRoot) {
+		markUpgraded(UpgradeMarkerFile)
+	}
 }
 
 func DoUpgrade(interactive bool) error {

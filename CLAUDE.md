@@ -313,7 +313,8 @@ are made by `scripts/xollama-icon.py` — see
 `.claude/rules/app-brand.md`.
 **Desktop updates**: `app/updater/fork.go` reads this fork's GitHub releases
 (`XOLLAMA_UPDATE_FEED`, `XOLLAMA_UPDATE_PRERELEASE`) instead of `ollama.com`,
-hooked from `app/updater/updater.go` / `app/updater/updater_windows.go`;
+hooked from `app/updater/updater.go` / `app/updater/updater_windows.go`; on macOS the staged update, the backup and the upgrade marker live in
+`~/Library/Caches/xOllama`, never upstream's `Caches/ollama` (`app/updater/fork_stage.go`, which also removes our own leftovers from the old folder);
 `app/updater/fork_payload_windows.go` picks the small `xOllamaUpdate.exe`
 (no `lib\ollama`) over the full `xOllamaSetup.exe` when the installed
 `lib\ollama\PAYLOAD_ID` matches the release's `payload-id.txt` (`payloadId` in

@@ -561,15 +561,21 @@ installed release passes step 7, never before. They are the fallback until then.
   `xollama --version` to tell them apart.
 - **macOS is attached by hand.** The workflow has no macOS job: the Developer
   ID certificate and the notary key are on the Mac mini only. Until they are
-  repository secrets, a release is not complete without `xOllama.dmg` built
-  there from the release's tree (`sh build-release.sh` with `VERSION` set,
-  then the G11 gate), checked with `spctl -a -t open --context
-  context:primary-signature -v` and `xcrun stapler validate`, uploaded with
-  `gh release upload <tag> xOllama.dmg`, and its sha256 written in the notes
-  (it is not in `sha256sum.txt`). Only the disk image: the app's updater takes
-  `xOllama-darwin.zip` and that path has never been run against a release.
-  First done for `v0.35.1-xollama.2`, after promotion, when the owner asked
-  where the macOS download was.
+  repository secrets, a release is not complete without two files built there
+  from the release's tree (`sh build-release.sh` with `VERSION` set, then the
+  G11 gate): `xOllama.dmg`, the download, and `xOllama-darwin.zip`, the only
+  name the app's updater takes. Check both with `spctl` and `xcrun stapler
+  validate`, upload them with `gh release upload <tag>`, then download the
+  release's `sha256sum.txt`, append `sha256sum xOllama-darwin.zip xOllama.dmg`
+  and upload it with `--clobber`: the updater refuses an asset with no
+  published checksum. Before promoting, run the update on the Mac mini from
+  the previous release's app: `open --env XOLLAMA_UPDATE_PRERELEASE=1
+  /Applications/xOllama.app`, wait for `update checksum verified` and `bundle
+  passed verification` in `~/.ollama/logs/app.log`, quit it, start it with
+  `--args hidden` (a normal start only offers "Restart to update") and read
+  the version. First done whole for `v0.35.1-xollama.3`; `.2` got the disk
+  image alone, after promotion, when the owner asked where the macOS download
+  was.
 - **No Windows arm64, no Linux runtime archive.** On Linux
   the image is the delivery with a runtime; `xollama-linux-<arch>` is the
   binary alone. Bare Linux hosts (solidPC) are still deployed from a local
