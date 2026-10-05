@@ -15,17 +15,32 @@
 # Moving a component is one line here plus its pin file, on a MEASUREMENT
 # (scripts/phase2-engine-ab.py, as the `ollama` user), never on a changelog.
 #
-# THIS PIN (2026-10-05, opencoti mail #795, index 7d7e774b, pins 8855c5c2,
-# payload 1523ea1e): opencoti's c8 RELEASE, repo ManniX-ITA/opencoti-llamafile,
-# channel release. engine 2610042347001 is new bytes: the source of
-# 2610041714001 (xollama v0.35.1-rc.1) plus patch 0558 (bug-3922: on hybrid
-# models a planned KV rolling window cost speed before any cell left VRAM)
-# and 0559 (the boot line names c8). Its file is now named in the release
-# form, opencoti-llamafile-0.10.5-c8-bare.llamafile (.exe on Windows). The
-# abi digests are unchanged. cuda, cuda12, vulkan, macos and media are the
-# SAME FILES as the dev pin before (every sha256 unchanged); only their repo
-# and rev moved.
+# THIS PIN (2026-10-05, opencoti mail #801, index 49fa8727, pins fe760b73,
+# payload e0eea15d): opencoti's c9 RELEASE. engine 2610050707001 is c8
+# (2610042347001, xollama v0.35.1-xollama.2) plus patch 0560-win-sigfile-exit
+# and the version line, nothing else. The patch is Windows only: a stale
+# C:\ProgramData\cosmo\sig\<pid>.pid left by an elevated process made a
+# process crash at exit, so the GPU probe child returned no device count and
+# a Vulkan load failed with "Vulkan is not usable on this system" (5 of
+# about 33 starts on eleven2go's installed server, the known bug of .2).
+# cuda, cuda12, vulkan, macos and media are the SAME FILES as c8 (every
+# sha256 unchanged); only their rev moved.
 #
+# MEASURED 2026-10-05, c9 against c8 (logs /srv/ml/xc9):
+#   eleven2go, server in the logged-in user's session, 14 stale sig files,
+#     34 alternating Vulkan loads each: c8 3 failed, c9 0 failed.
+#   solidPC as `ollama` (phase2-engine-ab): compat 8/8 on both; llama3
+#     76.8-76.9 tok/s (c8 77.2-77.8); 4-slot qwen2.5:1.5b 302.1 tok/s
+#     aggregate (c8 303.8); gemma4 tool call and thinking; 70b overflow 3.58
+#     tok/s (c8 3.69). Speech 8/8, video 2 jobs, Vulkan 34.2-34.4 tok/s, chat
+#     paths pass, 0 kv-reservation refusals; council 384k and omni pass, the
+#     no-PolyKV tag 3 of 4 (one answer repeated the first turn's, sampling).
+#   dietpi5 (aarch64 image with c9): speech, every request 200.
+#   /v1/systemone: nimble on c9 as on stock; a Clef model does not load
+#     ("wrong number of tensors; expected 549, got 427"), no clef_score_v1
+#     here, so server/decision_engine.go serves it on stock llama-server.
+#
+# BEFORE IT, on c8 (kept: the libraries are the same files):
 # MEASURED with these bytes, staged by cmake/opencoti-fetch.cmake under their
 # published names (/srv/ml/xc8, 2026-10-05):
 #   solidPC, RTX 3090, as `ollama` (results pin-c8): compat 8/8, llama3
@@ -57,11 +72,11 @@
 
 format   2
 channel  release
-tag      c8
-engine   pin/engine.txt  rev 8855c5c25038b8e8dd618321c401d8ce432eac10  sha256 ddefcccd569d38d2141b192aebfc5d79eb1730d3f2872152afcab9beecbe54c8  version 2610042347001
-cuda     pin/cuda.txt  rev 8855c5c25038b8e8dd618321c401d8ce432eac10  sha256 6db08adfab1f9048a5c605badad1762b85af6ab407c394b2206123bd4fee0292  version 2610040656001
-cuda12   pin/cuda12.txt  rev 8855c5c25038b8e8dd618321c401d8ce432eac10  sha256 610e25feeba38af16f3add0616923e55909e21d4d0cd5205443e6d652fb8dc1e  version 2610040730001
+tag      c9
+engine   pin/engine.txt  rev fe760b73947cc6768baf252aa845699a7966e2f9  sha256 1d225e07adf89f28297f93ffc818f7a8c9050b1f18c45601af58d665851e8994  version 2610050707001
+cuda     pin/cuda.txt  rev fe760b73947cc6768baf252aa845699a7966e2f9  sha256 4735dab071eb682341324dbf340ca348cc0d0ebed30d470d9a4ce85dd6bf1e48  version 2610040656001
+cuda12   pin/cuda12.txt  rev fe760b73947cc6768baf252aa845699a7966e2f9  sha256 8e98ba71098a15e54c81b2f6109de77485c5cdb50f1c9c8f63d5d6da50824dd1  version 2610040730001
 sbsa     absent
-vulkan   pin/vulkan.txt  rev 8855c5c25038b8e8dd618321c401d8ce432eac10  sha256 a40b4ebf5afd6e4dcf330740d9e2496dbb453d133910ad47490312b768218d45  version 2610041656001
-macos    pin/macos.txt  rev 8855c5c25038b8e8dd618321c401d8ce432eac10  sha256 bee3e557f909662318286152d556c9149b39d8b02fe449b54c4d628a2b2e4348  version 2610041000001
-media    pin/media.txt  rev 8855c5c25038b8e8dd618321c401d8ce432eac10  sha256 cc98ec62c1fc763813140f935dd8414b84faea6b3ff6ed7ecfbae6aff070bfd6  version 2610040945001
+vulkan   pin/vulkan.txt  rev fe760b73947cc6768baf252aa845699a7966e2f9  sha256 f27718a6ffe3e21b9b74b385febac197ddbc37e5335282f52cf05326e0ac3ffe  version 2610041656001
+macos    pin/macos.txt  rev fe760b73947cc6768baf252aa845699a7966e2f9  sha256 3a92cf112a6cfc3ee15e8806115b28c131cde63ac12cea4045a3ad9fffbe53f8  version 2610041000001
+media    pin/media.txt  rev fe760b73947cc6768baf252aa845699a7966e2f9  sha256 b26f5f698ad00d992f84b2915161515cf35e28f223788e4c2ff40915a38c946e  version 2610040945001

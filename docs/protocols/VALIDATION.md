@@ -114,6 +114,19 @@ and 31.5 to 31.7 tok/s, speech 7/7 answered.
 - **Expected:** every line `PASS`, `kv-reservation refusals: 0`.
 - **Baseline:** six turns, the stream, the tool call and its result pass; 0
   refusals.
+- **Decision models:** `scripts/gates/decision.sh`, on a side server whose
+  `lib/ollama` is the fork's pinned stock runtime and whose engine is the pinned
+  opencoti. `nimble` and `clef-flash` are listed with the single capability
+  `decision`; `/v1/systemone` answers a `choice`, a `noul` with a `score`, and
+  for `clef-flash` a question about an image. Expected: every line `PASS`;
+  `nimble` loads on opencoti; a Clef model loads on stock for as long as the pin
+  has no `clef_score_v1`, and on opencoti from the pin that declares it.
+  Baseline (c9, 2026-10-05): `nimble` on opencoti "bug" 0.9793, noul 0.9989,
+  score 0.8306 (stock 0.9778, 0.9989, 0.8245); `clef-flash` on stock "bug"
+  0.8509, noul 0.9317, score 1.0620, the red image "red" 0.9855. Without the
+  routing a Clef model fails on opencoti c9 at load, "wrong number of tensors;
+  expected 549, got 427", and every call is a 500: that shipped in
+  `v0.35.1-xollama.2`.
 
 ### G5. Council
 
@@ -239,6 +252,37 @@ GPU, the stock ollama on 11434 untouched).
   anything is attached (step "the installers install"): both must exit 0, the
   installed `PAYLOAD_ID` must equal `payload-id.txt` and the version must be
   the release's. G9 on eleven2go still runs both; CI is the earlier net.
+- **Released, `v0.35.1-xollama.2`, 2026-10-05** (merge `fbf40c889`, payload
+  id `9702e4d6…`, opencoti c8): the small installer over the installed `.1`
+  exits 0 in 4 s; the full installer exits 0 in 30 s; the small installer over
+  that exits 0 in 4 s with a new server pid; version, `PAYLOAD_ID` and
+  `/api/xollama` right after each. Five 512-token runs each of `qwen3:8b`:
+  RTX 3090 on CUDA 123.2 cold, 123.2 to 123.5 tok/s warm; RX 9070 XT on Vulkan
+  102.6 cold, 102.9 to 103.2 warm; integrated GPU 5.2; speech 4 of 4
+  transcribed back; all three display devices `OK`; ollama on 11434 untouched.
+- **Known bug, open (owner, 2026-10-05: promote and record it):** on the
+  INSTALLED server (started by the tray app, Windows session 1) a Vulkan
+  engine start fails now and then with "fatal error: --gpu vulkan was
+  explicitly requested but Vulkan is not usable on this system", exit 256
+  after about 2 s: 5 of about 33 starts while alternating the RX 9070 XT and
+  the integrated GPU; the next start works, displays stay `OK`. A side server
+  started over ssh (session 0): 0 of 32 on c8 and 0 of 32 on engine
+  `2610041714001`; the engine's own device listing: 0 of 76. So not a c8
+  regression as far as measured. Cause, measured by opencoti (mail #799,
+  which withdraws #798): the engine's runtime opens
+  `C:\ProgramData\cosmo\sig\<pid>.pid` at start; a stale file with the same
+  pid left by an ELEVATED process cannot be reopened by a normal user, and
+  the process then crashes at exit, so the GPU probe child returns no device
+  count. eleven2go had 471 such files, 405 owned by Administrators. Nothing
+  to do with the driver or Vulkan layers. An ssh session on eleven2go is
+  elevated, which is why the side server never failed: a Windows test of
+  this must run in the logged-in user's session. Released c8 fails 8 and 9
+  of 40 probes there; opencoti's fixed dev engine 0 of 120. Workaround:
+  delete the dead processes' files under that directory from an elevated
+  shell. Fix: patch 0560-win-sigfile-exit, in c9. When c9 is pinned, run
+  about 33 alternating Vulkan starts on the installed server. Scripts of the chase:
+  `C:\Users\ManniX\xollama-c8\gates` on eleven2go, logs
+  `/srv/ml/xc8/rerel-win-*.log`.
 - **Baseline** (`v0.35.1-rc.1.xollama`, 2026-10-04, AMD Software 26.9.2): the
   installer exits 0 in 29 s; version and `PAYLOAD_ID` (`4ece3b6d…`) match the
   release; 22434 answers `/api/xollama`; the engines directory holds engine
@@ -304,6 +348,20 @@ releases endpoint.
   provenance block names engine `2610041714001`. `strings` finds no releases
   endpoint in the compressed installer (expected; the installed app is checked
   in G9).
+
+## The first release
+
+`v0.35.1-xollama.2`, promoted 2026-10-05, is the baseline release: G1 to G12
+were all run on its tree or on the candidate tree it differs from only in the
+installer script and the build script. Beside the rows above, on `.2` itself:
+artifact, six checksums OK, both image architectures on Docker Hub and GHCR;
+amd64 image on solidPC, `llama3`: opencoti 85.3 to 85.7 tok/s, llama.cpp 85.8
+to 86.2, speech 4 of 4; arm64 image on the Pi 5 (47 °C at the start, 75 °C at
+the end): opencoti 9.9 to 10.0 tok/s, llama.cpp 10.9 to 11.0, speech 3 of 3,
+the owner's containers up; the Mac mini, signed and notarized:
+`qwen2.5:1.5b` 128.6 to 128.9 tok/s, `llama3` 31.9 to 32.0, speech 7 of 7
+answered, no crash line. `v0.35.1-xollama` and `v0.35.1-xollama.1` stay
+pre-releases with a broken update installer (G9).
 
 ## Not gated
 

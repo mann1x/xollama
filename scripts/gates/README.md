@@ -13,6 +13,7 @@ disk, never `/tmp`.
 |---|---|---|
 | `engine-ab.sh` | G3 | solidPC, as `ollama` |
 | `chat-paths.sh`, `chat-paths.py` | G4 | solidPC |
+| `decision.sh`: `/v1/systemone` with `nimble` and `clef-flash` | G4 | solidPC |
 | `council.sh` (runs `scripts/council-gate.py`) | G5 | solidPC |
 | `serve-side.sh`, `speech-linux.sh`, `video-linux.sh` | G6 | solidPC |
 | `vulkan-linux.sh`, `bench.sh` | G7 | solidPC |

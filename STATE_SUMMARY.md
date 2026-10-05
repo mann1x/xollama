@@ -5,6 +5,20 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-05 — engine pin moved to opencoti c9 (the Windows Vulkan start fix), and Clef decision models served again: both for `v0.35.1-xollama.3`.**
+> - Pin: index `49fa8727`, pins `fe760b73`, engine `2610050707001` = c8 + patch `0560-win-sigfile-exit`; every library is c8's file. Measured, not read from the changelog: eleven2go with the server in the logged-in user's session and 14 stale files in `C:\ProgramData\cosmo\sig`, 34 alternating Vulkan loads per engine, **c8 3 failed, c9 0 failed**. solidPC as `ollama`: compat 8/8, llama3 76.8 to 76.9 tok/s (c8 77.2 to 77.8), four slots 302.1 tok/s (c8 303.8), speech 8/8, video, Vulkan 34.2 to 34.4 tok/s, chat paths, 0 refusals; council passes, one no-PolyKV second turn of four repeated the first turn's answer (three reruns pass: sampling). Pi image with c9: speech all 200. Sent to opencoti as #807.
+> - **Bug shipped in `.2`, found on the owner's question about decision models:** a Clef model (`clef`, `clef-flash`; `decision.type = clef`) does not load on opencoti, "wrong number of tensors; expected 549, got 427", so `/v1/systemone` returned 500 for it wherever opencoti serves. `nimble` (scored from token probabilities) was never affected: on c9 "bug" 0.9793 against stock's 0.9778. Fix: `clefEngine` (`server/decision_engine.go`) serves a Clef model on stock `llama-server` while the pin declares no `clef_score_v1` (`engine.HasClefHead`); nothing is refused, and the code stops acting on the pin that carries the feature (opencoti took the head for c10, op-64). Live on solidPC: `clef-flash` text and image answers equal the stock control's. Gate added to G4: `scripts/gates/decision.sh`.
+> - Decision models in lists (owner asked): the server reports them with the single capability `decision` in `/api/tags` and `/api/show` (upstream `3b1999d1d`, unchanged here, checked live). **No client filters on it**, in upstream `main`, upstream `v0.40.0-rc3` or here: the desktop picker, the launcher inventory and `/v1/models` list `nimble` like a chat model. A filter in the fork's pickers is the owner's call, asked 2026-10-05, not made.
+> - Left for `.3`: Mac dmg from the release commit and its gate; PR, dry run, merge; full check on every platform and both images, with the installed-server Vulkan starts on eleven2go (opencoti's op-62 closes on that); promote; `:latest`.
+
+> **2026-10-05 — `v0.35.1-xollama.2` is the first release: published, checked on every platform and both images, promoted to latest. One known bug shipped by the owner's decision.**
+> - PR #9, merge `fbf40c889`, payload id `9702e4d6…`, opencoti c8. Dry run first (a draft from the open PR; its first Windows job died on a Hugging Face download, "Stream error in the HTTP/2 framing layer", and passed on a rerun): the new CI step ran `xOllamaSetup.exe` and then `xOllamaUpdate.exe` on the runner, both exit 0, and the draft's small installer took eleven2go from `.1` to `.2` in 4 s.
+> - Checks on the published `.2`: artifact (six checksums, version, amd64 and arm64 on Docker Hub and GHCR); eleven2go: small installer over `.1`, full installer, small installer over it, all exit 0; RTX 3090 123.2 to 123.5 tok/s, RX 9070 XT 102.9 to 103.2, integrated GPU 5.2, speech 4 of 4; amd64 image 85.3 to 85.7 tok/s on opencoti and 85.8 to 86.2 on llama.cpp, speech 4 of 4; Pi 5 image 9.9 to 10.0 and 10.9 to 11.0, speech 3 of 3; Mac mini signed build 128.6 to 128.9 and 31.9 to 32.0, speech 7 of 7 answered.
+> - Promoted with `gh release edit v0.35.1-xollama.2 --prerelease=false --latest`; the Discord announcement ran; `docker-release.yaml` rerun on the tag to move `:latest`.
+> - **Known bug** (owner, 2026-10-05: "we promote anyway and record it as known bug"; "the fix for vulkan probe will go in c9"): on the installed Windows server a Vulkan engine start fails now and then, "Vulkan is not usable on this system", 5 of about 33 starts on eleven2go; a retry works. Never on a side server over ssh (0 of 32 on c8, 0 of 32 on the previous engine). In the release notes, in `docs/protocols/VALIDATION.md` (G9) and under Known gaps. opencoti's patch 0560 retries the probe and prints the reason; it ships in c9.
+> - macOS: the release went out without a macOS download and the owner was told only when they asked, after promotion; "don't skip any platform" had been read as "test every platform". `xOllama.dmg` (Apple silicon, signed, notarized, stapled, built on the Mac mini at `1c9ae505e`, the release's tree `02ce7689`, sha256 `82bf2205…`) was attached to `v0.35.1-xollama.2` by hand and the notes rewritten; the published file's checksum was read back. The updater ignores it: it matches `xOllama-darwin.zip` by exact name. `docs/protocols/RELEASE.md` now makes the disk image part of a release until CI has the signing secrets.
+> - Left: pin c9 when it is published and rerun G9's Vulkan starts on the installed server; send opencoti one `--verbose` capture of a failure on c8 (asked in #798); the engine fetch in `cmake/opencoti-fetch.cmake` has no retry, so one failed download fails a release job; `v0.35.1-xollama` and `.1` are still listed as pre-releases (the owner's call whether to delete them).
+>
 > **2026-10-05 — `v0.35.1-xollama.1` published and NOT promoted either: its update installer refuses every install. A second bug behind the first; fixed, and CI now runs both installers.**
 > - `v0.35.1-xollama.1` (PR #8, merge `3d0978f4c`, all 13 hosted checks green, payload id `9702e4d6…` unchanged): artifact OK, both image architectures on Docker Hub and GHCR. The Mac mini build of this tree, signed and notarized: `qwen2.5:1.5b` 128.5 to 129.0 tok/s, `llama3` 31.7 to 31.9, speech 7 of 7 answered, no crash line. On eleven2go the full installer passed (exit 0 in 30 s, version, `PAYLOAD_ID`, 22434, devices).
 > - Its `xOllamaUpdate.exe` exits 7, "This update was built against a different inference engine than the one installed", over an install whose `PAYLOAD_ID` equals the release's `payload-id.txt`. Cause: `payloadId` in `scripts/build_windows.ps1` ends with `Write-Output "Engine payload id …"` and `return $id`; a PowerShell function returns both, `$env:PKG_PAYLOAD_ID` became the two joined by a space, and the update installer was compiled against that string. `payload-id.txt` and the installed marker were always right, because the function writes the file itself. Shown on eleven2go with a four-line script (`count=2`). Present since the update installer was added; the `{app}` runtime error had kept anyone from reaching it.
@@ -1957,6 +1971,20 @@ turns, measured on the manic benchmark on eleven2go). The engine pin is b208
 
 ## Known gaps
 
+- **Windows, Vulkan: a model load can fail with "Vulkan is not usable on this
+  system"** on the installed server (5 of about 33 engine starts on
+  eleven2go; a retry works). Shipped in `v0.35.1-xollama.2` as a known bug.
+  Cause (opencoti, mail #799): stale `C:\ProgramData\cosmo\sig\<pid>.pid`
+  files left by an elevated process make the engine's probe child crash at
+  exit when the pid is reused; delete them from an elevated shell. Fixed in
+  the engine, with c9, which `dev` pins since 2026-10-05 (0 of 34 starts
+  failed, c8 3 of 34): gone with `v0.35.1-xollama.3`. Details in
+  `docs/protocols/VALIDATION.md`, G9.
+- **Clef decision models fail in `v0.35.1-xollama.2`** wherever opencoti
+  serves (`clef`, `clef-flash`: 500 from `/v1/systemone`, the engine cannot
+  load them). Fixed on `dev` by serving them on stock `llama-server` until the
+  pinned engine has the Clef head (c10); in `.2`, set the model's engine with
+  `xollama tweak model <clef model>` to `llamacpp`. `nimble` is not affected.
 - **Linux arm64** is in `:dev` (2026-10-04) and in the next release as
   `xollama-linux-arm64`. `:latest` is still an amd64-only image of the last
   release. The arm64 image's CUDA and JetPack payloads have never run on such

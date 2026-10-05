@@ -183,6 +183,29 @@ Those cards are served by llama.cpp's **`cuda_v12`** payload, and only by it -
 the engine does. That is why `cuda_v12` ships as its own release asset rather
 than being dropped; see "Packaging".
 
+### Decision models
+
+A decision model (`decision.type` in its GGUF, capability `decision`) is scored
+by `/v1/systemone` in one of two ways, and only one of them needs anything from
+the engine:
+
+- **From token probabilities** (`nimble`): `/completion` with `n_probs` and a
+  logit bias. opencoti serves it as stock does; measured on c9, the answers are
+  within 0.006 of stock's.
+- **Through the Clef head** (`decision.type = clef`: `clef`, `clef-flash`):
+  extra tensors in the model and `score_fields` on `/embedding`, which upstream
+  compiles into `llama-server` from `llama/clef/`. opencoti through c9 has
+  neither, and does not load such a model ("wrong number of tensors; expected
+  549, got 427").
+
+So a Clef model is served by stock `llama-server` while the pinned engine does
+not declare the feature `clef_score_v1`: `clefEngine` in
+`server/decision_engine.go` names `llamacpp` in the launch config, which is the
+path a model's own `engine: llamacpp` takes, logged once per model. An engine
+the model states itself is kept. Nothing is refused, and the day the pin carries
+`feature clef_score_v1` the function returns the config untouched (opencoti
+took the head for c10). Gate: `scripts/gates/decision.sh` (G4).
+
 ### The hook
 
 Exactly one surgical hook is expected, at `FindLlamaServer()` — it consults

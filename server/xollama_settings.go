@@ -250,5 +250,5 @@ func launchXollama(m *Model) *xollama.Config {
 	for _, s := range skipped {
 		slog.Info("server default not applied to this model", "model", m.ShortName, "default", s)
 	}
-	return cfg
+	return clefEngine(m, cfg)
 }

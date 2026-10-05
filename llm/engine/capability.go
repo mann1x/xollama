@@ -53,3 +53,20 @@ func SlidingWindowRingUnavailable() string {
 		"Set only kv.k and kv.v, which quantise both halves together on this engine",
 		build)
 }
+
+// featureClefScore is the Clef decision head: the tensors a Clef model carries
+// beside its base model and the `score_fields` scoring on /embedding that
+// upstream compiles into llama-server (llama/clef). An engine without it cannot
+// load such a model at all ("wrong number of tensors").
+const featureClefScore = "clef_score_v1"
+
+// HasClefHead reports whether the engine this build ships serves Clef decision
+// models. While it does not, they are served by stock llama-server
+// (server/decision_engine.go).
+func HasClefHead() bool {
+	pin, err := DefaultPin()
+	if err != nil {
+		return false
+	}
+	return pin.HasFeature(featureClefScore)
+}

@@ -131,11 +131,40 @@ the fork delivers all of the following, in this order:
      tag in step with the base and leaves nothing to decide per sync.
    - The release commit may add only release notes and manifest commits on top
      of `integration.sha`, so the llama inputs digest is unchanged.
-3. **The release recorded in the manifest**: `integration.release` with the
+3. **Upstream's MLX runtimes on that release**, for every platform, bytes
+   unchanged (owner, 2026-10-05). xollama serves safetensors models through
+   MLX and never compiles it, so the fork republishes what upstream built:
+   - `ollama-linux-amd64-mlx.tar.zst` and `ollama-windows-amd64-mlx.zip`:
+     upstream's assets as they are; their sha256 equals upstream's
+     `sha256sum.txt`.
+   - `ollama-darwin-mlx.tgz`: `mlx_metal_v3/` (universal, Intel and Apple
+     silicon), `mlx_metal_v4/` (Apple silicon) and the MLX, MLX-C, xgrammar,
+     dlpack, picojson and fmt licence texts, cut entry for entry from
+     upstream's `ollama-darwin.tgz`. No `llama-server`, no `libllama`, no
+     ggml. Every file's sha256 equals upstream's, and the archive is
+     reproducible.
+   - `mlx-runtime.txt`: the upstream tag and commit, `MLX_VERSION`,
+     `MLX_C_VERSION`, each asset's sha256, the sha256 of the upstream archive
+     the macOS one was cut from, and the sha256 of every file in it.
+
+   One command, run from the `think-budget` worktree after the release exists:
+   `scripts/thinkbudget-mlx-assets.sh v<X> <work dir on a real disk> --upload`.
+   It refuses when a download disagrees with upstream's `sha256sum.txt` or
+   when upstream stopped publishing one of the three. Without `--upload` it
+   builds and checks and publishes nothing.
+4. **The release recorded in the manifest**: `integration.release` with the
    tag, the commit it was built at, the run, the asset's sha256 and the inputs
-   digest in xollama's definition (below).
-4. **One mail** naming the base tag, the shas that moved, the release tag, the
-   build commit, the asset sha256 and the inputs digest.
+   digest in xollama's definition (below), and `integration.release.mlx` with
+   the three MLX assets' sha256 and the upstream versions.
+5. **One mail** naming the base tag, the shas that moved, the release tag, the
+   build commit, the asset sha256, the inputs digest and the MLX pin rows.
+
+> **Why step 3 exists.** Upstream dropped safetensors-to-GGUF conversion in
+> `98acec40a` (2026-09-14, in v0.35.x): `ollama create` from safetensors now
+> imports an MLX model, so safetensors support is the MLX runtime, on every
+> platform. Until 2026-10-05 the fork's release carried none: Linux was pinned
+> to upstream's asset directly, Windows and macOS had nothing, and the macOS
+> build compiled MLX itself.
 
 The digest xollama checks is the sha256 of
 `git ls-tree -r <commit> -- LLAMA_CPP_VERSION llama/server llama/compat` with
