@@ -571,7 +571,8 @@ installed release passes step 7, never before. They are the fallback until then.
   published checksum. Before promoting, run the update on the Mac mini from
   the previous release's app: `open --env XOLLAMA_UPDATE_PRERELEASE=1
   /Applications/xOllama.app`, wait for `update checksum verified` and `bundle
-  passed verification` in `~/.ollama/logs/app.log`, quit it, start it with
+  passed verification` in `~/Library/Logs/xOllama/app.log` (`~/.ollama/logs/app.log`
+  for an app older than `v0.35.1-xollama.4`), quit it, start it with
   `--args hidden` (a normal start only offers "Restart to update") and read
   the version. First done whole for `v0.35.1-xollama.3`; `.2` got the disk
   image alone, after promotion, when the owner asked where the macOS download

@@ -78,7 +78,7 @@ type claudeDesktopController interface {
 
 var (
 	isApp              = updater.BundlePath != ""
-	appLogPath         = filepath.Join(os.Getenv("HOME"), ".ollama", "logs", "app.log")
+	appLogPath         = filepath.Join(os.Getenv("HOME"), "Library", "Logs", "xOllama", "app.log") // xollama-hook: app-state
 	launchAgentPath    = filepath.Join(os.Getenv("HOME"), "Library", "LaunchAgents", "com.mann1x.xollama.plist")
 	claudeAppProxy     *proxy.ClaudeDesktop
 	claudeProxyStartMu sync.Mutex

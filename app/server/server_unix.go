@@ -17,7 +17,7 @@ import (
 
 var (
 	pidFile       = filepath.Join(os.Getenv("HOME"), "Library", "Application Support", "xOllama", "ollama.pid") // xollama-hook: app-state
-	serverLogPath = filepath.Join(os.Getenv("HOME"), ".ollama", "logs", "server.log")
+	serverLogPath = filepath.Join(os.Getenv("HOME"), "Library", "Logs", "xOllama", "server.log")                // xollama-hook: app-state
 )
 
 func commandContext(ctx context.Context, name string, arg ...string) *exec.Cmd {

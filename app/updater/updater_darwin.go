@@ -83,7 +83,7 @@ func init() {
 
 	// Executable = Ollama.app/Contents/MacOS/Ollama
 
-	UpgradeLogFile = filepath.Join(home, ".ollama", "logs", "upgrade.log")
+	UpgradeLogFile = filepath.Join(home, "Library", "Logs", "xOllama", "upgrade.log") // xollama-hook: app-state
 
 	cacheDir, err := os.UserCacheDir()
 	if err != nil {
