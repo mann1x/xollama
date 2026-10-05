@@ -62,7 +62,7 @@ PrivilegesRequired=lowest
 ; CORE builds the executables-only installer: same script, without anything
 ; under lib\ollama. That payload is ~1.5 GB against 36 MB of Go binary, so a
 ; release that changed no native code can be installed with two thirds less
-; downloaded. It is an UPDATE ONLY -- InitializeSetup below refuses it on a
+; downloaded. It is an UPDATE ONLY -- PayloadRefusal below refuses it on a
 ; machine with no matching payload, because an install with no engine is worse
 ; than no install.
 #ifdef CORE
@@ -270,33 +270,33 @@ Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "XOLLAMA_KV_C
 // comparison before downloading, so reaching this message means something
 // bypassed the updater -- a hand-run installer, or a release whose assets were
 // mixed.
-function InitializeSetup(): Boolean;
+//
+// PayloadRefusal is asked from PrepareToInstall, never from InitializeSetup:
+// {app} does not exist that early, and expanding it there ended every run of
+// this installer with a runtime error (v0.35.1-xollama, 2026-10-05).
+function PayloadRefusal(): String;
 var
   InstalledID: AnsiString;
   MarkerPath: string;
 begin
-  Result := True;
+  Result := '';
   MarkerPath := ExpandConstant('{app}\lib\ollama\PAYLOAD_ID');
   if not FileExists(MarkerPath) then begin
-    MsgBox('This is the update-only installer for {#MyAppName}.' + #13#10#13#10 +
-           'It does not contain the inference engine, and no existing installation was found at' + #13#10 +
-           ExpandConstant('{app}') + #13#10#13#10 +
-           'Download xOllamaSetup.exe instead.', mbCriticalError, MB_OK);
-    Result := False;
+    Result := 'This is the update-only installer for {#MyAppName}.' + #13#10#13#10 +
+              'It does not contain the inference engine, and no existing installation was found at' + #13#10 +
+              ExpandConstant('{app}') + #13#10#13#10 +
+              'Download xOllamaSetup.exe instead.';
     exit;
   end;
   if not LoadStringFromFile(MarkerPath, InstalledID) then begin
     // No continuation line may start with '#': ISPP reads it as a directive.
-    MsgBox('Could not read the installed engine payload marker at' + #13#10 + MarkerPath + #13#10#13#10 +
-           'Download xOllamaSetup.exe instead.', mbCriticalError, MB_OK);
-    Result := False;
+    Result := 'Could not read the installed engine payload marker at' + #13#10 + MarkerPath + #13#10#13#10 +
+              'Download xOllamaSetup.exe instead.';
     exit;
   end;
-  if Trim(String(InstalledID)) <> '{#PKG_PAYLOAD_ID}' then begin
-    MsgBox('This update was built against a different inference engine than the one installed.' + #13#10#13#10 +
-           'Download xOllamaSetup.exe instead.', mbCriticalError, MB_OK);
-    Result := False;
-  end;
+  if Trim(String(InstalledID)) <> '{#PKG_PAYLOAD_ID}' then
+    Result := 'This update was built against a different inference engine than the one installed.' + #13#10#13#10 +
+              'Download xOllamaSetup.exe instead.';
 end;
 #endif
 
@@ -491,6 +491,15 @@ end;
 // lib\ollama, which the installer overwrites after the executables.
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 begin
+#ifdef CORE
+  // Refused before anything is stopped: a machine this update is not for
+  // keeps its running xOllama.
+  Result := PayloadRefusal();
+  if Result <> '' then begin
+    Log('update refused: ' + Result);
+    exit;
+  end;
+#endif
   ExtractTemporaryFile('xollama-stop.ps1');
   StopXollama(ExpandConstant('{tmp}\xollama-stop.ps1'));
   Result := '';

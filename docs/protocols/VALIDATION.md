@@ -206,6 +206,25 @@ GPU, the stock ollama on 11434 untouched).
   copied to the host and run with `-File`, because it has multi-line blocks
   and stdin runs none of them (it printed three lines and nothing else the
   first time).
+- **The update path** (added 2026-10-05, part of every G9 run from
+  `v0.35.1-xollama.1` on): after the full install, the same release's
+  `xOllamaUpdate.exe` is run over it with `scripts/gates/windows-update.ps1`
+  (copied to the host, `-File`, `-Exe <path>`). Expected: exit 0, the version
+  unchanged, a new server on 22434. An update built for another payload must
+  exit 7 with "built against a different inference engine" and leave the
+  running server alone.
+- **Failed, `v0.35.1-xollama`, 2026-10-05:** its `xOllamaUpdate.exe` exits 1,
+  "Runtime error (at 1:107): Internal error: An attempt was made to expand
+  the "app" constant before it was initialized." The payload check stood in
+  `InitializeSetup`, where `{app}` does not exist; the file had never been run
+  by a gate, the candidates were installed with `xOllamaSetup.exe` only. The
+  release was not promoted. Fixed in `app/xollama.iss` (`PayloadRefusal`, asked
+  from `PrepareToInstall`), guard `app/updater/installer_script_test.go`.
+  Measured on eleven2go with installers compiled there from both scripts
+  (Inno Setup 6.7.3): the released script reproduces the error; the fixed one
+  with a wrong payload id exits 7 and the server keeps its pid; the fixed one
+  exits 0 in 4 s and `xollama --version` goes from `0.35.1-rc.2.xollama` to
+  `0.35.1-xollama`, a new server on 22434.
 - **Baseline** (`v0.35.1-rc.1.xollama`, 2026-10-04, AMD Software 26.9.2): the
   installer exits 0 in 29 s; version and `PAYLOAD_ID` (`4ece3b6d…`) match the
   release; 22434 answers `/api/xollama`; the engines directory holds engine
