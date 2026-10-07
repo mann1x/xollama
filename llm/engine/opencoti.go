@@ -360,6 +360,12 @@ func gpuFlag(devices []Device) string {
 // found, with the reason logged once. An engine swap is not worth a failed
 // load.
 func Launch(stockExe string, params []string, devices []Device, libOllamaPath string) (string, []string, bool) {
+	// Where no stock engine ships (StockShipped), "falling back" is a refusal:
+	// the caller turns !opencoti into an error naming the reason logged here.
+	fallback := "falling back to stock llama-server"
+	if !StockShipped(runtime.GOOS) {
+		fallback = "opencoti cannot serve this load and there is no stock llama-server on this platform"
+	}
 	decision := Resolve(Host(), devices, envconfig.Var(EnvSelector))
 	if decision.Kind != KindOpencoti {
 		slog.Debug("using stock llama-server", "reason", decision.Reason)
@@ -370,7 +376,7 @@ func Launch(stockExe string, params []string, devices []Device, libOllamaPath st
 	// both is llama.cpp's. Which of the two a load gets is LegacyCUDA.
 	if pin, err := loadPin(); err == nil {
 		if _, why := cudaPayload(pin, devices); why != "" {
-			slog.Info("falling back to stock llama-server", "reason", why)
+			slog.Info(fallback, "reason", why)
 			return stockExe, params, false
 		}
 	}
@@ -378,14 +384,14 @@ func Launch(stockExe string, params []string, devices []Device, libOllamaPath st
 	dirs := DefaultDirs(libOllamaPath, home)
 	artifact, err := Find(envconfig.Var(EnvPath), dirs)
 	if err != nil {
-		slog.Info("falling back to stock llama-server", "reason", decision.Reason, "error", err)
+		slog.Warn(fallback, "reason", decision.Reason, "error", err)
 		return stockExe, params, false
 	}
 
 	name, args := Command(artifact, params, devices, runtime.GOOS)
 	if runtime.GOOS == "darwin" {
 		if _, err := os.Stat(name); err != nil {
-			slog.Warn("falling back to stock llama-server: the engine's macOS loader is not beside it",
+			slog.Warn(fallback+": the engine's macOS loader is not beside it",
 				"loader", name, "error", err)
 			return stockExe, params, false
 		}

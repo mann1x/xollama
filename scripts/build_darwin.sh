@@ -39,6 +39,11 @@ while getopts "a:h" OPTION; do
         h) usage ;;
     esac
 done
+# xollama-hook: macos-stockless -- macOS ships no stock llama-server (owner,
+# 2026-10-05, done with opencoti c10): every GGUF load runs on opencoti through
+# Metal (llm/engine/stockless.go), so llama.cpp is not compiled here, and an
+# Intel Mac, which opencoti does not serve, would have no engine at all.
+case " $ARCHS " in *" amd64 "*) echo "build_darwin.sh: Intel (amd64) is not built: macOS has no stock llama-server, and opencoti serves Apple silicon only" >&2; exit 1 ;; esac
 
 shift $(( $OPTIND - 1 ))
 
@@ -101,7 +106,7 @@ _build_darwin() {
             $MLX_EXTRA_ARGS
 
         GOOS=darwin GOARCH=$ARCH CGO_ENABLED=1 CGO_CFLAGS="$MLX_CGO_CFLAGS" CGO_LDFLAGS="$MLX_CGO_LDFLAGS" \
-            cmake --build "$BUILD_DIR" --target ollama-local $MLX_TARGET --parallel "$BUILD_JOBS" -- -l "$BUILD_LOAD"
+            cmake --build "$BUILD_DIR" --target ollama-go $MLX_TARGET --parallel "$BUILD_JOBS" -- -l "$BUILD_LOAD" # xollama-hook: macos-stockless (upstream: ollama-local)
     done
     if _mlx_pinned; then _take_mlx_runtime; fi # xollama-hook: macos-mlx-pin
 }
@@ -275,8 +280,7 @@ _prepare_darwin_runtime() {
     status "Creating the runtime for: $ARCHS"
     mkdir -p dist/darwin
     _join_archs dist/darwin/xollama xollama
-    _join_archs dist/darwin/llama-server lib/ollama/llama-server
-    _join_archs dist/darwin/llama-quantize lib/ollama/llama-quantize
+    # xollama-hook: macos-stockless -- no llama-server or llama-quantize
 
     _merge_darwin_payload
 }
@@ -284,7 +288,7 @@ _prepare_darwin_runtime() {
 _create_darwin_runtime_tarball() {
     status "Creating universal tarball..."
     rm -f dist/xollama-darwin.tar dist/xollama-darwin.tgz
-    tar -cf dist/xollama-darwin.tar --strip-components 2 dist/darwin/xollama dist/darwin/llama-server dist/darwin/llama-quantize
+    tar -cf dist/xollama-darwin.tar --strip-components 2 dist/darwin/xollama # xollama-hook: macos-stockless
     tar -rf dist/xollama-darwin.tar --strip-components 4 dist/darwin/lib/ollama
     gzip -9vc <dist/xollama-darwin.tar >dist/xollama-darwin.tgz
 }
@@ -297,7 +301,7 @@ _package_darwin_runtime() {
 _sign_darwin() {
     _prepare_darwin_runtime
     if [ -n "$APPLE_IDENTITY" ]; then
-        for F in dist/darwin/xollama dist/darwin/llama-server dist/darwin/llama-quantize dist/darwin/lib/ollama/* dist/darwin/lib/ollama/mlx_metal_v*/*; do
+        for F in dist/darwin/xollama dist/darwin/lib/ollama/* dist/darwin/lib/ollama/mlx_metal_v*/*; do # xollama-hook: macos-stockless
             [ -f "$F" ] && [ ! -L "$F" ] || continue
             case "$F" in *_LICENSE|*_NOTICE) continue ;; esac
             codesign -f --timestamp -s "$APPLE_IDENTITY" --identifier com.mann1x.xollama --options=runtime "$F"
@@ -367,8 +371,7 @@ _build_macapp() {
     mkdir -p dist/xOllama.app/Contents/Resources
     [ -d dist/darwin/lib/ollama ] || _merge_darwin_payload
     cp -a dist/darwin/xollama dist/xOllama.app/Contents/Resources/xollama
-    cp dist/darwin/llama-server dist/xOllama.app/Contents/Resources/
-    cp dist/darwin/llama-quantize dist/xOllama.app/Contents/Resources/
+    # xollama-hook: macos-stockless -- no llama-server or llama-quantize in the bundle
     if [ -d dist/darwin/lib/ollama ]; then
         cp -a dist/darwin/lib/ollama/. dist/xOllama.app/Contents/Resources/
     fi
@@ -377,8 +380,6 @@ _build_macapp() {
     # Sign
     if [ -n "$APPLE_IDENTITY" ]; then
         codesign -f --timestamp -s "$APPLE_IDENTITY" --identifier com.mann1x.xollama --options=runtime dist/xOllama.app/Contents/Resources/xollama
-        codesign -f --timestamp -s "$APPLE_IDENTITY" --identifier com.mann1x.xollama --options=runtime dist/xOllama.app/Contents/Resources/llama-server
-        codesign -f --timestamp -s "$APPLE_IDENTITY" --identifier com.mann1x.xollama --options=runtime dist/xOllama.app/Contents/Resources/llama-quantize
         for lib in dist/xOllama.app/Contents/Resources/*.so dist/xOllama.app/Contents/Resources/*.dylib dist/xOllama.app/Contents/Resources/*.metallib dist/xOllama.app/Contents/Resources/mlx_metal_v*/*.dylib dist/xOllama.app/Contents/Resources/mlx_metal_v*/*.metallib dist/xOllama.app/Contents/Resources/mlx_metal_v*/*.so; do
             [ -f "$lib" ] || continue
             codesign -f --timestamp -s "$APPLE_IDENTITY" --identifier com.mann1x.xollama --options=runtime "$lib"
@@ -389,7 +390,7 @@ _build_macapp() {
 
     rm -f dist/xOllama-darwin.zip
     ditto -c -k --norsrc --keepParent dist/xOllama.app dist/xOllama-darwin.zip
-    (cd dist/xOllama.app/Contents/Resources/; tar -cf - xollama llama-server llama-quantize *.so *.dylib *.metallib *_LICENSE *_NOTICE mlx_metal_v*/ engines/ 2>/dev/null) | gzip -9vc > dist/xollama-darwin.tgz
+    (cd dist/xOllama.app/Contents/Resources/; tar -cf - xollama *.so *.dylib *.metallib *_LICENSE *_NOTICE mlx_metal_v*/ engines/ 2>/dev/null) | gzip -9vc > dist/xollama-darwin.tgz
 
     # Notarize and Staple
     if [ -n "$APPLE_IDENTITY" ]; then

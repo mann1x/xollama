@@ -411,7 +411,12 @@ func engineDevices(gpus []ml.DeviceInfo) []engine.Device {
 func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.Cmd, port int, usedOpencoti bool, err error) {
 	exe, err := FindLlamaServer()
 	if err != nil {
-		return nil, 0, false, err
+		// xollama-hook: stockless — macOS ships no stock llama-server; opencoti
+		// serves every load there (llm/engine/stockless.go).
+		if engine.StockShipped(runtime.GOOS) {
+			return nil, 0, false, err
+		}
+		exe = ""
 	}
 
 	// Allocate a port
@@ -505,6 +510,10 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	// llama.cpp: the pin exists precisely because the model does not work
 	// there, and a silent downgrade would surface as a load crash with no
 	// mention of the engine.
+	// xollama-hook: stockless — no stock engine to run what opencoti did not take.
+	if !usedOpencoti && !engine.StockShipped(runtime.GOOS) {
+		return nil, 0, false, errors.New(engine.StocklessRefusal(runtime.GOOS))
+	}
 	if enginePin == xollama.EngineOpencoti && !usedOpencoti {
 		return nil, 0, false, fmt.Errorf("model requires the opencoti engine (xollama.json pins engine=%q) but it was not selected; check %s and that an artifact is installed",
 			enginePin, engine.EnvSelector)
@@ -632,7 +641,11 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 		cmd.Stderr = out
 	}
 	cmd.SysProcAttr = LlamaServerSysProcAttr
-	SetupLlamaServerCommandEnv(cmd, exe, launch.gpuLibs, envs)
+	libExe := exe
+	if libExe == "" { // xollama-hook: stockless — the engine's directory holds its libraries
+		libExe = name
+	}
+	SetupLlamaServerCommandEnv(cmd, libExe, launch.gpuLibs, envs)
 
 	slog.Info("starting llama-server", "cmd", cmd)
 	slog.Debug("subprocess", "", filteredEnv(cmd.Env))
@@ -1469,7 +1482,8 @@ func (s *llamaServerRunner) Load(ctx context.Context, systemInfo ml.SystemInfo, 
 // the engine's behaviour and nothing in the response would say so, and every
 // A/B against vanilla would quietly become an A/A.
 func (s *llamaServerRunner) retryOnStockEngine(loadErr error) (bool, error) {
-	if !s.usedOpencoti || s.engineFallbackRetried || !engine.FallbackOnLoadFailure() {
+	if !s.usedOpencoti || s.engineFallbackRetried || !engine.FallbackOnLoadFailure() ||
+		!engine.StockShipped(runtime.GOOS) { // xollama-hook: stockless
 		return false, nil
 	}
 

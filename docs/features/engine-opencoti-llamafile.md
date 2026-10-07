@@ -154,8 +154,8 @@ llama.cpp.
 | Windows x86_64 + CUDA/Vulkan | **opencoti** | `-win-gpu` artifact |
 | **NVIDIA below compute 7.5** | `llama-server` | engine has no code for it; see below |
 | **ROCm / Radeon** | `llama-server` | no tested opencoti backend |
-| macOS arm64 + Metal / CPU | **opencoti** | started through `ape-macos-aarch64`; see "macOS" |
-| macOS x86_64 | `llama-server` | opencoti publishes no Intel Mac files |
+| macOS arm64 + Metal / CPU | **opencoti only** | started through `ape-macos-aarch64`; no stock `llama-server` ships on macOS; see "macOS" |
+| macOS x86_64 | not built | opencoti publishes no Intel Mac files, and there is no stock engine |
 | MLX models | untouched | MLX path, `x/mlxrunner` |
 | anything else | `llama-server` | default deny |
 
@@ -538,9 +538,18 @@ VRAM-overflow path aborts rather than spilling. See
 
 ## macOS
 
-Apple silicon only. opencoti publishes its macOS files for arm64 and nothing
-for Intel, so `PackageArch` has `darwin/arm64` → `macos-aarch64` and no label
-for `darwin/amd64`, which stays on llama.cpp in a universal app.
+Apple silicon only, and **opencoti only**: since the c10 release (owner,
+2026-10-05, held until c10 served the Clef head) macOS ships no stock
+`llama-server` or `llama-quantize`, and llama.cpp is not compiled for it.
+`engine.StockShipped` (`llm/engine/stockless.go`) is false on darwin, so
+`startLlamaServer` does not look for the stock binary, and a load that does
+not get opencoti -- `XOLLAMA_ENGINE=llamacpp`, a model pinned to
+`engine=llamacpp`, a missing engine or loader -- is refused with the reason
+(`stockless` hook); the opt-in stock retry (`XOLLAMA_ENGINE_FALLBACK`) does
+nothing there. Discovery takes the Metal device from the engine's own listing,
+marked integrated. `scripts/build_darwin.sh` builds the Go binaries only
+(`macos-stockless` hook) and refuses an Intel build: opencoti publishes no
+Intel files, and there would be no engine at all.
 
 - **The package** is the engine (the same APE file as Linux, the engine
   pin's `file any bin` row), the `macos` component's `ape` (the loader) and
@@ -551,7 +560,8 @@ for `darwin/amd64`, which stays on llama.cpp in a universal app.
   `llm/engine/opencoti.go`, shared by the launch, the device listing and the
   link probe). Started any other way the engine compiles a loader with `cc`
   on first use, which a Mac without the Xcode tools cannot do. A missing
-  loader is a Warn and stock llama.cpp, never a failed load.
+  loader is a refused load naming it (there is no stock engine to fall back
+  to).
 - **`--gpu apple`** selects Metal (`gpuFlag`). Discovery takes the engine's
   own device line (`MTL0`), as it does for CUDA and Vulkan.
 - **The build** stages the files with `cmake/opencoti-fetch.cmake` from
