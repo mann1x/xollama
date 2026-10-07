@@ -85,6 +85,8 @@ jobs:
       runtime_asset: ${{ steps.plan.outputs.runtime_asset }}
       runtime_sha256: ${{ steps.plan.outputs.runtime_sha256 }}
       linux_runtime_tag: ${{ steps.plan.outputs.linux_runtime_tag }}
+      mlx_win_url: ${{ steps.plan.outputs.mlx_win_url }}
+      mlx_win_sha256: ${{ steps.plan.outputs.mlx_win_sha256 }}
     steps:
       - name: plan
         id: plan
@@ -248,6 +250,21 @@ jobs:
           gh release view "$(dfield tag)" --repo "$(dfield repo)" --json assets --jq '.assets[].name' | grep -qx "$(dfield asset)" \
             || fail "llama/runtime-pin-darwin.txt: $(dfield repo) $(dfield tag) publishes no $(dfield asset)"
           echo "macOS MLX runtime: $(dfield repo) $(dfield tag), upstream v$upstream's bytes"
+
+          # Windows: the installer DOWNLOADS MLX (it would not fit under the
+          # 2 GiB asset cap), from the archive llama/runtime-pin-windows-mlx.txt
+          # pins; the installer is built with its URL and sha256.
+          wpin=$(git show "$sha:llama/runtime-pin-windows-mlx.txt") || fail "no llama/runtime-pin-windows-mlx.txt at $sha; the Windows installer has no MLX runtime to fetch"
+          wfield() { awk -v k="$1" '$1==k {print $2; exit}' <<< "$wpin"; }
+          [ "$(wfield mlx)" = "$(git show "$sha:MLX_VERSION" | tr -d '[:space:]')" ] && [ "$(wfield mlx_c)" = "$(git show "$sha:MLX_C_VERSION" | tr -d '[:space:]')" ] \
+            || fail "llama/runtime-pin-windows-mlx.txt names another MLX or MLX-C than this commit; move it to the fork release for this base"
+          [ "$(wfield upstream)" = "v$upstream" ] || fail "llama/runtime-pin-windows-mlx.txt is upstream $(wfield upstream)'s MLX, this release is on v$upstream"
+          [[ "$(wfield sha256)" =~ ^[0-9a-f]{64}$ ]] || fail "llama/runtime-pin-windows-mlx.txt has no sha256"
+          gh release view "$(wfield tag)" --repo "$(wfield repo)" --json assets --jq '.assets[].name' | grep -qx "$(wfield asset)" \
+            || fail "llama/runtime-pin-windows-mlx.txt: $(wfield repo) $(wfield tag) publishes no $(wfield asset)"
+          out mlx_win_url "https://github.com/$(wfield repo)/releases/download/$(wfield tag)/$(wfield asset)"
+          out mlx_win_sha256 "$(wfield sha256)"
+          echo "Windows MLX runtime: $(wfield repo) $(wfield tag), downloaded by the installer"
           echo "Linux CPU runtimes: fork ${ltags##* }, amd64 and arm64 (inputs match)"
 
           # The Go toolchain: upstream's LINE, the newest PATCH. go.mod stays
@@ -299,6 +316,9 @@ jobs:
       RUNTIME_TAG: ${{ needs.plan.outputs.runtime_tag }}
       RUNTIME_ASSET: ${{ needs.plan.outputs.runtime_asset }}
       RUNTIME_SHA256: ${{ needs.plan.outputs.runtime_sha256 }}
+      # app/xollama-mlx.iss: what the installer downloads, and its sha256.
+      PKG_MLX_URL: ${{ needs.plan.outputs.mlx_win_url }}
+      PKG_MLX_SHA256: ${{ needs.plan.outputs.mlx_win_sha256 }}
     defaults:
       run:
         shell: bash
@@ -468,22 +488,33 @@ jobs:
         working-directory: repo
         run: |
           $inst = "$env:LOCALAPPDATA\Programs\xOllama"
-          function runInstaller($exe, $name) {
+          function runInstaller($exe, $name, $extra = @()) {
             $log = "$env:RUNNER_TEMP\$name.log"
-            $p = Start-Process -FilePath $exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=`"$log`"" -PassThru
+            $p = Start-Process -FilePath $exe -ArgumentList (@('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/LOG=`"$log`"") + $extra) -PassThru
             $null = $p.Handle
             if (-not $p.WaitForExit(900000)) { $p.Kill(); throw "$name did not finish in 15 minutes" }
             if (Test-Path $log) { Get-Content $log -Tail 12 }
             if ($p.ExitCode -ne 0) { throw "$name exited $($p.ExitCode)" }
             "$name exited 0"
           }
-          runInstaller (Resolve-Path dist\xOllamaSetup.exe).Path 'xOllamaSetup'
+          # The runner has no NVIDIA GPU, so the MLX download is forced: the
+          # pinned archive must arrive, pass its sha256 and unpack.
+          runInstaller (Resolve-Path dist\xOllamaSetup.exe).Path 'xOllamaSetup' @('/MLX=always')
+          function checkMLX($when) {
+            $d = "$inst\lib\ollama\mlx_cuda_v13"
+            $id = if (Test-Path "$d\MLX_ID") { (Get-Content "$d\MLX_ID" -Raw).Trim() } else { '' }
+            if ($id -cne $env:PKG_MLX_SHA256) { throw "${when}: MLX_ID [$id] is not the pinned $env:PKG_MLX_SHA256" }
+            foreach ($f in 'mlx.dll', 'mlxc.dll') { if (-not (Test-Path "$d\$f")) { throw "${when}: no $f in $d" } }
+            "${when}: MLX $id, $((Get-ChildItem $d -Recurse -File | Measure-Object Length -Sum).Sum / 1MB) MB"
+          }
+          checkMLX 'full installer'
           $want = (Get-Content dist\payload-id.txt -Raw).Trim()
           $got = (Get-Content "$inst\lib\ollama\PAYLOAD_ID" -Raw).Trim()
           if ($got -cne $want) { throw "installed PAYLOAD_ID [$got] is not payload-id.txt [$want]" }
           $v = (& "$inst\xollama.exe" --version 2>&1 | Out-String)
           if ($v -notmatch [regex]::Escape($env:VERSION)) { throw "installed xollama says [$v], not $env:VERSION" }
           runInstaller (Resolve-Path dist\xOllamaUpdate.exe).Path 'xOllamaUpdate'
+          checkMLX 'update installer'
           $v = (& "$inst\xollama.exe" --version 2>&1 | Out-String)
           if ($v -notmatch [regex]::Escape($env:VERSION)) { throw "after the update xollama says [$v], not $env:VERSION" }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$inst\xollama-stop.ps1" -App $inst

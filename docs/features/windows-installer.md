@@ -286,6 +286,41 @@ owns. Both are the same rule as the listen port
   deleted a stock install's model store. It is now unticked, and the caption
   says the directory is shared.
 
+## MLX, downloaded at install
+
+Owner, 2026-10-07: MLX ships on Windows, downloaded at install. Upstream's
+`OllamaSetup.exe` leaves it out (its users unpack
+`ollama-windows-amd64-mlx.zip` by hand), and ours cannot carry it either: the
+installer is about 1.2 GiB and the archive 1.3 GB, over GitHub's 2 GiB
+release-asset cap. Without MLX a Windows install cannot create a model from
+safetensors (upstream dropped GGUF conversion in September 2026) nor run a model published only
+for MLX (`embeddinggemma-2`, `laya`, the `-mlx` and nvfp4 tags). Models with
+a GGUF variant run on opencoti regardless (`opencoti-first`).
+
+`app/xollama-mlx.iss`, included by both installers (`windows-mlx` hook):
+
+- **What:** the archive `llama/runtime-pin-windows-mlx.txt` pins (the fork's
+  republished upstream bytes). The release workflow's `plan` checks the pin
+  and passes its URL and sha256 to the installer build (`PKG_MLX_URL`,
+  `PKG_MLX_SHA256`); `DownloadTemporaryFile` refuses any other bytes.
+- **When:** after the files are installed (`InstallMLX`, from
+  `CurStepChanged`), by the full and the update installer alike. `/MLX=auto`
+  (default) fetches only where an NVIDIA GPU is present, since MLX on Windows
+  is CUDA only; `/MLX=always` forces it, `/MLX=skip` never.
+- **Once:** `lib\ollama\mlx_cuda_v13\MLX_ID` holds the archive's sha256,
+  written last; a match is not fetched again. The full installer clears
+  `lib\ollama`, so `KeepMLX` (in `PrepareToInstall`, after xOllama is stopped)
+  moves a current MLX aside and `InstallMLX` puts it back.
+- **How:** unpacked with the system `tar.exe` (bsdtar reads zip; Windows 10
+  1803+), else `Expand-Archive`, into a staging directory under `lib\ollama`,
+  then renamed into place. 2.06 GB unpacked: the MLX and CUDA 13/cuDNN 9 DLLs
+  and the CUDA headers MLX compiles kernels against.
+- **Failure:** said, never hidden: a message box (the setup log when silent),
+  and the install finishes without MLX; running it again retries.
+- **Checked:** the release job's "the installers install" step runs the full
+  installer with `/MLX=always` and refuses a missing or wrong `MLX_ID`, then
+  the update installer over it. Guard `TestBothInstallersFetchThePinnedMLX`.
+
 ## Still open
 
 - **Nothing has been released.** No tag, no release, so the feed has nothing to

@@ -163,6 +163,11 @@ the fork delivers all of the following, in this order:
    sha256, the two MLX versions) and `scripts/build_darwin.sh` unpacks it
    instead of compiling MLX; the release workflow's `plan` refuses a pin whose
    versions are not the tree's. It moves with the two Linux runtime pins.
+   The Windows archive is pinned the same way in
+   `llama/runtime-pin-windows-mlx.txt` and moves with them; the installer
+   downloads it (it does not fit inside `xOllamaSetup.exe`), and `plan`
+   refuses it on the same terms. The Linux one is a `gpu` row of
+   `llama/runtime-pin-linux.txt`, unpacked into the image.
 
 > **Why step 3 exists.** Upstream dropped safetensors-to-GGUF conversion in
 > `98acec40a` (2026-09-14, in v0.35.x): `ollama create` from safetensors now
