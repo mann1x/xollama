@@ -109,6 +109,30 @@ llama.cpp 85.7 to 86.4, speech 4/4 (one Warn, "free-memory refresh found
 nothing", during the speech phase: transient, not a crash); arm64 on the Pi
 with the rebuilt CPU runtime 9.8 to 9.9 against 10.8 to 10.9, speech 3/3.
 
+**`v0.40.0-rc.2.xollama`** (2026-10-08, PR #14, release run 37698039727,
+image run 37699889866, payload id `d413785f…`). G9 on eleven2go over the
+installed rc.1: `xOllamaSetup.exe` exit 0 in 31 s, the MLX runtime already
+there under the pinned `MLX_ID` `c0ea38f2…` kept across the install (2,642
+files, 1,969 MB; the download itself ran in the release job, `/MLX=always`,
+1,338 MB, `MLX_ID` checked); version, `PAYLOAD_ID`, 22434 and `/api/xollama`
+right; five 512-token runs of `qwen3:8b` each: RTX 3090 123.0 cold, 123.3 to
+123.5 warm; RX 9070 XT 100.3 cold, 102.9 to 103.0 warm; integrated 5.0;
+displays `OK`; ollama on 11434 untouched. `xOllamaUpdate.exe` over it exit 0
+in 4 s, a new server pid, version, `PAYLOAD_ID` and `MLX_ID` unchanged, 121.9
+tok/s after. One Warn before the integrated GPU's load ("free-memory refresh
+found nothing", Vulkan; the load placed right), as in G10. G12: every
+`sha256sum.txt` line OK (the Windows installers hashed on eleven2go), amd64
+and arm64 (on the Pi) name the version; the image is amd64 and arm64 on
+Docker Hub and GHCR, `:dev` moved to it, `:latest` did not.
+
+**`v0.40.0-xollama`** (2026-10-08, PR #15 from rc.2's tree, `tree matches`,
+merge `4e4534103`, release run 37701523918): every `sha256sum.txt` line OK,
+payload id `d413785f…` (the candidate's), amd64 names the version. Short check
+on eleven2go: `xOllamaUpdate.exe` over rc.2 exit 0 in 4 s; version,
+`PAYLOAD_ID`, `MLX_ID`, a new server on 22434 and `/api/xollama` right; RTX
+3090 123.1 and 123.6 tok/s over 512 tokens; ollama on 11434 untouched.
+Promoted 2026-10-08 (Discord announce run succeeded).
+
 ### G1. Repository checks
 
 - **Where:** solidPC, the tree.
