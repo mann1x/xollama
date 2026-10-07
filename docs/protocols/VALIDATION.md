@@ -116,8 +116,9 @@ and 31.5 to 31.7 tok/s, speech 7/7 answered.
   refusals.
 - **Decision models:** `scripts/gates/decision.sh`, on a side server whose
   `lib/ollama` is the fork's pinned stock runtime and whose engine is the pinned
-  opencoti. `nimble` and `clef-flash` are listed with the single capability
-  `decision`; `/v1/systemone` answers a `choice`, a `noul` with a `score`, and
+  opencoti. `nimble` is listed with the single capability `decision`, and
+  `clef-flash` with `decision` and `vision` (upstream v0.40.0; before it,
+  `decision` alone); `/v1/systemone` answers a `choice`, a `noul` with a `score`, and
   for `clef-flash` a question about an image. Expected: every line `PASS`;
   `nimble` loads on opencoti; a Clef model loads on stock for as long as the pin
   has no `clef_score_v1`, and on opencoti from the pin that declares it.
