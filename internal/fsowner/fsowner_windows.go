@@ -11,4 +11,6 @@ func ownerOf(string) (Owner, bool) { return Owner{}, false }
 
 func chown(string, Owner) error { return nil }
 
+func lchown(string, Owner) error { return nil }
+
 func namedServiceAccount() (Owner, bool) { return Owner{}, false }

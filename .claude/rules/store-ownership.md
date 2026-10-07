@@ -37,6 +37,13 @@
   (launch, device listing, link probe) gets its HOME from `engine.PayloadHome`.
   Verified on solidPC by a root run then an `ollama` run of one install:
   `/srv/ml/xo17/run.sh`.
+- **A named manifest is a symbolic link since upstream v0.40.0**
+  (`manifests-v2/`, `linkManifest` in `manifest/manifest.go`), and every
+  manifest write goes through that package. Use `fsowner.Symlink`: it hands
+  over the link itself with `lchown`, because `chown` follows the link to a
+  blob that is already the service's. Guard
+  `TestSymlinkHandsOverTheLinkItself`. `compatmigrate/source_model.go` writes
+  the migrated GGUF through `fsowner.CreateTemp`.
 - Registry row `store-ownership`; prose in `docs/features/store-ownership.md`.
 - Verify changes here against a real root-run `pull` into an `ollama`-owned
   store, not only unit tests: with adoption 0 files are foreign, without it 11

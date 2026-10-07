@@ -5,6 +5,7 @@ package fsowner
 import (
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -149,6 +150,33 @@ func TestWriteFileAndCreateHandOver(t *testing.T) {
 	}
 	f.Close()
 	assertOwnedByService(t, created)
+}
+
+// Since upstream v0.40.0 a named manifest is a symbolic link to its blob. The
+// link itself has to change hands: chown(2) follows it, and would only "hand
+// over" a blob that already belongs to the service.
+func TestSymlinkHandsOverTheLinkItself(t *testing.T) {
+	asRoot(t, true)
+	store := serviceOwnedStore(t)
+
+	blob := filepath.Join(store, "blob")
+	if err := WriteFile(blob, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(store, "name")
+	if err := Symlink("blob", link); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Lstat(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("%s is not a symbolic link", link)
+	}
+	if uid := fi.Sys().(*syscall.Stat_t).Uid; uid != svcUID {
+		t.Errorf("the link is owned by uid %d; the service (uid %d) sees a foreign entry", uid, svcUID)
+	}
 }
 
 // OpenFile must only adopt when it could have created the file -- reopening

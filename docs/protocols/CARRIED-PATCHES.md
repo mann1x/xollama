@@ -27,6 +27,63 @@ first if a patch looks missing or out of date.
    other row in this file keys on the PR number, and these cannot. They are
    listed apart, below.
 
+**Status as of 2026-10-07: the set moved to upstream v0.40.0.** Manifest
+`d8ec2163` (`base: v0.40.0`, `integration.sha b47cefb7`, 24 patches, same
+order, none added or dropped), consumed on `sync/upstream-v0.40.0` after
+`c243389b` merged the upstream tag (seven conflicts: upstream's manifest-list
+store against the `store-ownership` hook in `manifest/manifest.go`,
+`manifest/paths.go` and `server/images.go`; `go.mod`; `scheduleRunner`'s new
+signature beside the `polykv-window` hook in `server/routes.go`; and two test
+files, both blocks kept, upstream's first). Each patch is its own `--no-ff`
+merge at the manifest's sha, in `patches[]` order. None retires with this
+sync: all 12 upstream PRs are still open (checked with `gh pr view`), and
+`#16820`'s head is still `274232b9`.
+
+All twenty-four are their v0.35.1 commits rebased: the same commit set by
+`git patch-id --stable` for twenty-two, and for `up-think-budget` and
+`up-modelfile-roundtrip` `git range-diff` shows context only (upstream added
+`TestShowOmitsNonFiniteGGUFValues`, `TestCheckPullRequires`, a `runner`
+argument and `ManifestSummary` beside them). Every merge leaves the tree
+exactly as its first parent; where one conflicted with its own earlier copy it
+was resolved to this tree's side, and the loop stops on a merge that would
+change the tree (`/srv/ml/xc9/sync40/merge-patches.sh`). `model/parsers`,
+`thinking` and `llama/compat` are byte-identical to the fork's `b47cefb7`.
+
+`LLAMA_CPP_VERSION` moves b11232 → b11351 with upstream, which also rewrote
+`llama/compat/002-clef.patch`. `LLAMA_CPP_VERSION`, `llama/compat` and
+`llama/server` are byte-identical to the fork's (inputs digest `9defcc44…`
+without the README line, `c5dafb5c…` with it: both as the fork's mail states),
+and `check-compat-origin` passes once it lets through a merge upstream made
+itself (`1c345795a`). The Linux and macOS runtime pins moved in `71814778`;
+the Windows pin moves with the build of `xollama-runtime.yaml`.
+
+| PR | branch | manifest sha | 2026-10-07 merge |
+|---|---|---|---|
+| #17563 | `up-repeat-guard` | `d87714af` | `935b2c3e` |
+| #17564 | `up-truncated-tool-calls` | `5f58c0eb` | `8b4cd359` |
+| #17565 | `up-gemma4-object-close` | `94eeb3ec` | `93f9983e` |
+| #17566 | `up-think-budget` | `6d262056` | `5cf2fccc` |
+| #17567 | `up-mlx-libdl` | `917efcbf` | `92116774` |
+| #17626 | `up-gemma4-stray-channel-name` | `b8ef1846` | `7eee0f80` |
+| #17914 | `qwen3coder-tolerate-malformed-tool-calls` | `5ff82369` | `aad69837` |
+| #18212 | `up-reasoning-budget-line-boundary` | `f8cb2b0d` | `f3d01766` |
+| #18281 | `up-native-thinking-replay` | `1b0001d1` | `f6c4f788` |
+| #18288 | `up-gemma4-stray-closer` | `784114e1` | `9c8f2b80` |
+| #18289 | `up-jinja-runner-reuse` | `42036f97` | `429c02d8` |
+| fork-only | `gemma4-toolcall-in-thinking` | `af4304c4` | `cc13c96f` |
+| #18624 | `qwen35-toolcall-in-thinking` | `0558d5a6` | `fc57c022` |
+| fork-only | `up-gemma4-unparsed-tool-call-content` | `605e911c` | `7d5f3914` |
+| fork-only | `up-toolcall-tags` | `14e592e0` | `230503d7` |
+| fork-only | `up-codex-request-count-mtime` | `85f82c4e` | `7dd904b7` |
+| fork-only | `up-fileutil-root-permission-tests` | `e5a29c23` | `58d1820c` |
+| fork-only | `up-gofmt-vision-test-data` | `3bbb5f6a` | `f6d83a7e` |
+| fork-only | `up-lfm2-think-off-discard` | `776e0c1f` | `42a0336c` |
+| fork-only | `up-gemma4-assistant-shape` | `579acda9` | `70422a26` |
+| fork-only | `up-gemma4-swallowed-key` | `8654eeb0` | `b3f799c0` |
+| fork-only | `up-compat-readme` (stacked) | `ac5a8c65` | `237721f8` |
+| fork-only | `up-response-scope-think-budget` (stacked) | `f447fb23` | `c3f0afd6` |
+| fork-only | `up-modelfile-roundtrip` | `3149115e` | `63a55e8d` |
+
 **Status as of 2026-10-03: the set moved to upstream v0.35.1.** Manifest
 `f430d02f` (`base: v0.35.1`, `integration.sha 1338776a`, 24 patches), consumed
 on `sync/upstream-v0.35.1` after `d3c2f4ea` merged the upstream tag (four

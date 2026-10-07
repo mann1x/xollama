@@ -492,7 +492,7 @@ func (s *Server) councilCompactorFor(ctx context.Context, m *Model, req api.Chat
 	if tree != nil {
 		return newCouncilCompactor(members, tree, cc, cfg, tree.render, tree.tokenize, tree.numCtx, reserve)
 	}
-	r, m2, opts, err := s.scheduleRunner(ctx, m, []model.Capability{model.CapabilityCompletion}, req.Options, req.KeepAlive, req.Shift)
+	r, m2, opts, err := s.scheduleRunnerForModel(ctx, m, []model.Capability{model.CapabilityCompletion}, req.Options, req.KeepAlive, req.Shift)
 	if err != nil {
 		slog.Debug("council: no runner to size the conversation; not compacting", "error", err)
 		return nil

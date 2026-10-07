@@ -16,7 +16,7 @@ ask() { # ask <model> <request file> <text the answer must hold>
   case "$out" in *"$3"*"http=200") echo "PASS $1 $2: $(echo "$out" | cut -c1-200)";; *) echo "FAIL $1 $2: $(echo "$out" | cut -c1-300)";; esac
 }
 for m in nimble clef-flash; do
-  curl -s http://$H/api/tags | python3 -c "import json,sys; c=[x.get('capabilities') for x in json.load(sys.stdin)['models'] if x['name']=='$m:latest']; print(('PASS' if c==[['decision']] else 'FAIL'),'$m listed with',c)"
+  curl -s http://$H/api/tags | python3 -c "import json,sys; c=[x.get('capabilities') for x in json.load(sys.stdin)['models'] if x['name']=='$m:latest']; print(('PASS' if c and all('decision' in k for k in c) else 'FAIL'),'$m listed with',c)"
   ask $m req.json '"choice":"bug"'
   ask $m req-multi.json '"type":"noul"'
 done

@@ -123,6 +123,20 @@ func CreateTemp(dir, pattern string) (*os.File, error) {
 	return f, nil
 }
 
+// Symlink is os.Symlink plus the handover of the LINK, not of what it points
+// at. Since upstream v0.40.0 a named manifest is a symbolic link to its blob;
+// the blob is handed over where it is created, and a link left root-owned
+// would be the one foreign entry in a service's manifest tree.
+func Symlink(oldname, newname string) error {
+	if err := os.Symlink(oldname, newname); err != nil {
+		return err
+	}
+	if o, ok := For(newname); ok {
+		_ = lchown(newname, o)
+	}
+	return nil
+}
+
 // Adopted hands an already-created path over. For code that cannot use the
 // wrappers -- something that shells out, or writes through a third-party API.
 func Adopted(path string) { adopt(path) }

@@ -20,9 +20,9 @@
 # pinned macOS build of it, so build_darwin.sh still compiles it.
 
 repo      mann1x/ollama
-tag       v0.35.1-thinkbudget
+tag       v0.40.0-thinkbudget
 asset     ollama-darwin-mlx.tgz
-sha256    79bd8b877f14f0ff3e1defceee769fd1356130e3319625a41b35d9f41283b3dc
-upstream  v0.35.1
-mlx       64ea011cb65f14d9ce2737e60db9a4ae91ed7441
+sha256    b6d4d8febc13f9aab11b03eb92613289850f472e0581cb6dc5596f6618bfcac6
+upstream  v0.40.0
+mlx       264c14fe650e1dd9bb0c3902dc06b08033d8f89c
 mlx_c     ebc88f10caa1b625e6b581437a8dea6df8a70085
