@@ -1,0 +1,50 @@
+# govulncheck go1.26.8, tree e8d56490e, 2026-10-07
+=== Symbol Results ===
+=== Package Results ===
+Vulnerability #1: GO-2026-6355
+    Prevent DoS on deadlocked established channel in golang.org/x/crypto/ssh
+  Module: golang.org/x/crypto
+    Found in: golang.org/x/crypto@v0.52.0
+    Fixed in: golang.org/x/crypto@v0.56.0
+Vulnerability #2: GO-2026-6354
+    Prevent DoS on deadlocked undecided channel in golang.org/x/crypto/ssh
+  Module: golang.org/x/crypto
+    Found in: golang.org/x/crypto@v0.52.0
+    Fixed in: golang.org/x/crypto@v0.56.0
+Vulnerability #3: GO-2026-6303
+  Module: golang.org/x/crypto
+    Found in: golang.org/x/crypto@v0.52.0
+    Fixed in: golang.org/x/crypto@v0.55.0
+Vulnerability #4: GO-2026-4514
+    Denial of service in github.com/buger/jsonparser
+  Module: github.com/buger/jsonparser
+    Found in: github.com/buger/jsonparser@v1.1.1
+    Fixed in: github.com/buger/jsonparser@v1.1.2
+=== Module Results ===
+Vulnerability #1: GO-2026-6180
+    Ignore unrelated, unauthenticated hashes in Lookup in golang.org/x/mod/sumdb
+  Module: golang.org/x/mod
+    Found in: golang.org/x/mod@v0.38.0
+    Fixed in: golang.org/x/mod@v0.40.0
+Vulnerability #2: GO-2026-6179
+    Fix transparency log tile verification bypass in golang.org/x/mod/sumdb/tlog
+  Module: golang.org/x/mod
+    Found in: golang.org/x/mod@v0.38.0
+    Fixed in: golang.org/x/mod@v0.40.0
+Vulnerability #3: GO-2026-5942
+  Module: golang.org/x/net
+    Found in: golang.org/x/net@v0.55.0
+    Fixed in: golang.org/x/net@v0.56.0
+Vulnerability #4: GO-2026-5932
+    The golang.org/x/crypto/openpgp package is unmaintained, unsafe by design,
+  Module: golang.org/x/crypto
+    Found in: golang.org/x/crypto@v0.52.0
+    Fixed in: N/A
+Vulnerability #5: GO-2026-5841
+    OOB read in github.com/klauspost/compress/s2
+  Module: github.com/klauspost/compress
+    Found in: github.com/klauspost/compress@v1.18.3
+    Fixed in: github.com/klauspost/compress@v1.18.7
+Your code is affected by 0 vulnerabilities.
+This scan also found 4 vulnerabilities in packages you import and 5
+vulnerabilities in modules you require, but your code doesn't appear to call

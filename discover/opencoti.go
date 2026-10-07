@@ -62,7 +62,7 @@ func listDevices(ctx context.Context, artifact string, b engine.Backend, env ...
 	if err != nil {
 		err = fmt.Errorf("%w; engine output: %s", err, outputTail(string(out)))
 	}
-	return string(out), err
+	return string(out), withRefusals(string(out), err)
 }
 
 // outputTail is the end of an engine's output, short enough for one log line:
@@ -187,6 +187,14 @@ func overlayOpencotiDevices(ctx context.Context, devices []ml.DeviceInfo) []ml.D
 		start := time.Now()
 		listed, err := opencotiListing(ctx, artifact, b) // xollama: CUDA 12 payload too
 		slog.Debug("opencoti device enumeration", "backend", b, "devices", len(listed), "duration", time.Since(start), "error", err)
+		if err != nil && len(listed) == 0 && isRefusedListing(err) {
+			// The engine found the devices and refused them all
+			// (opencoti_refused.go): its answer is "none", not a failure.
+			slog.Warn("opencoti refused every device of this backend; models load elsewhere",
+				"backend", b, "artifact", artifact, "error", err)
+			devices = mergeOpencotiBackend(devices, string(b), nil, selector)
+			continue
+		}
 		if err != nil && len(listed) == 0 {
 			// Nothing to be authoritative with, so llama.cpp's view stands. The
 			// pinned engine serves this backend here (Enumerates), so a failed

@@ -5,6 +5,34 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-07 — Engine pin on opencoti c10 (release `2610072136001`), measured; a refused GPU is no longer placed on; arm64 runtime repinned.**
+> - Owner: when c10 is published, a quick Clef 27B check on macOS, then publish c10, then release. c10-dev snapshot 2 validated first and mailed PASS (#869): G3, Clef/nimble, speech 8/8 with a root-owned `/tmp/audiocpp-gguf` (bug-3955 fixed), Mac Clef 27B, and bug-3954 at the engine on eleven2go: a fresh engine and one that served a request first are identical with the 3090 and the 9070 XT on Vulkan (`-ts 1,1`), where the c10-dev 1 engine differs from token 196 (`scripts/gates/windows-twogpu-engine.ps1`). opencoti published c10 (index `d6078962`): the engine is snapshot 2 plus the version tag, every library the snapshot's file.
+> - `llm/engine/pin/` moved to c10 on the release bytes; numbers in the index header and `docs/protocols/VALIDATION.md` ("On opencoti c10"): G3 8/8, 77.26 tok/s, 4 slots 299.7; G4 pass; G5 the PolyKV tag 4 of 4, the other two tags pass; G6 speech 8/8, video 33/33; G8 3090 123.3–123.8, 9070 XT 102.9–103.0 warm, engine gone 1047 ms after a kill; G11 129.3 / 32.4 tok/s, speech 7/7, Clef 27B on Metal. The pin declares `clef_score_v1`: Clef models now run on opencoti (stock loads 0).
+> - Found and fixed (bug-246): c10 refuses old AMD drivers (`… is REFUSED:`, RADV ≤ Mesa 20, amdgpu-pro ≤ 2.0.154). On solidPC its listing lists no Vulkan device and exits 1, and xollama took that for a failed listing, kept llama.cpp's view and placed every Vulkan load on the refused iGPU ("Vulkan is not usable on this system"). `discover/opencoti_refused.go`: a listing that refused every device is the engine's answer; the devices are dropped at Warn (driver and `OPENCOTI_VK_ALLOW_OLD_DRIVER` named) and the load runs elsewhere (verified: CPU, 35 tok/s). Line format agreed with opencoti (#878). G7 on solidPC is therefore a refusal check now; Vulkan throughput is G8's 9070 XT.
+> - Found (bug-247): the fork's Windows MLX dispatch also rebuilt and re-uploaded `ollama-linux-arm64-runtime.tgz`, replacing the pinned bytes (`f6fcc0c8…`, gone). Rebuilt from the same commit `2630dba7` as `ollama-linux-arm64-runtime-2630dba7.tgz` (`7ad250e8…`) and repinned (inputs unchanged); the fork's uploads no longer replace an existing asset.
+> - Gate scripts (`795431af3`): Windows gates run in the logged-in session (`windows-gate-run.ps1`), the Windows speech script finds the pin-format-2 engine.
+> - Open: G10 on the `:dev` image of this tree (new arm64 runtime and c10); the fork's Windows MLX build with a relative cuDNN directory (`ollama-windows-amd64-mlx-reldir.zip`, mailed when published; rc.2 ships upstream's zip); the Windows Vulkan device ids need `OPENCOTI_LIST_DEVICE_IDS=1` (xo-20); the owner's macOS `llama-server` removal, unblocked now that c10 carries the Clef head.
+
+> **2026-10-07 — opencoti first on every platform (`opencoti-first` hook); Windows MLX to be downloaded by the installer.**
+> - Found on the published `v0.40.0-rc.1.xollama` (Mac mini): `pull qwen3.5:0.8b` took the MLX variant and ran it on MLX, because upstream v0.40.0's `runnerPreferences` puts MLX first on Apple silicon. The registry now publishes qwen3.8/3.6/3.5, gemma4 and the decision models (nimble, tev1, clef, clef-flash) with a GGUF and an MLX variant each; embeddinggemma-2, laya and the `-mlx`/nvfp4 tags are MLX only; safetensors create needs MLX on every OS (upstream dropped GGUF conversion 2026-09-14). Elsewhere upstream already prefers GGUF.
+> - Owner: "this must NEVER happen, always opencoti first on all platforms". Fixed by the `opencoti-first` hook (Registry row): GGUF children before MLX on every OS while opencoti is the engine; `XOLLAMA_ENGINE=llamacpp` keeps upstream's order. Verified on the Mac mini: the guard fails without the hook (`[mlx llamacpp ggml]`); a side server from this tree pulled `qwen3.5:0.8b` as `llamacpp gguf` and served it on opencoti `2610050707001`. rc.1 stays as published (a candidate); the next candidate carries the fix. A model already pulled as MLX stays MLX until pulled again.
+> - Owner: Windows gets MLX downloaded at install (xo-21), not bundled: installer plus MLX zip would exceed GitHub's 2 GiB asset cap; upstream's own installer has no MLX (the user unpacks the zip by hand).
+> - Built (xo-21): `app/xollama-mlx.iss` (`windows-mlx` hook) downloads the archive pinned in `llama/runtime-pin-windows-mlx.txt` (the fork's `ollama-windows-amd64-mlx.zip`, sha256 `c0ea38f2…`, 2.06 GB unpacked) after install, NVIDIA only by default, sha256-checked, kept across installs by `MLX_ID`; the release job's install check forces it. NOT YET COMPILED: the next step is ISCC on eleven2go once opencoti is off it, then the install there with an MLX model run on the 3090.
+
+> **2026-10-07 — Security check in every release; speech gates run the pinned engine; an audio.cpp temp-directory bug found.**
+> - Owner: save the Dependabot alerts, keep the last check's results and investigate the delta every release. `scripts/security-check.sh` writes `docs/protocols/security/dependabot.tsv` and `govulncheck.txt` and prints new/gone alerts and any alert on a manifest line the fork changed; `RELEASE.md` step 1 makes it part of every release. First snapshot: 99 open, 98 in `app/ui/app/package-lock.json` (byte-identical to upstream v0.40.0; 10 new since the 88 of 2026-09-25, all in that file), one in `go.mod` (`github.com/buger/jsonparser` v1.1.1, upstream's indirect version, not called). govulncheck on go1.26.8: 0 reachable; four `golang.org/x/crypto` findings in v0.52.0 (the fork's `security-deps` version) fixed in v0.56.0, not called.
+> - Owner: the speech check always uses the engine being integrated. `scripts/gates/stage-engine.sh` stages what `llm/engine/pin` names (the build's own fetch); `windows-speech.ps1` takes that directory and refuses any other engine or bytes; `serve-side.sh`/`speech-linux.sh` start on it and need a writable scratch store. Linux run on c9: the engine named itself `build 2610050707001`; OuteTTS 3 of 3; Kokoro, Supertonic, KittenTTS refused, see next. Windows run waits for opencoti to leave eleven2go.
+> - Found (mail #857 to opencoti, not worked around here): audio.cpp unpacks into `<temp>/audiocpp-gguf`, one directory for all accounts; a root run left `/tmp/audiocpp-gguf` root-owned on 2026-10-03 and the `ollama` service now fails every Kokoro/KittenTTS/Supertonic load ("cannot create directories: Permission denied"). With `TMPDIR` on a directory `ollama` owns the same request is 200. Same shape as xo-17; on a Linux install the service shares `/tmp` with root. The stale directory stays as evidence.
+> - Owner: MLX ships on Windows, Linux and macOS from the c10 release. Linux: the image already takes the fork's `ollama-linux-amd64-mlx.tar.zst` (a `gpu` row of `llama/runtime-pin-linux.txt`). macOS: as today. Windows: upstream's installer excludes `mlx_*` too, and installer plus MLX zip would be about 2.5 GiB against GitHub's 2 GiB asset cap; how to deliver it is open (owner's call).
+
+> **2026-10-07 — `v0.40.0-rc.1.xollama` published as a pre-release (upstream v0.40.0, opencoti c9); every gate passed.**
+> - Owner: no new engine snapshot when the sync is done, so deliver a pre-release on c9. opencoti's c10 is still unpublished (a dev snapshot is announced for today).
+> - PR #13, dry run 37608537655, merged as `e311046b5`; release run 37621365711 (plan, windows, macos, linux amd64 and arm64, publish all success), image run 37623955010. A candidate, never promoted: `:latest` stays `.4` on Docker Hub and GHCR, `:dev` is this tag.
+> - Gates, numbers in `docs/protocols/VALIDATION.md` ("On upstream v0.40.0"): G2 26 pass, 12 skipped; G3 both engines 8/8 and within noise of the baseline; G5 the PolyKV tag 4 of 4, the other two tags pass; G9 full and update installers exit 0, RTX 3090 120.9 to 122.3 tok/s, RX 9070 XT 102.4 to 102.5, integrated 5.0, 16 alternating Vulkan loads 0 failed; G10 amd64 85.6 to 86.0 on both engines, arm64 9.9 to 11.0, speech on both; G11 on the workflow's app 128.4 / 32.1 tok/s and the MLX model 77.0 on the pinned MLX libraries; G12 every checksum OK, payload id `fa784c12…` as tested, versions right on amd64, arm64 and the Mac. The installed `.4` app on the Mac mini updated itself to the pre-release (download kept, so its checksum matched; bundle verified; 129.5 tok/s after).
+> - Found: since upstream v0.40.0 a store the server cannot write lists no models (`mkdir …/manifests-v2`), stock v0.40.0 alike. Said in the release notes; `scripts/gates/image-x86.sh` mounted the shared stores read-only and now takes writable scratch stores (`LLM=`, `MEDIA=`).
+> - Not run: the Windows speech script, which still names the c8 engine and a side server; G9's steps do not include it.
+> - Left: the c10 pin move on a measurement when opencoti publishes it, then the release `v0.40.0-xollama` (Clef on opencoti and macOS, macOS `llama-server` removal, the forced link by `pci=` on Windows, the fork's MLX runtimes); owner's call whether the Windows MLX zip goes into the installer.
+
 > **2026-10-07 — Upstream v0.40.0 synced (fork manifest `d8ec2163`, llama.cpp b11351, MLX `264c14fe`); the engine stays opencoti c9.**
 > - Owner: c10 is still cooking (rolling KV window and KVarN bugs), so sync to upstream now and, if no new engine snapshot is out when it is done, deliver a pre-release on c9.
 > - `sync/upstream-v0.40.0`, in its own worktree. `c243389b` merged the tag (26 commits, 206 files). Seven conflicts: upstream's manifest-list store against the `store-ownership` hook (`manifest/manifest.go`, `manifest/paths.go`, `server/images.go`), `go.mod`, `scheduleRunner`'s new signature beside the `polykv-window` hook, and two test files (both blocks kept). The council and tokenize callers that hold a model now call `scheduleRunnerForModel`. Three new upstream CLI tests set `OLLAMA_HOST` and were reaching the live server on this host: `XOLLAMA_HOST`.
@@ -2011,9 +2039,10 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 `v0.35.1-xollama.4` is the latest release (2026-10-05): upstream v0.35.1, the
 fork's carried patches, opencoti c9 (`2610050707001`), every platform with a
 download, macOS included and updating itself. `dev` is on upstream v0.40.0
-since 2026-10-07, still on c9; its first candidate is `v0.40.0-rc.1.xollama`.
-The release after follows opencoti c10: the Clef head, the fork's MLX runtimes in the release, and on
-macOS no stock `llama-server`. The Agentic Council Chat is in Phase 11.
+since 2026-10-07 and on opencoti c10 (`2610072136001`) since the same night,
+measured on every engine gate; its first candidate `v0.40.0-rc.1.xollama`
+(c9) is published as a pre-release, and `v0.40.0-rc.2.xollama` on c10 is
+next. Clef models run on opencoti. The Agentic Council Chat is in Phase 11.
 
 ## What exists today
 
@@ -2042,9 +2071,9 @@ macOS no stock `llama-server`. The Agentic Council Chat is in Phase 11.
 
 ## Known gaps
 
-- **Clef decision models are served by stock `llama-server`**, not by
-  opencoti, until the pinned engine declares `clef_score_v1` (c10). Where no
-  stock runtime serves a host's GPU they run on what stock has there.
+- **c10 refuses old AMD drivers** (RADV from Mesa 20 or older, amdgpu-pro
+  2.0.154 or older): such a GPU is not used, and models load elsewhere (CPU
+  when it is the only one). `OPENCOTI_VK_ALLOW_OLD_DRIVER=1` uses it anyway.
 - **Releases before `v0.35.1-xollama.4` have known bugs:** `.2` fails Clef
   models and, on Windows, a Vulkan load now and then; `.3` (pre-release) is
   the first macOS build that updates itself and stages in the folder a stock

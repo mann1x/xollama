@@ -487,6 +487,10 @@ begin
     Log('xollama-stop.ps1 exited ' + IntToStr(ResultCode));
 end;
 
+// The MLX runtime, downloaded rather than carried (2 GiB asset cap).
+// xollama-hook: windows-mlx — see app/xollama-mlx.iss
+#include "xollama-mlx.iss"
+
 // Runs before any file is replaced: the engine and the runners live under
 // lib\ollama, which the installer overwrites after the executables.
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -502,8 +506,22 @@ begin
 #endif
   ExtractTemporaryFile('xollama-stop.ps1');
   StopXollama(ExpandConstant('{tmp}\xollama-stop.ps1'));
+#ifndef CORE
+  // [InstallDelete] is about to clear lib\ollama; a current MLX is kept.
+  KeepMLX();
+#endif
   Result := '';
 end;
+
+#ifdef CORE
+// The full installer calls InstallMLX from its own CurStepChanged
+// (xollama-setup-pages.iss); the update installer has none.
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssPostInstall then
+    InstallMLX();
+end;
+#endif
 
 // Kept as each executable's BeforeInstall: the stop already ran in
 // PrepareToInstall, so this only catches a process started since.

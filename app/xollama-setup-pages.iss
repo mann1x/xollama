@@ -722,6 +722,7 @@ begin
     RegWriteExpandStringValue(HKEY_CURRENT_USER, 'Environment', 'XOLLAMA_HOST', V);
   WriteChangedKV();
   WriteAPIKey();
+  InstallMLX();
 end;
 
 // The first launch comes from this installer, whose environment predates the

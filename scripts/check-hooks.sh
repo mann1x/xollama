@@ -14,7 +14,7 @@ cd "$(dirname "$0")/.."
 REGISTRY=docs/protocols/UPSTREAM-SYNC.md
 
 markers=$(grep -rno 'xollama-hook: [a-z0-9-]*' \
-    --include='*.go' --include='*.ts' --include='*.tsx' --include='*.sh' --include='*.m' --exclude=check-hooks.sh . 2>/dev/null \
+    --include='*.go' --include='*.ts' --include='*.tsx' --include='*.sh' --include='*.m' --include='*.iss' --exclude=check-hooks.sh . 2>/dev/null \
     | sed 's/.*xollama-hook: //' | sort -u)
 
 # Registry ids are the first backticked cell of each table row, minus the

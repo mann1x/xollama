@@ -850,6 +850,10 @@ func selectManifestReferenceWithPreferences(manifests []Manifest, preferences []
 }
 
 func runnerPreferences() []string {
+	// xollama-hook: opencoti-first — see manifest/opencoti_first.go
+	if p, ok := opencotiFirst(); ok {
+		return p
+	}
 	if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
 		return []string{RunnerMLX, RunnerLlamaCPP, RunnerGGML}
 	}

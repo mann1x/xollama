@@ -133,6 +133,7 @@ iGPU.
 | command | `<artifact> --server --list-devices -m /nonexistent.gguf --offline --verbose --gpu nvidia\|vulkan`, one run per backend (`--gpu` picks one) |
 | when | once, at bootstrap. Free-memory refreshes keep upstream's path |
 | off | `XOLLAMA_ENGINE=llamacpp` runs nothing and changes nothing |
+| refused | since c10 the engine refuses a driver it has measured to crash (`ggml_vulkan: <name> (driver <x>) is REFUSED: …`: RADV from Mesa 20 or older, amdgpu-pro 2.0.154 or older). A listing that refused every device lists none and exits 1; that is the engine's answer, so the backend's devices are dropped at Warn and models load elsewhere (`discover/opencoti_refused.go`). `OPENCOTI_VK_ALLOW_OLD_DRIVER=1` keeps the device |
 
 <Note>
   A Vulkan enumeration initialises every installed ICD. On solidPC the NVIDIA

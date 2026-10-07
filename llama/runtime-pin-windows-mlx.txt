@@ -1,0 +1,32 @@
+# llama/runtime-pin-windows-mlx.txt
+#
+# The MLX runtime a Windows install takes, pinned as a published artifact and
+# never built here. It is upstream's own ollama-windows-amd64-mlx.zip,
+# republished byte for byte by the fork (docs/protocols/FORK-SYNC.md, step 3).
+#
+# It is NOT inside xOllamaSetup.exe: the installer plus this archive would be
+# about 2.5 GiB, over GitHub's 2 GiB release-asset cap (upstream's own
+# OllamaSetup.exe leaves MLX out too). The installer DOWNLOADS it instead
+# (app/xollama-mlx.iss, owner 2026-10-07), from repo/tag/asset below, and
+# refuses any bytes whose sha256 is not this one. The release workflow hands
+# the four values to the installer build (PKG_MLX_*).
+#
+#   repo          GitHub repository that publishes the archive (the fork)
+#   tag           its release carrying the asset
+#   asset         archive name: lib/ollama/mlx_cuda_v13/ (MLX, CUDA 13, cuDNN
+#                 9 and the CUDA headers MLX compiles kernels against)
+#   sha256        of the asset, checked by the installer before unpacking
+#   upstream      ollama/ollama release the bytes were cut from
+#   mlx, mlx_c    upstream's MLX_VERSION and MLX_C_VERSION at that release;
+#                 they must equal this tree's (the plan job refuses otherwise)
+#
+# Moves with llama/runtime-pin-darwin.txt and the two Linux runtime pins on
+# every fork sync.
+
+repo      mann1x/ollama
+tag       v0.40.0-thinkbudget
+asset     ollama-windows-amd64-mlx.zip
+sha256    c0ea38f2e42e298bf023f6ce1e48dcf9dc2b757d1e72f281dc0e2092ca6388d1
+upstream  v0.40.0
+mlx       264c14fe650e1dd9bb0c3902dc06b08033d8f89c
+mlx_c     ebc88f10caa1b625e6b581437a8dea6df8a70085

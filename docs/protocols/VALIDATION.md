@@ -64,6 +64,51 @@ kill, integrated GPU 5.4 to 5.5, speech 4/4. G10 (engine replaced in the rc.1
 image on the Pi): 10.0 to 10.2 against 11.1, speech 5/5. G11: 125.0 to 127.9
 and 31.5 to 31.7 tok/s, speech 7/7 answered.
 
+**On upstream v0.40.0** (2026-10-07, candidate `v0.40.0-rc.1.xollama`, tree
+`457f6ed1b`, still opencoti c9; working directory `/srv/ml/xc9/sync40`, scratch
+stores of hard links, since this version writes `manifests-v2` and converted
+model copies into the store it serves). G2: 26 checks pass, 12 skipped. G3:
+opencoti compat 8/8, llama3 76.6 tok/s, 4 slots 302, overflow 3.8; llama.cpp
+b11351 compat 8/8, 78.3, 616, 2.9. G5: the PolyKV tag 4 runs of 4 (5 pools, 0
+refusals each, convened 161 to 294 s), the no-PolyKV tag and the idle tag pass
+(the idle tag 9 room refusals in its 16k window, answered; earlier runs of that
+tag ranged from 0 to several hundred). G9: full installer exit 0 in 38 s over
+`.4`, update installer exit 0 in 4 s with a new server; RTX 3090 118.8 cold,
+120.9 to 122.3 warm; RX 9070 XT 102.2, 102.4 to 102.5; integrated GPU 5.0;
+16 alternating Vulkan loads on the installed server 0 failed; displays `OK`.
+G10 (`:dev` of the tree): amd64 opencoti 85.6 to 85.9, llama.cpp 85.9 to 86.0,
+speech 4/4; arm64 9.9 to 10.0 against 10.8 to 11.0, speech 3/3. G11 (the
+workflow's app): `qwen2.5:1.5b` 128.4, `llama3` 32.1, the MLX model
+`qwen3.5:2b-nvfp4` 77.0 on the pinned MLX libraries, speech 7/7 answered. G12 on
+the published pre-release (merge `e311046b5`): every checksum OK, payload id
+as tested, amd64 and arm64 binaries name the version, the image on both
+registries for both architectures, `:dev` moved and `:latest` not; the installed
+`.4` app on the Mac mini updated itself to it and served 129.5 tok/s.
+
+**On opencoti c10** (2026-10-07, engine `2610072136001`, the release bytes;
+every library the dev snapshot 2 file; working directory `/srv/ml/xc10`, the
+same scratch stores). G3: compat 8/8, llama3 77.26 tok/s, 4 slots 299.7,
+overflow 3.27 (the axis spans 3.13 to 4.01 on two engines back to back:
+noise). G4: all chat paths pass, 0 refusals; `/v1/systemone` nimble and
+clef-flash both on opencoti (stock loads 0). G5: the PolyKV tag 4 runs of 4,
+5 pools and 0 refusals each (convened 156 to 172 s); the no-PolyKV tag PASS
+(219 / 303 s). G6: speech 8/8 with a root-owned `/tmp/audiocpp-gguf` put there
+first (bug-3955), video 33/33 frames on Wan2.1 and Wan2.2. G7: **solidPC's
+Renoir iGPU is refused by the engine since c10** (RADV 20.3.5 and amdgpu-pro
+2.0.154, "loses the device or crashes inside the driver"): the gate now checks
+that a refused device is not placed on (`discover/opencoti_refused.go`) and the
+load runs elsewhere; Vulkan throughput is measured by G8 on the RX 9070 XT. G8:
+RTX 3090 123.3 to 123.8 tok/s; RX 9070 XT 100.4 cold, 102.9 to 103.0 warm,
+103.6 after 120 s idle, polls 200, engine gone 1047 ms after the kill;
+integrated GPU 5.1; speech 4/4; bug-3954 at the engine (both cards on Vulkan,
+`-ts 1,1`, `scripts/gates/windows-twogpu-engine.ps1`): fresh and after a
+request identical, where the c10-dev 1 engine differs from token 196. G11 (dev
+build, release engine): `qwen2.5:1.5b` 129.2 to 129.6, `llama3` 32.1 to 32.4,
+speech 7/7 answered; Clef 27B on Metal (bug 0.942, image red 0.994). G10 (`:dev` of `e8d56490e`, run 37690699916): amd64 opencoti 85.2 to 85.6,
+llama.cpp 85.7 to 86.4, speech 4/4 (one Warn, "free-memory refresh found
+nothing", during the speech phase: transient, not a crash); arm64 on the Pi
+with the rebuilt CPU runtime 9.8 to 9.9 against 10.8 to 10.9, speech 3/3.
+
 ### G1. Repository checks
 
 - **Where:** solidPC, the tree.
@@ -325,6 +370,12 @@ GPU, the stock ollama on 11434 untouched).
   on the Pi 5: opencoti 10.1 tok/s, llama.cpp 11.0 to 11.1, speech 3 of 3;
   `PAYLOAD` names the fork's runtime and every pinned engine file on both;
   the owner's containers and the stock ollama on the Pi untouched.
+- **The stores must be writable since upstream v0.40.0.** A store this version
+  cannot write lists no models and every request is a 404 (`mkdir
+  /models/manifests-v2: read-only file system`); stock v0.40.0 does the same.
+  `image-x86.sh` took the shared stores read-only and failed its speech half on
+  2026-10-07; it now takes `LLM=` and `MEDIA=`, scratch stores of hard links
+  mounted writable (0 files of another owner afterwards).
 
 ### G11. macOS
 

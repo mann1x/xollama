@@ -1,14 +1,15 @@
 format     2
 component  vulkan
-version    2610041656001
-built-from 2610041643001
+version    2610071443002
+built-from 2610071429001
 repo       ManniX-ITA/opencoti-llamafile
-rev        e0eea15d99fe94e817c3407ada7d99a2ca642da4
+rev        c10050b432da693b587de455ed8dc8106529b6b3
 abi        ggml 41ba479c24d7e3a624c7b13aa3cbe357e41fac04a504c54ec2ee170de0bff9a1
 abi-source exported
-engine-min 2610041643001
-gated-with 2610041643001
+engine-min 2610071254001
+gated-with 2610071254001
+gated-with 2610071819001
 requires   x86_64         glibc          2.27
-file  x86_64         vulkan     components/vulkan/2610041656001/ggml-vulkan-x86_64.so  8875b020518166b37de8680c4b2c3b0cf17744d8ebea49d7cc2e43879ae650dd  56290760
-file  win-x86_64     vulkan     components/vulkan/2610041656001/ggml-vulkan-win-x86_64.dll  bfe2fbb87331c81618b06dcc5d3da5e20b3cf4032b0a2e2fc07dd8faf77f143b  57255849
-file  any            build-info components/vulkan/2610041656001/BUILD_INFO.vulkan.md  b26a1c125a58dbfb6170e85045bea4fa2f96ca8b172210d766c29b46a9e6d5e9  2964
+file  x86_64         vulkan     components/vulkan/2610071443002/ggml-vulkan-x86_64.so  b34a07cb706706ecc44c50bdeff0ac5d03545ea78b5c0da9b00acc7584d16281  56322272
+file  win-x86_64     vulkan     components/vulkan/2610071443002/ggml-vulkan-win-x86_64.dll  ea7a1c51d9e8922cdff73355fb734859a168b5c621299acb5332d21c9ea02e76  57352976
+file  any            build-info components/vulkan/2610071443002/BUILD_INFO.vulkan.md  454f8788ca7b1aa7ebb7445ded6336d758948b647fb471cdbebbd09b69ab989b  3782
