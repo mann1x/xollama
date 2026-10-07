@@ -12,9 +12,10 @@
 # A commit in RANGE that touches those paths passes when:
 #   - it is not a merge, and it is reachable from a fork or upstream ref
 #     (it was written there and merged in); or
-#   - it is a merge, and its tree for those paths equals one of its parents'
-#     (resolving a conflict to either side brings nothing new; a merge that
-#     invents content is flagged exactly like a direct commit).
+#   - it is a merge, and it is reachable from a fork or upstream ref, or its
+#     tree for those paths equals one of its parents' (resolving a conflict
+#     to either side brings nothing new; a merge made here that invents
+#     content is flagged exactly like a direct commit).
 #
 # Usage: scripts/check-compat-origin.sh <base>..<head>
 #   Fork and upstream refs must already be fetched; the workflow fetches them
@@ -51,6 +52,10 @@ while read -r c; do
         # Same as the first parent: the merge brought nothing into these paths.
         [ "$(subtree "${parents%% *}")" = "$mine" ] && continue
         checked=$((checked+1))
+        # A merge made upstream or in the fork is theirs, whatever it wrote:
+        # upstream's release branch resolves its own merges by hand
+        # (1c345795a, v0.40.0). Only a merge made HERE is read file by file.
+        from_a_source "$c" && continue
         # File by file: a merge may combine the two sides (the fork's 004 next
         # to this tree's 005), but every file it leaves must be one a parent
         # already had, byte for byte. A conflict resolved by hand into new text
