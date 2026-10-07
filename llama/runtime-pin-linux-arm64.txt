@@ -5,7 +5,7 @@
 # the same script: ARCH=arm64 scripts/docker-assemble.sh.
 #
 # The CPU runtime is the fork's, built in the same run as the amd64 one from
-# the same commit (fork run 37176344596: a native arm64 runner, AlmaLinux 8,
+# the same commit (fork run 37593035359 for v0.40.0: a native arm64 runner, AlmaLinux 8,
 # upstream's cpu preset; glibc 2.27, 64K-aligned segments, CPU variants
 # armv8.0 to armv9.2 chosen at load). It moves with
 # llama/runtime-pin-linux.txt: one fork release, one commit, both
@@ -15,12 +15,12 @@
 # them: CUDA 12 and 13 for arm servers, and the two JetPack payloads. A
 # Raspberry Pi uses none of them and runs on the CPU.
 repo      mann1x/ollama
-tag       v0.35.1-thinkbudget
+tag       v0.40.0-thinkbudget
 asset     ollama-linux-arm64-runtime.tgz
-sha256    096e5e43c25d9ba54e0e7a1757e595c26e35a147d09fa0c1e080ef75c5b1570b
-inputs    57004c3cf4266c4c1649add853a7ba0499d02a7b10faf98efa5617391cd2c0ec
-built     1040f03db004aa1c4aa2648d75237bc97de11a55
-upstream  v0.35.1
-gpu       ollama-linux-arm64.tar.zst           b1b1c85d25136b256d3740f6ecd2f7c0105e8ca71642fd6ff2fc199f3cefd69d
-gpu       ollama-linux-arm64-jetpack5.tar.zst  78a9c11b5c30c1f8632646e8187f1a3da6ff4c499c47f63f55e9ab68ca18161a
-gpu       ollama-linux-arm64-jetpack6.tar.zst  e9a6b9a9e71c4eeefd8b7955354e08a088e0a7afcc5186992f906fa080bc0af8
+sha256    f6fcc0c8886c5912667b421790cc0c06e81aa3b6eaf5e0eb3c08f7abf2b5a1fb
+inputs    9defcc4413930651433008f477efa9c7e54ab33bb6618f7eb032cbe8a8e66df2
+built     2630dba76cac84d9d9738896b7a92549986168b6
+upstream  v0.40.0
+gpu       ollama-linux-arm64.tar.zst           4d27cb1d8f46176a3c0ce10aea2a16e4ad73dfe1599f2ed13468f29e5b8aba0d
+gpu       ollama-linux-arm64-jetpack5.tar.zst  2d89903404ebe7c22d8e8300eff1f7d73ea4147ef7b438973ce49e78396ea8da
+gpu       ollama-linux-arm64-jetpack6.tar.zst  33a3e34a5dd162a6942d47c297831065b420065b6af58caab55383afb9249e6c
