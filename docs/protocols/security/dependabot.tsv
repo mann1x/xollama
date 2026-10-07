@@ -1,0 +1,100 @@
+ghsa	severity	scope	manifest	package	vulnerable	fixed	created	summary
+GHSA-4x5r-pxfx-6jf8	low	development	app/ui/app/package-lock.json	@babel/core	<= 7.29.0	7.29.6	2026-09-18	@babel/core: Arbitrary File Read via sourceMappingURL Comment
+GHSA-p498-v437-472g	medium	development	app/ui/app/package-lock.json	@humanfs/node	< 0.16.8	0.16.8	2026-09-18	humanfs: Recursive copy follows symlinked files and copies data from outside the source tree
+GHSA-g8mr-85jm-7xhm	critical	development	app/ui/app/package-lock.json	@vitest/browser	>= 3.0.0, <= 3.2.4	3.2.5	2026-09-18	Vitest Browser: Exposed Browser Mode API Can Proxy CDP and Overwrite Config Files, Leading to RCE
+GHSA-p63j-vcc4-9vmv	critical	development	app/ui/app/package-lock.json	@vitest/browser	< 3.2.7	3.2.7	2026-09-18	@vitest/browser: Browser Mode provider commands bypass the file-access permission gate
+GHSA-82fw-gwwq-j7x9	medium	development	app/ui/app/package-lock.json	@vitest/mocker	>= 2.1.0, < 4.1.11	4.1.11	2026-09-18	Vitest: Path Traversal / Arbitrary File Read via @vitest/mocker Redirect Mock
+GHSA-3jxr-9vmj-r5cp	high	development	app/ui/app/package-lock.json	brace-expansion	< 1.1.16	1.1.16	2026-09-18	brace-expansion: DoS via exponential-time expansion of consecutive non-expanding {} groups
+GHSA-3jxr-9vmj-r5cp	high	development	app/ui/app/package-lock.json	brace-expansion	>= 2.0.0, < 2.1.2	2.1.2	2026-09-18	brace-expansion: DoS via exponential-time expansion of consecutive non-expanding {} groups
+GHSA-q2hr-2g5m-vwhr	medium	development	app/ui/app/package-lock.json	brace-expansion	< 1.1.21	1.1.21	2026-10-04	brace-expansion: Quadratic-time expansion of the `{a},b}` rewrite causes CPU denial of service
+GHSA-q2hr-2g5m-vwhr	medium	development	app/ui/app/package-lock.json	brace-expansion	>= 2.0.0, < 2.1.7	2.1.7	2026-10-04	brace-expansion: Quadratic-time expansion of the `{a},b}` rewrite causes CPU denial of service
+GHSA-73wf-gq98-2v4g	high	development	app/ui/app/package-lock.json	browserslist	<= 4.28.6	4.28.7	2026-09-18	Browserslist: Uncaught crash / prototype write via untrusted browserslist-stats.json custom stats (normalizeStats)
+GHSA-39q2-94rc-95cp	medium	runtime	app/ui/app/package-lock.json	dompurify	<= 3.3.3	3.4.0	2026-09-18	DOMPurify's ADD_TAGS function form bypasses FORBID_TAGS due to short-circuit evaluation
+GHSA-55q2-fjhq-7xh7	medium	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.12	3.4.13	2026-09-18	DOMPurify: IN_PLACE hook removal leaves a detached subtree executable, causing XSS
+GHSA-6688-9rhm-gjv2	low	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.15	3.4.16	2026-10-07	DOMPurify: IN_PLACE returns a force-removed rawtext root whose text carries attacker markup — pure HTML reparse executes
+GHSA-76mc-f452-cxcm	medium	runtime	app/ui/app/package-lock.json	dompurify	< 3.4.7	3.4.7	2026-09-18	DOMPurify: Hook mutation of `data.allowedTags` / `data.allowedAttributes` permanently pollutes `DEFAULT_ALLOWED_TAGS` / 
+GHSA-c2j3-45gr-mqc4	low	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.11	3.4.12	2026-09-18	DOMPurify: `CUSTOM_ELEMENT_HANDLING` bypasses `afterSanitizeElements` for allowed custom elements.
+GHSA-cj63-jhhr-wcxv	medium	runtime	app/ui/app/package-lock.json	dompurify	<= 3.3.1	3.3.2	2026-09-18	DOMPurify USE_PROFILES prototype pollution allows event handlers
+GHSA-cjmm-f4jc-qw8r	medium	runtime	app/ui/app/package-lock.json	dompurify	<= 3.3.1	3.3.2	2026-09-18	DOMPurify ADD_ATTR predicate skips URI validation
+GHSA-cmwh-pvxp-8882	medium	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.10	3.4.11	2026-09-18	DOMPurify: Permanent `ALLOWED_ATTR` pollution via `setConfig()` bypassing the hook clone-guard (incomplete fix of the 3.
+GHSA-crv5-9vww-q3g8	medium	runtime	app/ui/app/package-lock.json	dompurify	>= 1.0.10, < 3.4.0	3.4.0	2026-09-18	DOMPurify has a SAFE_FOR_TEMPLATES bypass in RETURN_DOM mode
+GHSA-gvmj-g25r-r7wr	low	runtime	app/ui/app/package-lock.json	dompurify	>= 3.0.0, <= 3.4.7	3.4.8	2026-09-18	DOMPurify: SAFE_FOR_TEMPLATES bypass - template expressions survive sanitization inside <template> content when using DO
+GHSA-h7mw-gpvr-xq4m	medium	runtime	app/ui/app/package-lock.json	dompurify	< 3.4.0	3.4.0	2026-09-18	DOMPurify: FORBID_TAGS bypassed by function-based ADD_TAGS predicate (asymmetry with FORBID_ATTR fix)
+GHSA-h8r8-wccr-v5f2	medium	runtime	app/ui/app/package-lock.json	dompurify	< 3.3.2	3.3.2	2026-09-18	DOMPurify is vulnerable to mutation-XSS via Re-Contextualization 
+GHSA-hpcv-96wg-7vj8	medium	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.5	3.4.6	2026-09-18	DOMPurify: Cross-realm IN_PLACE sanitization leaves executable markup intact via realm-bound `instanceof` checks
+GHSA-r47g-fvhr-h676	medium	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.5	3.4.6	2026-09-18	DOMPurify: IN_PLACE mode preserves attributes of a clobbered root element, allowing XSS via attacker-controlled root DOM
+GHSA-rp9w-3fw7-7cwq	medium	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.6	3.4.7	2026-09-18	DOMPurify IN_PLACE Sanitization Bypass via Attached Shadow Root Inside <template>.content
+GHSA-v2wj-7wpq-c8vv	medium	runtime	app/ui/app/package-lock.json	dompurify	>= 3.1.3, <= 3.3.1	3.3.2	2026-09-18	DOMPurify contains a Cross-site Scripting vulnerability
+GHSA-v9jr-rg53-9pgp	medium	runtime	app/ui/app/package-lock.json	dompurify	>= 3.0.1, < 3.4.0	3.4.0	2026-09-18	DOMPurify: Prototype Pollution to XSS Bypass via CUSTOM_ELEMENT_HANDLING Fallback
+GHSA-vxr8-fq34-vvx9	low	runtime	app/ui/app/package-lock.json	dompurify	< 3.4.9	3.4.9	2026-09-18	DOMPurify: Trusted Types policy survives `clearConfig()` and can poison later `RETURN_TRUSTED_TYPE` output
+GHSA-x4vx-rjvf-j5p4	low	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.6		2026-09-18	DOMPurify: `IN_PLACE` mode trusts attacker-controlled `nodeName` on live non-form nodes, allowing script retention and X
+GHSA-rf6f-7fwh-wjgh	high	development	app/ui/app/package-lock.json	flatted	<= 3.4.1	3.4.2	2026-09-18	Prototype Pollution via parse() in NodeJS flatted
+GHSA-5j98-mcp5-4vw2	high	development	app/ui/app/package-lock.json	glob	>= 10.2.0, < 10.5.0	10.5.0	2026-09-18	glob CLI: Command injection via -c/--cmd executes matches with shell:true
+GHSA-2883-xcg3-v3hh	high	development	app/ui/app/package-lock.json	js-yaml	>= 4.0.0, < 4.3.2	4.3.2	2026-09-18	js-yaml: maxTotalMergeKeys does not limit CPU use for empty merge sources
+GHSA-52cp-r559-cp3m	high	development	app/ui/app/package-lock.json	js-yaml	>= 4.0.0, < 4.3.0	4.3.0	2026-09-18	js-yaml: YAML merge-key chains can force quadratic CPU consumption
+GHSA-5p4m-2wfm-xmqj	high	development	app/ui/app/package-lock.json	js-yaml	>= 4.0.0, < 4.3.1	4.3.1	2026-09-18	JS-YAML: Quadratic CPU consumption in !!omap resolution (3.x and 4.x) — CVE-2026-59870 fix not backported
+GHSA-h67p-54hq-rp68	medium	development	app/ui/app/package-lock.json	js-yaml	>= 4.0.0, <= 4.1.1	4.2.0	2026-09-18	JS-YAML: Quadratic-complexity DoS in merge key handling via repeated aliases
+GHSA-mh29-5h37-fv8m	medium	development	app/ui/app/package-lock.json	js-yaml	>= 4.0.0, < 4.1.1	4.1.1	2026-09-18	js-yaml has prototype pollution in merge (<<)
+GHSA-238p-pmpm-9mq7	low	runtime	app/ui/app/package-lock.json	katex	>= 0.11.0, < 0.18.2	0.18.2	2026-10-07	KaTeX: Existing prototype pollution can bypass trust restrictions
+GHSA-f23m-r3pf-42rh	medium	development	app/ui/app/package-lock.json	lodash	<= 4.17.23	4.18.0	2026-09-18	lodash vulnerable to Prototype Pollution via array path bypass in `_.unset` and `_.omit`
+GHSA-r5fr-rjxr-66jc	high	development	app/ui/app/package-lock.json	lodash	>= 4.0.0, <= 4.17.23	4.18.0	2026-09-18	lodash vulnerable to Code Injection via `_.template` imports key names
+GHSA-xxjr-mmjv-4gpg	medium	development	app/ui/app/package-lock.json	lodash	>= 4.0.0, <= 4.17.22	4.17.23	2026-09-18	Lodash has Prototype Pollution Vulnerability in `_.unset` and `_.omit` functions
+GHSA-f23m-r3pf-42rh	medium	runtime	app/ui/app/package-lock.json	lodash-es	<= 4.17.23	4.18.0	2026-09-18	lodash vulnerable to Prototype Pollution via array path bypass in `_.unset` and `_.omit`
+GHSA-r5fr-rjxr-66jc	high	runtime	app/ui/app/package-lock.json	lodash-es	>= 4.0.0, <= 4.17.23	4.18.0	2026-09-18	lodash vulnerable to Code Injection via `_.template` imports key names
+GHSA-xxjr-mmjv-4gpg	medium	runtime	app/ui/app/package-lock.json	lodash-es	>= 4.0.0, <= 4.17.22	4.17.23	2026-09-18	Lodash has Prototype Pollution Vulnerability in `_.unset` and `_.omit` functions
+GHSA-4fh9-h7wg-q85m	medium	runtime	app/ui/app/package-lock.json	mdast-util-to-hast	>= 13.0.0, < 13.2.1	13.2.1	2026-09-18	mdast-util-to-hast has unsanitized class attribute
+GHSA-2v8p-3f2j-5mp7	medium	runtime	app/ui/app/package-lock.json	mermaid	>= 11.0.0-alpha.1, < 11.16.1	11.16.1	2026-09-18	Mermaid XY Charts are vulnerable to an infinite loop DoS
+GHSA-3rrr-jr9j-h3q3	medium	runtime	app/ui/app/package-lock.json	mermaid	>= 11.5.0, < 11.16.1	11.16.1	2026-09-18	Mermaid Architecture diagrams are vulnerable to prototype pollution
+GHSA-6m6c-36f7-fhxh	medium	runtime	app/ui/app/package-lock.json	mermaid	>= 11.0.0-alpha.1, <= 11.14.0	11.15.0	2026-09-18	Mermaid Gantt Charts are vulnerable to an Infinite Loop DoS
+GHSA-6x64-9x62-f2gx	medium	runtime	app/ui/app/package-lock.json	mermaid	>= 11.0.0-alpha.1, < 11.16.1	11.16.1	2026-09-18	Mermaid allows CSS injection applying to sibling elements of the diagram
+GHSA-87f9-hvmw-gh4p	medium	runtime	app/ui/app/package-lock.json	mermaid	>= 11.0.0-alpha.1, <= 11.14.0	11.15.0	2026-09-18	Mermaid: Improper sanitization of configuration leads to CSS injection
+GHSA-c4c3-pg64-4m4v	low	runtime	app/ui/app/package-lock.json	mermaid	>= 11.0.0-alpha.1, < 11.16.1	11.16.1	2026-09-18	Mermaid configuration APIs allow prototype pollution
+GHSA-ghcm-xqfw-q4vr	medium	runtime	app/ui/app/package-lock.json	mermaid	>= 11.0.0-alpha.1, <= 11.14.0	11.15.0	2026-09-18	Mermaid: Improper sanitization of `classDef` in state diagrams leads to HTML injection
+GHSA-rhh3-jpg6-66xh	medium	runtime	app/ui/app/package-lock.json	mermaid	>= 11.6.0, < 11.16.1	11.16.1	2026-09-18	Mermaid radar diagrams are vulnerable to DoS
+GHSA-xcj9-5m2h-648r	medium	runtime	app/ui/app/package-lock.json	mermaid	>= 11.0.0-alpha.1, <= 11.14.0	11.15.0	2026-09-18	Mermaid: Improper sanitization of `classDefs` in diagrams leads to CSS injection
+GHSA-7r86-cg39-jmmj	high	development	app/ui/app/package-lock.json	minimatch	< 3.1.3	3.1.3	2026-09-18	minimatch has ReDoS: matchOne() combinatorial backtracking via multiple non-adjacent GLOBSTAR segments
+GHSA-7r86-cg39-jmmj	high	development	app/ui/app/package-lock.json	minimatch	>= 9.0.0, < 9.0.7	9.0.7	2026-09-18	minimatch has ReDoS: matchOne() combinatorial backtracking via multiple non-adjacent GLOBSTAR segments
+GHSA-xwg4-73v4-xw9w	high	development	app/ui/app/package-lock.json	nanoid	< 3.3.12	3.3.12	2026-09-18	nanoid: Integer Overflow or Wraparound
+GHSA-3v7f-55p6-f55p	medium	development	app/ui/app/package-lock.json	picomatch	< 2.3.2	2.3.2	2026-09-18	Picomatch: Method Injection in POSIX Character Classes causes incorrect Glob Matching
+GHSA-3v7f-55p6-f55p	medium	development	app/ui/app/package-lock.json	picomatch	>= 4.0.0, < 4.0.4	4.0.4	2026-09-18	Picomatch: Method Injection in POSIX Character Classes causes incorrect Glob Matching
+GHSA-7mvr-c777-76hp	high	development	app/ui/app/package-lock.json	playwright	< 1.55.1	1.55.1	2026-09-18	Playwright downloads and installs browsers without verifying the authenticity of the SSL certificate
+GHSA-6g55-p6wh-862q	high	development	app/ui/app/package-lock.json	postcss	<= 8.5.11	8.5.12	2026-09-18	PostCSS: Arbitrary file read and information disclosure via attacker-controlled sourceMappingURL in CSS comments
+GHSA-fxqj-rqcc-2cmp	medium	development	app/ui/app/package-lock.json	postcss	<= 8.5.22	8.5.23	2026-09-18	PostCSS: incomplete fix of GHSA-6g55-p6wh-862q — attacker-controlled sourceMappingURL reads arbitrary .map files when `f
+GHSA-qx2v-qp2m-jg93	medium	development	app/ui/app/package-lock.json	postcss	< 8.5.10	8.5.10	2026-09-18	PostCSS has XSS via Unescaped </style> in its CSS Stringify Output
+GHSA-r28c-9q8g-f849	high	development	app/ui/app/package-lock.json	postcss	<= 8.5.17	8.5.18	2026-09-18	PostCSS: Path Traversal in Previous Source Map Auto-Loading (sourceMappingURL) leads to Arbitrary .map File Disclosure
+GHSA-rj75-hqrm-r3gf	medium	development	app/ui/app/package-lock.json	postcss-selector-parser	< 7.1.6	7.1.6	2026-10-07	PostCSS: Quadratic complexity in flat selector parsing allows CPU exhaustion
+GHSA-w9m9-85wc-3x92	low	development	app/ui/app/package-lock.json	postcss-selector-parser	>= 7.1.0, < 7.1.3	7.1.3	2026-09-18	postcss-selector-parser allows denial of service through uncontrolled AST recursion
+GHSA-mw96-cpmx-2vgc	high	development	app/ui/app/package-lock.json	rollup	>= 4.0.0, < 4.59.0	4.59.0	2026-09-18	Rollup 4 has Arbitrary File Write via Path Traversal
+GHSA-3j22-8qj3-26mx	high	runtime	app/ui/app/package-lock.json	seroval	<= 1.4.0	1.4.1	2026-09-18	Seroval affected by Denial of Service via Deeply Nested Objects
+GHSA-3rxj-6cgf-8cfw	high	runtime	app/ui/app/package-lock.json	seroval	< 1.4.1	1.4.1	2026-09-18	seroval Affected by Remote Code Execution via JSON Deserialization
+GHSA-66fc-rw6m-c2q6	high	runtime	app/ui/app/package-lock.json	seroval	<= 1.4.0	1.4.1	2026-09-18	Seroval affected by Denial of Service via Array serialization
+GHSA-hj76-42vx-jwp4	high	runtime	app/ui/app/package-lock.json	seroval	< 1.4.1	1.4.1	2026-09-18	seroval Affected by Prototype Pollution via JSON Deserialization
+GHSA-hx9m-jf43-8ffr	high	runtime	app/ui/app/package-lock.json	seroval	>= 0.2.0, <= 1.4.0	1.4.1	2026-09-18	seroval affected by Denial of Service via RegExp serialization
+GHSA-jp82-f5mq-hwhp	high	runtime	app/ui/app/package-lock.json	seroval	<= 1.6.2	1.6.3	2026-10-07	Seroval: Memory exhaustion via unchecked TypedArray length in JSON deserialization
+GHSA-mv8w-475r-vwqw	critical	runtime	app/ui/app/package-lock.json	seroval	<= 1.5.2	1.5.3	2026-09-18	seroval: `seroval.fromJSON()` Promise resolver type confusion invokes attacker-controlled methods during deserialization
+GHSA-p6vx-979v-rg4c	critical	runtime	app/ui/app/package-lock.json	seroval	>= 0.12.0, <= 1.6.0	1.6.2	2026-10-07	Seroval: `fromJSON()` Promise thenable assimilation invokes plugin-produced callables (bypass of GHSA-mv8w-475r-vwqw)
+GHSA-68fv-2mgg-jv7q	high	development	app/ui/app/package-lock.json	source-map-js	>= 1.0.0, < 1.2.2	1.2.2	2026-10-07	source-map-js allows event-loop denial of service through indexed source-map section offsets
+GHSA-8452-54wp-rmv6	high	development	app/ui/app/package-lock.json	storybook	>= 9.0.0, < 9.1.17	9.1.17	2026-09-18	Storybook manager bundle may expose environment variables during build
+GHSA-mjf5-7g4m-gx5w	high	development	app/ui/app/package-lock.json	storybook	>= 8.7.0-alpha.0, < 9.1.19	9.1.19	2026-09-18	Storybook Dev Server is Vulnerable to WebSocket Hijacking
+GHSA-34x7-hfp2-rc4v	high	development	app/ui/app/package-lock.json	tar	< 7.5.7	7.5.7	2026-09-18	node-tar Vulnerable to Arbitrary File Creation/Overwrite via Hardlink Path Traversal
+GHSA-83g3-92jg-28cx	high	development	app/ui/app/package-lock.json	tar	< 7.5.8	7.5.8	2026-09-18	Arbitrary File Read/Write via Hardlink Target Escape Through Symlink Chain in node-tar Extraction
+GHSA-8qq5-rm4j-mr97	high	development	app/ui/app/package-lock.json	tar	<= 7.5.2	7.5.3	2026-09-18	node-tar is Vulnerable to Arbitrary File Overwrite and Symlink Poisoning via Insufficient Path Sanitization
+GHSA-9ppj-qmqm-q256	high	development	app/ui/app/package-lock.json	tar	<= 7.5.10	7.5.11	2026-09-18	node-tar Symlink Path Traversal via Drive-Relative Linkpath
+GHSA-qffp-2rhf-9h96	high	development	app/ui/app/package-lock.json	tar	<= 7.5.9	7.5.10	2026-09-18	tar has Hardlink Path Traversal via Drive-Relative Linkpath
+GHSA-r6q2-hw4h-h46w	high	development	app/ui/app/package-lock.json	tar	<= 7.5.3	7.5.4	2026-09-18	Race Condition in node-tar Path Reservations via Unicode Ligature Collisions on macOS APFS
+GHSA-vmf3-w455-68vh	medium	development	app/ui/app/package-lock.json	tar	<= 7.5.15	7.5.16	2026-09-18	node-tar applies PAX size override to intermediary GNU long-name/long-link headers, causing tar parser interpretation di
+GHSA-w8wr-v893-vjvp	medium	development	app/ui/app/package-lock.json	tar	<= 7.5.17	7.5.18	2026-09-18	node-tar: Process crash via PAX numeric path type confusion
+GHSA-5gmw-xhrv-c9v3	critical	development	app/ui/app/package-lock.json	tinypool	<= 2.1.0	2.1.1	2026-10-07	Tinypool: Prototype Pollution gadget in worker options leads to Remote Code Execution
+GHSA-85c8-ppgw-ccpr	critical	development	app/ui/app/package-lock.json	tinypool	< 2.1.2	2.1.2	2026-10-07	Tinypool: Prototype Pollution Gadget to RCE in run() options
+GHSA-w5hq-g745-h8pq	medium	runtime	app/ui/app/package-lock.json	uuid	< 11.1.1	11.1.1	2026-09-18	uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided
+GHSA-4w7w-66w2-5vf9	medium	development	app/ui/app/package-lock.json	vite	<= 6.4.1	6.4.2	2026-09-18	Vite Vulnerable to Path Traversal in Optimized Deps `.map` Handling
+GHSA-93m4-6634-74q7	medium	development	app/ui/app/package-lock.json	vite	>= 6.0.0, <= 6.4.0	6.4.1	2026-09-18	vite allows server.fs.deny bypass via backslash on Windows
+GHSA-fx2h-pf6j-xcff	high	development	app/ui/app/package-lock.json	vite	<= 6.4.2	6.4.3	2026-09-18	vite: `server.fs.deny` bypass on Windows alternate paths
+GHSA-g4jq-h2w9-997c	low	development	app/ui/app/package-lock.json	vite	>= 6.0.0, <= 6.3.5	6.3.6	2026-09-18	Vite middleware may serve files starting with the same name with the public directory
+GHSA-jqfw-vq24-v9c3	low	development	app/ui/app/package-lock.json	vite	>= 6.0.0, <= 6.3.5	6.3.6	2026-09-18	Vite's `server.fs` settings were not applied to HTML files
+GHSA-p9ff-h696-f583	high	development	app/ui/app/package-lock.json	vite	>= 6.0.0, <= 6.4.1	6.4.2	2026-09-18	Vite Vulnerable to Arbitrary File Read via Vite Dev Server WebSocket
+GHSA-v6wh-96g9-6wx3	medium	development	app/ui/app/package-lock.json	vite	<= 6.4.2	6.4.3	2026-09-18	launch-editor: NTLMv2 hash disclosure via UNC path handling on Windows
+GHSA-5xrq-8626-4rwp	critical	development	app/ui/app/package-lock.json	vitest	< 3.2.6	3.2.6	2026-09-18	When Vitest UI server is listening, arbitrary file can be read and executed
+GHSA-82fw-gwwq-j7x9	medium	development	app/ui/app/package-lock.json	vitest	>= 2.1.0, < 4.1.11	4.1.11	2026-09-18	Vitest: Path Traversal / Arbitrary File Read via @vitest/mocker Redirect Mock
+GHSA-96hv-2xvq-fx4p	high	development	app/ui/app/package-lock.json	ws	>= 8.0.0, < 8.21.0	8.21.0	2026-09-18	ws: Memory exhaustion DoS from tiny fragments and data chunks
+GHSA-6g7g-w4f8-9c9x	high	runtime	go.mod	github.com/buger/jsonparser	<= 1.1.1	1.1.2	2026-09-18	github.com/buger/jsonparser has a denial of service vulnerability

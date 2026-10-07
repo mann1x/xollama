@@ -11,13 +11,14 @@ disk, never `/tmp`.
 
 | Script | Gate | Host |
 |---|---|---|
+| `stage-engine.sh <platform> [dir]`: the engine THIS TREE pins (`llm/engine/pin`), staged and sha256-checked by `cmake/opencoti-fetch.cmake`; prints its path | used by `serve-side.sh` and for `windows-speech.ps1` | solidPC |
 | `engine-ab.sh` | G3 | solidPC, as `ollama` |
 | `chat-paths.sh`, `chat-paths.py` | G4 | solidPC |
 | `decision.sh`: `/v1/systemone` with `nimble` and `clef-flash` | G4 | solidPC |
 | `council.sh` (runs `scripts/council-gate.py`) | G5 | solidPC |
-| `serve-side.sh`, `speech-linux.sh`, `video-linux.sh` | G6 | solidPC |
+| `serve-side.sh`, `speech-linux.sh` (`MEDIA=` a writable scratch store; the engine from `stage-engine.sh`), `video-linux.sh` | G6 | solidPC |
 | `vulkan-linux.sh`, `bench.sh` | G7 | solidPC |
-| `windows-side.ps1`, `windows-speech.ps1` | G8 | eleven2go, sent on stdin |
+| `windows-side.ps1` (stdin); `windows-speech.ps1` (`-File`, `-EngineDir` a directory staged by `stage-engine.sh win-x86_64`) | G8 | eleven2go |
 | `windows-install-pre.ps1`, `windows-install.ps1`, `windows-install-check.ps1` (stdin), `windows-install-measure.ps1` (`-File`) | G9 | eleven2go |
 | `windows-update.ps1` (`-File`, `-Exe <path>`): the small installer over an install | G9 | eleven2go |
 | `pi-image.sh` (engine replaced in `:dev`), `image-pi.sh` (a published image) | G10 | dietpi5 |

@@ -229,6 +229,29 @@ Before a candidate, run the gates [`VALIDATION.md`](VALIDATION.md) asks for:
 all of them for the first release, the delta after that. [The council
 gate](#the-council-gate) is one of them.
 
+**The security check, every release, candidates included.** Run
+`scripts/security-check.sh` on `dev`. It fetches the open Dependabot alerts
+and runs govulncheck on the release toolchain, writes both into
+`docs/protocols/security/` (`dependabot.tsv`, `govulncheck.txt`), and prints
+the delta against the snapshot committed there: alerts new and gone, and every
+alert sitting on a manifest line the fork changed against its upstream base.
+
+- **Investigate every line of the delta** before opening the PR: which
+  manifest and scope (`runtime` or `development`), whether the fork's tree
+  reaches it (govulncheck's "Your code is affected" for Go; for the UI
+  lockfile, whether the package ends up in the built app), and whether
+  upstream's next release already fixes it. A reachable finding, or an alert
+  on a line the fork changed, is fixed on `dev` before the release; one in
+  upstream's unchanged files is written down as upstream's.
+- **Commit the new snapshot** with the release record (`STATE_SUMMARY.md`
+  says what the delta was and what was done about it), so the next check
+  compares against this one. Git history holds the older ones.
+- The release workflow does not run this; the snapshot is the record. The
+  first one is from 2026-10-07 (`v0.40.0-rc.1.xollama`): 99 open, 98 in the
+  UI lockfile that is byte-identical to upstream v0.40.0, one in `go.mod`
+  (`github.com/buger/jsonparser`, upstream's indirect version, not called);
+  govulncheck 0 reachable.
+
 ### 2. Open the release PR
 
 ```sh
