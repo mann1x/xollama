@@ -11,13 +11,21 @@
 # llama/runtime-pin-linux.txt: one fork release, one commit, both
 # architectures.
 #
+# The runtime asset is the 2026-10-07 rebuild of that same commit
+# (fork run 37687391013, only=arm64): the first upload (sha256 f6fcc0c8…) was
+# replaced by a rebuild the fork's MLX run made by mistake and is gone; the
+# rebuild carries the commit in its name, beside the pinned assets, and the
+# fork's uploads no longer replace an existing asset. Not byte-reproducible
+# (packages fetched at build time, tar mtimes): the inputs digest is the
+# tree's, so it is unchanged.
+#
 # The gpu rows are upstream's arm64 tarballs, as its own arm64 image carries
 # them: CUDA 12 and 13 for arm servers, and the two JetPack payloads. A
 # Raspberry Pi uses none of them and runs on the CPU.
 repo      mann1x/ollama
 tag       v0.40.0-thinkbudget
-asset     ollama-linux-arm64-runtime.tgz
-sha256    f6fcc0c8886c5912667b421790cc0c06e81aa3b6eaf5e0eb3c08f7abf2b5a1fb
+asset     ollama-linux-arm64-runtime-2630dba7.tgz
+sha256    7ad250e8da1056bd70a20e03e2cd9e380f239f7d3ff2b12104d3c770789b5d3c
 inputs    9defcc4413930651433008f477efa9c7e54ab33bb6618f7eb032cbe8a8e66df2
 built     2630dba76cac84d9d9738896b7a92549986168b6
 upstream  v0.40.0

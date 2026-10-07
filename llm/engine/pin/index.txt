@@ -15,68 +15,44 @@
 # Moving a component is one line here plus its pin file, on a MEASUREMENT
 # (scripts/phase2-engine-ab.py, as the `ollama` user), never on a changelog.
 #
-# THIS PIN (2026-10-05, opencoti mail #801, index 49fa8727, pins fe760b73,
-# payload e0eea15d): opencoti's c9 RELEASE. engine 2610050707001 is c8
-# (2610042347001, xollama v0.35.1-xollama.2) plus patch 0560-win-sigfile-exit
-# and the version line, nothing else. The patch is Windows only: a stale
-# C:\ProgramData\cosmo\sig\<pid>.pid left by an elevated process made a
-# process crash at exit, so the GPU probe child returned no device count and
-# a Vulkan load failed with "Vulkan is not usable on this system" (5 of
-# about 33 starts on eleven2go's installed server, the known bug of .2).
-# cuda, cuda12, vulkan, macos and media are the SAME FILES as c8 (every
-# sha256 unchanged); only their rev moved.
+# THIS PIN (2026-10-07, opencoti mail #872, index d6078962, pins 4d2e735e,
+# payload c10050b4): opencoti's c10 RELEASE. engine 2610072136001 is the
+# dev snapshot 2 engine 2610071819001 (chain 0001-0586) plus 0587, the
+# version tag only, rebuilt clean-room. 0586 fixes bug-3954 (on two GPUs an
+# answer depended on what the engine had served before). Every other
+# component is the snapshot 2 file byte for byte: cuda 2610071905001 (the
+# Windows file is the six-arch build, so a forced link by PCI works through
+# CUDA there too), cuda12 2610071451002, vulkan 2610071443002, macos
+# 2610041000002, media 2610071902001 (audio.cpp 0007: unpacks per user, not
+# into one shared /tmp/audiocpp-gguf; xollama mail #857, bug-3955). The pin
+# declares clef_score_v1, so a Clef model now runs on opencoti.
 #
-# MEASURED 2026-10-05, c9 against c8 (logs /srv/ml/xc9):
-#   eleven2go, server in the logged-in user's session, 14 stale sig files,
-#     34 alternating Vulkan loads each: c8 3 failed, c9 0 failed.
-#   solidPC as `ollama` (phase2-engine-ab): compat 8/8 on both; llama3
-#     76.8-76.9 tok/s (c8 77.2-77.8); 4-slot qwen2.5:1.5b 302.1 tok/s
-#     aggregate (c8 303.8); gemma4 tool call and thinking; 70b overflow 3.58
-#     tok/s (c8 3.69). Speech 8/8, video 2 jobs, Vulkan 34.2-34.4 tok/s, chat
-#     paths pass, 0 kv-reservation refusals; council 384k and omni pass, the
-#     no-PolyKV tag 3 of 4 (one answer repeated the first turn's, sampling).
-#   dietpi5 (aarch64 image with c9): speech, every request 200.
-#   /v1/systemone: nimble on c9 as on stock; a Clef model does not load
-#     ("wrong number of tensors; expected 549, got 427"), no clef_score_v1
-#     here, so server/decision_engine.go serves it on stock llama-server.
+# MEASURED 2026-10-07, snapshot 2 then these release bytes (logs /srv/ml/xc10):
+#   solidPC as `ollama` (phase2-engine-ab), release bytes: compat 8/8; llama3
+#     77.26 tok/s (snapshot 2 77.13, c10-dev 1 76.63); 4 slots 299.7 tok/s;
+#     gemma4 tool call and thinking; 70b overflow 3.27 (snapshot 2 3.19 3.35
+#     3.21, c10-dev 1 engine back to back 3.13 3.79: that axis is noise).
+#   /v1/systemone, release bytes: opencoti loads 2, stock 0; nimble bug
+#     0.974; clef-flash bug 0.845, image red 0.985.
+#   speech, release bytes, as `ollama` with a root-owned /tmp/audiocpp-gguf
+#     put there first: 8/8 transcribed back exactly (bug-3955 fixed).
+#   Mac mini (M6, 24 GiB), release bytes, Clef 27B Q4_K_M through xollama:
+#     Metal, 17.1 of 26.5 GB; bug 0.942, refund 0.988, image red 0.994, the
+#     repeat identical; 0 crash lines.
+#   eleven2go, snapshot 2 engine (same source as 2610072136001 but 0587):
+#     bug-3954 at the engine, qwen2.5:7b over the RTX 3090 and the RX 9070 XT
+#     on Vulkan (-ts 1,1), a fresh engine against one that served a request
+#     first, 256 tokens: 0.000000, where the c10-dev 1 engine differs from
+#     token 196 (max |dlogprob| 1.408) (scripts/gates/windows-twogpu-engine.ps1);
+#     speech 4/4 through the installed xollama.exe.
 #
-# BEFORE IT, on c8 (kept: the libraries are the same files):
-# MEASURED with these bytes, staged by cmake/opencoti-fetch.cmake under their
-# published names (/srv/ml/xc8, 2026-10-05):
-#   solidPC, RTX 3090, as `ollama` (results pin-c8): compat 8/8, llama3
-#     77.3 tok/s, 4 slots 304 tok/s; the 70B model that overflows the card
-#     loads at 32k with POSITION_WINDOW mode ON, 62/81 layers, which retired
-#     the last row of llm/engine_defects.go; speech 8/8 transcribed back;
-#     video 33/33 frames on both models; Vulkan on the Renoir iGPU 34.7
-#     tok/s, /props and /kv 200; six chat turns, an OpenAI stream, a tool
-#     call and its result, 0 refusals; the council gate on three tags (the
-#     PolyKV tag 4 runs of 4 after the grammar-window fix).
-#   Raspberry Pi 5 (dietpi5), aarch64, in an image: engine 10.0-10.2 tok/s,
-#     llama.cpp 11.1, 512 tokens each; speech 5/5 transcribed back.
-#   Windows 11 (eleven2go, AMD Software 26.9.2), a side server, qwen3:8b:
-#     RTX 3090 CUDA 123.3-123.5 tok/s; RX 9070 XT Vulkan 100.6 cold, 103.2
-#     warm, /props and /kv 200, clean after 120 s idle; a killed server's
-#     engine gone in 830 ms; Radeon iGPU Vulkan 5.4-5.5 tok/s, 37/37 layers;
-#     speech 4/4; "vulkan: abi ggml 41ba479c24d7 matches this engine".
-#   macOS (Mac mini, Apple silicon), a Developer ID signed, notarized
-#     bundle: the engine through ape on Metal, "metal: abi ggml 41ba479c24d7
-#     matches this engine"; qwen2.5:1.5b 125.0-127.9 tok/s, llama3 31.5-31.7;
-#     speech 7/7 answered (one OuteTTS voice read back with one wrong word).
-# NOT MEASURED: the eSpeak path limit of 259 on Windows; the CUDA 12 library
-#   on a card older than 7.5 (legacy: it ships and is tested on opportunity).
-# NOT USED YET: xollama still ends an engine with Process.Kill and does not
-#   read the uuid: device ids; both are follow-ups.
-# AMD Radeon on Windows needs AMD Software 26.9.2 or later for Vulkan; see
-#   README.md.
-# `sbsa` is absent: nothing here routes CUDA on an arm64 server.
-
 format   2
 channel  release
-tag      c9
-engine   pin/engine.txt  rev fe760b73947cc6768baf252aa845699a7966e2f9  sha256 1d225e07adf89f28297f93ffc818f7a8c9050b1f18c45601af58d665851e8994  version 2610050707001
-cuda     pin/cuda.txt  rev fe760b73947cc6768baf252aa845699a7966e2f9  sha256 4735dab071eb682341324dbf340ca348cc0d0ebed30d470d9a4ce85dd6bf1e48  version 2610040656001
-cuda12   pin/cuda12.txt  rev fe760b73947cc6768baf252aa845699a7966e2f9  sha256 8e98ba71098a15e54c81b2f6109de77485c5cdb50f1c9c8f63d5d6da50824dd1  version 2610040730001
+tag      c10
+engine   pin/engine.txt  rev 4d2e735e3ef759cb95b6e4e65839dd72077ff595  sha256 bbda5ad6682eaea56072f3bab8c2663b13f513918af3008d56ee1783706c8a23  version 2610072136001
+cuda     pin/cuda.txt  rev 4d2e735e3ef759cb95b6e4e65839dd72077ff595  sha256 222ba4eb566451b676772223f22d8f5b4fba68a1418a09f3ddfbc7759544e2b8  version 2610071905001
+cuda12   pin/cuda12.txt  rev 4d2e735e3ef759cb95b6e4e65839dd72077ff595  sha256 5a3f4c061268aa8cd9e1377b5b12040f56b6f17145df8eccf86ad85eefeb21aa  version 2610071451002
 sbsa     absent
-vulkan   pin/vulkan.txt  rev fe760b73947cc6768baf252aa845699a7966e2f9  sha256 f27718a6ffe3e21b9b74b385febac197ddbc37e5335282f52cf05326e0ac3ffe  version 2610041656001
-macos    pin/macos.txt  rev fe760b73947cc6768baf252aa845699a7966e2f9  sha256 3a92cf112a6cfc3ee15e8806115b28c131cde63ac12cea4045a3ad9fffbe53f8  version 2610041000001
-media    pin/media.txt  rev fe760b73947cc6768baf252aa845699a7966e2f9  sha256 b26f5f698ad00d992f84b2915161515cf35e28f223788e4c2ff40915a38c946e  version 2610040945001
+vulkan   pin/vulkan.txt  rev 4d2e735e3ef759cb95b6e4e65839dd72077ff595  sha256 ed72d25e5e2d0177b810b0534f10bca0c6a2a214fde3bbb8e1e5797cf05e766d  version 2610071443002
+macos    pin/macos.txt  rev 4d2e735e3ef759cb95b6e4e65839dd72077ff595  sha256 9e4baafa8653e680165a3f238487e3bee4ac92665c1124b15de3150302239605  version 2610041000002
+media    pin/media.txt  rev 4d2e735e3ef759cb95b6e4e65839dd72077ff595  sha256 5cc431ccc4d093cc941df61750da17e36bbbe7e393386250f3759c64fe1f4d74  version 2610071902001

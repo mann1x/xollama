@@ -5,6 +5,14 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-07 — Engine pin on opencoti c10 (release `2610072136001`), measured; a refused GPU is no longer placed on; arm64 runtime repinned.**
+> - Owner: when c10 is published, a quick Clef 27B check on macOS, then publish c10, then release. c10-dev snapshot 2 validated first and mailed PASS (#869): G3, Clef/nimble, speech 8/8 with a root-owned `/tmp/audiocpp-gguf` (bug-3955 fixed), Mac Clef 27B, and bug-3954 at the engine on eleven2go: a fresh engine and one that served a request first are identical with the 3090 and the 9070 XT on Vulkan (`-ts 1,1`), where the c10-dev 1 engine differs from token 196 (`scripts/gates/windows-twogpu-engine.ps1`). opencoti published c10 (index `d6078962`): the engine is snapshot 2 plus the version tag, every library the snapshot's file.
+> - `llm/engine/pin/` moved to c10 on the release bytes; numbers in the index header and `docs/protocols/VALIDATION.md` ("On opencoti c10"): G3 8/8, 77.26 tok/s, 4 slots 299.7; G4 pass; G5 the PolyKV tag 4 of 4, the other two tags pass; G6 speech 8/8, video 33/33; G8 3090 123.3–123.8, 9070 XT 102.9–103.0 warm, engine gone 1047 ms after a kill; G11 129.3 / 32.4 tok/s, speech 7/7, Clef 27B on Metal. The pin declares `clef_score_v1`: Clef models now run on opencoti (stock loads 0).
+> - Found and fixed (bug-246): c10 refuses old AMD drivers (`… is REFUSED:`, RADV ≤ Mesa 20, amdgpu-pro ≤ 2.0.154). On solidPC its listing lists no Vulkan device and exits 1, and xollama took that for a failed listing, kept llama.cpp's view and placed every Vulkan load on the refused iGPU ("Vulkan is not usable on this system"). `discover/opencoti_refused.go`: a listing that refused every device is the engine's answer; the devices are dropped at Warn (driver and `OPENCOTI_VK_ALLOW_OLD_DRIVER` named) and the load runs elsewhere (verified: CPU, 35 tok/s). Line format agreed with opencoti (#878). G7 on solidPC is therefore a refusal check now; Vulkan throughput is G8's 9070 XT.
+> - Found (bug-247): the fork's Windows MLX dispatch also rebuilt and re-uploaded `ollama-linux-arm64-runtime.tgz`, replacing the pinned bytes (`f6fcc0c8…`, gone). Rebuilt from the same commit `2630dba7` as `ollama-linux-arm64-runtime-2630dba7.tgz` (`7ad250e8…`) and repinned (inputs unchanged); the fork's uploads no longer replace an existing asset.
+> - Gate scripts (`795431af3`): Windows gates run in the logged-in session (`windows-gate-run.ps1`), the Windows speech script finds the pin-format-2 engine.
+> - Open: G10 on the `:dev` image of this tree (new arm64 runtime and c10); the fork's Windows MLX build with a relative cuDNN directory (`ollama-windows-amd64-mlx-reldir.zip`, mailed when published; rc.2 ships upstream's zip); the Windows Vulkan device ids need `OPENCOTI_LIST_DEVICE_IDS=1` (xo-20); the owner's macOS `llama-server` removal, unblocked now that c10 carries the Clef head.
+
 > **2026-10-07 — opencoti first on every platform (`opencoti-first` hook); Windows MLX to be downloaded by the installer.**
 > - Found on the published `v0.40.0-rc.1.xollama` (Mac mini): `pull qwen3.5:0.8b` took the MLX variant and ran it on MLX, because upstream v0.40.0's `runnerPreferences` puts MLX first on Apple silicon. The registry now publishes qwen3.8/3.6/3.5, gemma4 and the decision models (nimble, tev1, clef, clef-flash) with a GGUF and an MLX variant each; embeddinggemma-2, laya and the `-mlx`/nvfp4 tags are MLX only; safetensors create needs MLX on every OS (upstream dropped GGUF conversion 2026-09-14). Elsewhere upstream already prefers GGUF.
 > - Owner: "this must NEVER happen, always opencoti first on all platforms". Fixed by the `opencoti-first` hook (Registry row): GGUF children before MLX on every OS while opencoti is the engine; `XOLLAMA_ENGINE=llamacpp` keeps upstream's order. Verified on the Mac mini: the guard fails without the hook (`[mlx llamacpp ggml]`); a side server from this tree pulled `qwen3.5:0.8b` as `llamacpp gguf` and served it on opencoti `2610050707001`. rc.1 stays as published (a candidate); the next candidate carries the fix. A model already pulled as MLX stays MLX until pulled again.
@@ -2031,10 +2039,10 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 `v0.35.1-xollama.4` is the latest release (2026-10-05): upstream v0.35.1, the
 fork's carried patches, opencoti c9 (`2610050707001`), every platform with a
 download, macOS included and updating itself. `dev` is on upstream v0.40.0
-since 2026-10-07, still on c9; its first candidate `v0.40.0-rc.1.xollama` is
-published as a pre-release (merge `e311046b5`), every gate passed.
-The release after follows opencoti c10: the Clef head, the fork's MLX runtimes in the release, and on
-macOS no stock `llama-server`. The Agentic Council Chat is in Phase 11.
+since 2026-10-07 and on opencoti c10 (`2610072136001`) since the same night,
+measured on every engine gate; its first candidate `v0.40.0-rc.1.xollama`
+(c9) is published as a pre-release, and `v0.40.0-rc.2.xollama` on c10 is
+next. Clef models run on opencoti. The Agentic Council Chat is in Phase 11.
 
 ## What exists today
 
@@ -2063,9 +2071,9 @@ macOS no stock `llama-server`. The Agentic Council Chat is in Phase 11.
 
 ## Known gaps
 
-- **Clef decision models are served by stock `llama-server`**, not by
-  opencoti, until the pinned engine declares `clef_score_v1` (c10). Where no
-  stock runtime serves a host's GPU they run on what stock has there.
+- **c10 refuses old AMD drivers** (RADV from Mesa 20 or older, amdgpu-pro
+  2.0.154 or older): such a GPU is not used, and models load elsewhere (CPU
+  when it is the only one). `OPENCOTI_VK_ALLOW_OLD_DRIVER=1` uses it anyway.
 - **Releases before `v0.35.1-xollama.4` have known bugs:** `.2` fails Clef
   models and, on Windows, a Vulkan load now and then; `.3` (pre-release) is
   the first macOS build that updates itself and stages in the folder a stock
