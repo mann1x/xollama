@@ -19,6 +19,8 @@ disk, never `/tmp`.
 | `serve-side.sh`, `speech-linux.sh` (`MEDIA=` a writable scratch store; the engine from `stage-engine.sh`), `video-linux.sh` | G6 | solidPC |
 | `vulkan-linux.sh`, `bench.sh` | G7 | solidPC |
 | `windows-side.ps1` (stdin); `windows-speech.ps1` (`-File`, `-EngineDir` a directory staged by `stage-engine.sh win-x86_64`) | G8 | eleven2go |
+| `windows-gate-run.ps1 -Script <gate.ps1> -Out <file> [-ScriptArgs '…']`: runs a gate in the logged-in session (an ssh session cannot start GPU engines), through `schtasks /IT` and a `.cmd` wrapper, and waits for the gate's own exit line; call it with `powershell -Command "& …"` | G8, bug checks | eleven2go |
+| `windows-twogpu-engine.ps1 -EngineDir <dir> -Blob <gguf>`: one model over the RTX 3090 and the RX 9070 XT, both on Vulkan, `-ts 1,1`; a fresh engine against one that served another request first, per-token logprobs (bug-3954). Run it on an older engine too: the control must differ | engine pin move | eleven2go |
 | `windows-install-pre.ps1`, `windows-install.ps1`, `windows-install-check.ps1` (stdin), `windows-install-measure.ps1` (`-File`) | G9 | eleven2go |
 | `windows-update.ps1` (`-File`, `-Exe <path>`): the small installer over an install | G9 | eleven2go |
 | `pi-image.sh` (engine replaced in `:dev`), `image-pi.sh` (a published image) | G10 | dietpi5 |

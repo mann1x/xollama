@@ -19,10 +19,11 @@ param(
 $ErrorActionPreference = 'Stop'
 $d = Split-Path $EngineDir; $u = 'http://127.0.0.1:22498'; $log = "$d\serve-speech.log"
 
-$m = Get-Content "$EngineDir\engine-manifest.txt" | ForEach-Object { , ($_ -split ' ') } | Where-Object { $_[0] -eq 'engine' -and $_[2] -eq 'bin' }
-if (@($m).Count -ne 1) { throw "engine-manifest.txt in $EngineDir must name one engine" }
+$rows = @(Get-Content "$EngineDir\engine-manifest.txt" | Where-Object { $_ -match '^engine \S+ bin ' })
+if ($rows.Count -ne 1) { throw "engine-manifest.txt in $EngineDir must name one engine" }
+$m = $rows[0] -split ' '
 $eng = Join-Path $EngineDir $m[3]
-$found = @(Get-ChildItem $EngineDir -Filter 'opencoti-llamafile-*.llamafile.exe')
+$found = @(Get-ChildItem $EngineDir -Filter 'opencoti*.exe')
 if ($found.Count -ne 1 -or $found[0].FullName -ne $eng) { throw "expected only $($m[3]) in $EngineDir, found: $($found.Name -join ', ')" }
 $sum = (Get-FileHash $eng -Algorithm SHA256).Hash.ToLower()
 if ($sum -ne $m[4]) { throw "$($m[3]) is not the pinned bytes: $sum, pin $($m[4])" }
