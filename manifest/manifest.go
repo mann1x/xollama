@@ -1263,7 +1263,7 @@ func linkManifest(name model.Name, digest string) error {
 			return err
 		}
 		defer os.Remove(tempName)
-		if err := os.Symlink(rel, tempName); err == nil {
+		if err := fsowner.Symlink(rel, tempName); err == nil {
 			return replaceManifestPath(tempName, manifestPath)
 		}
 	}
