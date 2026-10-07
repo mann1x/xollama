@@ -104,7 +104,10 @@ integrated GPU 5.1; speech 4/4; bug-3954 at the engine (both cards on Vulkan,
 `-ts 1,1`, `scripts/gates/windows-twogpu-engine.ps1`): fresh and after a
 request identical, where the c10-dev 1 engine differs from token 196. G11 (dev
 build, release engine): `qwen2.5:1.5b` 129.2 to 129.6, `llama3` 32.1 to 32.4,
-speech 7/7 answered; Clef 27B on Metal (bug 0.942, image red 0.994).
+speech 7/7 answered; Clef 27B on Metal (bug 0.942, image red 0.994). G10 (`:dev` of `e8d56490e`, run 37690699916): amd64 opencoti 85.2 to 85.6,
+llama.cpp 85.7 to 86.4, speech 4/4 (one Warn, "free-memory refresh found
+nothing", during the speech phase: transient, not a crash); arm64 on the Pi
+with the rebuilt CPU runtime 9.8 to 9.9 against 10.8 to 10.9, speech 3/3.
 
 ### G1. Repository checks
 
