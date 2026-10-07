@@ -39,6 +39,14 @@ so when `OLLAMA_IGPU_ENABLE` is hiding an iGPU. A pin exists to keep a model
 off hardware, and quietly serving it elsewhere breaks the one promise it makes.
 `num_gpu 0` still means CPU; the pin is not consulted then.
 
+**A media model is pinned the same way.** Its engine is scheduled as a twin of
+the model (`mediaTwin`, `server/media.go`), and the twin carries the model's
+`devices`, so the same hook narrows the GPUs before `pickMediaGPU` takes the
+one with the most free memory among them. Until 2026-10-05 the twin dropped the
+pin and every media engine went to the largest free GPU whatever `tweak model`
+said. audio.cpp speech stays on the CPU regardless (`mediaOnCPU`). Guard:
+`TestAMediaModelsDevicePinReachesTheScheduler`.
+
 **An unpinned model is never placed on an integrated Vulkan GPU while a
 discrete GPU is present.** The iGPU reports host RAM as its memory, so to the
 placement code it looks like the largest device on the machine: a model too big

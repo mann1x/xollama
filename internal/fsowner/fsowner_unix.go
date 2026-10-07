@@ -29,6 +29,8 @@ func ownerOf(path string) (Owner, bool) {
 
 func chown(path string, o Owner) error { return os.Chown(path, o.UID, o.GID) }
 
+func lchown(path string, o Owner) error { return os.Lchown(path, o.UID, o.GID) }
+
 func namedServiceAccount() (Owner, bool) {
 	for _, name := range serviceAccounts {
 		u, err := user.Lookup(name)

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"math"
 	"mime/multipart"
 	"net/http"
@@ -63,6 +64,7 @@ type videoJob struct {
 
 	mu   sync.Mutex
 	last map[string]any // the engine's latest answer, with xollama's id
+	lost bool           // the engine exited under the job; last is its failed end
 
 	release context.CancelFunc
 	gone    chan struct{}
@@ -95,6 +97,35 @@ func (j *videoJob) end() {
 	})
 }
 
+// lose ends a job whose engine exited under it: the job stays, failed, for the
+// keep, so a client that polls learns what happened instead of a 502 and then
+// a 404 (eleven2go and solidPC, 2026-10-05: an engine that crashed at the
+// start of a clip left its client polling a job that was no longer there).
+func (j *videoJob) lose() map[string]any {
+	j.mu.Lock()
+	if !j.lost {
+		obj := maps.Clone(j.last)
+		obj["status"] = "failed"
+		obj["error"] = map[string]any{
+			"code":    "engine_exited",
+			"message": "the video engine exited while it was making this clip; the server log has its last output",
+		}
+		j.last, j.lost = obj, true
+		slog.Warn("video job lost its engine", "id", j.id, "engine_id", j.engineID, "model", j.model)
+	}
+	obj := maps.Clone(j.last)
+	j.mu.Unlock()
+	j.release()
+	j.endAfter(j.keep)
+	return obj
+}
+
+func (j *videoJob) isLost() bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.lost
+}
+
 // endAfter ends the job after d, unless an earlier end is already set: a
 // fetched clip lets its engine go sooner than a finished one nobody fetched.
 func (j *videoJob) endAfter(d time.Duration) {
@@ -114,10 +145,17 @@ func videoDone(status string) bool {
 	return status == "completed" || status == "failed" || status == "cancelled"
 }
 
-// refresh asks the engine for the job and keeps its answer.
+// refresh asks the engine for the job and keeps its answer. A job whose
+// engine exited answers its failed end.
 func (j *videoJob) refresh(ctx context.Context) (map[string]any, int, error) {
+	if j.isLost() {
+		return j.lose(), http.StatusOK, nil
+	}
 	resp, err := j.runner.MediaDo(ctx, http.MethodGet, "/v1/videos/"+j.engineID, nil, nil, "")
 	if err != nil {
+		if j.runner.HasExited() {
+			return j.lose(), http.StatusOK, nil
+		}
 		return nil, 0, err
 	}
 	defer resp.Body.Close()
@@ -136,8 +174,8 @@ func (j *videoJob) refresh(ctx context.Context) (map[string]any, int, error) {
 }
 
 // watch looks at a job until its clip is done, then holds the engine for
-// videoKeep. A job the engine no longer has, or an engine that is gone, ends
-// at once.
+// videoKeep. A job the engine no longer has ends at once; one whose engine
+// exited is kept, failed, for the keep.
 func (j *videoJob) watch() {
 	t := time.NewTicker(j.poll)
 	defer t.Stop()
@@ -148,14 +186,13 @@ func (j *videoJob) watch() {
 		case <-t.C:
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		obj, code, err := j.refresh(ctx)
+		obj, code, _ := j.refresh(ctx)
 		cancel()
 		switch {
 		case code == http.StatusNotFound || code == http.StatusGone:
 			j.end()
 			return
-		case err != nil && j.runner.HasExited():
-			j.end()
+		case j.isLost():
 			return
 		case obj != nil && videoDone(fmt.Sprint(obj["status"])):
 			j.endAfter(j.keep)
@@ -394,6 +431,10 @@ func (s *Server) VideoContentHandler(c *gin.Context) {
 	if j == nil {
 		return
 	}
+	if j.isLost() {
+		mediaError(c, http.StatusConflict, fmt.Sprintf("video %q failed: its engine exited, there is no clip", j.id))
+		return
+	}
 	resp, err := j.runner.MediaDo(c.Request.Context(), http.MethodGet, "/v1/videos/"+j.engineID+"/content", c.Request.URL.Query(), nil, "")
 	if err != nil {
 		mediaError(c, http.StatusBadGateway, "media engine: "+err.Error())
@@ -410,6 +451,11 @@ func (s *Server) VideoContentHandler(c *gin.Context) {
 func (s *Server) VideoDeleteHandler(c *gin.Context) {
 	j := videoJobOr404(c)
 	if j == nil {
+		return
+	}
+	if j.isLost() {
+		j.end()
+		c.JSON(http.StatusOK, map[string]any{"id": j.id, "object": "video.deleted", "deleted": true})
 		return
 	}
 	resp, err := j.runner.MediaDo(c.Request.Context(), http.MethodDelete, "/v1/videos/"+j.engineID, nil, nil, "")

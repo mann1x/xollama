@@ -26,6 +26,12 @@
 # on -- changes only when one of those three pins moves. Only the Go binaries,
 # the tray app and the installers are built.
 #
+# macOS is the one exception, in the `macos` job: llama.cpp for Metal
+# (llama-server, llama-quantize) has no pinned artifact, so
+# scripts/build_darwin.sh compiles that on the runner. MLX is not compiled:
+# it is upstream's build, pinned in llama/runtime-pin-darwin.txt. The app is signed with the Developer ID certificate and notarized
+# with the App Store Connect key held in the repository's secrets.
+#
 # No third-party actions, not even actions/checkout: git and gh are on every
 # hosted image, and a job that cannot run because an action was not allowed
 # queues silently. Nothing from the PR (title, body) is ever interpolated into
@@ -230,6 +236,18 @@ jobs:
           [ "$(tr ' ' '\n' <<< "$ltags" | sort -u | grep -c .)" = 1 ] \
             || fail "the two Linux runtime pins name different fork releases ($ltags); they move together"
           out linux_runtime_tag "${ltags##* }"
+
+          # The macOS app takes MLX as upstream built it, republished by the
+          # fork (llama/runtime-pin-darwin.txt). Refuse here a pin that the
+          # macOS job would refuse forty lines into its build.
+          dpin=$(git show "$sha:llama/runtime-pin-darwin.txt") || fail "no llama/runtime-pin-darwin.txt at $sha; the macOS app has no MLX runtime"
+          dfield() { awk -v k="$1" '$1==k {print $2; exit}' <<< "$dpin"; }
+          [ "$(dfield mlx)" = "$(git show "$sha:MLX_VERSION" | tr -d '[:space:]')" ] && [ "$(dfield mlx_c)" = "$(git show "$sha:MLX_C_VERSION" | tr -d '[:space:]')" ] \
+            || fail "llama/runtime-pin-darwin.txt names another MLX or MLX-C than this commit; move it to the fork release for this base"
+          [ "$(dfield upstream)" = "v$upstream" ] || fail "llama/runtime-pin-darwin.txt is upstream $(dfield upstream)'s MLX, this release is on v$upstream"
+          gh release view "$(dfield tag)" --repo "$(dfield repo)" --json assets --jq '.assets[].name' | grep -qx "$(dfield asset)" \
+            || fail "llama/runtime-pin-darwin.txt: $(dfield repo) $(dfield tag) publishes no $(dfield asset)"
+          echo "macOS MLX runtime: $(dfield repo) $(dfield tag), upstream v$upstream's bytes"
           echo "Linux CPU runtimes: fork ${ltags##* }, amd64 and arm64 (inputs match)"
 
           # The Go toolchain: upstream's LINE, the newest PATCH. go.mod stays
@@ -534,8 +552,170 @@ jobs:
         working-directory: repo
         run: gh release upload "$TAG" "xollama-linux-$ARCH" --clobber
 
+  # The Apple silicon app, as scripts/build_darwin.sh builds it on the Mac
+  # mini: runtime, opencoti engine from the pin, Developer ID signature,
+  # notarization, DMG. A standard hosted runner (the repository is public).
+  macos:
+    needs: plan
+    if: needs.plan.outputs.go == 'true'
+    runs-on: macos-26
+    # Three notarizations (the binary, the app, the DMG), each waited for.
+    timeout-minutes: 300
+    env:
+      SHA: ${{ needs.plan.outputs.sha }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      GOTOOLCHAIN: ${{ needs.plan.outputs.gotoolchain }}
+    steps:
+      - name: clone
+        run: |
+          git init -q repo && cd repo
+          git remote add origin "https://github.com/$GITHUB_REPOSITORY"
+          git fetch -q --depth 1 origin "$SHA" && git checkout -q --detach FETCH_HEAD
+          git log -1 --oneline
+
+      # MLX's Metal 4 library needs the macOS 26 SDK and the Metal toolchain,
+      # which Xcode 26 ships as a component of its own.
+      - name: toolchain
+        run: |
+          set -euo pipefail
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk macosx --show-sdk-version
+          if ! xcrun --find metal > /dev/null 2>&1; then
+            echo "no Metal toolchain on this image; downloading the component"
+            xcodebuild -downloadComponent MetalToolchain
+          fi
+          xcrun --find metal
+          cmake --version | head -1
+          node --version
+
+      # The hosted image has no go on its PATH, and this workflow uses no
+      # setup action: the planned toolchain itself, checked against go.dev's
+      # own digest, the same release the other platforms build with.
+      - name: install the planned Go toolchain
+        run: |
+          set -euo pipefail
+          f="$GOTOOLCHAIN.darwin-arm64.tar.gz"
+          want=$(curl -fsSL --retry 3 'https://go.dev/dl/?mode=json&include=all' \
+            | jq -r --arg f "$f" '.[].files[] | select(.filename == $f) | .sha256' | head -1)
+          [ -n "$want" ] || { echo "::error::go.dev lists no $f"; exit 1; }
+          curl -fsSL --retry 3 "https://go.dev/dl/$f" -o "$RUNNER_TEMP/$f"
+          got=$(shasum -a 256 "$RUNNER_TEMP/$f" | cut -c1-64)
+          [ "$got" = "$want" ] || { echo "::error::$f is $got, go.dev says $want"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/goroot" && tar -C "$RUNNER_TEMP/goroot" -xzf "$RUNNER_TEMP/$f"
+          rm -f "$RUNNER_TEMP/$f"
+          echo "$RUNNER_TEMP/goroot/go/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/goroot/go/bin/go" version
+
+      # A keychain of this run's own, under a password made here, first on the
+      # search list so codesign finds the identity. The .p12 is removed as soon
+      # as it is imported; the keychain goes in the last step.
+      - name: signing keychain
+        env:
+          MACOS_SIGNING_KEY: ${{ secrets.MACOS_SIGNING_KEY }}
+          MACOS_SIGNING_KEY_PASSWORD: ${{ secrets.MACOS_SIGNING_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [ -n "$MACOS_SIGNING_KEY" ] && [ -n "$MACOS_SIGNING_KEY_PASSWORD" ] \
+            || { echo "::error::MACOS_SIGNING_KEY and MACOS_SIGNING_KEY_PASSWORD are not set in the repository's secrets"; exit 1; }
+          K="$RUNNER_TEMP/xollama-build.keychain-db"
+          P=$(openssl rand -hex 16)
+          printf %s "$MACOS_SIGNING_KEY" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$P" "$K"
+          security set-keychain-settings -lut 21600 "$K"
+          security unlock-keychain -p "$P" "$K"
+          security import "$RUNNER_TEMP/cert.p12" -k "$K" -P "$MACOS_SIGNING_KEY_PASSWORD" -T /usr/bin/codesign > /dev/null
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$P" "$K" > /dev/null
+          security list-keychains -d user -s "$K" $(security list-keychains -d user | tr -d '"')
+          n=$(security find-identity -v -p codesigning "$K" | grep -c 'Developer ID Application' || true)
+          [ "$n" = 1 ] || { echo "::error::the keychain holds $n Developer ID Application identities, expected 1"; exit 1; }
+          echo "one Developer ID Application identity, valid for code signing"
+
+      # build_darwin.sh's own steps, with the settings of the Mac mini's
+      # build: no Finder styling of the DMG (it needs a logged-in desktop).
+      - name: build, sign, notarize
+        working-directory: repo
+        env:
+          APPLE_IDENTITY: ${{ secrets.APPLE_IDENTITY }}
+          APPLE_NOTARY_KEY_PEM: ${{ secrets.APPLE_NOTARY_KEY }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_ISSUER }}
+          APPLE_NOTARY_TIMEOUT: 60m
+          VOL_NAME: xOllama
+          XOLLAMA_DMG_HEADLESS: "1"
+        run: |
+          set -euo pipefail
+          for v in APPLE_IDENTITY APPLE_NOTARY_KEY_PEM APPLE_NOTARY_KEY_ID APPLE_NOTARY_ISSUER; do
+            [ -n "${!v}" ] || { echo "::error::$v is not set in the repository's secrets"; exit 1; }
+          done
+          umask 077
+          printf '%s\n' "$APPLE_NOTARY_KEY_PEM" > "$RUNNER_TEMP/AuthKey.p8"
+          export APPLE_NOTARY_KEY="$RUNNER_TEMP/AuthKey.p8"
+          unset APPLE_NOTARY_KEY_PEM
+          umask 022
+          sh scripts/build_darwin.sh build sign app
+          rm -f "$RUNNER_TEMP/AuthKey.p8"
+          ls -l dist/xOllama.dmg dist/xOllama-darwin.zip
+
+      # What a Mac decides on when the file is opened, and what the app's own
+      # updater decides on: both files, not only the one that was built last.
+      - name: the app is signed, notarized and stapled
+        working-directory: repo
+        env:
+          WANT: ${{ needs.plan.outputs.gotoolchain }}
+        run: |
+          set -euo pipefail
+          codesign --verify --deep --strict --verbose=2 dist/xOllama.app
+          spctl -a -vv dist/xOllama.app 2>&1 | tee spctl-app.txt
+          grep -q 'source=Notarized Developer ID' spctl-app.txt || { echo "::error::Gatekeeper does not accept the app as notarized"; exit 1; }
+          xcrun stapler validate dist/xOllama.app
+          xcrun stapler validate dist/xOllama.dmg
+          spctl -a -t open --context context:primary-signature -vv dist/xOllama.dmg 2>&1 | tee spctl-dmg.txt
+          grep -q 'source=Notarized Developer ID' spctl-dmg.txt || { echo "::error::Gatekeeper does not accept the DMG as notarized"; exit 1; }
+          # The zip is the only file the updater takes: the app inside it.
+          mkdir unzipped && ditto -x -k dist/xOllama-darwin.zip unzipped
+          xcrun stapler validate unzipped/xOllama.app
+          codesign --verify --deep --strict unzipped/xOllama.app
+          R=unzipped/xOllama.app/Contents
+          "$R/Resources/xollama" --version 2>&1 | tee version.txt
+          grep -q "$VERSION" version.txt || { echo "::error::the bundled xollama does not report $VERSION"; exit 1; }
+          [ "$(plutil -extract CFBundleShortVersionString raw "$R/Info.plist")" = "$VERSION" ] \
+            || { echo "::error::Info.plist does not carry $VERSION"; exit 1; }
+          for exe in "$R/Resources/xollama" "$R/MacOS/xOllama"; do
+            got=$(go version "$exe" | awk '{print $NF}')
+            echo "$exe: $got"
+            [ "$got" = "$WANT" ] || { echo "::error::$exe was built with $got, not $WANT"; exit 1; }
+            lipo "$exe" -verify_arch arm64
+          done
+          # If the app does not ask this fork's releases, it asks ollama.com
+          # and replaces the install with a stock ollama.
+          grep -qa "repos/mann1x/xollama/releases" "$R/MacOS/xOllama" \
+            || { echo "::error::the app does not name the fork's releases endpoint"; exit 1; }
+          # The engine and its loader, as the pin names them for this platform.
+          test -f "$R/Resources/engines/ape-macos-aarch64" || { echo "::error::no engine loader in the bundle"; exit 1; }
+          codesign -d --entitlements - "$R/Resources/engines/ape-macos-aarch64" 2>/dev/null | grep -qa 'allow-unsigned-executable-memory' \
+            || { echo "::error::the engine loader lost its entitlement; under the hardened runtime it is killed at start"; exit 1; }
+          ls -l "$R/Resources/engines"
+
+      - name: attach to the draft
+        working-directory: repo
+        run: |
+          for f in dist/xOllama.dmg dist/xOllama-darwin.zip; do
+            size=$(stat -f %z "$f")
+            [ "$size" -lt 2147483648 ] || { echo "::error::$f is $size bytes, over GitHub's 2 GiB asset cap"; exit 1; }
+          done
+          gh release upload "$TAG" dist/xOllama.dmg dist/xOllama-darwin.zip --clobber
+
+      - name: remove the signing keychain
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/xollama-build.keychain-db" 2> /dev/null || true
+          rm -f "$RUNNER_TEMP/AuthKey.p8" "$RUNNER_TEMP/cert.p12"
+
   publish:
-    needs: [plan, windows, linux]
+    needs: [plan, windows, linux, macos]
     if: needs.plan.outputs.go == 'true'
     runs-on: ubuntu-latest
     env:
@@ -558,7 +738,7 @@ jobs:
           mkdir assets && cd assets
           gh release download "$TAG" --clobber
           rm -f sha256sum.txt
-          want=(payload-id.txt xOllamaSetup.exe xOllamaUpdate.exe xollama-linux-amd64 xollama-linux-arm64 xollama-windows-amd64.exe)
+          want=(payload-id.txt xOllama-darwin.zip xOllama.dmg xOllamaSetup.exe xOllamaUpdate.exe xollama-linux-amd64 xollama-linux-arm64 xollama-windows-amd64.exe)
           have=$(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort | xargs)
           [ "$have" = "${want[*]}" ] || { echo "::error::assets are '$have', expected '${want[*]}'"; exit 1; }
           grep -Eqx '[0-9a-f]{64}' payload-id.txt || { echo "::error::payload-id.txt is not a sha256"; exit 1; }
@@ -600,12 +780,13 @@ jobs:
             echo "| Go | \`$GO_TOOLCHAIN\` (go.mod: \`go $GO_MOD\`, upstream's line with its newest patch release) |"
             echo "| llama.cpp | \`$llama\`: CPU runtime \`$RUNTIME_TAG\`, CUDA 13 and Vulkan backends from upstream v$UPSTREAM |"
             echo "| engine | $engine |"
+            echo "| macOS | \`xOllama.dmg\` (Apple silicon, Developer ID signed, notarized and stapled); \`xOllama-darwin.zip\` is what the app's updater takes. MLX runtime: upstream v$UPSTREAM's, from \`mann1x/ollama $LINUX_RUNTIME_TAG\` |"
             echo "| Linux | \`xollama-linux-amd64\`, \`xollama-linux-arm64\` (glibc 2.28 and newer; the binary alone, no runtime) |"
             echo "| container image | \`mannixita/xollama:$VERSION\` and \`ghcr.io/mann1x/xollama:$VERSION\`, amd64 and arm64; CPU runtime \`mann1x/ollama $LINUX_RUNTIME_TAG\`. Built from this tag after the release is published |"
             echo "| payload id | \`$id\` |"
             echo "| update | $delta |"
             echo
-            echo "The installer is unsigned; SmartScreen warns on first run. Verify it against \`sha256sum.txt\`."
+            echo "The Windows installer is unsigned; SmartScreen warns on first run. Verify it against \`sha256sum.txt\`."
           } >> notes.md
           gh release edit "$TAG" --notes-file notes.md
 

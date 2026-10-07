@@ -165,6 +165,9 @@ videos API: create it, poll it, then fetch the content.
   smaller size with more frames. `seconds` counts as `seconds x fps + 1` frames
   (2 s at 16 fps is 33).
 - A full engine queue is a 503 with `Retry-After`, like the other routes.
+- If the engine exits while it is making a clip, the job stays for ten minutes
+  with `status: "failed"` and `error.code: "engine_exited"`; its content
+  answers `409`. The server log has the engine's last output.
 
 ## When the engine is busy
 
@@ -174,6 +177,20 @@ or a request has waited 10 minutes, the answer is `503` with `Retry-After`.
 
 The engines run in an opencoti process of their own, started by the first media
 request and unloaded after the model's keep-alive like any other model.
+
+## Which GPU runs it
+
+A media model goes to the GPU with the most free memory among those the server
+may use. To choose, pin the model like any other:
+
+```sh
+xollama tweak model mannix/flux2-klein:4b --device-backend=vulkan --devices="name:AMD Radeon RX 9070 XT"
+xollama tweak model mannix/whisper:large-v3-turbo --device-backend=cuda
+```
+
+A pinned device that is not there refuses the request, as it does for a chat
+model. Transcription, image and video engines run on the GPU; audio.cpp speech
+(Kokoro, Supertonic, KittenTTS) always runs on the CPU, whatever the pin says.
 
 ## Audio formats
 

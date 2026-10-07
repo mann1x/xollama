@@ -43,7 +43,9 @@ type fakeEngine struct {
 	busy  atomic.Int32 // answer 503 this many times first
 	// videoStatus is what a poll of the engine's one video job answers.
 	videoStatus atomic.Value
-	srv         *httptest.Server
+	// exited is the engine process gone: its runner says so.
+	exited atomic.Bool
+	srv    *httptest.Server
 }
 
 func newFakeEngine(t *testing.T) *fakeEngine {
@@ -109,7 +111,10 @@ func (e *fakeEngine) last(t *testing.T) mediaCall {
 type engineMedia struct {
 	mockLlm
 	url string
+	e   *fakeEngine
 }
+
+func (m *engineMedia) HasExited() bool { return m.e != nil && m.e.exited.Load() }
 
 func (m *engineMedia) MediaDo(ctx context.Context, method, path string, _ url.Values, body io.Reader, ct string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, m.url+path, body)
@@ -146,7 +151,7 @@ func mediaServer(t *testing.T, models map[string]*xollama.Media) (*Server, *fake
 			if !isMediaKey(req.model.ModelPath) {
 				t.Errorf("a media request scheduled %q, not the media twin", req.model.ModelPath)
 			}
-			req.successCh <- &runnerRef{llama: &engineMedia{mockLlm: mockLlm{modelPath: req.model.ModelPath}, url: e.srv.URL}}
+			req.successCh <- &runnerRef{llama: &engineMedia{mockLlm: mockLlm{modelPath: req.model.ModelPath}, url: e.srv.URL, e: e}}
 			return false
 		},
 	}}

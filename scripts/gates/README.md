@@ -23,3 +23,4 @@ disk, never `/tmp`.
 | `pi-image.sh` (engine replaced in `:dev`), `image-pi.sh` (a published image) | G10 | dietpi5 |
 | `image-x86.sh` | G10 | solidPC |
 | `bench.sh`, `speech-mac.sh` | G11 | Mac mini |
+| `mac-ci.sh` | G11 on the app the release workflow built (the draft's zip and DMG) | Mac mini |

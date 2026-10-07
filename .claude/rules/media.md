@@ -44,6 +44,28 @@ paths:
   is launched with a `--gpu` backend the engine may not have (solidPC, b117,
   2026-10-03). Another engine beside it still decides for itself. Guard:
   `TestAudioCppSpeechIsNeverPlacedOnAGPU`.
+- **A media model's device pin travels on its twin** (`mediaTwin`,
+  `server/media.go`): the scheduler runs `selectModelDevices` on the twin, and
+  a twin without `Devices` is an unpinned model, so `tweak model
+  --device-backend/--devices` was silently ignored and every media engine took
+  the GPU with the most free memory (found 2026-10-05, validating c9). Anything
+  new in `xollama.Config` that the scheduler reads must be copied there too.
+  Guard: `TestAMediaModelsDevicePinReachesTheScheduler`.
+- **A video job whose engine exited is a failed job, never a missing one**
+  (`videoJob.lose`, `server/media_video.go`): it lets the engine's slot go but
+  stays in the table for `videoKeep` with `status: failed`,
+  `error.code: engine_exited`; content is a 409, delete works. Before, the
+  watcher ended it and a polling client saw 502 then 404 for ever (the c9
+  engine crashes on the RX 9070 XT and the Renoir iGPU, 2026-10-05). Guard:
+  `TestAVideoWhoseEngineExitedIsAFailedJobNotAMissingOne`; live:
+  `/srv/ml/xc9/media/lost-check.sh`.
+- **A media engine that exited is unloaded as its last request ends**
+  (`mediaEngineGone`, `server/media_gone.go`, one hook line in
+  `processCompleted`): left to its keep-alive it stayed in `/api/ps` as loaded
+  and its memory stayed booked. Media keys only, by design: a text runner that
+  exited is upstream's to find on the next request, and widening this would
+  change stock llama.cpp. Guard: `TestAMediaEngineThatExitedIsUnloadedAtOnce`
+  (both halves: the media key goes, the text key stays).
 - **A failed load reports the engine's last `tailLines` (4) lines**, joined
   with ` | ` (`tailWriter.last`), never only the last: the engine states the
   cause first and its advice last. Guard:

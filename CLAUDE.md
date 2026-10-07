@@ -2,8 +2,8 @@
 
 @.wolf/OPENWOLF.md
 
-Soft fork of ollama. `dev` = upstream release v0.35.1 + fork changes (`main` is still
-v0.34.4 until the next release PR), carrying the
+Soft fork of ollama. `dev` = upstream release v0.40.0 + fork changes (`main` is still
+v0.35.1 until the next release PR), carrying the
 full upstream history so every `git merge upstream/main` has a real merge-base.
 Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING.md
 
@@ -142,7 +142,7 @@ opencoti's granted window (`X-Context-Window`) reaches the client through the
 `llm.ContextWindow` collector (`llm/engine_context_window.go`) and
 `server/context_window.go`; stock llama.cpp stays header-free — see
 `.claude/rules/context-window.md`.
-**Decision scoring** (upstream v0.35.1): `/v1/systemone` (`SystemOneHandler` in
+**Decision scoring** (upstream v0.35.1, MLX scoring since v0.40.0): `/v1/systemone` (`SystemOneHandler` in
 `server/routes.go`) compiles typed questions with `decision/` (`systemone.go`,
 `clef.go`, `types.go`) and scores them through `llm.Scorer` (`llm/score.go`,
 `llm/llama_server_score.go`); a model whose GGUF carries `decision.type` gets the
