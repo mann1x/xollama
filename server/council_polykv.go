@@ -1009,7 +1009,7 @@ func (s *Server) councilTreeFor(ctx context.Context, m *Model, req api.ChatReque
 	if mode == xollama.CouncilPolyKVOff || session == "" {
 		return nil, nil
 	}
-	r, m2, opts, err := s.scheduleRunner(ctx, m, []model.Capability{model.CapabilityCompletion}, req.Options, req.KeepAlive, req.Shift)
+	r, m2, opts, err := s.scheduleRunnerForModel(ctx, m, []model.Capability{model.CapabilityCompletion}, req.Options, req.KeepAlive, req.Shift)
 	if err != nil {
 		return nil, err
 	}

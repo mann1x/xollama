@@ -148,3 +148,16 @@ condition = "AND"
 paths = ['''^fs/ggml/ggml_test\.go$''']
 regexes = ['''token_embd\.weight''']
 regexTarget = "line"
+
+[[allowlists]]
+description = """
+GGUF metadata key names in upstream's legacy-GGUF migration (v0.40.0,
+compatmigrate/): `case key == "glm4.rope.mrope_section"` and
+`case key == "mistral3.rope.scaling.mscale"`. The finding is the word `key`
+beside a dotted string; the "secret" is the name of a model hyperparameter.
+Pinned to the two files and the two names.
+"""
+condition = "AND"
+paths = ['''^compatmigrate/(glm_ocr|mistral_pixtral)\.go$''']
+regexes = ['''glm4\.rope\.mrope_section|mistral3\.rope\.scaling\.mscale''']
+regexTarget = "line"
