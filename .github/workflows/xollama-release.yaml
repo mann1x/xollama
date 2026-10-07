@@ -26,9 +26,9 @@
 # on -- changes only when one of those three pins moves. Only the Go binaries,
 # the tray app and the installers are built.
 #
-# macOS is the one exception, in the `macos` job: llama.cpp for Metal
-# (llama-server, llama-quantize) has no pinned artifact, so
-# scripts/build_darwin.sh compiles that on the runner. MLX is not compiled:
+# macOS builds only the Go binaries too, in the `macos` job: it ships no stock
+# llama-server (every GGUF load runs on opencoti through Metal,
+# llm/engine/stockless.go), so llama.cpp is not compiled. MLX is not compiled:
 # it is upstream's build, pinned in llama/runtime-pin-darwin.txt. The app is signed with the Developer ID certificate and notarized
 # with the App Store Connect key held in the repository's secrets.
 #
@@ -729,6 +729,11 @@ jobs:
           codesign -d --entitlements - "$R/Resources/engines/ape-macos-aarch64" 2>/dev/null | grep -qa 'allow-unsigned-executable-memory' \
             || { echo "::error::the engine loader lost its entitlement; under the hardened runtime it is killed at start"; exit 1; }
           ls -l "$R/Resources/engines"
+          # macOS ships no stock engine: one in the bundle would be a fallback
+          # nobody is told about.
+          if ls "$R/Resources" | grep -Eqx 'llama-server|llama-quantize'; then
+            echo "::error::the bundle carries a stock llama.cpp binary; macOS runs opencoti only"; exit 1
+          fi
 
       - name: attach to the draft
         working-directory: repo
