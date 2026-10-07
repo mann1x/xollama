@@ -64,6 +64,27 @@ kill, integrated GPU 5.4 to 5.5, speech 4/4. G10 (engine replaced in the rc.1
 image on the Pi): 10.0 to 10.2 against 11.1, speech 5/5. G11: 125.0 to 127.9
 and 31.5 to 31.7 tok/s, speech 7/7 answered.
 
+**On upstream v0.40.0** (2026-10-07, candidate `v0.40.0-rc.1.xollama`, tree
+`457f6ed1b`, still opencoti c9; working directory `/srv/ml/xc9/sync40`, scratch
+stores of hard links, since this version writes `manifests-v2` and converted
+model copies into the store it serves). G2: 26 checks pass, 12 skipped. G3:
+opencoti compat 8/8, llama3 76.6 tok/s, 4 slots 302, overflow 3.8; llama.cpp
+b11351 compat 8/8, 78.3, 616, 2.9. G5: the PolyKV tag 4 runs of 4 (5 pools, 0
+refusals each, convened 161 to 294 s), the no-PolyKV tag and the idle tag pass
+(the idle tag 9 room refusals in its 16k window, answered; earlier runs of that
+tag ranged from 0 to several hundred). G9: full installer exit 0 in 38 s over
+`.4`, update installer exit 0 in 4 s with a new server; RTX 3090 118.8 cold,
+120.9 to 122.3 warm; RX 9070 XT 102.2, 102.4 to 102.5; integrated GPU 5.0;
+16 alternating Vulkan loads on the installed server 0 failed; displays `OK`.
+G10 (`:dev` of the tree): amd64 opencoti 85.6 to 85.9, llama.cpp 85.9 to 86.0,
+speech 4/4; arm64 9.9 to 10.0 against 10.8 to 11.0, speech 3/3. G11 (the
+workflow's app): `qwen2.5:1.5b` 128.4, `llama3` 32.1, the MLX model
+`qwen3.5:2b-nvfp4` 77.0 on the pinned MLX libraries, speech 7/7 answered. G12 on
+the published pre-release (merge `e311046b5`): every checksum OK, payload id
+as tested, amd64 and arm64 binaries name the version, the image on both
+registries for both architectures, `:dev` moved and `:latest` not; the installed
+`.4` app on the Mac mini updated itself to it and served 129.5 tok/s.
+
 ### G1. Repository checks
 
 - **Where:** solidPC, the tree.
@@ -325,6 +346,12 @@ GPU, the stock ollama on 11434 untouched).
   on the Pi 5: opencoti 10.1 tok/s, llama.cpp 11.0 to 11.1, speech 3 of 3;
   `PAYLOAD` names the fork's runtime and every pinned engine file on both;
   the owner's containers and the stock ollama on the Pi untouched.
+- **The stores must be writable since upstream v0.40.0.** A store this version
+  cannot write lists no models and every request is a 404 (`mkdir
+  /models/manifests-v2: read-only file system`); stock v0.40.0 does the same.
+  `image-x86.sh` took the shared stores read-only and failed its speech half on
+  2026-10-07; it now takes `LLM=` and `MEDIA=`, scratch stores of hard links
+  mounted writable (0 files of another owner afterwards).
 
 ### G11. macOS
 

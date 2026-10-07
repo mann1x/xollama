@@ -5,6 +5,14 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-07 — `v0.40.0-rc.1.xollama` published as a pre-release (upstream v0.40.0, opencoti c9); every gate passed.**
+> - Owner: no new engine snapshot when the sync is done, so deliver a pre-release on c9. opencoti's c10 is still unpublished (a dev snapshot is announced for today).
+> - PR #13, dry run 37608537655, merged as `e311046b5`; release run 37621365711 (plan, windows, macos, linux amd64 and arm64, publish all success), image run 37623955010. A candidate, never promoted: `:latest` stays `.4` on Docker Hub and GHCR, `:dev` is this tag.
+> - Gates, numbers in `docs/protocols/VALIDATION.md` ("On upstream v0.40.0"): G2 26 pass, 12 skipped; G3 both engines 8/8 and within noise of the baseline; G5 the PolyKV tag 4 of 4, the other two tags pass; G9 full and update installers exit 0, RTX 3090 120.9 to 122.3 tok/s, RX 9070 XT 102.4 to 102.5, integrated 5.0, 16 alternating Vulkan loads 0 failed; G10 amd64 85.6 to 86.0 on both engines, arm64 9.9 to 11.0, speech on both; G11 on the workflow's app 128.4 / 32.1 tok/s and the MLX model 77.0 on the pinned MLX libraries; G12 every checksum OK, payload id `fa784c12…` as tested, versions right on amd64, arm64 and the Mac. The installed `.4` app on the Mac mini updated itself to the pre-release (download kept, so its checksum matched; bundle verified; 129.5 tok/s after).
+> - Found: since upstream v0.40.0 a store the server cannot write lists no models (`mkdir …/manifests-v2`), stock v0.40.0 alike. Said in the release notes; `scripts/gates/image-x86.sh` mounted the shared stores read-only and now takes writable scratch stores (`LLM=`, `MEDIA=`).
+> - Not run: the Windows speech script, which still names the c8 engine and a side server; G9's steps do not include it.
+> - Left: the c10 pin move on a measurement when opencoti publishes it, then the release `v0.40.0-xollama` (Clef on opencoti and macOS, macOS `llama-server` removal, the forced link by `pci=` on Windows, the fork's MLX runtimes); owner's call whether the Windows MLX zip goes into the installer.
+
 > **2026-10-07 — Upstream v0.40.0 synced (fork manifest `d8ec2163`, llama.cpp b11351, MLX `264c14fe`); the engine stays opencoti c9.**
 > - Owner: c10 is still cooking (rolling KV window and KVarN bugs), so sync to upstream now and, if no new engine snapshot is out when it is done, deliver a pre-release on c9.
 > - `sync/upstream-v0.40.0`, in its own worktree. `c243389b` merged the tag (26 commits, 206 files). Seven conflicts: upstream's manifest-list store against the `store-ownership` hook (`manifest/manifest.go`, `manifest/paths.go`, `server/images.go`), `go.mod`, `scheduleRunner`'s new signature beside the `polykv-window` hook, and two test files (both blocks kept). The council and tokenize callers that hold a model now call `scheduleRunnerForModel`. Three new upstream CLI tests set `OLLAMA_HOST` and were reaching the live server on this host: `XOLLAMA_HOST`.
@@ -2011,7 +2019,8 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 `v0.35.1-xollama.4` is the latest release (2026-10-05): upstream v0.35.1, the
 fork's carried patches, opencoti c9 (`2610050707001`), every platform with a
 download, macOS included and updating itself. `dev` is on upstream v0.40.0
-since 2026-10-07, still on c9; its first candidate is `v0.40.0-rc.1.xollama`.
+since 2026-10-07, still on c9; its first candidate `v0.40.0-rc.1.xollama` is
+published as a pre-release (merge `e311046b5`), every gate passed.
 The release after follows opencoti c10: the Clef head, the fork's MLX runtimes in the release, and on
 macOS no stock `llama-server`. The Agentic Council Chat is in Phase 11.
 
