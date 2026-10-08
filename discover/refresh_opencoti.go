@@ -42,6 +42,11 @@ import (
 // enough that a host that got faster is noticed.
 const refreshCooldown = 15 * time.Minute
 
+// slowListing is the time a listing is given before being cut counts against
+// the engine. The slowest measured is 1.9 s (Vulkan with three GPUs, eleven2go,
+// 2026-10-08); upstream's whole refresh has 3 s.
+var slowListing = 2500 * time.Millisecond
+
 // refreshSkippedUntil holds the directories in cooldown. Guarded by deviceMu,
 // as every other piece of discovery state is.
 var refreshSkippedUntil = map[string]time.Time{}
@@ -88,6 +93,13 @@ func forkRefresh(ctx context.Context, devices []ml.DeviceInfo, updated []bool) *
 		err    error
 		took   time.Duration
 	}
+	// What the caller gave this refresh. Upstream's refresh gives it 3 s, but
+	// the wait for VRAM recovery after an unload calls it in a loop under its
+	// own deadline, which can end a fraction of a second into a listing.
+	available := time.Duration(1<<63 - 1)
+	if deadline, ok := ctx.Deadline(); ok {
+		available = time.Until(deadline)
+	}
 	results := make([]*listing, len(backends))
 	var wg sync.WaitGroup
 	for i, b := range backends {
@@ -110,6 +122,14 @@ func forkRefresh(ctx context.Context, devices []ml.DeviceInfo, updated []bool) *
 		}
 		key := "opencoti:" + string(b)
 		listed, err := r.listed, r.err
+		if len(listed) == 0 && ctx.Err() != nil && available < slowListing {
+			// Cut because the caller stopped waiting, before a listing could
+			// have finished: nothing is known about the engine, so nothing
+			// goes into cooldown (eleven2go, 2026-10-08: a VRAM-recovery wait
+			// ending 0.3 s into a refresh put both backends out for 15 min).
+			slog.Debug("opencoti free-memory refresh cut short by its caller", "backend", b, "available", available, "duration", r.took)
+			continue
+		}
 		if len(listed) == 0 {
 			// No payload for this backend (b111 has no Vulkan), or no answer
 			// in time: nothing to be authoritative with, and asking again on

@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-08 — xo-20 done: one GPU through two backends (a 3090 on Vulkan, alone or split with the RX 9070 XT); a refresh its caller cut no longer starts a cooldown.**
+> - Owner's go. `backend-copies` hook (Registry row): while opencoti may serve, discovery keeps the Vulkan copy of a CUDA/ROCm GPU with the same PCI ID; `discover.GPUDevices` still returns one entry per GPU (startup sizing, runner counts unchanged); a load gets the copies only when its pin or the `gpu` policy names a backend, and `applyGPUPolicy` keeps one entry per GPU. The engine's listing now carries PCI IDs (`OPENCOTI_LIST_DEVICE_IDS=1`): the RX 9070 XT and the iGPU on Windows have one for the first time. Measured on eleven2go: CUDA 123.3 unchanged; 3090 on Vulkan by pin or by policy 106.2; spread over 9070 XT + 3090 on Vulkan 92.7 tok/s. Name pin re-read after today's reboot: on the 9070 XT, now Vulkan2. Guards fail on removal.
+> - Found and fixed (bug-250): the VRAM-recovery wait after an unload calls the refresh under its own deadline; cut 0.3 s into a listing, the refresh warned and put both backends in a 15-minute cooldown. A cut with less time left than a listing needs is now the caller's: Debug, no cooldown.
+> - opencoti and the fork: the inputs digest gains `llama/clef` from v0.40.1 (the fork names the README-excluded value, `d0cc3cdd…`, in PATCHES.json); our four digest sites change in the sync PR.
+
 > **2026-10-08 — `v0.40.0-xollama.1` released and promoted: macOS opencoti only, Windows MLX without cuDNN installed, the free-memory refresh fixed.**
 > - PR #16 (merge `4d695c111`, run 37731569137). Full check passed, numbers in `docs/protocols/VALIDATION.md`: the small updater over `v0.40.0-xollama` fetched the new MLX runtime (`MLX_ID` `b715921b…`), RTX 3090 123.1–123.5, RX 9070 XT 102.7–103.0, iGPU 5.7 tok/s, MLX on the installed server 66.7–67.8 tok/s, no refresh Warn in 17 refreshes; the release's signed Mac app has no stock binaries, 127.3–129.6 / 32.3–32.5 tok/s, speech 7/7, `llamacpp` refused. Promoted, Discord announced, `:latest` re-run on the tag.
 > - opencoti re-cut its plans (#886): c11 is Ternary Bonsai 2 27B only (new weight types PQ2_0 = 142, PTQ1_0 = 143, a weight rotation at load); the structured refused-device signal is c12 row 27.1 (op-71). The `REFUSED` line stays the interface until then.
@@ -2128,9 +2133,9 @@ Agentic Council Chat is in Phase 11.
 
 ## Immediate next steps (in order)
 
-1. xo-20: the Windows Vulkan device ids (`OPENCOTI_LIST_DEVICE_IDS=1`) and a
-   policy-aware dedup, so Vulkan can be chosen for an NVIDIA card; tested on
-   eleven2go.
+1. The v0.40.1 sync when the fork's pins arrive (inputs digest gains
+   `llama/clef`, README-excluded for the fork's runtimes; MLX moves, the
+   reldir Windows zip later and re-checked without cuDNN); xo-20 ships with it.
 2. opencoti c11 (Ternary Bonsai 2 27B, two new weight types): the catalog and
    the pin move on a measurement once opencoti publishes it.
 3. Run the Phase 8 compaction live over four and more turns

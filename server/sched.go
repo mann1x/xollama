@@ -325,6 +325,7 @@ func (s *Scheduler) processPending(ctx context.Context) {
 
 					// xollama-hook: device-select — see docs/features/device-selection.md
 					if pending.opts.NumGPU != 0 {
+						gpus = withBackendCopies(pending.model.Xollama, gpus) // xollama-hook: backend-copies
 						selected, err := selectModelDevices(pending.model.Xollama, gpus)
 						if err != nil {
 							slog.Info("refusing load: device pin not satisfied", "model", pending.model.ModelPath, "error", err)

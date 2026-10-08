@@ -80,7 +80,8 @@ func applyGPUPolicy(cfg *xollama.Config, gpus []ml.DeviceInfo) []ml.DeviceInfo {
 func preferredBackend(g *xollama.GPUSettings, d ml.DeviceInfo, all []ml.DeviceInfo) bool {
 	s, ok := policyFor(g, d, all)
 	if !ok || s.Backend == "" || d.PCIID == "" {
-		return true
+		// No backend chosen for this GPU: upstream's (backend-copies).
+		return upstreamPreferred(d, all)
 	}
 	want := xollama.CanonicalBackend(s.Backend)
 	if d.Library == want {
