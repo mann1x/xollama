@@ -5,6 +5,10 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-08 — `v0.40.0-xollama.1` opened (owner's go; eleven2go rebooted, the two wedged MLX runners gone with it).**
+> - Content: macOS without stock `llama-server` and the Windows MLX reldir runtime; xo-20 stays out. G1 on `e25837bcf`: gofmt, build, tests, lint 0, 40 hooks, compat-origin clean. Security check: Dependabot 99 open (was 99), no alert on a line the fork changed; govulncheck 0 reachable. Snapshot committed.
+> - Full check after the pre-release: G9 (the update installer must fetch the new MLX, its `MLX_ID` differs), G11 on the release's own signed app, G12; then promote.
+
 > **2026-10-08 — Windows MLX pinned to the fork's build that loads cuDNN beside itself; macOS without stock `llama-server` on dev. Both for `v0.40.0-xollama.1`.**
 > - The fork published `ollama-windows-amd64-mlx-reldir.zip` (`b715921b…`, run 37687432548 from `2630dba7`, mail #883): upstream's MLX with `MLX_CUDA_BIN_DIR`/`MLX_CUDNN_BIN_DIR` = `.`. Measured on eleven2go, no cuDNN installed, side server on 22498: upstream's zip panics on `qwen3.5:0.8b` on MLX (`directory_iterator … "C:/Program Files/NVIDIA/CUDNN/bin/x64"`) and the request hangs; the reldir zip generates it (300 tokens, 45.8 cold / 68.3 tok/s warm), `embeddinggemma-2` embeds (768 dims, cos 0.771 near / 0.524 far), and a create from Qwen3-0.6B safetensors imports in 3 s (316 layers, bf16) and generates at 92.6 tok/s. `llama/runtime-pin-windows-mlx.txt` moved to it; installs update to it through the small installer (`MLX_ID` differs).
 > - Left on eleven2go by the control run: two MLX runner processes of the side copy (`xo-mlxrel`, PIDs 14096 and 24784) that panicked and cannot be terminated (one thread each, about 2.4 GB on the RTX 3090; `taskkill /F` from the logged-in session: "no running instance"). The installed xOllama and the owner's ollama are unaffected. They go with the next reboot, which is the owner's call. This is upstream's MLX bug that the reldir build removes.
