@@ -5,6 +5,10 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-08 — `v0.40.0-xollama.1` released and promoted: macOS opencoti only, Windows MLX without cuDNN installed, the free-memory refresh fixed.**
+> - PR #16 (merge `4d695c111`, run 37731569137). Full check passed, numbers in `docs/protocols/VALIDATION.md`: the small updater over `v0.40.0-xollama` fetched the new MLX runtime (`MLX_ID` `b715921b…`), RTX 3090 123.1–123.5, RX 9070 XT 102.7–103.0, iGPU 5.7 tok/s, MLX on the installed server 66.7–67.8 tok/s, no refresh Warn in 17 refreshes; the release's signed Mac app has no stock binaries, 127.3–129.6 / 32.3–32.5 tok/s, speech 7/7, `llamacpp` refused. Promoted, Discord announced, `:latest` re-run on the tag.
+> - opencoti re-cut its plans (#886): c11 is Ternary Bonsai 2 27B only (new weight types PQ2_0 = 142, PTQ1_0 = 143, a weight rotation at load); the structured refused-device signal is c12 row 27.1 (op-71). The `REFUSED` line stays the interface until then.
+
 > **2026-10-08 — `v0.40.0-xollama.1` opened (owner's go; eleven2go rebooted, the two wedged MLX runners gone with it).**
 > - Content: macOS without stock `llama-server` and the Windows MLX reldir runtime; xo-20 stays out. G1 on `e25837bcf`: gofmt, build, tests, lint 0, 40 hooks, compat-origin clean. Security check: Dependabot 99 open (was 99), no alert on a line the fork changed; govulncheck 0 reachable. Snapshot committed.
 > - Full check after the pre-release: G9 (the update installer must fetch the new MLX, its `MLX_ID` differs), G11 on the release's own signed app, G12; then promote.
@@ -2052,14 +2056,13 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
 ## Where we are
 
-`v0.40.0-xollama` is the latest release (2026-10-08): upstream v0.40.0, the
-fork's carried patches, opencoti c10 (`2610072136001`), Clef models on
-opencoti, opencoti first on every platform, and the MLX runtime downloaded by
-the Windows installer. `dev` is that tree plus its records. Next is the
-re-release `v0.40.0-xollama.1`: macOS without stock `llama-server` (branch
-`macos/opencoti-only`, checked on the Mac), the fork's Windows MLX runtime
-that finds cuDNN beside itself, and the Windows Vulkan-for-NVIDIA choice
-(xo-20). The Agentic Council Chat is in Phase 11.
+`v0.40.0-xollama.1` is the latest release (2026-10-08): upstream v0.40.0, the
+fork's carried patches, opencoti c10 (`2610072136001`), Clef on opencoti,
+opencoti first on every platform and the only engine on macOS, the Windows
+MLX runtime downloaded by the installer and needing no cuDNN install. `dev`
+is that tree plus its records. Next: xo-20 (Vulkan for an NVIDIA card on
+Windows); opencoti c11 (Ternary Bonsai 2 27B) when it is published. The
+Agentic Council Chat is in Phase 11.
 
 ## What exists today
 
@@ -2125,11 +2128,11 @@ that finds cuDNN beside itself, and the Windows Vulkan-for-NVIDIA choice
 
 ## Immediate next steps (in order)
 
-1. `v0.40.0-xollama.1` with the full check: macOS without stock
-   `llama-server` and the Windows MLX reldir runtime are on dev; xo-20 (the
-   Windows Vulkan-for-NVIDIA choice) if it does not hold the rest up.
-2. Find why a Vulkan free-memory refresh finds nothing now and then before a
-   load (G9, G10); fix it in the engine if it is the engine's.
+1. xo-20: the Windows Vulkan device ids (`OPENCOTI_LIST_DEVICE_IDS=1`) and a
+   policy-aware dedup, so Vulkan can be chosen for an NVIDIA card; tested on
+   eleven2go.
+2. opencoti c11 (Ternary Bonsai 2 27B, two new weight types): the catalog and
+   the pin move on a measurement once opencoti publishes it.
 3. Run the Phase 8 compaction live over four and more turns
    (`council-idle.py`), then assess the council's use of the shared prefix on
    PolyKV (the owner's request).

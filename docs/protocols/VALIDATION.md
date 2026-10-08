@@ -133,6 +133,25 @@ on eleven2go: `xOllamaUpdate.exe` over rc.2 exit 0 in 4 s; version,
 3090 123.1 and 123.6 tok/s over 512 tokens; ollama on 11434 untouched.
 Promoted 2026-10-08 (Discord announce run succeeded).
 
+**`v0.40.0-xollama.1`** (2026-10-08, re-release, PR #16, merge `4d695c111`,
+release run 37731569137, image run 37732870439; payload id `d413785f…`,
+unchanged). G1 on `73d226dd3` clean; G2 4 pass, 4 skipping. G9 on eleven2go
+(rebooted): `xOllamaUpdate.exe` over the installed `v0.40.0-xollama` exit 0 in
+120 s, of which the new MLX runtime (`ollama-windows-amd64-mlx-reldir.zip`,
+1,338 MB, `MLX_ID` `b715921b…`, 2,642 files) about 115 s; `xOllamaSetup.exe`
+over it exit 0 in 28 s, MLX kept; version, `PAYLOAD_ID`, 22434,
+`/api/xollama` right; RTX 3090 123.1 cold, 123.3 to 123.5 warm; RX 9070 XT
+102.7 cold, 102.9 to 103.0 warm; integrated 5.7; displays `OK`; ollama on
+11434 untouched; no refresh Warn: 17 refreshes, CUDA and Vulkan side by side
+in 1.3 / 1.5 s each, none failed (bug-249); `qwen3.5:0.8b` on MLX on the
+installed server 66.7 / 67.8 tok/s with no cuDNN installed. G11 on the
+release's own app: codesign and notarization OK, no `llama-server` or
+`llama-quantize` in the bundle, `qwen2.5:1.5b` 127.3 to 129.6 and `llama3`
+32.3 to 32.5 tok/s over 512 tokens, speech 7 of 7, every load on opencoti
+through Metal, `XOLLAMA_ENGINE=llamacpp` refused with the reason. G12: every
+checksum OK, amd64 and arm64 (Pi) name the version, image amd64+arm64 on both
+registries, `:dev` moved. Promoted 2026-10-08, Discord announced.
+
 ### G1. Repository checks
 
 - **Where:** solidPC, the tree.
