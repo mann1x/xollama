@@ -5,6 +5,34 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-08 — Upstream v0.40.1 synced (fork manifest `9acdc12a`, llama.cpp still b11351, `llama/clef` changed, MLX `a59cc231`).**
+> - Owner's go. `sync/upstream-v0.40.1`, in its own worktree.
+>   - `69a86b8e` merged the tag (7 commits, 21 files). Two conflicts: `README.md` keeps ours, and `cmd/welcome_test.go` drops `TestWelcomeCloudStatus` as upstream did (#18826).
+>   - Upstream copies manifests instead of linking them on Windows (#18852). Its `copyManifestFile` already writes through `fsowner`.
+>   - New upstream routes `/api/balance` and `/api/usage` proxy the signed-in cloud account.
+>   - No change in `model/parsers`, `model/renderers`, `thinking`, `template` or `harmony`.
+> - The fork's 24 patches followed as `--no-ff` merges at the manifest's shas (`6b41b4fc` … `f29adbaf`, table in CARRIED-PATCHES).
+>   - Each has the same `git patch-id` set as the v0.40.0 copy dev carries, and leaves the tree as its first parent.
+>   - From `up-think-budget` on, each conflicted with its own earlier copy and was resolved `-X ours`.
+>   - The loop stops on a patch-id difference or a tree change; neither happened.
+>   - Parsers, `thinking`, `llama/compat`, `llama/server`, `llama/clef` and `LLAMA_CPP_VERSION` are byte-identical to the fork's `fdfa954d`.
+>   - All 12 upstream PRs are still open at the manifest's shas.
+> - The inputs digest now takes `llama/clef` (`90516222`, mails 887–889 with the fork). `llama-server` compiles `clef.cpp` in, and upstream changed it (#18777) while the old digest stayed `9defcc44…`. The four sites: `xollama-runtime.yaml`, `xollama-release.yaml` (Windows and Linux) and `docker-assemble.sh`. The new values:
+>   - Linux (README excluded): `d0cc3cdd…`, equal at the fork's `d0508358`.
+>   - Windows (README kept): `e7259fe5…`.
+> - Pins:
+>   - Linux amd64 and arm64 runtimes and the macOS MLX archive moved to the fork's `v0.40.1-thinkbudget`, with upstream v0.40.1's GPU tarballs (`90516222`).
+>   - Windows runtime `runtime-windows-amd64-b11351-e7259fe5e807`, built by run 37741379732 from `90516222`, sha256 checked on a download (`48e8aeda`).
+>   - `scripts/docker-assemble.sh` on the new pins passed its sha256, inputs and provenance checks.
+> - Checks on the branch:
+>   - gofmt silent, `go vet ./...` clean, `go test ./...` 71 ok / 0 failed, `golangci-lint` 0 issues.
+>   - 41 hooks, all registered; `check-compat-origin` 0 foreign.
+>   - Live on solidPC: the assembled payload as `ollama` on 22498, on the scratch v0.40 store (never the shared stores), 512 tokens, two runs.
+>     - opencoti c10: gemma4:e2b 131 to 133, qwen3.5:2b 130 to 145, gemma3:4b-it-qat 101 tok/s.
+>     - Stock llama.cpp: 134 (warm), 127, 101 tok/s.
+>     - 0 crash lines; 0 foreign files in the store.
+> - Left: the Windows MLX pin. It still names MLX `264c14fe` against this tree's `a59cc231`, so the release plan refuses until it moves. It waits for the fork's reldir zip (fork run 37737304380), checked on eleven2go without cuDNN as for v0.40.0. Then a release.
+
 > **2026-10-08 — xo-20 done: one GPU through two backends (a 3090 on Vulkan, alone or split with the RX 9070 XT); a refresh its caller cut no longer starts a cooldown.**
 > - Owner's go. `backend-copies` hook (Registry row): while opencoti may serve, discovery keeps the Vulkan copy of a CUDA/ROCm GPU with the same PCI ID; `discover.GPUDevices` still returns one entry per GPU (startup sizing, runner counts unchanged); a load gets the copies only when its pin or the `gpu` policy names a backend, and `applyGPUPolicy` keeps one entry per GPU. The engine's listing now carries PCI IDs (`OPENCOTI_LIST_DEVICE_IDS=1`): the RX 9070 XT and the iGPU on Windows have one for the first time. Measured on eleven2go: CUDA 123.3 unchanged; 3090 on Vulkan by pin or by policy 106.2; spread over 9070 XT + 3090 on Vulkan 92.7 tok/s. Name pin re-read after today's reboot: on the 9070 XT, now Vulkan2. Guards fail on removal.
 > - Found and fixed (bug-250): the VRAM-recovery wait after an unload calls the refresh under its own deadline; cut 0.3 s into a listing, the refresh warned and put both backends in a 15-minute cooldown. A cut with less time left than a listing needs is now the caller's: Debug, no cooldown.
