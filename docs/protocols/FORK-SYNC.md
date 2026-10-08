@@ -137,6 +137,12 @@ the fork delivers all of the following, in this order:
    - `ollama-linux-amd64-mlx.tar.zst` and `ollama-windows-amd64-mlx.zip`:
      upstream's assets as they are; their sha256 equals upstream's
      `sha256sum.txt`.
+   - `ollama-windows-amd64-mlx-reldir.zip` (from v0.40.0): the fork's own
+     build of the same MLX with `MLX_CUDA_BIN_DIR` and `MLX_CUDNN_BIN_DIR`
+     set to `.`, built by the fork's workflow (`only=mlx-windows`,
+     `asset_suffix=-reldir`). It is what `llama/runtime-pin-windows-mlx.txt`
+     pins: upstream's `mlx.dll` needs cuDNN installed in
+     `C:/Program Files/NVIDIA/CUDNN`. It never replaces an existing asset.
    - `ollama-darwin-mlx.tgz`: `mlx_metal_v3/` (universal, Intel and Apple
      silicon), `mlx_metal_v4/` (Apple silicon) and the MLX, MLX-C, xgrammar,
      dlpack, picojson and fmt licence texts, cut entry for entry from

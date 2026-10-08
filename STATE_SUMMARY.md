@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-08 — Windows MLX pinned to the fork's build that loads cuDNN beside itself; macOS without stock `llama-server` on dev. Both for `v0.40.0-xollama.1`.**
+> - The fork published `ollama-windows-amd64-mlx-reldir.zip` (`b715921b…`, run 37687432548 from `2630dba7`, mail #883): upstream's MLX with `MLX_CUDA_BIN_DIR`/`MLX_CUDNN_BIN_DIR` = `.`. Measured on eleven2go, no cuDNN installed, side server on 22498: upstream's zip panics on `qwen3.5:0.8b` on MLX (`directory_iterator … "C:/Program Files/NVIDIA/CUDNN/bin/x64"`) and the request hangs; the reldir zip generates it (300 tokens, 45.8 cold / 68.3 tok/s warm), `embeddinggemma-2` embeds (768 dims, cos 0.771 near / 0.524 far), and a create from Qwen3-0.6B safetensors imports in 3 s (316 layers, bf16) and generates at 92.6 tok/s. `llama/runtime-pin-windows-mlx.txt` moved to it; installs update to it through the small installer (`MLX_ID` differs).
+> - Left on eleven2go by the control run: two MLX runner processes of the side copy (`xo-mlxrel`, PIDs 14096 and 24784) that panicked and cannot be terminated (one thread each, about 2.4 GB on the RTX 3090; `taskkill /F` from the logged-in session: "no running instance"). The installed xOllama and the owner's ollama are unaffected. They go with the next reboot, which is the owner's call. This is upstream's MLX bug that the reldir build removes.
+> - `macos/opencoti-only` merged into dev (`d22be5bf1`).
+
 > **2026-10-08 — `v0.40.0-xollama` released and promoted (upstream v0.40.0, opencoti c10); rc.2 checked on every gate first.**
 > - Owner: publish the release on c10 overnight. `v0.40.0-rc.2.xollama` (PR #14, run 37698039727, payload id `d413785f…`): G9 on eleven2go full and update installers exit 0, MLX kept by its pinned `MLX_ID` (the download ran in the release job, 1,338 MB), RTX 3090 123.0 to 123.5, RX 9070 XT 102.9 to 103.0 warm, integrated 5.0; G12 every checksum OK, versions on amd64 and the Pi, image amd64+arm64 on both registries, `:dev` moved. Numbers in `docs/protocols/VALIDATION.md`.
 > - `v0.40.0-xollama` from rc.2's tree (empty commit, PR #15, `tree matches`, merge `4e4534103`, run 37701523918): same payload id; short check over rc.2 with the small installer, 123.1 / 123.6 tok/s; promoted, Discord announced; the image re-run on the tag moves `:latest`.
@@ -2115,11 +2120,9 @@ that finds cuDNN beside itself, and the Windows Vulkan-for-NVIDIA choice
 
 ## Immediate next steps (in order)
 
-1. Merge `macos/opencoti-only` into dev; with it, the Windows MLX runtime
-   with cuDNN beside it (`ollama-windows-amd64-mlx-reldir.zip`, pinned when
-   the fork mails its sha256, checked with a cuDNN MLX model and a safetensors
-   create) and, if it does not hold the rest up, xo-20; then
-   `v0.40.0-xollama.1` with the full check.
+1. `v0.40.0-xollama.1` with the full check: macOS without stock
+   `llama-server` and the Windows MLX reldir runtime are on dev; xo-20 (the
+   Windows Vulkan-for-NVIDIA choice) if it does not hold the rest up.
 2. Find why a Vulkan free-memory refresh finds nothing now and then before a
    load (G9, G10); fix it in the engine if it is the engine's.
 3. Run the Phase 8 compaction live over four and more turns
