@@ -203,7 +203,7 @@ jobs:
             || fail "no llama/runtime-pin.txt at $sha; run xollama-runtime.yaml and commit the pin (RELEASE.md)"
           field() { awk -v k="$1" '$1==k {print $2}' <<< "$pin"; }
           rtag=$(field tag); rasset=$(field asset); rsum=$(field sha256); rinputs=$(field inputs)
-          now=$(git ls-tree -r "$sha" -- LLAMA_CPP_VERSION llama/server llama/compat | sha256sum | cut -c1-64)
+          now=$(git ls-tree -r "$sha" -- LLAMA_CPP_VERSION llama/server llama/compat llama/clef | sha256sum | cut -c1-64)
           [ "$now" = "$rinputs" ] \
             || fail "llama/runtime-pin.txt was built from inputs $rinputs, but this commit's are $now; run xollama-runtime.yaml on it and commit the new pin (RELEASE.md, 'Moving the runtime pin')"
           gh release view "$rtag" --json assets --jq '.assets[].name' | grep -qx "$rasset" \
@@ -218,7 +218,7 @@ jobs:
           # inputs, not published, or the two architectures on different fork
           # releases. The fork's llama/compat/README.md is not a build input,
           # so the digest leaves it out, as scripts/docker-assemble.sh does.
-          lnow=$(git ls-tree -r "$sha" -- LLAMA_CPP_VERSION llama/server llama/compat \
+          lnow=$(git ls-tree -r "$sha" -- LLAMA_CPP_VERSION llama/server llama/compat llama/clef \
             | grep -v '[[:space:]]llama/compat/README\.md$' | sha256sum | cut -c1-64)
           ltags=
           for lf in llama/runtime-pin-linux.txt llama/runtime-pin-linux-arm64.txt; do

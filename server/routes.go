@@ -63,6 +63,8 @@ const (
 	cloudErrRemoteModelDetailsUnavailable = "remote model details are unavailable"
 	cloudErrWebSearchUnavailable          = "web search is unavailable"
 	cloudErrWebFetchUnavailable           = "web fetch is unavailable"
+	cloudErrBalanceUnavailable            = "balance is unavailable"
+	cloudErrUsageUnavailable              = "usage is unavailable"
 	copilotChatUserAgentPrefix            = "GitHubCopilotChat/"
 )
 
@@ -2462,6 +2464,8 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.DELETE("/api/delete", s.DeleteHandler)
 
 	r.POST("/api/me", s.WhoamiHandler)
+	r.GET("/api/balance", s.BalanceHandler)
+	r.GET("/api/usage", s.UsageHandler)
 
 	r.POST("/api/signout", s.SignoutHandler)
 	// deprecated
@@ -2762,6 +2766,20 @@ func (s *Server) StatusHandler(c *gin.Context) {
 			Source:   source,
 		},
 	})
+}
+
+func (s *Server) BalanceHandler(c *gin.Context) {
+	c.Header("Cache-Control", "private, no-store")
+	// Use the account signed into this server, regardless of caller credentials.
+	c.Request.Header.Del("Authorization")
+	proxyCloudRequest(c, nil, cloudErrBalanceUnavailable)
+}
+
+func (s *Server) UsageHandler(c *gin.Context) {
+	c.Header("Cache-Control", "private, no-store")
+	// Use the account signed into this server, regardless of caller credentials.
+	c.Request.Header.Del("Authorization")
+	proxyCloudRequest(c, nil, cloudErrUsageUnavailable)
 }
 
 func (s *Server) WebSearchExperimentalHandler(c *gin.Context) {

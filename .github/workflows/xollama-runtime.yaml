@@ -11,7 +11,7 @@
 # and llm/engine/pin -- so it changes only when one of them moves.
 #
 # The release tag carries a digest of exactly the files that decide what gets
-# built (LLAMA_CPP_VERSION, llama/server, llama/compat). xollama-release.yaml
+# built (LLAMA_CPP_VERSION, llama/server, llama/compat, llama/clef). xollama-release.yaml
 # recomputes it at the release commit and refuses to ship when the pin no
 # longer matches, so a llama/compat change cannot reach a release on a stale
 # runtime.
@@ -70,7 +70,7 @@ jobs:
         working-directory: repo
         run: |
           # The same computation xollama-release.yaml's plan job runs; keep them identical.
-          inputs=$(git ls-tree -r HEAD -- LLAMA_CPP_VERSION llama/server llama/compat | sha256sum | cut -c1-64)
+          inputs=$(git ls-tree -r HEAD -- LLAMA_CPP_VERSION llama/server llama/compat llama/clef | sha256sum | cut -c1-64)
           llama=$(tr -d '[:space:]' < LLAMA_CPP_VERSION)
           tag="runtime-windows-amd64-${llama}-${inputs:0:12}"
           echo "inputs=$inputs" >> "$GITHUB_OUTPUT"
@@ -153,7 +153,7 @@ jobs:
             echo "|---|---|"
             echo "| built from | \`$SHA\` |"
             echo "| llama.cpp | \`$LLAMA\` |"
-            echo "| inputs digest | \`$INPUTS\` (LLAMA_CPP_VERSION, llama/server, llama/compat) |"
+            echo "| inputs digest | \`$INPUTS\` (LLAMA_CPP_VERSION, llama/server, llama/compat, llama/clef) |"
             echo "| \`$zip\` sha256 | \`$sum\` |"
           } > notes.md
           gh release create "$TAG" "$zip" --target "$SHA" --prerelease --latest=false \

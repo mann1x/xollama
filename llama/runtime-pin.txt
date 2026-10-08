@@ -14,14 +14,15 @@
 #   asset   archive name; its root is lib\ollama's contents
 #   sha256  of the asset, checked before it is unpacked
 #   inputs  sha256 of `git ls-tree -r <commit> -- LLAMA_CPP_VERSION llama/server
-#           llama/compat`. The release refuses to ship when the release
+#           llama/compat llama/clef` (llama/clef from v0.40.1: llama-server
+#           compiles it in). The release refuses to ship when the release
 #           commit's digest differs: move this pin in the same PR that changes
 #           any of those paths.
 #
 # This file is outside the digested paths on purpose, so committing it does not
 # invalidate itself.
 
-tag      runtime-windows-amd64-b11351-c5dafb5ce36b
+tag      runtime-windows-amd64-b11351-e7259fe5e807
 asset    xollama-runtime-windows-amd64.zip
-sha256   077d0e4e7daa17cb025faca76487e1fc70537ad4f8a4d33808da67f51a7823e6
-inputs   c5dafb5ce36b051b3fddba4b6ab75451c1a02b421c17b738da2233e3cb773b33
+sha256   b3f9e730c72db4f331249b97801148d39b11f297cd159ab01dcc427ef50d18db
+inputs   e7259fe5e8074156af81e04626394109a1ff71f26e59013e5c8316f46b3eb3d5
