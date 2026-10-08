@@ -1,4 +1,4 @@
-# govulncheck go1.26.8, tree e8d56490e, 2026-10-07
+# govulncheck go1.26.8, tree e25837bcf, 2026-10-08
 === Symbol Results ===
 === Package Results ===
 Vulnerability #1: GO-2026-6355

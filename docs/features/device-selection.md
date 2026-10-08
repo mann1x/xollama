@@ -210,6 +210,17 @@ payload (driver 580, no Volta) nor anything else, and was dropped as "a
 device the engine that serves it does not list". Guard:
 `TestAV100ListedOnlyByTheCUDA12PayloadIsKept`.
 
+The refresh before a load lists every backend opencoti serves **side by side**,
+inside upstream's single 3 s budget (`forkRefresh`,
+`discover/refresh_opencoti.go`). Each listing starts the engine and
+initialises its devices: on eleven2go CUDA takes 1.1 to 1.7 s and Vulkan, with
+three GPUs, 1.4 to 1.9 s (2026-10-08). One after the other they often did not
+fit; the second was killed at the deadline, which on Windows reads "exit
+status 1" with the engine's output cut after its device lines, and the
+refresh left free memory stale for 15 minutes. A listing that runs out of the
+budget says so in its Warn ("the refresh budget ran out"). Guards:
+`TestTheBackendsAreListedSideBySide`, `TestARefreshThatRanOutOfTimeSaysSo`.
+
 Coverage is **derived from the `dso` rows themselves**: a bare `x86_64` label is
 CUDA, and `<arch>-vulkan` names Vulkan for that arch. Explicit `accel` rows are
 still honoured and only ever add to it. That matters because the published pin

@@ -5,6 +5,22 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-08 — `v0.40.0-xollama.1` opened (owner's go; eleven2go rebooted, the two wedged MLX runners gone with it).**
+> - Content: macOS without stock `llama-server` and the Windows MLX reldir runtime; xo-20 stays out. G1 on `e25837bcf`: gofmt, build, tests, lint 0, 40 hooks, compat-origin clean. Security check: Dependabot 99 open (was 99), no alert on a line the fork changed; govulncheck 0 reachable. Snapshot committed.
+> - Full check after the pre-release: G9 (the update installer must fetch the new MLX, its `MLX_ID` differs), G11 on the release's own signed app, G12; then promote.
+> - Found and fixed for `.1` (bug-249): the intermittent "opencoti free-memory refresh found nothing" Warn (G9, G10, mailed to opencoti as possibly theirs) is ours. The refresh listed CUDA, then Vulkan, under upstream's one 3 s budget; on eleven2go each listing exits 0 in 1.1 to 1.9 s (measured from the logged-in session), so the second was often killed at the deadline ("exit status 1" on Windows) and free memory stayed stale for 15 minutes. `forkRefresh` now lists the backends side by side, and a listing cut by the budget says so. Guards fail on the old code.
+
+> **2026-10-08 — Windows MLX pinned to the fork's build that loads cuDNN beside itself; macOS without stock `llama-server` on dev. Both for `v0.40.0-xollama.1`.**
+> - The fork published `ollama-windows-amd64-mlx-reldir.zip` (`b715921b…`, run 37687432548 from `2630dba7`, mail #883): upstream's MLX with `MLX_CUDA_BIN_DIR`/`MLX_CUDNN_BIN_DIR` = `.`. Measured on eleven2go, no cuDNN installed, side server on 22498: upstream's zip panics on `qwen3.5:0.8b` on MLX (`directory_iterator … "C:/Program Files/NVIDIA/CUDNN/bin/x64"`) and the request hangs; the reldir zip generates it (300 tokens, 45.8 cold / 68.3 tok/s warm), `embeddinggemma-2` embeds (768 dims, cos 0.771 near / 0.524 far), and a create from Qwen3-0.6B safetensors imports in 3 s (316 layers, bf16) and generates at 92.6 tok/s. `llama/runtime-pin-windows-mlx.txt` moved to it; installs update to it through the small installer (`MLX_ID` differs).
+> - Left on eleven2go by the control run: two MLX runner processes of the side copy (`xo-mlxrel`, PIDs 14096 and 24784) that panicked and cannot be terminated (one thread each, about 2.4 GB on the RTX 3090; `taskkill /F` from the logged-in session: "no running instance"). The installed xOllama and the owner's ollama are unaffected. They go with the next reboot, which is the owner's call. This is upstream's MLX bug that the reldir build removes.
+> - `macos/opencoti-only` merged into dev (`d22be5bf1`).
+
+> **2026-10-08 — `v0.40.0-xollama` released and promoted (upstream v0.40.0, opencoti c10); rc.2 checked on every gate first.**
+> - Owner: publish the release on c10 overnight. `v0.40.0-rc.2.xollama` (PR #14, run 37698039727, payload id `d413785f…`): G9 on eleven2go full and update installers exit 0, MLX kept by its pinned `MLX_ID` (the download ran in the release job, 1,338 MB), RTX 3090 123.0 to 123.5, RX 9070 XT 102.9 to 103.0 warm, integrated 5.0; G12 every checksum OK, versions on amd64 and the Pi, image amd64+arm64 on both registries, `:dev` moved. Numbers in `docs/protocols/VALIDATION.md`.
+> - `v0.40.0-xollama` from rc.2's tree (empty commit, PR #15, `tree matches`, merge `4e4534103`, run 37701523918): same payload id; short check over rc.2 with the small installer, 123.1 / 123.6 tok/s; promoted, Discord announced; the image re-run on the tag moves `:latest`.
+> - macOS without stock `llama-server` (owner's go) is done on `macos/opencoti-only` (`f1e438e3f`, `c2efadafd`), not on dev until now: `stockless` and `macos-stockless` hooks, the bundle carries no `llama-server`/`llama-quantize`, a load that misses opencoti (or `XOLLAMA_ENGINE=llamacpp`) is refused with the reason. Measured on the Mac mini from the built bundle: Metal discovered, qwen2.5:1.5b 122.3 and llama3 31.5 tok/s over 300 tokens, no fallback; full `go test ./...` passes there. It goes into `v0.40.0-xollama.1`.
+> - Seen again (G9 and G10): a Vulkan "free-memory refresh found nothing" Warn before a load, the load placed right. Looked into next.
+
 > **2026-10-07 — Engine pin on opencoti c10 (release `2610072136001`), measured; a refused GPU is no longer placed on; arm64 runtime repinned.**
 > - Owner: when c10 is published, a quick Clef 27B check on macOS, then publish c10, then release. c10-dev snapshot 2 validated first and mailed PASS (#869): G3, Clef/nimble, speech 8/8 with a root-owned `/tmp/audiocpp-gguf` (bug-3955 fixed), Mac Clef 27B, and bug-3954 at the engine on eleven2go: a fresh engine and one that served a request first are identical with the 3090 and the 9070 XT on Vulkan (`-ts 1,1`), where the c10-dev 1 engine differs from token 196 (`scripts/gates/windows-twogpu-engine.ps1`). opencoti published c10 (index `d6078962`): the engine is snapshot 2 plus the version tag, every library the snapshot's file.
 > - `llm/engine/pin/` moved to c10 on the release bytes; numbers in the index header and `docs/protocols/VALIDATION.md` ("On opencoti c10"): G3 8/8, 77.26 tok/s, 4 slots 299.7; G4 pass; G5 the PolyKV tag 4 of 4, the other two tags pass; G6 speech 8/8, video 33/33; G8 3090 123.3–123.8, 9070 XT 102.9–103.0 warm, engine gone 1047 ms after a kill; G11 129.3 / 32.4 tok/s, speech 7/7, Clef 27B on Metal. The pin declares `clef_score_v1`: Clef models now run on opencoti (stock loads 0).
@@ -2036,13 +2052,14 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
 ## Where we are
 
-`v0.35.1-xollama.4` is the latest release (2026-10-05): upstream v0.35.1, the
-fork's carried patches, opencoti c9 (`2610050707001`), every platform with a
-download, macOS included and updating itself. `dev` is on upstream v0.40.0
-since 2026-10-07 and on opencoti c10 (`2610072136001`) since the same night,
-measured on every engine gate; its first candidate `v0.40.0-rc.1.xollama`
-(c9) is published as a pre-release, and `v0.40.0-rc.2.xollama` on c10 is
-next. Clef models run on opencoti. The Agentic Council Chat is in Phase 11.
+`v0.40.0-xollama` is the latest release (2026-10-08): upstream v0.40.0, the
+fork's carried patches, opencoti c10 (`2610072136001`), Clef models on
+opencoti, opencoti first on every platform, and the MLX runtime downloaded by
+the Windows installer. `dev` is that tree plus its records. Next is the
+re-release `v0.40.0-xollama.1`: macOS without stock `llama-server` (branch
+`macos/opencoti-only`, checked on the Mac), the fork's Windows MLX runtime
+that finds cuDNN beside itself, and the Windows Vulkan-for-NVIDIA choice
+(xo-20). The Agentic Council Chat is in Phase 11.
 
 ## What exists today
 
@@ -2108,19 +2125,15 @@ next. Clef models run on opencoti. The Agentic Council Chat is in Phase 11.
 
 ## Immediate next steps (in order)
 
-1. Run the Phase 8 compaction live on b128 over four and more turns
-   (`council-idle.py`): tokens sent per turn, time to first token, and the
-   summary's size by generation. Then assess the council's use of the
-   shared prefix on PolyKV (the owner's request).
-2. When b128 (or later) is on the HF dev repo, measure it with
-   `scripts/phase2-engine-ab.py` and move the pin; then retire the #349
-   workaround notes (a 4 × 131k launch loads on b128).
-3. Try the council badge and the Deliberation toggle in the running desktop
-   app, which needs a Windows or macOS build.
-4. Move the engine pin only on a measurement. The `rs` question (#345) is
-   answered: working as intended.
-5. When an opencoti build with patch 0406 is on the HF dev repo, start
-   `plans/council-continue-pool.md` Phase 0.
+1. `v0.40.0-xollama.1` with the full check: macOS without stock
+   `llama-server` and the Windows MLX reldir runtime are on dev; xo-20 (the
+   Windows Vulkan-for-NVIDIA choice) if it does not hold the rest up.
+2. Find why a Vulkan free-memory refresh finds nothing now and then before a
+   load (G9, G10); fix it in the engine if it is the engine's.
+3. Run the Phase 8 compaction live over four and more turns
+   (`council-idle.py`), then assess the council's use of the shared prefix on
+   PolyKV (the owner's request).
+4. Move the engine pin only on a measurement.
 
 ## Open decisions
 

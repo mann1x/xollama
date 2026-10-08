@@ -304,7 +304,10 @@ func mergeOpencotiBackend(devices []ml.DeviceInfo, library string, listed []open
 		d.FilterID = ""
 		remapFilterIDForUserVisibleDevices(&d)
 		d.TotalMemory, d.FreeMemory = oc.total, oc.free
-		d.Integrated = d.Integrated || oc.integrated
+		// Metal is Apple silicon's unified memory; on macOS, which ships no stock
+		// llama-server, the engine's listing is the only one, so it says so
+		// as stock discovery would have.
+		d.Integrated = d.Integrated || oc.integrated || library == "Metal"
 		merged = append(merged, d)
 	}
 	// Back into the engine's own order, which is the order its indexes mean.

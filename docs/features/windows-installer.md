@@ -299,8 +299,16 @@ a GGUF variant run on opencoti regardless (`opencoti-first`).
 
 `app/xollama-mlx.iss`, included by both installers (`windows-mlx` hook):
 
-- **What:** the archive `llama/runtime-pin-windows-mlx.txt` pins (the fork's
-  republished upstream bytes). The release workflow's `plan` checks the pin
+- **What:** the archive `llama/runtime-pin-windows-mlx.txt` pins: the fork's
+  build of upstream's MLX at the tag, `ollama-windows-amd64-mlx-reldir.zip`,
+  the same files as upstream's zip but with CUDA and cuDNN loaded from
+  `mlx.dll`'s own folder. Upstream's `mlx.dll` looks for cuDNN in
+  `C:/Program Files/NVIDIA/CUDNN/bin/x64`; without cuDNN installed there, the
+  first MLX operation that needs it panics and the request hangs (measured on
+  eleven2go, 2026-10-08, `qwen3.5:0.8b` on MLX; with the fork's build it runs,
+  as do `embeddinggemma-2` and a create from safetensors). `v0.40.0-xollama`
+  shipped upstream's zip; an update to the next release downloads the new one
+  (its `MLX_ID` differs). The release workflow's `plan` checks the pin
   and passes its URL and sha256 to the installer build (`PKG_MLX_URL`,
   `PKG_MLX_SHA256`); `DownloadTemporaryFile` refuses any other bytes.
 - **When:** after the files are installed (`InstallMLX`, from

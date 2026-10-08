@@ -7,8 +7,10 @@
 // conversion) nor run a model published only for MLX; models with a GGUF
 // variant run on opencoti either way (manifest/opencoti_first.go).
 //
-// The archive is upstream's ollama-windows-amd64-mlx.zip as the fork
-// republishes it, pinned in llama/runtime-pin-windows-mlx.txt; the release
+// The archive is the fork's build of upstream's MLX with CUDA and cuDNN
+// loaded from mlx.dll's own folder (ollama-windows-amd64-mlx-reldir.zip;
+// upstream's zip looks for cuDNN in C:/Program Files/NVIDIA/CUDNN), pinned
+// in llama/runtime-pin-windows-mlx.txt; the release
 // workflow passes its URL and sha256 as PKG_MLX_URL / PKG_MLX_SHA256.
 // DownloadTemporaryFile refuses any other bytes. MLX on Windows is CUDA only,
 // so by default it is fetched only where an NVIDIA GPU is present:

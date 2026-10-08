@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ollama/ollama/envconfig"
@@ -74,13 +75,41 @@ func forkRefresh(ctx context.Context, devices []ml.DeviceInfo, updated []bool) *
 	if err != nil {
 		return &forkRefreshState{}
 	}
-	for _, b := range backends {
-		key := "opencoti:" + string(b)
-		if until, ok := refreshSkippedUntil[key]; ok && refreshNow().Before(until) {
+	// The backends are listed side by side. Each listing starts the engine
+	// and initialises every device of its backend (on eleven2go, measured
+	// 2026-10-08: CUDA 1.1 to 1.7 s, Vulkan with three GPUs 1.4 to 1.9 s), and
+	// upstream's whole refresh has 3 s: one after the other they often did not
+	// fit, the second was killed at the deadline (on Windows that reads "exit
+	// status 1", the engine's output cut off after its device lines) and the
+	// next was refused before it started. Side by side the refresh takes as
+	// long as the slowest listing.
+	type listing struct {
+		listed []opencotiDevice
+		err    error
+		took   time.Duration
+	}
+	results := make([]*listing, len(backends))
+	var wg sync.WaitGroup
+	for i, b := range backends {
+		if until, ok := refreshSkippedUntil["opencoti:"+string(b)]; ok && refreshNow().Before(until) {
 			continue
 		}
-		start := time.Now()
-		listed, err := opencotiListing(ctx, artifact, b)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			start := time.Now()
+			listed, err := opencotiListing(ctx, artifact, b)
+			results[i] = &listing{listed: listed, err: err, took: time.Since(start)}
+		}()
+	}
+	wg.Wait()
+	for i, b := range backends {
+		r := results[i]
+		if r == nil {
+			continue // in cooldown
+		}
+		key := "opencoti:" + string(b)
+		listed, err := r.listed, r.err
 		if len(listed) == 0 {
 			// No payload for this backend (b111 has no Vulkan), or no answer
 			// in time: nothing to be authoritative with, and asking again on
@@ -92,8 +121,13 @@ func forkRefresh(ctx context.Context, devices []ml.DeviceInfo, updated []bool) *
 			if err != nil {
 				reason = err.Error()
 			}
+			if ctx.Err() != nil {
+				// A listing killed at the deadline exits like a failed one;
+				// name the budget, so it is not read as the engine's fault.
+				reason = "the refresh budget ran out before the listing finished (" + reason + ")"
+			}
 			slog.Warn("opencoti free-memory refresh found nothing; free memory stays stale until the cooldown ends",
-				"backend", b, "reason", reason, "duration", time.Since(start), "retry_after", refreshCooldown)
+				"backend", b, "reason", reason, "duration", r.took, "retry_after", refreshCooldown)
 			continue
 		}
 		n := 0
@@ -110,7 +144,7 @@ func forkRefresh(ctx context.Context, devices []ml.DeviceInfo, updated []bool) *
 				}
 			}
 		}
-		slog.Debug("opencoti free-memory refresh", "backend", b, "refreshed", n, "duration", time.Since(start), "error", err)
+		slog.Debug("opencoti free-memory refresh", "backend", b, "refreshed", n, "duration", r.took, "error", err)
 	}
 	return &forkRefreshState{}
 }

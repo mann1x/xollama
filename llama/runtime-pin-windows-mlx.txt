@@ -1,8 +1,16 @@
 # llama/runtime-pin-windows-mlx.txt
 #
 # The MLX runtime a Windows install takes, pinned as a published artifact and
-# never built here. It is upstream's own ollama-windows-amd64-mlx.zip,
-# republished byte for byte by the fork (docs/protocols/FORK-SYNC.md, step 3).
+# never built here. It is the fork's own build of upstream's MLX at the tag
+# (run 37687432548, commit 2630dba7), the same 2,642 files as upstream's
+# ollama-windows-amd64-mlx.zip, with MLX_CUDA_BIN_DIR and MLX_CUDNN_BIN_DIR set
+# to "." so mlx.dll loads CUDA and cuDNN from its own folder. Upstream's zip
+# bakes "C:/Program Files/NVIDIA/CUDNN/bin/x64" into mlx.dll: on a machine
+# without cuDNN installed there, the first MLX operation that needs cuDNN
+# panics and the request hangs. Measured on eleven2go (no cuDNN installed),
+# 2026-10-08: upstream's zip panics on qwen3.5:0.8b; this one generates it,
+# embeds with embeddinggemma-2 and creates from safetensors. mlx.dll, mlxc.dll,
+# ollama_xgrammar.dll and libopenblas.dll are unsigned (upstream signs them).
 #
 # It is NOT inside xOllamaSetup.exe: the installer plus this archive would be
 # about 2.5 GiB, over GitHub's 2 GiB release-asset cap (upstream's own
@@ -25,8 +33,8 @@
 
 repo      mann1x/ollama
 tag       v0.40.0-thinkbudget
-asset     ollama-windows-amd64-mlx.zip
-sha256    c0ea38f2e42e298bf023f6ce1e48dcf9dc2b757d1e72f281dc0e2092ca6388d1
+asset     ollama-windows-amd64-mlx-reldir.zip
+sha256    b715921be450ff153284f36de2f442511493efa37a849d66042640698599e035
 upstream  v0.40.0
 mlx       264c14fe650e1dd9bb0c3902dc06b08033d8f89c
 mlx_c     ebc88f10caa1b625e6b581437a8dea6df8a70085

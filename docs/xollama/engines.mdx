@@ -8,8 +8,11 @@ xollama can serve a GGUF model on either of two engines:
 - **`opencoti`** — opencoti-llamafile, a llamafile fork carrying extra KV-capacity
   and long-context work. See [Tuning opencoti](/xollama/opencoti-tuning).
 
-On a Mac with Apple silicon, opencoti serves GGUF models on Metal. The xOllama
-app is built for Apple silicon; opencoti has no Intel Mac build. MLX models are a separate path
+On a Mac with Apple silicon, opencoti serves every GGUF model on Metal, and it
+is the only engine: macOS ships no stock `llama-server`, so
+`XOLLAMA_ENGINE=llamacpp` and a model pinned to `engine=llamacpp` are refused
+there. The xOllama app is built for Apple silicon; opencoti has no Intel Mac
+build. MLX models are a separate path
 and are never routed here.
 
 ## Selecting one
@@ -17,7 +20,7 @@ and are never routed here.
 ```shell
 XOLLAMA_ENGINE=auto       # default
 XOLLAMA_ENGINE=opencoti   # force, policy not consulted
-XOLLAMA_ENGINE=llamacpp   # stock, byte-identical to upstream
+XOLLAMA_ENGINE=llamacpp   # stock, byte-identical to upstream (not on macOS)
 ```
 
 Under **`auto`**, every device the load will use must be a tested combination —

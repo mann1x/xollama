@@ -22,6 +22,7 @@ for i in $(seq 60); do curl -s --max-time 2 http://127.0.0.1:22498/api/version &
 cd ~/dev/xollama
 H=127.0.0.1:22498 ./bench.sh qwen2.5:1.5b llama3:latest
 grep -a -E "using opencoti|falling back" ci-serve.log | cut -c1-220 | sort | uniq -c | tail -3
+grep -a -q -E "falling back|no stock llama-server on this platform" ci-serve.log && echo "FAIL: a load did not get opencoti (macOS has no stock llama-server)"
 grep -a -E "opencoti build|offloaded [0-9]+/[0-9]+|abi " ci-serve.log | cut -c1-200 | sort -u | head -8
 ./speech-mac.sh
 grep -a -c -i "exit status\|signal: \|unexpectedly" ci-serve.log | sed 's/^/crash lines: /'

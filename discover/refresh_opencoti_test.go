@@ -2,6 +2,9 @@ package discover
 
 import (
 	"context"
+	"errors"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -115,8 +118,11 @@ func TestAnEngineListingThatRanOutOfTimeWaitsItsTurn(t *testing.T) {
 	t.Setenv("XOLLAMA_ENGINE", "opencoti")
 	withRefreshClock(t, time.Unix(0, 0))
 	calls := map[engine.Backend]int{}
+	var mu sync.Mutex
 	withOpencoti(t, nil)
 	opencotiListDevices = func(_ context.Context, _ string, b engine.Backend) (string, error) {
+		mu.Lock()
+		defer mu.Unlock()
 		calls[b]++
 		return "", context.DeadlineExceeded
 	}
@@ -134,5 +140,60 @@ func TestAnEngineListingThatRanOutOfTimeWaitsItsTurn(t *testing.T) {
 	}
 	if len(calls) == 0 {
 		t.Fatal("opencoti was never asked")
+	}
+}
+
+// TestTheBackendsAreListedSideBySide: each listing takes most of upstream's
+// 3 s refresh budget on a host with three GPUs (eleven2go: CUDA 1.1 to 1.7 s,
+// Vulkan 1.4 to 1.9 s). Listed one after the other the second was killed at
+// the deadline and the refresh found nothing; side by side both fit.
+func TestTheBackendsAreListedSideBySide(t *testing.T) {
+	t.Setenv("XOLLAMA_ENGINE", "opencoti")
+	withRefreshClock(t, time.Unix(0, 0))
+	withOpencoti(t, nil)
+	host := engine.Host()
+	if !engine.Enumerates(host, engine.BackendCUDA, "opencoti") || !engine.Enumerates(host, engine.BackendVulkan, "opencoti") {
+		t.Skip("this platform lists only one of CUDA and Vulkan through opencoti")
+	}
+	const each = 300 * time.Millisecond
+	opencotiListDevices = func(ctx context.Context, _ string, b engine.Backend) (string, error) {
+		select {
+		case <-time.After(each):
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+		if b == engine.BackendCUDA {
+			return solidPCCUDAListing, nil
+		}
+		return solidPCVulkanListing, nil
+	}
+
+	devices := refreshDevices()
+	updated := make([]bool, len(devices))
+	ctx, cancel := context.WithTimeout(context.Background(), each*3/2)
+	defer cancel()
+	forkRefresh(ctx, devices, updated)
+	if !updated[0] || !updated[1] {
+		t.Fatalf("both backends fit the budget side by side, but only %v were refreshed", updated)
+	}
+}
+
+// TestARefreshThatRanOutOfTimeSaysSo: a listing killed at the deadline exits
+// like a failed one ("exit status 1" on Windows); the Warn names the budget.
+func TestARefreshThatRanOutOfTimeSaysSo(t *testing.T) {
+	t.Setenv("XOLLAMA_ENGINE", "opencoti")
+	withRefreshClock(t, time.Unix(0, 0))
+	withOpencoti(t, nil)
+	opencotiListDevices = func(ctx context.Context, _ string, _ engine.Backend) (string, error) {
+		<-ctx.Done()
+		return "ggml_vulkan: 0 = AMD Radeon RX 9070 XT", errors.New("exit status 1")
+	}
+	logs := captureWarnings(t)
+	devices := refreshDevices()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	forkRefresh(ctx, devices, make([]bool, len(devices)))
+	if !strings.Contains(logs.String(), "refresh budget ran out") {
+		t.Fatalf("the Warn must name the budget, got:\n%s", logs.String())
 	}
 }
