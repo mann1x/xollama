@@ -31,7 +31,9 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >     - opencoti c10: gemma4:e2b 131 to 133, qwen3.5:2b 130 to 145, gemma3:4b-it-qat 101 tok/s.
 >     - Stock llama.cpp: 134 (warm), 127, 101 tok/s.
 >     - 0 crash lines; 0 foreign files in the store.
-> - Left: the Windows MLX pin. It still names MLX `264c14fe` against this tree's `a59cc231`, so the release plan refuses until it moves. It waits for the fork's reldir zip (fork run 37737304380), checked on eleven2go without cuDNN as for v0.40.0. Then a release.
+> - Windows MLX pin (later the same morning): the fork's reldir zip for v0.40.1 (`31c743bd…`, fork run 37737304380 from `d0508358`, MLX `a59cc231`; mail #897).
+>   - Checked on eleven2go (no cuDNN installed) with a v0.40.1 side server: `qwen3.5:0.8b` on MLX 300 tokens (68 tok/s warm), `embeddinggemma-2` embeds (cos 0.771 near vs 0.524 far), create from Qwen3-0.6B safetensors (316 layers, generates 104.6 tok/s); no panic.
+>   - The pin moves to it; every pin is now on v0.40.1, so nothing stands between this tree and a release candidate.
 
 > **2026-10-08 — xo-20 done: one GPU through two backends (a 3090 on Vulkan, alone or split with the RX 9070 XT); a refresh its caller cut no longer starts a cooldown.**
 > - Owner's go. `backend-copies` hook (Registry row): while opencoti may serve, discovery keeps the Vulkan copy of a CUDA/ROCm GPU with the same PCI ID; `discover.GPUDevices` still returns one entry per GPU (startup sizing, runner counts unchanged); a load gets the copies only when its pin or the `gpu` policy names a backend, and `applyGPUPolicy` keeps one entry per GPU. The engine's listing now carries PCI IDs (`OPENCOTI_LIST_DEVICE_IDS=1`): the RX 9070 XT and the iGPU on Windows have one for the first time. Measured on eleven2go: CUDA 123.3 unchanged; 3090 on Vulkan by pin or by policy 106.2; spread over 9070 XT + 3090 on Vulkan 92.7 tok/s. Name pin re-read after today's reboot: on the 9070 XT, now Vulkan2. Guards fail on removal.
