@@ -220,6 +220,12 @@ status 1" with the engine's output cut after its device lines, and the
 refresh left free memory stale for 15 minutes. A listing that runs out of the
 budget says so in its Warn ("the refresh budget ran out"). Guards:
 `TestTheBackendsAreListedSideBySide`, `TestARefreshThatRanOutOfTimeSaysSo`.
+A listing cut because its *caller* stopped waiting is not the engine's fault:
+the wait for VRAM recovery after an unload calls the refresh in a loop under
+its own deadline, which on eleven2go ended 0.3 s into one and put both
+backends into a 15-minute cooldown. A cut with less time left than a listing
+needs (`slowListing`, 2.5 s; the slowest measured is 1.9 s) is logged at Debug
+and starts no cooldown. Guard: `TestARefreshItsCallerCutShortIsNotTheEngines`.
 
 Coverage is **derived from the `dso` rows themselves**: a bare `x86_64` label is
 CUDA, and `<arch>-vulkan` names Vulkan for that arch. Explicit `accel` rows are
@@ -227,6 +233,38 @@ still honoured and only ever add to it. That matters because the published pin
 for `2609242056001` states no `accel` rows at all — it lists its payload set in
 a header comment — and keying on those rows alone would have made the pin
 accelerate nothing while the engine sat there holding a working Vulkan payload.
+
+## One GPU, two backends
+
+A 3090 is both a CUDA and a Vulkan device. Upstream's discovery keeps one
+entry per GPU and drops the Vulkan one in favour of CUDA or ROCm, so nothing
+after it could choose Vulkan for that card: neither the server's GPU policy
+(`xollama tweak server gpu <pci> --backend Vulkan`) nor a model pinned to
+Vulkan, and one model could not be split over a 3090 and an RX 9070 XT, which
+only Vulkan reaches together (`backend-copies` hook,
+`discover/backend_copies.go`, `server/backend_copies.go`).
+
+| | |
+|---|---|
+| discovery | keeps the Vulkan copy of a discrete GPU that CUDA or ROCm also serves, **only** when both entries carry the same PCI ID, and only while opencoti may serve |
+| `discover.GPUDevices` | unchanged: one entry per GPU, upstream's choice. Its callers count GPUs and add up their memory (the default context is sized from the sum at startup; a copy would double the 3090) |
+| `/api/xollama/devices`, the link probe | every copy (`GPUDevicesAllBackends`): the menus offer each backend a GPU is reachable through |
+| a load | gets the copies only when its pin or the `gpu` policy names a backend; `applyGPUPolicy` then keeps one entry per GPU: the chosen backend, else upstream's CUDA/ROCm preference. A copy shares the free memory the scheduler accounted for the card |
+| identity | the engine prints each device's PCI ID with `OPENCOTI_LIST_DEVICE_IDS=1` (NVIDIA: the id is the PCI address; AMD on Windows: `id=uuid:… pci=…`). It fills a PCI ID llama.cpp left empty (the RX 9070 XT and the iGPU on Windows) and keeps opencoti's Vulkan listing of a CUDA card as its copy where llama.cpp's Vulkan did not list it |
+| `XOLLAMA_ENGINE=llamacpp` | nothing kept; the dedup is upstream's |
+
+A model pinned to Vulkan without device ids now includes the 3090's Vulkan
+entry among its candidates: the card is a Vulkan device too.
+
+Measured on eleven2go (2026-10-08, side server from this tree, `qwen3:8b`,
+512 tokens): nothing chosen, CUDA0 123.3 tok/s (unchanged); pinned to Vulkan
+by the 3090's PCI ID, Vulkan1 106.2; the policy choosing Vulkan for the
+3090, unpinned, Vulkan1 106.2; with `--split spread` one model over the
+RX 9070 XT and the 3090, both Vulkan, 92.7. Startup still counts three GPUs
+(39.9 GiB, default context 32768); the device route lists the 3090 twice and
+the 9070 XT and the iGPU with their PCI IDs. Guards:
+`discover/backend_copies_test.go`, `server/backend_copies_test.go`, each
+verified by removal.
 
 ## A model only opencoti can serve
 

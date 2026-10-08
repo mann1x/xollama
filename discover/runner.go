@@ -218,6 +218,9 @@ func GPUDevices(ctx context.Context, runners []ml.FilteredRunnerDiscovery) []ml.
 					j--
 					continue
 				case ml.DuplicateDevice:
+					if keepBackendCopy(devices[i], devices[j]) { // xollama-hook: backend-copies
+						continue
+					}
 					// Different library, choose based on priority
 					var droppedDevice ml.DeviceInfo
 					if devices[i].PreferredLibrary(devices[j]) {
@@ -377,7 +380,7 @@ func GPUDevices(ctx context.Context, runners []ml.FilteredRunnerDiscovery) []ml.
 		}
 	}
 
-	return append([]ml.DeviceInfo{}, devices...)
+	return onePerGPU(append([]ml.DeviceInfo{}, devices...)) // xollama-hook: backend-copies
 }
 
 func sameRefreshDevice(updated, existing ml.DeviceInfo) bool {

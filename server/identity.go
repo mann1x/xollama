@@ -48,7 +48,9 @@ func XollamaDevicesHandler(c *gin.Context) {
 
 // discoverDevices is discovery behind a seam, so a route test does not run
 // the engine.
-var discoverDevices = discover.GPUDevices
+// Every backend copy of a GPU (backend-copies): the device menus offer each
+// backend a GPU is reachable through.
+var discoverDevices = discover.GPUDevicesAllBackends
 
 func xollamaDevices(gpus []ml.DeviceInfo) api.XollamaDevicesResponse {
 	resp := api.XollamaDevicesResponse{Devices: []api.XollamaDevice{}, Backends: builtBackends()}
