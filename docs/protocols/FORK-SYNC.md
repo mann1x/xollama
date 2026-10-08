@@ -183,8 +183,10 @@ the fork delivers all of the following, in this order:
 > build compiled MLX itself.
 
 The digest xollama checks is the sha256 of
-`git ls-tree -r <commit> -- LLAMA_CPP_VERSION llama/server llama/compat` with
-the `llama/compat/README.md` line removed. The fork computes it at the release
+`git ls-tree -r <commit> -- LLAMA_CPP_VERSION llama/server llama/compat llama/clef`
+with the `llama/compat/README.md` line removed. `llama/clef` joined it at
+v0.40.1 (mails 887–889): upstream's own directory, but `llama-server` compiles
+`clef.cpp` in, and #18777 changed it while the old digest stayed put. The fork computes it at the release
 commit and states it in the manifest and the mail. If the two sides disagree,
 the mail says which side moved.
 

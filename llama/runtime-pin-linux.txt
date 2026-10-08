@@ -10,7 +10,8 @@
 #   asset    archive name; its root is ollama/, i.e. lib/ollama
 #   sha256   of the asset, checked before it is unpacked
 #   inputs   sha256 of `git ls-tree -r <commit> -- LLAMA_CPP_VERSION
-#            llama/server llama/compat` WITHOUT the llama/compat/README.md
+#            llama/server llama/compat llama/clef` (llama/clef from v0.40.1:
+#            llama-server compiles it in) WITHOUT the llama/compat/README.md
 #            line. The README is not a build input and the fork's copy is
 #            allowed to differ; every other byte must equal what the runtime
 #            was built from. The build refuses to assemble when the building
@@ -28,12 +29,12 @@
 # invalidate itself.
 
 repo      mann1x/ollama
-tag       v0.40.0-thinkbudget
+tag       v0.40.1-thinkbudget
 asset     ollama-linux-amd64-runtime.tgz
-sha256    f318ff34955ad9dba736ee3b8d7ac2b2ed0f6993f00a18243558fda36938d39c
-inputs    9defcc4413930651433008f477efa9c7e54ab33bb6618f7eb032cbe8a8e66df2
-built     2630dba76cac84d9d9738896b7a92549986168b6
+sha256    35b4194a8e6475e3bc31eb142033fdc6d2985d23dd6e350d97c9725c92091241
+inputs    d0cc3cdd727fb23a44722f94920d54f312f3989add1c8798a3c79a66989f7d76
+built     d0508358705978533c6ddc7fb24f23556a659f8e
 
-upstream  v0.40.0
-gpu       ollama-linux-amd64.tar.zst      c94aa4156b3d13e64ebc2efe5ea53f015384c882be776e6695cfb37fb180d5ad
-gpu       ollama-linux-amd64-mlx.tar.zst  02bc27eb1820a4f68f614522c474cf6c2bd25e01791c5dca577d1ea551cb7c5b
+upstream  v0.40.1
+gpu       ollama-linux-amd64.tar.zst      a7aebbe3dd76ccf1351a56a3e57218ad4863cb5f9a9938c58de87a37555e355d
+gpu       ollama-linux-amd64-mlx.tar.zst  69d39f4bb0e0fde9cdd14790630e971c201d75e96191c85483a505fe95425858

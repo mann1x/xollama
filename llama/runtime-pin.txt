@@ -14,7 +14,8 @@
 #   asset   archive name; its root is lib\ollama's contents
 #   sha256  of the asset, checked before it is unpacked
 #   inputs  sha256 of `git ls-tree -r <commit> -- LLAMA_CPP_VERSION llama/server
-#           llama/compat`. The release refuses to ship when the release
+#           llama/compat llama/clef` (llama/clef from v0.40.1: llama-server
+#           compiles it in). The release refuses to ship when the release
 #           commit's digest differs: move this pin in the same PR that changes
 #           any of those paths.
 #
