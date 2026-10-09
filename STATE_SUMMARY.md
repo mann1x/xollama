@@ -5,6 +5,20 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-09 — `v0.40.1-rc.1.xollama` published (pre-release) and checked on every gate: upstream v0.40.1, opencoti c10 r3.**
+> - PR #17, G2: 20 pass and 4 skip. The 4 native legs that have no runner were cancelled, with no step failed. Merged as `49677a133`; release run 37884166795 succeeded in every job. Payload id `10ffa638…`; over `.1` an update takes the full installer.
+> - G12: every `sha256sum.txt` line OK; the amd64 binary on solidPC and the arm64 binary on the Pi name the tag; the image is amd64 and arm64 on both registries (run 37885287777).
+> - G9 on eleven2go, over `v0.40.0-xollama.1`:
+>   - The full installer exits 0 in 98 s, with the version, `PAYLOAD_ID` and `/api/xollama` right. The new Windows MLX runtime is fetched (`MLX_ID` `31c743bd…`).
+>   - Five 512-token runs of `qwen3:8b` on the installed server: RTX 3090 CUDA 123.4–123.9, RX 9070 XT Vulkan 102.6–103.2, iGPU 5.2. Every layer is on the GPU and the displays are `OK`.
+>   - The small installer over it exits 0 in 4 s, starting a new server with the same version.
+>   - 11434 is untouched.
+> - G10:
+>   - solidPC: opencoti 85.4–85.9 tok/s, llama.cpp 85.8–86.0, speech 4/4. `PAYLOAD` names engine `2610090401001`. 0 foreign files in the scratch stores.
+>   - Pi 5: opencoti 9.9–10.3 against llama.cpp 11.0, speech 3/3. The owner's containers stayed up, and the test container is removed.
+> - G11, the workflow's Mac app: notarized and stapled; `qwen2.5:1.5b` 127.8–128.4 and `llama3` 32.1–32.3 tok/s on opencoti through Metal; speech 7/7; 0 crash lines.
+> - Candidates are never promoted. The release `v0.40.1-xollama` would be cut from this tree (empty commit, short check), on the owner's go.
+
 > **2026-10-09 — Engine pin on opencoti c10 r3 (`2610090401001`), measured; `x/net` 0.60.0 for four reachable advisories; the council's continue route no longer repeats its last answer. `v0.40.1-rc.1.xollama` next.**
 > - Owner: "rc.1 on c10 r2, opencoti is not doing a good job and extermely late". c11, which carries bug-3957 (0589), waits for a CUDA round that has not started (opencoti #914). So the candidate goes out on the published c10 line, and c11 moves the pin later.
 > - The pin is c10 **r3**, published within the hour after r2 (#917; index `0ad2dde5`, pins `b31394f6`). It is r2 (0594: an embedded library unpacks beside the exe) plus 0595 (an unset Windows `HOME` falls back to `%USERPROFILE%`). Neither reaches xollama, because we ship the bare engine with its libraries and set `HOME` ourselves (`engine.PayloadHome`). Every library pin differs from r1 only in its `rev` line, and the ABI digests and features are c10's.

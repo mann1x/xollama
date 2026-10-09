@@ -130,7 +130,15 @@ each), `continue` taken 4 times and right each time. G6: speech 8/8, video
 model on the RTX 3090, never on the RX 9070 XT): 3090 123.4 to 124.1 tok/s;
 9070 XT 98.7 cold, 102.3 to 102.5 warm, 103.2 after 120 s idle, polls 200,
 card `OK`, no dump; engine gone 1071 ms after the kill; integrated GPU 5.0,
-37/37 layers; speech 4/4.
+37/37 layers; speech 4/4. On the candidate `v0.40.1-rc.1.xollama` (merge
+`49677a133`, payload id `10ffa638…`): G2 20 pass, 4 skipping, the 4 native
+legs without a runner cancelled. G9: the full installer over `.1` exits 0 in
+98 s (the new MLX fetched, `MLX_ID` `31c743bd…`), and the small one over it
+exits 0 in 4 s. On the installed server: 3090 123.4 to 123.9, 9070 XT 102.6 to
+103.2, iGPU 5.2. G10: amd64 opencoti 85.4 to 85.9, llama.cpp 85.8 to 86.0,
+speech 4/4; arm64 9.9 to 10.3 against 11.0, speech 3/3. G11 (the workflow's
+app): `qwen2.5:1.5b` 127.8 to 128.4, `llama3` 32.1 to 32.3, speech 7/7. G12:
+every checksum OK, both binaries and both image architectures right.
 
 **`v0.40.0-rc.2.xollama`** (2026-10-08, PR #14, release run 37698039727,
 image run 37699889866, payload id `d413785f…`). G9 on eleven2go over the
