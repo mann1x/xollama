@@ -14,8 +14,8 @@ require (
 	github.com/spf13/cobra v1.7.0
 	github.com/stretchr/testify v1.10.0
 	github.com/x448/float16 v0.8.4
-	golang.org/x/sync v0.22.0 // xollama-hook: security-deps
-	golang.org/x/sys v0.47.0 // xollama-hook: security-deps
+	golang.org/x/sync v0.23.0 // xollama-hook: security-deps
+	golang.org/x/sys v0.48.0 // xollama-hook: security-deps
 )
 
 require (
@@ -33,7 +33,7 @@ require (
 	github.com/tree-sitter/tree-sitter-cpp v0.23.4
 	github.com/wk8/go-ordered-map/v2 v2.1.8
 	golang.org/x/image v0.45.0 // xollama-hook: security-deps
-	golang.org/x/mod v0.38.0 // xollama-hook: security-deps
+	golang.org/x/mod v0.41.0 // xollama-hook: security-deps
 )
 
 require (
@@ -83,11 +83,11 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	golang.org/x/arch v0.8.0 // indirect
-	golang.org/x/crypto v0.52.0 // xollama-hook: security-deps
+	golang.org/x/crypto v0.57.0 // xollama-hook: security-deps
 	golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa // indirect
-	golang.org/x/net v0.55.0 // indirect; xollama-hook: security-deps
-	golang.org/x/term v0.43.0 // xollama-hook: security-deps
-	golang.org/x/text v0.41.0 // xollama-hook: security-deps
+	golang.org/x/net v0.60.0 // indirect; xollama-hook: security-deps
+	golang.org/x/term v0.46.0 // xollama-hook: security-deps
+	golang.org/x/text v0.42.0 // xollama-hook: security-deps
 	google.golang.org/protobuf v1.34.1 // xollama-hook: council
 	gopkg.in/yaml.v3 v3.0.1
 )
