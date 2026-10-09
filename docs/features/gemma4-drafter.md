@@ -53,17 +53,31 @@ model's one `application/vnd.ollama.image.draft` layer. `draft.head` set to
 line and an inherited drafter work as upstream's. `xollama show` reports the
 published drafter for a model without one (`api.DrafterInfo.Recommended`).
 
-`auto` also sets `draft.tokens` to 2 when the model states no length. Upstream's
-default of 4 gains almost nothing with these heads. Measured on opencoti c10 r3
-(`2610090401001`), the 98-expert 26B-A4B merge at Q4_K_M with the Q8_0 head, RTX
-3090, 256 tokens, three runs each (`/srv/ml/xc10/drafter/live2.out`):
+`auto` also sets `draft.tokens` to 2 when the model states no length. Measured
+on opencoti c10 r3 (`2610090401001`) through xollama, the 98-expert 26B-A4B
+merge at Q4_K_M with the Q8_0 head, RTX 3090 (220 W cap), 256 tokens, warm
+(`/srv/ml/xc10/drafter/live4.out` and `live2.out`):
 
-| Draft length | tok/s |
-|---|---|
-| no drafter | 94.1 to 94.5 |
-| 4 | 93.6 to 96.3 |
-| 3 | 101.9 to 103.4 |
-| 2 | 110.5 to 112.6 |
+| Draft length | Three coding prompts, temperature 0 | Acceptance | An essay, temperature 0.7 |
+|---|---|---|---|
+| no drafter | 93.3, 94.6, 94.6 | | 94.1 to 94.5 |
+| 2 | 141.2, 137.9, 135.5 | 0.78 to 0.80 | 110.5 to 112.6 |
+| 3 | 136.1, 134.6, 127.7 | 0.65 to 0.70 | 101.9 to 103.4 |
+| 4 | 139.8, 134.9, 122.0 | 0.58 to 0.68 | 93.6 to 96.3 |
+| 5 | 127.5, 132.8, 113.2 | 0.50 to 0.64 | |
+
+The gain follows the acceptance, and the acceptance follows the text: about
+0.79 on code and about 0.60 on the essay at length 2. opencoti's own record for
+the v7-coder merge on this card is 76.6 to 137.0 tok/s at acceptance 0.91
+(their `docs/evaluations/mtp.md` §3.0a, mail #929). A drafter must be measured
+with the same in-domain prompt on both arms; a generic prompt understates it.
+
+Not the cause of a low number here, checked: the engine keeps the target's
+`token_embd` on the CPU for this model (its 50 % fit bound) and
+`OPENCOTI_MTP_TOKEMBD_GPU=1` changes nothing on it, and xollama's launch line
+(`--spec-draft-model`) measures the same as opencoti's (`--mtp-head -ngld 99`),
+117 to 119 tok/s on the essay with the engine called directly
+(`/srv/ml/xc10/drafter/tokembd.out`).
 
 ## Turning a drafter off
 

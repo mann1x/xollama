@@ -301,17 +301,21 @@ xollama tweak model my-gemma --drafter=none     # detach it
 - **`--mtp-policy`** applies to a built-in head while opencoti chooses the
   driver itself. `off` stops the drafting and keeps the head in memory.
 
-Measured on an RTX 3090 with opencoti c10, 256 tokens:
+Measured on an RTX 3090 with opencoti c10, 256 tokens. What a drafter gains
+depends on how predictable the text is, so code gains more than prose:
 
-| Model | Setting | tok/s |
+| Gemma 4 26B-A4B fine-tune, Q4_K_M | Coding prompts, temperature 0 | An essay, temperature 0.7 |
 |---|---|---|
-| Gemma 4 26B-A4B fine-tune, Q4_K_M | no drafter | 94 |
-| | assistant head, length 4 | 95 |
-| | assistant head, length 3 | 102 |
-| | assistant head, length 2 (what `auto` sets) | 111 |
-| Qwen 3.6 27B with a built-in head | left to opencoti | 31 to 32 |
-| | `--draft-tokens=0` (head not loaded, 722 MiB less) | 24 |
-| | `--mtp-policy=off` (head still loaded) | 24 |
+| no drafter | 93 to 95 tok/s | 94 |
+| assistant head, length 2 (what `auto` sets) | 136 to 141 | 111 to 113 |
+| assistant head, length 3 | 128 to 136 | 102 to 103 |
+| assistant head, length 4 | 122 to 140 | 94 to 96 |
+
+| Qwen 3.6 27B with a built-in head | tok/s |
+|---|---|
+| left to opencoti | 31 to 32 |
+| `--draft-tokens=0` (head not loaded, 722 MiB less) | 24 |
+| `--mtp-policy=off` (head still loaded) | 24 |
 
 <Warning>
   A pinned driver is an override, so it is able to be wrong. Pinning `draft-mtp`

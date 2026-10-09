@@ -79,11 +79,19 @@ var gemma4Assistants = map[uint64]string{
 }
 
 // gemma4AssistantTokens is the draft length attached with a Gemma 4
-// assistant. Upstream's default of 4 gains almost nothing with these heads:
-// measured on c10 r3 with a 26B-A4B fine-tune at Q4_K_M and its Q8_0 head, RTX
-// 3090, 256 tokens, three runs each -- no drafter 94.1 to 94.5 tok/s, length 4
-// 93.6 to 96.3, length 3 101.9 to 103.4, length 2 110.5 to 112.6
-// (/srv/ml/xc10/drafter/live2.out). opencoti's guide says 2 to 3.
+// assistant. Measured on c10 r3 through xollama with a 26B-A4B fine-tune at
+// Q4_K_M and its Q8_0 head, RTX 3090, 256 tokens, warm
+// (/srv/ml/xc10/drafter/live4.out, live2.out):
+//
+//	length   coding prompts, temp 0   an essay, temp 0.7
+//	none     93 to 95 tok/s           94 tok/s
+//	2        136 to 141 (0.79)        111 to 113
+//	3        128 to 136 (0.68)        102 to 103
+//	4        122 to 140 (0.65)        94 to 96
+//
+// The figure in brackets is the draft acceptance. What a drafter gains
+// depends on how predictable the text is; 2 was the best length on both, and
+// upstream's default of 4 the most uneven. opencoti's guide says 2 to 3.
 const gemma4AssistantTokens = 2
 
 // RecommendedDrafter returns the drafter published for a model of this

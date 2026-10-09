@@ -14,7 +14,7 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 >   - `--draft-tokens` (`draft.tokens`): the length; 0 is off and, on opencoti, starts the engine with `--spec-type none` so a built-in head is not loaded.
 >   - The driver menu marks this model's driver; a drafter setting on a model without a drafter is dropped with the reason; a run that changes nothing writes nothing.
 >   - `xollama show` names the published drafter for a model without one, and the draft length a load will use.
-> - Measured on solidPC, RTX 3090, c10 r3, 256 tokens (`/srv/ml/xc10/drafter`): the v9-agentic A4B 94 tok/s without, 95 at length 4, 102 at 3, 111 at 2, so `auto` sets 2. Qwen3.6-27B built-in head: 31 to 32 left to the engine, 24 with length 0 (722 MiB less), 24 with policy `off` (head still loaded).
+> - Measured on solidPC, RTX 3090, c10 r3, 256 tokens (`/srv/ml/xc10/drafter`): the v9-agentic A4B on coding prompts at temperature 0 is 94 tok/s without and 136–141 at length 2 (acceptance 0.79), 128–136 at 3, 122–140 at 4; on an essay at 0.7 it is 111 at 2, 102 at 3, 95 at 4. So `auto` sets 2. The first table published here used only the essay, and the owner called it low; opencoti's record (mail #929, v7-coder 76.6 → 137.0 at acceptance 0.91) is on in-domain code. Qwen3.6-27B built-in head: 31 to 32 left to the engine, 24 with length 0 (722 MiB less), 24 with policy `off` (head still loaded).
 > - Live as `ollama` on the scratch store: fetch from the hub, attach, replace, detach, six rewrites with the weights intact, 0 foreign files.
 > - Left: the owner asked for a new release on the latest c10 republish once this is in.
 

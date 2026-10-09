@@ -286,9 +286,10 @@ func drafterFields() []field {
 				"head built into the weights is not loaded either (measured: 722 MiB less on\n" +
 				"the card for a Qwen 3.6 27B). Unset is 4 for an attached drafter; a built-in\n" +
 				"head is then left to opencoti, which picks the depth and drafts by its\n" +
-				"policy. A Gemma 4 assistant is fastest at 2 (measured on a 26B-A4B: 94 tok/s\n" +
-				"without, 95 at 4, 102 at 3, 111 at 2); opencoti recommends 3 for a Qwen\n" +
-				"NextN head. A number on a built-in head makes the launch state the driver,\n" +
+				"policy. A Gemma 4 assistant is fastest at 2: on a 26B-A4B, code went from 94\n" +
+				"tok/s to 138 at 2 and 133 at 3, an essay to 111 at 2 and 95 at 4. opencoti\n" +
+				"recommends 3 for a Qwen NextN head. What a drafter gains depends on how\n" +
+				"predictable the text is. A number on a built-in head states the driver,\n" +
 				"which drafts at that depth always and sets the MTP auto policy aside. A\n" +
 				"PARAMETER draft_num_predict, or a request's, wins over this.",
 			kind:     kindInt,
