@@ -79,6 +79,27 @@ Not the cause of a low number here, checked: the engine keeps the target's
 117 to 119 tok/s on the essay with the engine called directly
 (`/srv/ml/xc10/drafter/tokembd.out`).
 
+## Known issue: a card the model nearly fills (opencoti c10)
+
+With a KVarN KV cache, opencoti c10 holds `fit target + 824 MiB` for an
+assistant head (it takes 485) and 1000 MiB for the SWA ring (it takes 736)
+before it sizes the record window. When the free memory after the weights is
+below that hold, about 2.5 GB with this head, the record budget is 0: one group
+stays on the GPU, the rest are read from host memory.
+
+| Where | Free at load | Without the head | With the head |
+|---|---|---|---|
+| pandorum, RTX 5080, deep Cerebriline turns | 14985 MiB | 85 to 122 tok/s | 12 to 19 tok/s |
+| solidPC, RTX 3090 held to the same, 45k-token prompt | 14984 MiB | 54 tok/s | 3.1 to 3.4 tok/s |
+| pandorum, a 40-token prompt | 14985 MiB | 120 to 122 tok/s | 203 to 206 tok/s |
+
+Read it in the load log: `KVarN record budget: free … hold …` and
+`record window = 1 / N groups … (0 MiB budget`. A stated
+`LLAMA_ARG_FIT_TARGET` does not lower the hold (the 824 is added to it);
+measured with 741, 512 and 256 (`/srv/ml/xc10/drafter/fit16.sh`). The fix is
+the engine's (opencoti mails #939 and #940, 2026-10-10). Until then a drafter
+is not attached on such a card: `xollama tweak model <model> --drafter=none`.
+
 ## Turning a drafter off
 
 `draft.tokens` 0 (or `PARAMETER draft_num_predict 0`) is the model's "do not

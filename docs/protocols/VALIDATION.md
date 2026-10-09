@@ -53,6 +53,17 @@ Baseline: **2026-10-04**, tree `4db0bcedb`, engine `2610041714001`, vulkan
 `2610041656001`, cuda `2610040656001`, media `2610040945001`, macos
 `2610041000001`; candidate rows from `v0.35.1-rc.1.xollama`.
 
+**`v0.40.1-rc.2.xollama` and `v0.40.1-xollama`** (2026-10-10, engine c10 r3
+unchanged; Go-only delta: the `drafter` and `prune-guard` hooks). G1 to G3
+before the candidate (see the entry of 2026-10-09). G9, the update path on
+eleven2go: `xOllamaUpdate.exe` rc.1 to rc.2 and rc.2 to the release, exit 0
+both times, payload id `10ffa638…` unchanged; 3090 CUDA 123.7 to 123.9 tok/s,
+9070 XT Vulkan 103.1, integrated 5.4, 37/37 layers; the release 122.4 and
+123.6 on the 3090. G12: 8 files match `sha256sum.txt` on both; the candidate's
+image is amd64 + arm64 and `:latest` did not move. **Not covered by a gate
+until now:** a drafter at depth on a card the model nearly fills (bug-260,
+`docs/features/gemma4-drafter.md`); the check is `/srv/ml/xc10/drafter/fit16.sh`.
+
 **On opencoti c8** (2026-10-05, engine `2610042347001`, the libraries
 unchanged; working directory `/srv/ml/xc8`), every engine gate was run again
 on the new bytes before candidate 2. G3: compat 8/8, llama3 77.3 tok/s, 4
