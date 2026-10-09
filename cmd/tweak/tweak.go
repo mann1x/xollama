@@ -1,6 +1,7 @@
 package tweak
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -147,10 +148,11 @@ func runModel(cmd *cobra.Command, args []string, opts Options) error {
 		return err
 	}
 
-	current, err := showConfig(cmd.Context(), client, name)
+	current, drafter, err := showModel(cmd.Context(), client, name)
 	if err != nil {
 		return err
 	}
+	useModelDrafter(drafter)
 	useServerDevices(cmd.Context(), client)
 
 	out := cmd.OutOrStdout()
@@ -164,21 +166,58 @@ func runModel(cmd *cobra.Command, args []string, opts Options) error {
 		}
 		return err
 	}
+	// A run that ends where it started rewrites nothing: a model's manifest
+	// is not touched for a setting that was dropped or left as it was.
+	if unchanged(current, cfg) {
+		fmt.Fprintf(out, "\nnothing changed; %s not written.\n", name)
+		return nil
+	}
 	return write(cmd, client, name, cfg, out)
+}
+
+// unchanged reports whether a run leaves the model's config as it found it.
+func unchanged(before, after *xollama.Config) bool {
+	a, b := clone(before), clone(after)
+	prune(a)
+	prune(b)
+	if a.IsZero() || b.IsZero() {
+		return a.IsZero() && b.IsZero()
+	}
+	x, err1 := a.Marshal()
+	y, err2 := b.Marshal()
+	return err1 == nil && err2 == nil && bytes.Equal(x, y)
 }
 
 // showConfig reads what the model states today. /api/show carries the layer
 // (api.ShowResponse.Xollama), so this works against a remote server too; the
 // manifest is not read directly for exactly that reason.
 func showConfig(ctx context.Context, client *api.Client, name string) (*xollama.Config, error) {
+	cfg, _, err := showModel(ctx, client, name)
+	return cfg, err
+}
+
+// showModel is showConfig with what the server says about the model's
+// drafter. draft.head is set from the manifest, not from the stored config:
+// the drafter a model carries is its DRAFT layer, and a config written before
+// a Modelfile replaced that layer would otherwise put the old one back on the
+// next write.
+func showModel(ctx context.Context, client *api.Client, name string) (*xollama.Config, *api.DrafterInfo, error) {
 	resp, err := client.Show(ctx, &api.ShowRequest{Model: name})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	if resp.Xollama == nil {
-		return &xollama.Config{}, nil
+	cfg := &xollama.Config{}
+	if resp.Xollama != nil {
+		cfg = clone(resp.Xollama)
 	}
-	return clone(resp.Xollama), nil
+	if cfg.Draft != nil {
+		cfg.Draft.Head = ""
+	}
+	if d := resp.Drafter; d != nil && d.Source == "attached" && d.Digest != "" {
+		draft(cfg).Head = d.Digest
+	}
+	prune(cfg)
+	return cfg, resp.Drafter, nil
 }
 
 // build turns the flags and, where they ask for it, the operator's answers into
@@ -433,6 +472,9 @@ func write(cmd *cobra.Command, client *api.Client, name string, cfg *xollama.Con
 	}
 	fmt.Fprintf(out, "\nwriting %s\n", name)
 	if err := uploadMedia(cmd.Context(), client, cfg, out); err != nil {
+		return err
+	}
+	if err := fetchDrafter(cmd.Context(), client, cfg, out); err != nil {
 		return err
 	}
 	if err := client.Create(cmd.Context(), req, fn); err != nil {

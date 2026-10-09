@@ -88,6 +88,10 @@ type LlamaServerConfig struct {
 	// overwhelming majority of models. See docs/features/model-config.md.
 	Xollama *xollama.Config
 
+	// xollama-hook: drafter — the model itself says not to draft, which a
+	// draft length of 0 alone cannot carry. See appendDraftOffArgs.
+	DraftOff bool
+
 	// xollama-hook: launch-config — this model must be served one sequence at
 	// a time, because it is an embedding model or its architecture gives wrong
 	// answers with several in flight (ollama/ollama#4165). Dynamic slots must

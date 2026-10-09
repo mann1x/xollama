@@ -21,6 +21,12 @@ func run(t *testing.T, current *xollama.Config, args []string, answers ...string
 	if err := cmd.Flags().Parse(args); err != nil {
 		t.Fatalf("parsing %v: %v", args, err)
 	}
+	// build is run without a server here, so nothing is known about the
+	// model's drafter unless the test said so (withDrafter): a run through
+	// runModel in another test must not leave its answer behind.
+	if !drafterSetByTest {
+		modelDrafter, drafterKnown = nil, false
+	}
 
 	script := ""
 	if len(answers) > 0 {

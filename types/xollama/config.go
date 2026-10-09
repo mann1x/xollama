@@ -33,7 +33,7 @@ const MediaTypeImageJSON = "application/vnd.ollama.image.json"
 
 // SchemaVersion is the newest schema this build can read. It is NOT
 // necessarily what it writes: see requiredVersion.
-const SchemaVersion = 7
+const SchemaVersion = 8
 
 // SchemaVersionBase is the version that expresses everything except the fields
 // added in v2 (kv.unified, kv.residency_mode), v3 (devices) and v4 (council).
@@ -304,6 +304,17 @@ type Draft struct {
 	// AutoMTPPolicy is when opencoti drafts with a built-in MTP head
 	// (--auto-mtp-policy). See engine_policy.go.
 	AutoMTPPolicy string `json:"auto_mtp_policy,omitempty"`
+
+	// Head is the drafter attached beside the weights: the sha256 digest of
+	// its GGUF, or DraftHeadNone to detach the one the model has. Empty
+	// leaves the model's DRAFT layer as it is. See drafter.go.
+	Head string `json:"head,omitempty"`
+
+	// Tokens is how many tokens the drafter proposes per step
+	// (--spec-draft-n-max). 0 turns drafting off, a built-in head included;
+	// nil leaves the default. A PARAMETER draft_num_predict, or the
+	// request's, is more specific and wins.
+	Tokens *int `json:"tokens,omitempty"`
 }
 
 // Engine values. These mirror the XOLLAMA_ENGINE selector, minus "auto":
@@ -368,6 +379,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Draft != nil && c.Draft.SpecType != "" && !slices.Contains(validSpecTypes, c.Draft.SpecType) {
 		return fmt.Errorf("xollama config: unknown draft.spec_type %q (want one of %v)", c.Draft.SpecType, validSpecTypes)
+	}
+	if err := c.Draft.validateHead(); err != nil {
+		return err
 	}
 	// A pool is a shared prefix between requests the engine knows are
 	// different conversations, so it has nothing to key on without affinity.
@@ -494,6 +508,13 @@ func (c *Config) requiredVersion() int {
 	// An older build would read media as an unknown field and serve the
 	// model with no media engine: its image or speech routes would answer
 	// 404 for a model whose publisher attached them.
+	// An older build would drop draft.tokens and draft at the default length
+	// a model whose publisher turned drafting off, or set another length.
+	// draft.head raises nothing: the head is an upstream DRAFT layer, which
+	// every build loads.
+	if c.Draft != nil && c.Draft.Tokens != nil {
+		return 8
+	}
 	if !c.Media.IsZero() {
 		return 7
 	}
@@ -551,7 +572,7 @@ func (c *Config) IsZero() bool {
 	}
 	return c.Engine == "" &&
 		c.FlashAttention == "" &&
-		(c.Draft == nil || (c.Draft.SpecType == "" && c.Draft.AutoMTPPolicy == "")) &&
+		c.Draft.IsZero() &&
 		(c.KV == nil || c.KV.RollingWindow == "") &&
 		c.Fit.IsZero() &&
 		(c.KV == nil || (c.KV.K == "" && c.KV.V == "" && c.KV.KSWA == "" && c.KV.VSWA == "" &&

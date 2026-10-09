@@ -603,6 +603,8 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	if launch.draftType != "" {
 		args = retargetSpecType(args, launch.draftType, usedOpencoti)
 	}
+	// xollama-hook: drafter — see docs/features/gemma4-drafter.md
+	args = appendDraftOffArgs(args, launch.draftType, launch.config.DraftOff && launch.opts.DraftNumPredict <= 0, usedOpencoti)
 
 	// xollama-hook: engine-args — the operator's append-only escape hatch, for
 	// engine flags with no LLAMA_ARG_* twin. LAST on purpose: llama-server

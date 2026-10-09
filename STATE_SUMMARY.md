@@ -5,6 +5,34 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-09 — `xollama tweak model` attaches the right drafter and sets its length; a manifest that cannot be read stops blob pruning. After a model was lost on pandorum.**
+> - The report: on pandorum (`v0.40.0-xollama.1`), `tweak model v9-agentic_std12_tb:q4km-64k --spec-type=draft-assistant` wrote a driver pin on a model with no drafter, said every setting was one the model could act on, attached nothing, and the model's 16 GB of weights were gone.
+> - The loss: upstream v0.40.0 stores named manifests as symbolic links, and that machine refused to follow them ("untrusted mount point"). The rewritten manifest could not be read back, so the prune of the old manifest's layers counted the weights as unused and deleted them. Upstream v0.40.1 stores copies on Windows; rc.1 installed over it repaired 167 manifests and the model was recreated from its GGUF. `v0.40.0-xollama.1`, the promoted release, still carries the path.
+> - `prune-guard` (new hook): a named manifest that fails to open stops the prune, nothing is removed. A missing or damaged one is skipped as upstream does.
+> - `drafter` (new hook), schema v8:
+>   - `--drafter=auto|PATH|hf.co/…|sha256|none` (`draft.head`). `auto` fetches the head published for the model from `ManniX-ITA/gemma-4-<size>-it-assistant-GGUF` and attaches it. The size is read from the embedding width, so a fine-tune is recognised (the v9-agentic merge is 2816 wide, the 26B-A4B head). A head for another size is refused when attached.
+>   - `--draft-tokens` (`draft.tokens`): the length; 0 is off and, on opencoti, starts the engine with `--spec-type none` so a built-in head is not loaded.
+>   - The driver menu marks this model's driver; a drafter setting on a model without a drafter is dropped with the reason; a run that changes nothing writes nothing.
+>   - `xollama show` names the published drafter for a model without one, and the draft length a load will use.
+> - Measured on solidPC, RTX 3090, c10 r3, 256 tokens (`/srv/ml/xc10/drafter`): the v9-agentic A4B on coding prompts at temperature 0 is 94 tok/s without and 136–141 at length 2 (acceptance 0.79), 128–136 at 3, 122–140 at 4; on an essay at 0.7 it is 111 at 2, 102 at 3, 95 at 4. So `auto` sets 2. The first table published here used only the essay, and the owner called it low; opencoti's record (mail #929, v7-coder 76.6 → 137.0 at acceptance 0.91) is on in-domain code. Qwen3.6-27B built-in head: 31 to 32 left to the engine, 24 with length 0 (722 MiB less), 24 with policy `off` (head still loaded).
+> - Live as `ollama` on the scratch store: fetch from the hub, attach, replace, detach, six rewrites with the weights intact, 0 foreign files.
+> - Owner, 22:59: "once done, make a new release with the latest c10 republish". The latest c10 on the hub is r3, already pinned and measured, so the pin does not move. The tree changed after rc.1, so the release is cut as `v0.40.1-rc.2.xollama` (PR #18) and then `v0.40.1-xollama` from its tree. The base stays upstream v0.40.1; the fork's v0.40.2 sync (mail #926) and c11 are the next cycle.
+> - Gates before the candidate (VALIDATION.md): G1 clean, security no delta, G3 compat 8/8 on both engines with tok/s at the morning's level on a quiet host, G4 all pass. G8 not run: eleven2go is held by opencoti's c11 gates.
+
+> **2026-10-09 — `v0.40.1-rc.1.xollama` published (pre-release) and checked on every gate: upstream v0.40.1, opencoti c10 r3.**
+> - PR #17, G2: 20 pass and 4 skip. The 4 native legs that have no runner were cancelled, with no step failed. Merged as `49677a133`; release run 37884166795 succeeded in every job. Payload id `10ffa638…`; over `.1` an update takes the full installer.
+> - G12: every `sha256sum.txt` line OK; the amd64 binary on solidPC and the arm64 binary on the Pi name the tag; the image is amd64 and arm64 on both registries (run 37885287777).
+> - G9 on eleven2go, over `v0.40.0-xollama.1`:
+>   - The full installer exits 0 in 98 s, with the version, `PAYLOAD_ID` and `/api/xollama` right. The new Windows MLX runtime is fetched (`MLX_ID` `31c743bd…`).
+>   - Five 512-token runs of `qwen3:8b` on the installed server: RTX 3090 CUDA 123.4–123.9, RX 9070 XT Vulkan 102.6–103.2, iGPU 5.2. Every layer is on the GPU and the displays are `OK`.
+>   - The small installer over it exits 0 in 4 s, starting a new server with the same version.
+>   - 11434 is untouched.
+> - G10:
+>   - solidPC: opencoti 85.4–85.9 tok/s, llama.cpp 85.8–86.0, speech 4/4. `PAYLOAD` names engine `2610090401001`. 0 foreign files in the scratch stores.
+>   - Pi 5: opencoti 9.9–10.3 against llama.cpp 11.0, speech 3/3. The owner's containers stayed up, and the test container is removed.
+> - G11, the workflow's Mac app: notarized and stapled; `qwen2.5:1.5b` 127.8–128.4 and `llama3` 32.1–32.3 tok/s on opencoti through Metal; speech 7/7; 0 crash lines.
+> - Candidates are never promoted. The release `v0.40.1-xollama` would be cut from this tree (empty commit, short check), on the owner's go.
+
 > **2026-10-09 — Engine pin on opencoti c10 r3 (`2610090401001`), measured; `x/net` 0.60.0 for four reachable advisories; the council's continue route no longer repeats its last answer. `v0.40.1-rc.1.xollama` next.**
 > - Owner: "rc.1 on c10 r2, opencoti is not doing a good job and extermely late". c11, which carries bug-3957 (0589), waits for a CUDA round that has not started (opencoti #914). So the candidate goes out on the published c10 line, and c11 moves the pin later.
 > - The pin is c10 **r3**, published within the hour after r2 (#917; index `0ad2dde5`, pins `b31394f6`). It is r2 (0594: an embedded library unpacks beside the exe) plus 0595 (an unset Windows `HOME` falls back to `%USERPROFILE%`). Neither reaches xollama, because we ship the bare engine with its libraries and set `HOME` ourselves (`engine.PayloadHome`). Every library pin differs from r1 only in its `rev` line, and the ABI digests and features are c10's.

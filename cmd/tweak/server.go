@@ -23,7 +23,7 @@ func serverFields() []string {
 	var names []string
 	for _, f := range fields {
 		section, _, _ := strings.Cut(f.path, ".")
-		if slices.Contains(xollama.DefaultSections(), section) {
+		if slices.Contains(xollama.DefaultSections(), section) && !f.modelOnly {
 			names = append(names, f.name)
 		}
 	}

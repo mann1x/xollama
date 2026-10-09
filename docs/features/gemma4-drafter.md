@@ -23,6 +23,80 @@ The five drafters live in `.opencoti/models/drafters/` and all declare
 | `gemma-4-26B-A4B-it-assistant-Q8_0.gguf` | `google_gemma-4-26B-A4B-it-Q4_K_M.gguf` |
 | `gemma-4-31B-it-assistant-Q8_0.gguf` | `gemma-4-31B-it-Q4_K_M.gguf` |
 
+## Which drafter a model takes, and attaching it
+
+Each head states the width of the model it was built against,
+`gemma4-assistant.embedding_length_out`, and it equals the target's
+`gemma4.embedding_length`. Read from the ten files on 2026-10-09:
+
+| Target | `embedding_length` | Published drafter |
+|---|---|---|
+| E2B | 1536 | `ManniX-ITA/gemma-4-E2B-it-assistant-GGUF` |
+| E4B | 2560 | `ManniX-ITA/gemma-4-E4B-it-assistant-GGUF` |
+| 26B-A4B | 2816 | `ManniX-ITA/gemma-4-26B-A4B-it-assistant-GGUF` |
+| 12B | 3840 | `ManniX-ITA/gemma-4-12B-it-assistant-GGUF` |
+| 31B | 5376 | `ManniX-ITA/gemma-4-31B-it-assistant-GGUF` |
+
+The width survives a fine-tune or a merge where the name does not: the
+98-expert merge `gemma-4-A4B-98e-v9-agentic-std12` has `general.size_label`
+`98x2.6B` and is 2816 wide. So the catalog (`xollama.RecommendedDrafter`,
+`types/xollama/drafter.go`) is keyed on the width, and the same equality
+(`xollama.DrafterFits`) refuses a head for another size when it is attached,
+in `applyDraftHead` (`server/xollama_drafter.go`), not at load.
+
+`xollama tweak model <model> --drafter=auto` attaches the published head (the
+`Q8_0` file of the repository): the CLI resolves its sha256 on the hub, the
+server downloads the blob through `/api/xollama/media/pull`, and the create
+request carries it as `draft.head`, which `applyDraftHead` turns into the
+model's one `application/vnd.ollama.image.draft` layer. `draft.head` set to
+`none` removes the layer; unset leaves the layers alone, so a Modelfile `DRAFT`
+line and an inherited drafter work as upstream's. `xollama show` reports the
+published drafter for a model without one (`api.DrafterInfo.Recommended`).
+
+`auto` also sets `draft.tokens` to 2 when the model states no length. Measured
+on opencoti c10 r3 (`2610090401001`) through xollama, the 98-expert 26B-A4B
+merge at Q4_K_M with the Q8_0 head, RTX 3090 (220 W cap), 256 tokens, warm
+(`/srv/ml/xc10/drafter/live4.out` and `live2.out`):
+
+| Draft length | Three coding prompts, temperature 0 | Acceptance | An essay, temperature 0.7 |
+|---|---|---|---|
+| no drafter | 93.3, 94.6, 94.6 | | 94.1 to 94.5 |
+| 2 | 141.2, 137.9, 135.5 | 0.78 to 0.80 | 110.5 to 112.6 |
+| 3 | 136.1, 134.6, 127.7 | 0.65 to 0.70 | 101.9 to 103.4 |
+| 4 | 139.8, 134.9, 122.0 | 0.58 to 0.68 | 93.6 to 96.3 |
+| 5 | 127.5, 132.8, 113.2 | 0.50 to 0.64 | |
+
+The gain follows the acceptance, and the acceptance follows the text: about
+0.79 on code and about 0.60 on the essay at length 2. opencoti's own record for
+the v7-coder merge on this card is 76.6 to 137.0 tok/s at acceptance 0.91
+(their `docs/evaluations/mtp.md` §3.0a, mail #929). A drafter must be measured
+with the same in-domain prompt on both arms; a generic prompt understates it.
+
+Not the cause of a low number here, checked: the engine keeps the target's
+`token_embd` on the CPU for this model (its 50 % fit bound) and
+`OPENCOTI_MTP_TOKEMBD_GPU=1` changes nothing on it, and xollama's launch line
+(`--spec-draft-model`) measures the same as opencoti's (`--mtp-head -ngld 99`),
+117 to 119 tok/s on the essay with the engine called directly
+(`/srv/ml/xc10/drafter/tokembd.out`).
+
+## Turning a drafter off
+
+`draft.tokens` 0 (or `PARAMETER draft_num_predict 0`) is the model's "do not
+draft". Upstream says it by passing no draft arguments, which is the whole of it
+on stock llama.cpp and for an attached drafter. opencoti selects a driver on its
+own for a model with a NextN head, so it is started with `--spec-type none`
+(`appendDraftOffArgs`, `llm/engine_draft_off.go`; `LlamaServerConfig.DraftOff`
+from `draftTurnedOff`). Measured on the same engine with Qwen3.6-27B-MTP at
+Q4_K_M (`/srv/ml/xc10/drafter/builtin.out`):
+
+| Launch | tok/s | Head |
+|---|---|---|
+| nothing passed (the engine selects `draft-mtp`) | 33.3, 31.9 | loaded, 276 MiB |
+| `--auto-mtp-policy off` | 23.9 | loaded |
+| `--spec-type none` | 24.1, 24.0 | not loaded, 722 MiB less on the card |
+
+A model that says nothing keeps the engine's choice, as before.
+
 ## The two engines name the same driver differently
 
 This is the whole reason the hook exists. Both engines run the drafter against

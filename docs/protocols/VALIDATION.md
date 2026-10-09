@@ -130,7 +130,36 @@ each), `continue` taken 4 times and right each time. G6: speech 8/8, video
 model on the RTX 3090, never on the RX 9070 XT): 3090 123.4 to 124.1 tok/s;
 9070 XT 98.7 cold, 102.3 to 102.5 warm, 103.2 after 120 s idle, polls 200,
 card `OK`, no dump; engine gone 1071 ms after the kill; integrated GPU 5.0,
-37/37 layers; speech 4/4.
+37/37 layers; speech 4/4. On the candidate `v0.40.1-rc.1.xollama` (merge
+`49677a133`, payload id `10ffa638…`): G2 20 pass, 4 skipping, the 4 native
+legs without a runner cancelled. G9: the full installer over `.1` exits 0 in
+98 s (the new MLX fetched, `MLX_ID` `31c743bd…`), and the small one over it
+exits 0 in 4 s. On the installed server: 3090 123.4 to 123.9, 9070 XT 102.6 to
+103.2, iGPU 5.2. G10: amd64 opencoti 85.4 to 85.9, llama.cpp 85.8 to 86.0,
+speech 4/4; arm64 9.9 to 10.3 against 11.0, speech 3/3. G11 (the workflow's
+app): `qwen2.5:1.5b` 127.8 to 128.4, `llama3` 32.1 to 32.3, speech 7/7. G12:
+every checksum OK, both binaries and both image architectures right.
+
+**Before `v0.40.1-rc.2.xollama`** (2026-10-09, tree `85de6b296`: the drafter
+settings and the prune guard over rc.1; engine and pins unchanged; working
+directory `/srv/ml/xc10/drafter`). The change touches `llm/` (one launch
+argument, only for a model that turned drafting off), `server/`, `manifest/`
+and `cmd/`, so G1, G3, G4 and, on the candidate, G2 and G12. G1: gofmt silent,
+lint 0, 43 hooks, compat-origin 0 foreign, `go test ./...` 70 packages ok and
+the one upstream Metal-only MLX test failing as before. Security check: no
+delta (Dependabot 99, govulncheck 0 reachable). G3 on a quiet host (load 5 to
+7 from other tenants): opencoti compat 8/8, llama3 76.52 tok/s, 4 slots 289.8,
+overflow 3.35; llama.cpp compat 8/8, 78.61, 618.2, 2.38. The four-slot figure
+on opencoti is 3.8 % under the morning's 301.3 with the host not idle, and the
+stock control did not move down, so it is read as noise, not carried forward
+as a new baseline. A first run of the same axes gave 70.6 on stock and 76.2 on
+opencoti while a container (`byparr`) held the load average near 80; those
+numbers are discarded. G4: every chat path passes, 0 refusals. The drafter
+itself, live as `ollama` (`live1.out` to `live4.out`): fetch from the hub,
+attach, replace, detach, six rewrites with the weights intact, 0 foreign
+files; tok/s in `docs/features/gemma4-drafter.md`. G8 was not run before the
+candidate: eleven2go was held by opencoti's c11 gates; the Windows check is
+the candidate's install (G9 steps) once the host is free.
 
 **`v0.40.0-rc.2.xollama`** (2026-10-08, PR #14, release run 37698039727,
 image run 37699889866, payload id `d413785f…`). G9 on eleven2go over the
