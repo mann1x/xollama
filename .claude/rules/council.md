@@ -330,6 +330,12 @@ paths:
   content of the messages up to the answered user turn; a newer user message
   must extend it. Guards: `TestAContinuedTurnGoesStraightToTheSynthesizer`,
   `TestTheNextTurnContinuesTheSameCouncil`.
+  The continue note (`continuedNote`) quotes the user's reply (`cfg.request`,
+  cut at `maxQuotedReply`) and says the record above answered the earlier
+  message. Without the quote, on the council gate's "And if the leak were 20
+  litres a minute?", the synthesizer repeated the record's 26 min 40 s in 5 of
+  6 seeds; with it, 1 of 6 (replay of the logged prompt, 2026-10-09). Guard:
+  `TestTheContinueNoteQuotesTheReply`.
 - **`slots.live`** replaces `OLLAMA_NUM_PARALLEL` only when opencoti serves
   (`server/slots_live.go`, `slots-live` hook). Never set the parallel env for
   a council on opencoti: `-c` is `num_ctx × slots`, and 4 × 131k did not fit.

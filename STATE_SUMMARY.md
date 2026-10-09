@@ -5,6 +5,62 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-09 — Engine pin on opencoti c10 r3 (`2610090401001`), measured; `x/net` 0.60.0 for four reachable advisories; the council's continue route no longer repeats its last answer. `v0.40.1-rc.1.xollama` next.**
+> - Owner: "rc.1 on c10 r2, opencoti is not doing a good job and extermely late". c11, which carries bug-3957 (0589), waits for a CUDA round that has not started (opencoti #914). So the candidate goes out on the published c10 line, and c11 moves the pin later.
+> - The pin is c10 **r3**, published within the hour after r2 (#917; index `0ad2dde5`, pins `b31394f6`). It is r2 (0594: an embedded library unpacks beside the exe) plus 0595 (an unset Windows `HOME` falls back to `%USERPROFILE%`). Neither reaches xollama, because we ship the bare engine with its libraries and set `HOME` ourselves (`engine.PayloadHome`). Every library pin differs from r1 only in its `rev` line, and the ABI digests and features are c10's.
+> - Measured (`/srv/ml/xc10/r3`, as `ollama`; numbers in VALIDATION.md and the pin's comment):
+>   - G3/G4: the same as r1 within noise, and decision scores identical to the digit.
+>   - G6: speech 8/8, video 33/33.
+>   - G7: the Renoir iGPU is refused and the load runs on the CPU.
+>   - G8 on eleven2go: 3090 123.4–124.1, 9070 XT 102.3–103.2, iGPU 5.0, speech 4/4. The kill test ran with the model on the 3090, never on the 9070 XT.
+> - Security check before the candidate: govulncheck found 4 reachable `golang.org/x/net` advisories (GO-2026-6603, -6611, -6612, -6617). `x/net` moved to 0.60.0, taking `x/crypto` 0.57, `x/mod` 0.41, `x/sync` 0.23, `x/sys` 0.48, `x/term` 0.46 and `x/text` 0.42 (every line keeps its `security-deps` hook). After the move, 0 are reachable. Dependabot is at 99 (was 99), with none on a line the fork changed (bug-254).
+> - Found by G5 and fixed (bug-255):
+>   - The council's `continue` route answered "And if the leak were 20 litres a minute?" with the first turn's 26 min 40 s, in 2 of 6 runs (PolyKV and idle tags). The reply was in the synthesizer's prompt, but the note never named it and the whole record said 26:40.
+>   - `continuedNote` now quotes the reply and says the record answered the earlier message.
+>   - A replay of the logged failing prompt over 6 seeds: old note 1/6 right, new note 5/6.
+>   - G5 rerun: 6/6 PASS, with `continue` taken 4 times and right each time. Guard: `TestTheContinueNoteQuotesTheReply`.
+> - `go test ./...` on solidPC (bug-256): the MLX packages fail on this host's environment only. The local `build/` MLX is reached without `LD_LIBRARY_PATH`; upstream's wired-limit test needs a Metal key. The sync's 71 ok came from a worktree with no `build/`, where those tests skip.
+> - Left for the candidate: G2 on the PR, then G9, G10, G11 (the workflow's signed app) and G12 on the pre-release. The known issue in the notes is the two-GPU Vulkan KV window (bug-3957, c11).
+
+> **2026-10-08 — Upstream v0.40.1 synced (fork manifest `9acdc12a`, llama.cpp still b11351, `llama/clef` changed, MLX `a59cc231`).**
+> - Owner's go. `sync/upstream-v0.40.1`, in its own worktree.
+>   - `69a86b8e` merged the tag (7 commits, 21 files). Two conflicts: `README.md` keeps ours, and `cmd/welcome_test.go` drops `TestWelcomeCloudStatus` as upstream did (#18826).
+>   - Upstream copies manifests instead of linking them on Windows (#18852). Its `copyManifestFile` already writes through `fsowner`.
+>   - New upstream routes `/api/balance` and `/api/usage` proxy the signed-in cloud account.
+>   - No change in `model/parsers`, `model/renderers`, `thinking`, `template` or `harmony`.
+> - The fork's 24 patches followed as `--no-ff` merges at the manifest's shas (`6b41b4fc` … `f29adbaf`, table in CARRIED-PATCHES).
+>   - Each has the same `git patch-id` set as the v0.40.0 copy dev carries, and leaves the tree as its first parent.
+>   - From `up-think-budget` on, each conflicted with its own earlier copy and was resolved `-X ours`.
+>   - The loop stops on a patch-id difference or a tree change; neither happened.
+>   - Parsers, `thinking`, `llama/compat`, `llama/server`, `llama/clef` and `LLAMA_CPP_VERSION` are byte-identical to the fork's `fdfa954d`.
+>   - All 12 upstream PRs are still open at the manifest's shas.
+> - The inputs digest now takes `llama/clef` (`90516222`, mails 887–889 with the fork). `llama-server` compiles `clef.cpp` in, and upstream changed it (#18777) while the old digest stayed `9defcc44…`. The four sites: `xollama-runtime.yaml`, `xollama-release.yaml` (Windows and Linux) and `docker-assemble.sh`. The new values:
+>   - Linux (README excluded): `d0cc3cdd…`, equal at the fork's `d0508358`.
+>   - Windows (README kept): `e7259fe5…`.
+> - Pins:
+>   - Linux amd64 and arm64 runtimes and the macOS MLX archive moved to the fork's `v0.40.1-thinkbudget`, with upstream v0.40.1's GPU tarballs (`90516222`).
+>   - Windows runtime `runtime-windows-amd64-b11351-e7259fe5e807`, built by run 37741379732 from `90516222`, sha256 checked on a download (`48e8aeda`).
+>   - `scripts/docker-assemble.sh` on the new pins passed its sha256, inputs and provenance checks.
+> - Checks on the branch:
+>   - gofmt silent, `go vet ./...` clean, `go test ./...` 71 ok / 0 failed, `golangci-lint` 0 issues.
+>   - 41 hooks, all registered; `check-compat-origin` 0 foreign.
+>   - Live on solidPC: the assembled payload as `ollama` on 22498, on the scratch v0.40 store (never the shared stores), 512 tokens, two runs.
+>     - opencoti c10: gemma4:e2b 131 to 133, qwen3.5:2b 130 to 145, gemma3:4b-it-qat 101 tok/s.
+>     - Stock llama.cpp: 134 (warm), 127, 101 tok/s.
+>     - 0 crash lines; 0 foreign files in the store.
+> - Windows MLX pin (later the same morning): the fork's reldir zip for v0.40.1 (`31c743bd…`, fork run 37737304380 from `d0508358`, MLX `a59cc231`; mail #897).
+>   - Checked on eleven2go (no cuDNN installed) with a v0.40.1 side server: `qwen3.5:0.8b` on MLX 300 tokens (68 tok/s warm), `embeddinggemma-2` embeds (cos 0.771 near vs 0.524 far), create from Qwen3-0.6B safetensors (316 layers, generates 104.6 tok/s); no panic.
+>   - The pin moves to it; every pin is now on v0.40.1, so nothing stands between this tree and a release candidate.
+
+> **2026-10-08 — xo-20 done: one GPU through two backends (a 3090 on Vulkan, alone or split with the RX 9070 XT); a refresh its caller cut no longer starts a cooldown.**
+> - Owner's go. `backend-copies` hook (Registry row): while opencoti may serve, discovery keeps the Vulkan copy of a CUDA/ROCm GPU with the same PCI ID; `discover.GPUDevices` still returns one entry per GPU (startup sizing, runner counts unchanged); a load gets the copies only when its pin or the `gpu` policy names a backend, and `applyGPUPolicy` keeps one entry per GPU. The engine's listing now carries PCI IDs (`OPENCOTI_LIST_DEVICE_IDS=1`): the RX 9070 XT and the iGPU on Windows have one for the first time. Measured on eleven2go: CUDA 123.3 unchanged; 3090 on Vulkan by pin or by policy 106.2; spread over 9070 XT + 3090 on Vulkan 92.7 tok/s. Name pin re-read after today's reboot: on the 9070 XT, now Vulkan2. Guards fail on removal.
+> - Found and fixed (bug-250): the VRAM-recovery wait after an unload calls the refresh under its own deadline; cut 0.3 s into a listing, the refresh warned and put both backends in a 15-minute cooldown. A cut with less time left than a listing needs is now the caller's: Debug, no cooldown.
+> - opencoti and the fork: the inputs digest gains `llama/clef` from v0.40.1 (the fork names the README-excluded value, `d0cc3cdd…`, in PATCHES.json); our four digest sites change in the sync PR.
+
+> **2026-10-08 — `v0.40.0-xollama.1` released and promoted: macOS opencoti only, Windows MLX without cuDNN installed, the free-memory refresh fixed.**
+> - PR #16 (merge `4d695c111`, run 37731569137). Full check passed, numbers in `docs/protocols/VALIDATION.md`: the small updater over `v0.40.0-xollama` fetched the new MLX runtime (`MLX_ID` `b715921b…`), RTX 3090 123.1–123.5, RX 9070 XT 102.7–103.0, iGPU 5.7 tok/s, MLX on the installed server 66.7–67.8 tok/s, no refresh Warn in 17 refreshes; the release's signed Mac app has no stock binaries, 127.3–129.6 / 32.3–32.5 tok/s, speech 7/7, `llamacpp` refused. Promoted, Discord announced, `:latest` re-run on the tag.
+> - opencoti re-cut its plans (#886): c11 is Ternary Bonsai 2 27B only (new weight types PQ2_0 = 142, PTQ1_0 = 143, a weight rotation at load); the structured refused-device signal is c12 row 27.1 (op-71). The `REFUSED` line stays the interface until then.
+
 > **2026-10-08 — `v0.40.0-xollama.1` opened (owner's go; eleven2go rebooted, the two wedged MLX runners gone with it).**
 > - Content: macOS without stock `llama-server` and the Windows MLX reldir runtime; xo-20 stays out. G1 on `e25837bcf`: gofmt, build, tests, lint 0, 40 hooks, compat-origin clean. Security check: Dependabot 99 open (was 99), no alert on a line the fork changed; govulncheck 0 reachable. Snapshot committed.
 > - Full check after the pre-release: G9 (the update installer must fetch the new MLX, its `MLX_ID` differs), G11 on the release's own signed app, G12; then promote.
@@ -2052,14 +2108,15 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
 ## Where we are
 
-`v0.40.0-xollama` is the latest release (2026-10-08): upstream v0.40.0, the
-fork's carried patches, opencoti c10 (`2610072136001`), Clef models on
-opencoti, opencoti first on every platform, and the MLX runtime downloaded by
-the Windows installer. `dev` is that tree plus its records. Next is the
-re-release `v0.40.0-xollama.1`: macOS without stock `llama-server` (branch
-`macos/opencoti-only`, checked on the Mac), the fork's Windows MLX runtime
-that finds cuDNN beside itself, and the Windows Vulkan-for-NVIDIA choice
-(xo-20). The Agentic Council Chat is in Phase 11.
+`v0.40.0-xollama.1` is the latest release (2026-10-08): upstream v0.40.0, the
+fork's carried patches, opencoti c10 (`2610072136001`), Clef on opencoti,
+opencoti first on every platform and the only engine on macOS, the Windows
+MLX runtime downloaded by the installer and needing no cuDNN install. `dev`
+is upstream v0.40.1 with every runtime pin moved, xo-20 (one GPU through two
+backends), the engine on opencoti c10 r3 (`2610090401001`), `x/net` 0.60.0
+and the council continue fix; `v0.40.1-rc.1.xollama` is cut from it. Next:
+opencoti c11 (bug-3957, the two-GPU KV window; Ternary Bonsai 2 27B) when it
+is published. The Agentic Council Chat is in Phase 11.
 
 ## What exists today
 
@@ -2125,11 +2182,11 @@ that finds cuDNN beside itself, and the Windows Vulkan-for-NVIDIA choice
 
 ## Immediate next steps (in order)
 
-1. `v0.40.0-xollama.1` with the full check: macOS without stock
-   `llama-server` and the Windows MLX reldir runtime are on dev; xo-20 (the
-   Windows Vulkan-for-NVIDIA choice) if it does not hold the rest up.
-2. Find why a Vulkan free-memory refresh finds nothing now and then before a
-   load (G9, G10); fix it in the engine if it is the engine's.
+1. The v0.40.1 sync when the fork's pins arrive (inputs digest gains
+   `llama/clef`, README-excluded for the fork's runtimes; MLX moves, the
+   reldir Windows zip later and re-checked without cuDNN); xo-20 ships with it.
+2. opencoti c11 (Ternary Bonsai 2 27B, two new weight types): the catalog and
+   the pin move on a measurement once opencoti publishes it.
 3. Run the Phase 8 compaction live over four and more turns
    (`council-idle.py`), then assess the council's use of the shared prefix on
    PolyKV (the owner's request).

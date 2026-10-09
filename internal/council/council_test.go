@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/types/xollama"
@@ -587,6 +588,28 @@ func TestATurnResumesFromItsProgress(t *testing.T) {
 	}
 }
 
+// The continue note quotes the reply and says the record answered the
+// earlier message: given only the record, a weak synthesizer repeated the
+// earlier answer to a reply that changed a value (council gate, 2026-10-09).
+func TestTheContinueNoteQuotesTheReply(t *testing.T) {
+	cfg := Config{continuing: true, request: "  And if the leak were 20 litres a minute?\n"}
+	note := continuedNote(cfg)
+	if !strings.Contains(note, ": «And if the leak were 20 litres a minute?»") || !strings.Contains(note, "never repeating the earlier answer") {
+		t.Errorf("note %q", note)
+	}
+	cfg.request = strings.Repeat("é", maxQuotedReply)
+	if note := continuedNote(cfg); !strings.Contains(note, " …»") || !utf8.ValidString(note) {
+		t.Errorf("a long reply is not cut cleanly: %q", note)
+	}
+	cfg.request = ""
+	if note := continuedNote(cfg); strings.Contains(note, "«") || !strings.Contains(note, "replies to it. The plan") {
+		t.Errorf("no reply: %q", note)
+	}
+	if continuedNote(Config{request: "x"}) != "" {
+		t.Error("a turn that does not continue got the note")
+	}
+}
+
 // The council kept across turns (10.5): with the previous deliberation, the
 // planner is offered continue, and continue runs the synthesizer alone on
 // the plan, findings and critiques it answered from, told to go on.
@@ -619,7 +642,7 @@ func TestAContinuedTurnGoesStraightToTheSynthesizer(t *testing.T) {
 	for _, m := range synth.Messages {
 		all += m.Content
 	}
-	if !strings.Contains(all, "line 119 has a brace too many") || !strings.Contains(all, continueNote) {
+	if !strings.Contains(all, "line 119 has a brace too many") || !strings.Contains(all, "replies to it: «Why is the sky blue?»") || !strings.Contains(all, "written for the earlier message") {
 		t.Fatalf("the synthesizer read %q", all)
 	}
 	if !strings.Contains(string(route.Format), "continue") || !strings.Contains(route.Messages[len(route.Messages)-1].Content, "replies to that answer") {

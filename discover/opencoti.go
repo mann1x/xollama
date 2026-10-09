@@ -51,6 +51,7 @@ func listDevices(ctx context.Context, artifact string, b engine.Backend, env ...
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.WaitDelay = llamaServerDiscoveryWaitDelay
 	cmd.Env = append(envconfig.Environ(), env...)
+	cmd.Env = append(cmd.Env, listDeviceIDsEnv) // each device's PCI ID (backend_copies.go)
 	// The HOME the launch will give this same artifact, so a listing and the
 	// load it places cannot disagree about what the engine finds there.
 	home, _ := os.UserHomeDir()
@@ -109,6 +110,7 @@ type opencotiDevice struct {
 	integrated   bool
 	computeMajor int
 	computeMinor int
+	pciID        string // from list_device_ids_v1 (backend_copies.go); "" when not printed
 }
 
 // parseOpencotiDevices reads one backend's `--list-devices --verbose` output.
@@ -140,6 +142,7 @@ func parseOpencotiDevices(output string, library string) []opencotiDevice {
 			description: m[2],
 			total:       totalMiB * 1024 * 1024,
 			free:        freeMiB * 1024 * 1024,
+			pciID:       listedPCIID(line),
 		})
 	}
 	for i := range devices {
@@ -276,7 +279,7 @@ func mergeOpencotiBackend(devices []ml.DeviceInfo, library string, listed []open
 		if joined {
 			d = existing[joinedTo[j]]
 		} else {
-			if dup, ok := secondListing(oc, merged, others); ok {
+			if dup, ok := secondListing(oc, merged, others); ok && !keepListedCopy(library, oc, dup) {
 				slog.Info("opencoti lists a device twice; keeping one listing",
 					"library", library, "kept", dup.Description, "dropped", oc.description, "index", oc.index)
 				continue
@@ -304,6 +307,9 @@ func mergeOpencotiBackend(devices []ml.DeviceInfo, library string, listed []open
 		d.FilterID = ""
 		remapFilterIDForUserVisibleDevices(&d)
 		d.TotalMemory, d.FreeMemory = oc.total, oc.free
+		if d.PCIID == "" && oc.pciID != "" {
+			d.PCIID = oc.pciID // the engine's own identity of the device
+		}
 		// Metal is Apple silicon's unified memory; on macOS, which ships no stock
 		// llama-server, the engine's listing is the only one, so it says so
 		// as stock discovery would have.

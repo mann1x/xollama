@@ -3,7 +3,7 @@ component  vulkan
 version    2610071443002
 built-from 2610071429001
 repo       ManniX-ITA/opencoti-llamafile
-rev        c10050b432da693b587de455ed8dc8106529b6b3
+rev        651c4eb90314881950fee526d7ccc7b2dfe0a613
 abi        ggml 41ba479c24d7e3a624c7b13aa3cbe357e41fac04a504c54ec2ee170de0bff9a1
 abi-source exported
 engine-min 2610071254001

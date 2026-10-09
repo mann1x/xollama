@@ -78,7 +78,7 @@ if [ -n "$fork_runtime" ]; then
     # differ. Every other byte of LLAMA_CPP_VERSION, llama/server and llama/compat
     # must equal what the runtime was built from.
     digest() {
-        git -C "$repo" ls-tree -r "$1" -- LLAMA_CPP_VERSION llama/server llama/compat \
+        git -C "$repo" ls-tree -r "$1" -- LLAMA_CPP_VERSION llama/server llama/compat llama/clef \
             | grep -v '[[:space:]]llama/compat/README\.md$' | sha256sum | cut -c1-64
     }
     now=$(digest HEAD)

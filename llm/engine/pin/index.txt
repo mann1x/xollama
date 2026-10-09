@@ -15,44 +15,47 @@
 # Moving a component is one line here plus its pin file, on a MEASUREMENT
 # (scripts/phase2-engine-ab.py, as the `ollama` user), never on a changelog.
 #
-# THIS PIN (2026-10-07, opencoti mail #872, index d6078962, pins 4d2e735e,
-# payload c10050b4): opencoti's c10 RELEASE. engine 2610072136001 is the
-# dev snapshot 2 engine 2610071819001 (chain 0001-0586) plus 0587, the
-# version tag only, rebuilt clean-room. 0586 fixes bug-3954 (on two GPUs an
-# answer depended on what the engine had served before). Every other
-# component is the snapshot 2 file byte for byte: cuda 2610071905001 (the
-# Windows file is the six-arch build, so a forced link by PCI works through
-# CUDA there too), cuda12 2610071451002, vulkan 2610071443002, macos
-# 2610041000002, media 2610071902001 (audio.cpp 0007: unpacks per user, not
-# into one shared /tmp/audiocpp-gguf; xollama mail #857, bug-3955). The pin
-# declares clef_score_v1, so a Clef model now runs on opencoti.
+# THIS PIN (2026-10-09, opencoti mails #911, #912, #917; index 0ad2dde5,
+# pins b31394f6, payload 651c4eb9): opencoti's c10 RELEASE, re-cut r3.
+# engine 2610090401001 is the c10 release engine 2610072136001 plus 0594 (a
+# library embedded in a single-file exe unpacks beside the exe) and 0595 (on
+# Windows an unset HOME falls back to %USERPROFILE%, not the working
+# directory). Neither reaches xollama: we ship the bare engine with every
+# library beside it, and give every engine run an explicit HOME
+# (engine.PayloadHome). Every other component is the c10 r1 file byte for
+# byte; only the rev line of its pin file moved. The ggml, media and loader
+# ABI digests and the feature list are c10's. Owner, 2026-10-09: rc.1 goes
+# out on this c10 cut rather than wait for c11 (0589, bug-3957, the per-device
+# KV window on a two-GPU split, is not in it).
 #
-# MEASURED 2026-10-07, snapshot 2 then these release bytes (logs /srv/ml/xc10):
-#   solidPC as `ollama` (phase2-engine-ab), release bytes: compat 8/8; llama3
-#     77.26 tok/s (snapshot 2 77.13, c10-dev 1 76.63); 4 slots 299.7 tok/s;
-#     gemma4 tool call and thinking; 70b overflow 3.27 (snapshot 2 3.19 3.35
-#     3.21, c10-dev 1 engine back to back 3.13 3.79: that axis is noise).
-#   /v1/systemone, release bytes: opencoti loads 2, stock 0; nimble bug
-#     0.974; clef-flash bug 0.845, image red 0.985.
-#   speech, release bytes, as `ollama` with a root-owned /tmp/audiocpp-gguf
-#     put there first: 8/8 transcribed back exactly (bug-3955 fixed).
-#   Mac mini (M6, 24 GiB), release bytes, Clef 27B Q4_K_M through xollama:
-#     Metal, 17.1 of 26.5 GB; bug 0.942, refund 0.988, image red 0.994, the
-#     repeat identical; 0 crash lines.
-#   eleven2go, snapshot 2 engine (same source as 2610072136001 but 0587):
-#     bug-3954 at the engine, qwen2.5:7b over the RTX 3090 and the RX 9070 XT
-#     on Vulkan (-ts 1,1), a fresh engine against one that served a request
-#     first, 256 tokens: 0.000000, where the c10-dev 1 engine differs from
-#     token 196 (max |dlogprob| 1.408) (scripts/gates/windows-twogpu-engine.ps1);
-#     speech 4/4 through the installed xollama.exe.
+# MEASURED 2026-10-09, these release bytes on the v0.40.1 tree (logs
+# /srv/ml/xc10/r3), solidPC as `ollama`:
+#   phase2-engine-ab: compat 8/8; llama3 77.47 tok/s (r1 77.26); 4 slots
+#     301.3 tok/s (299.7); gemma4 tool call and thinking; 70b overflow 3.75
+#     (r1 3.27, that axis is noise).
+#   /v1/systemone: opencoti loads 2, stock 0; nimble bug 0.974, clef-flash
+#     bug 0.845, image red 0.985 (r1 the same to the digit).
+#   speech: 8/8 transcribed back. Chat paths (G4): all pass, 0 KV refusals.
+#   Vulkan (G7): the engine refuses the host's 2020 Renoir drivers as c10
+#     does (bug-3936), and the load runs on the CPU, never on the refused GPU.
+#   video: Wan2.1 and Wan2.2, 33/33 frames each. Council (G5, with the
+#     continue-note fix): PolyKV tag 4/4 PASS, 5 pools and 0 refusals each;
+#     no-PolyKV and idle tags PASS; 0 crash lines.
+#   eleven2go (G8, side server, these Windows bytes): RTX 3090 CUDA 123.4 to
+#     124.1 tok/s; RX 9070 XT Vulkan 98.7 cold, 102.3 to 103.2 warm, props
+#     and kv 200, clean after 120 s idle; engine gone 1,071 ms after the
+#     server was killed (model on the 3090); iGPU 5.0 tok/s, 37/37 layers;
+#     speech 4/4 transcribed back; GPU and media ABI digests match.
+# The c10 r1 measurements on the Mac mini and eleven2go (git history of this
+# file) cover the same library bytes.
 #
 format   2
 channel  release
 tag      c10
-engine   pin/engine.txt  rev 4d2e735e3ef759cb95b6e4e65839dd72077ff595  sha256 bbda5ad6682eaea56072f3bab8c2663b13f513918af3008d56ee1783706c8a23  version 2610072136001
-cuda     pin/cuda.txt  rev 4d2e735e3ef759cb95b6e4e65839dd72077ff595  sha256 222ba4eb566451b676772223f22d8f5b4fba68a1418a09f3ddfbc7759544e2b8  version 2610071905001
-cuda12   pin/cuda12.txt  rev 4d2e735e3ef759cb95b6e4e65839dd72077ff595  sha256 5a3f4c061268aa8cd9e1377b5b12040f56b6f17145df8eccf86ad85eefeb21aa  version 2610071451002
+engine   pin/engine.txt  rev b31394f609c3e8b5a91f6f279f9c0b7c7621e6ca  sha256 16630a3ca0b7f0aa0b33d74d4d8a2f77957aeba4623e5cb01784440581d58c7d  version 2610090401001
+cuda     pin/cuda.txt  rev b31394f609c3e8b5a91f6f279f9c0b7c7621e6ca  sha256 259f47e42c24c2f16227920fda857b22a6e7fb30da450466aa28f9eb7692c078  version 2610071905001
+cuda12   pin/cuda12.txt  rev b31394f609c3e8b5a91f6f279f9c0b7c7621e6ca  sha256 b0e837f8b2e3862edd01f9517e4f443c47add36208bbe128f39a21205fb31c25  version 2610071451002
 sbsa     absent
-vulkan   pin/vulkan.txt  rev 4d2e735e3ef759cb95b6e4e65839dd72077ff595  sha256 ed72d25e5e2d0177b810b0534f10bca0c6a2a214fde3bbb8e1e5797cf05e766d  version 2610071443002
-macos    pin/macos.txt  rev 4d2e735e3ef759cb95b6e4e65839dd72077ff595  sha256 9e4baafa8653e680165a3f238487e3bee4ac92665c1124b15de3150302239605  version 2610041000002
-media    pin/media.txt  rev 4d2e735e3ef759cb95b6e4e65839dd72077ff595  sha256 5cc431ccc4d093cc941df61750da17e36bbbe7e393386250f3759c64fe1f4d74  version 2610071902001
+vulkan   pin/vulkan.txt  rev b31394f609c3e8b5a91f6f279f9c0b7c7621e6ca  sha256 7fd217502716e1e1743eb05cbf190ae7bde308c4c10a4eb5030233fb53f23cc1  version 2610071443002
+macos    pin/macos.txt  rev b31394f609c3e8b5a91f6f279f9c0b7c7621e6ca  sha256 a7f29c1f76a49c0d53f39daea2cdba1bfefa97bfb74b7cb4021c40e8b5443289  version 2610041000002
+media    pin/media.txt  rev b31394f609c3e8b5a91f6f279f9c0b7c7621e6ca  sha256 7e3e6f94590abb2336f4ebd7d481b7d5ec8e7d82859f599fa4e469d5a38c0514  version 2610071902001
