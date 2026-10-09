@@ -17,6 +17,8 @@ package council
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 )
 
 // errNothingToContinue is a continue route with no deliberation to continue;
@@ -30,7 +32,14 @@ const RouteContinue = "continue"
 const routeMsgContinue = `ROLE: PLANNER. The council answered the user's previous message; the user's latest message replies to that answer. Decide what it asks for. Reply with JSON only: {"route":"direct"} when the work is done or the message is trivial (thanks, a greeting, a one-line fact), {"route":"continue"} when the work the council was doing goes on from where it stands (feedback, a correction, "continue", a result to act on), or {"route":"council"} when it is a new or different task that needs the council again.`
 
 // continueNote tells the synthesizer the turn goes on from its last answer.
-const continueNote = " The conversation above goes on after the council's last answer: the user's latest message replies to it. Continue the work from where it stands, from the plan, findings and critiques above as the council left them, and act on the reply; if the work is already complete, say so plainly."
+// The record above it answers the earlier message, so the note quotes the
+// reply and says so: a weak synthesizer given only the record repeats the
+// earlier answer to a reply that changed a value (the council gate's leak of
+// 20 litres answered with the 10 litres' 26 minutes 40 seconds, 2026-10-09).
+const continueNote = " The conversation above goes on after the council's last answer, and the user's latest message replies to it%s. The plan, findings and critiques above were written for the earlier message. Act on the reply: where it changes the task (a new value, a correction, another case), redo the work it touches with the change, never repeating the earlier answer; where it asks to go on, continue from where the work stands; if it only confirms the work is complete, say so plainly."
+
+// maxQuotedReply bounds the reply the continue note quotes.
+const maxQuotedReply = 600
 
 // Kept is the deliberation a finished turn leaves for the next one to
 // continue: its plan and its last round. Nil for a direct answer.
@@ -45,10 +54,17 @@ func Kept(p Progress) *Progress {
 }
 
 func continuedNote(cfg Config) string {
-	if cfg.continuing {
-		return continueNote
+	if !cfg.continuing {
+		return ""
 	}
-	return ""
+	quoted := ""
+	if r := strings.TrimSpace(cfg.request); r != "" {
+		if len(r) > maxQuotedReply {
+			r = strings.ToValidUTF8(r[:maxQuotedReply], "") + " …"
+		}
+		quoted = ": «" + r + "»"
+	}
+	return fmt.Sprintf(continueNote, quoted)
 }
 
 // RouteCouncil is the full deliberation's route.
