@@ -109,6 +109,29 @@ llama.cpp 85.7 to 86.4, speech 4/4 (one Warn, "free-memory refresh found
 nothing", during the speech phase: transient, not a crash); arm64 on the Pi
 with the rebuilt CPU runtime 9.8 to 9.9 against 10.8 to 10.9, speech 3/3.
 
+**On upstream v0.40.1 and opencoti c10 r3** (2026-10-09, engine
+`2610090401001` = the c10 release engine + 0594/0595, every library c10's
+file; tree `8d6f3fb76` + the pin, then the council fix; working directory
+`/srv/ml/xc10/r3`, the same scratch stores). G1: gofmt silent, lint 0, 41
+hooks, compat-origin 0 foreign; `go test ./...` fails only in the MLX
+packages, on this host's environment (bug-256: with `LD_LIBRARY_PATH` at the
+local MLX they pass but upstream's Metal-only
+`TestSetWiredLimitRejectsOversizeWithoutChangingLimit`). Security check:
+govulncheck found 4 reachable `x/net` advisories, fixed by `x/net` 0.60.0 (0
+reachable after); Dependabot 99, none on a fork line. G3: compat 8/8, llama3
+77.47 tok/s, 4 slots 301.3, overflow 3.75; gemma4 tool call and thinking. G4:
+all chat paths pass, 0 refusals; `/v1/systemone` scores identical to c10 r1 to
+the digit. G5 before the fix: the PolyKV tag and the idle tag each failed one
+second turn on the `continue` route, repeating the first answer (bug-255);
+after it, all six runs PASS (the PolyKV tag 4 of 4, 5 pools and 0 refusals
+each), `continue` taken 4 times and right each time. G6: speech 8/8, video
+33/33 on Wan2.1 and Wan2.2. G7: the Renoir iGPU refused, the load on the CPU
+(36 tok/s), never on the refused GPU. G8 (side server, kill test with the
+model on the RTX 3090, never on the RX 9070 XT): 3090 123.4 to 124.1 tok/s;
+9070 XT 98.7 cold, 102.3 to 102.5 warm, 103.2 after 120 s idle, polls 200,
+card `OK`, no dump; engine gone 1071 ms after the kill; integrated GPU 5.0,
+37/37 layers; speech 4/4.
+
 **`v0.40.0-rc.2.xollama`** (2026-10-08, PR #14, release run 37698039727,
 image run 37699889866, payload id `d413785f…`). G9 on eleven2go over the
 installed rc.1: `xOllamaSetup.exe` exit 0 in 31 s, the MLX runtime already

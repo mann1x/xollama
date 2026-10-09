@@ -5,6 +5,23 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-09 — Engine pin on opencoti c10 r3 (`2610090401001`), measured; `x/net` 0.60.0 for four reachable advisories; the council's continue route no longer repeats its last answer. `v0.40.1-rc.1.xollama` next.**
+> - Owner: "rc.1 on c10 r2, opencoti is not doing a good job and extermely late". c11, which carries bug-3957 (0589), waits for a CUDA round that has not started (opencoti #914). So the candidate goes out on the published c10 line, and c11 moves the pin later.
+> - The pin is c10 **r3**, published within the hour after r2 (#917; index `0ad2dde5`, pins `b31394f6`). It is r2 (0594: an embedded library unpacks beside the exe) plus 0595 (an unset Windows `HOME` falls back to `%USERPROFILE%`). Neither reaches xollama, because we ship the bare engine with its libraries and set `HOME` ourselves (`engine.PayloadHome`). Every library pin differs from r1 only in its `rev` line, and the ABI digests and features are c10's.
+> - Measured (`/srv/ml/xc10/r3`, as `ollama`; numbers in VALIDATION.md and the pin's comment):
+>   - G3/G4: the same as r1 within noise, and decision scores identical to the digit.
+>   - G6: speech 8/8, video 33/33.
+>   - G7: the Renoir iGPU is refused and the load runs on the CPU.
+>   - G8 on eleven2go: 3090 123.4–124.1, 9070 XT 102.3–103.2, iGPU 5.0, speech 4/4. The kill test ran with the model on the 3090, never on the 9070 XT.
+> - Security check before the candidate: govulncheck found 4 reachable `golang.org/x/net` advisories (GO-2026-6603, -6611, -6612, -6617). `x/net` moved to 0.60.0, taking `x/crypto` 0.57, `x/mod` 0.41, `x/sync` 0.23, `x/sys` 0.48, `x/term` 0.46 and `x/text` 0.42 (every line keeps its `security-deps` hook). After the move, 0 are reachable. Dependabot is at 99 (was 99), with none on a line the fork changed (bug-254).
+> - Found by G5 and fixed (bug-255):
+>   - The council's `continue` route answered "And if the leak were 20 litres a minute?" with the first turn's 26 min 40 s, in 2 of 6 runs (PolyKV and idle tags). The reply was in the synthesizer's prompt, but the note never named it and the whole record said 26:40.
+>   - `continuedNote` now quotes the reply and says the record answered the earlier message.
+>   - A replay of the logged failing prompt over 6 seeds: old note 1/6 right, new note 5/6.
+>   - G5 rerun: 6/6 PASS, with `continue` taken 4 times and right each time. Guard: `TestTheContinueNoteQuotesTheReply`.
+> - `go test ./...` on solidPC (bug-256): the MLX packages fail on this host's environment only. The local `build/` MLX is reached without `LD_LIBRARY_PATH`; upstream's wired-limit test needs a Metal key. The sync's 71 ok came from a worktree with no `build/`, where those tests skip.
+> - Left for the candidate: G2 on the PR, then G9, G10, G11 (the workflow's signed app) and G12 on the pre-release. The known issue in the notes is the two-GPU Vulkan KV window (bug-3957, c11).
+
 > **2026-10-08 — Upstream v0.40.1 synced (fork manifest `9acdc12a`, llama.cpp still b11351, `llama/clef` changed, MLX `a59cc231`).**
 > - Owner's go. `sync/upstream-v0.40.1`, in its own worktree.
 >   - `69a86b8e` merged the tag (7 commits, 21 files). Two conflicts: `README.md` keeps ours, and `cmd/welcome_test.go` drops `TestWelcomeCloudStatus` as upstream did (#18826).
@@ -2095,9 +2112,11 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 fork's carried patches, opencoti c10 (`2610072136001`), Clef on opencoti,
 opencoti first on every platform and the only engine on macOS, the Windows
 MLX runtime downloaded by the installer and needing no cuDNN install. `dev`
-is that tree plus its records. Next: xo-20 (Vulkan for an NVIDIA card on
-Windows); opencoti c11 (Ternary Bonsai 2 27B) when it is published. The
-Agentic Council Chat is in Phase 11.
+is upstream v0.40.1 with every runtime pin moved, xo-20 (one GPU through two
+backends), the engine on opencoti c10 r3 (`2610090401001`), `x/net` 0.60.0
+and the council continue fix; `v0.40.1-rc.1.xollama` is cut from it. Next:
+opencoti c11 (bug-3957, the two-GPU KV window; Ternary Bonsai 2 27B) when it
+is published. The Agentic Council Chat is in Phase 11.
 
 ## What exists today
 

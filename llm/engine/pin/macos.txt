@@ -3,7 +3,7 @@ component  macos
 version    2610041000002
 built-from 2610040950001
 repo       ManniX-ITA/opencoti-llamafile
-rev        c10050b432da693b587de455ed8dc8106529b6b3
+rev        651c4eb90314881950fee526d7ccc7b2dfe0a613
 abi        ggml 41ba479c24d7e3a624c7b13aa3cbe357e41fac04a504c54ec2ee170de0bff9a1
 abi        loader d6ff34022f1d3fb5af56ca0c80e3f4e552bf09f1bebdf0cb5f314a454bf38dbc
 abi-source exported
