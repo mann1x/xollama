@@ -102,6 +102,12 @@ type field struct {
 	// single authority for them; duplicating those here is how the two would
 	// drift.
 	blocked func(*xollama.Config) string
+	// note, when set, annotates one menu option: which driver is this
+	// model's own, say.
+	note func(*xollama.Config, string) string
+	// modelOnly keeps a field out of the server's defaults although its
+	// section may be defaulted: a drafter is one model's file.
+	modelOnly bool
 	// quiet skips a blocked field in the walk without saying so. It is for a
 	// feature whose settings are only questions once it is switched on --
 	// the council has 22, and a line per skipped question on every model
@@ -280,7 +286,7 @@ func prune(c *xollama.Config) {
 	if c.Session != nil && c.Session.Affinity == nil && c.Session.Pool == nil && c.Session.MaxPools == 0 && c.Session.ClientPools == 0 {
 		c.Session = nil
 	}
-	if c.Draft != nil && c.Draft.SpecType == "" && c.Draft.AutoMTPPolicy == "" {
+	if c.Draft.IsZero() {
 		c.Draft = nil
 	}
 	if c.Fit.IsZero() {
@@ -727,10 +733,14 @@ var fields = []field{
 		path:  "draft.spec_type",
 		title: "Speculative decoding type for this model's drafter",
 		help: "Overrides what would otherwise be inferred from the draft model's own\n" +
-			"metadata. Unset means infer, which is what almost every model should do.\n" +
-			"draft_num_predict is not here: it is an ordinary PARAMETER already.",
-		kind:    kindChoice,
-		choices: func(*xollama.Config) []string { return xollama.ValidSpecTypes() },
+			"metadata. Unset means infer, which is what almost every model should do:\n" +
+			"the driver is a property of the drafter, and one that does not match it\n" +
+			"fails the load. The draft length is its own question (draft-tokens).",
+		kind:     kindChoice,
+		choices:  func(*xollama.Config) []string { return xollama.ValidSpecTypes() },
+		describe: specTypeState,
+		note:     specTypeNote,
+		blocked:  noDrafter("a speculative decoding type"),
 		get: func(c *xollama.Config) string {
 			return orEmpty(c.Draft != nil, func() string { return c.Draft.SpecType })
 		},
@@ -749,10 +759,13 @@ var fields = []field{
 		title: "MTP auto policy — when a built-in MTP head drafts",
 		help: "measured (the engine's default) drafts while the measured acceptance pays;\n" +
 			"allocator and taper decide by memory; always drafts whatever it measures; off\n" +
-			"never drafts. The drafter's own KV is always resident.",
-		kind:    kindChoice,
-		choices: func(*xollama.Config) []string { return xollama.ValidAutoMTPPolicies() },
-		blocked: opencotiOnly("the MTP auto policy"),
+			"never drafts, but the head stays loaded -- draft-tokens 0 is what leaves it\n" +
+			"out of memory. It applies only while the engine chooses the driver itself:\n" +
+			"a draft-tokens number or a pinned type drafts at full depth regardless.",
+		kind:     kindChoice,
+		choices:  func(*xollama.Config) []string { return xollama.ValidAutoMTPPolicies() },
+		describe: drafterState,
+		blocked:  builtInOnly,
 		get: func(c *xollama.Config) string {
 			return orEmpty(c.Draft != nil, func() string { return c.Draft.AutoMTPPolicy })
 		},

@@ -5,6 +5,19 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-09 — `xollama tweak model` attaches the right drafter and sets its length; a manifest that cannot be read stops blob pruning. After a model was lost on pandorum.**
+> - The report: on pandorum (`v0.40.0-xollama.1`), `tweak model v9-agentic_std12_tb:q4km-64k --spec-type=draft-assistant` wrote a driver pin on a model with no drafter, said every setting was one the model could act on, attached nothing, and the model's 16 GB of weights were gone.
+> - The loss: upstream v0.40.0 stores named manifests as symbolic links, and that machine refused to follow them ("untrusted mount point"). The rewritten manifest could not be read back, so the prune of the old manifest's layers counted the weights as unused and deleted them. Upstream v0.40.1 stores copies on Windows; rc.1 installed over it repaired 167 manifests and the model was recreated from its GGUF. `v0.40.0-xollama.1`, the promoted release, still carries the path.
+> - `prune-guard` (new hook): a named manifest that fails to open stops the prune, nothing is removed. A missing or damaged one is skipped as upstream does.
+> - `drafter` (new hook), schema v8:
+>   - `--drafter=auto|PATH|hf.co/…|sha256|none` (`draft.head`). `auto` fetches the head published for the model from `ManniX-ITA/gemma-4-<size>-it-assistant-GGUF` and attaches it. The size is read from the embedding width, so a fine-tune is recognised (the v9-agentic merge is 2816 wide, the 26B-A4B head). A head for another size is refused when attached.
+>   - `--draft-tokens` (`draft.tokens`): the length; 0 is off and, on opencoti, starts the engine with `--spec-type none` so a built-in head is not loaded.
+>   - The driver menu marks this model's driver; a drafter setting on a model without a drafter is dropped with the reason; a run that changes nothing writes nothing.
+>   - `xollama show` names the published drafter for a model without one, and the draft length a load will use.
+> - Measured on solidPC, RTX 3090, c10 r3, 256 tokens (`/srv/ml/xc10/drafter`): the v9-agentic A4B 94 tok/s without, 95 at length 4, 102 at 3, 111 at 2, so `auto` sets 2. Qwen3.6-27B built-in head: 31 to 32 left to the engine, 24 with length 0 (722 MiB less), 24 with policy `off` (head still loaded).
+> - Live as `ollama` on the scratch store: fetch from the hub, attach, replace, detach, six rewrites with the weights intact, 0 foreign files.
+> - Left: the owner asked for a new release on the latest c10 republish once this is in.
+
 > **2026-10-09 — `v0.40.1-rc.1.xollama` published (pre-release) and checked on every gate: upstream v0.40.1, opencoti c10 r3.**
 > - PR #17, G2: 20 pass and 4 skip. The 4 native legs that have no runner were cancelled, with no step failed. Merged as `49677a133`; release run 37884166795 succeeded in every job. Payload id `10ffa638…`; over `.1` an update takes the full installer.
 > - G12: every `sha256sum.txt` line OK; the amd64 binary on solidPC and the arm64 binary on the Pi name the tag; the image is amd64 and arm64 on both registries (run 37885287777).

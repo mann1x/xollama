@@ -23,6 +23,66 @@ The five drafters live in `.opencoti/models/drafters/` and all declare
 | `gemma-4-26B-A4B-it-assistant-Q8_0.gguf` | `google_gemma-4-26B-A4B-it-Q4_K_M.gguf` |
 | `gemma-4-31B-it-assistant-Q8_0.gguf` | `gemma-4-31B-it-Q4_K_M.gguf` |
 
+## Which drafter a model takes, and attaching it
+
+Each head states the width of the model it was built against,
+`gemma4-assistant.embedding_length_out`, and it equals the target's
+`gemma4.embedding_length`. Read from the ten files on 2026-10-09:
+
+| Target | `embedding_length` | Published drafter |
+|---|---|---|
+| E2B | 1536 | `ManniX-ITA/gemma-4-E2B-it-assistant-GGUF` |
+| E4B | 2560 | `ManniX-ITA/gemma-4-E4B-it-assistant-GGUF` |
+| 26B-A4B | 2816 | `ManniX-ITA/gemma-4-26B-A4B-it-assistant-GGUF` |
+| 12B | 3840 | `ManniX-ITA/gemma-4-12B-it-assistant-GGUF` |
+| 31B | 5376 | `ManniX-ITA/gemma-4-31B-it-assistant-GGUF` |
+
+The width survives a fine-tune or a merge where the name does not: the
+98-expert merge `gemma-4-A4B-98e-v9-agentic-std12` has `general.size_label`
+`98x2.6B` and is 2816 wide. So the catalog (`xollama.RecommendedDrafter`,
+`types/xollama/drafter.go`) is keyed on the width, and the same equality
+(`xollama.DrafterFits`) refuses a head for another size when it is attached,
+in `applyDraftHead` (`server/xollama_drafter.go`), not at load.
+
+`xollama tweak model <model> --drafter=auto` attaches the published head (the
+`Q8_0` file of the repository): the CLI resolves its sha256 on the hub, the
+server downloads the blob through `/api/xollama/media/pull`, and the create
+request carries it as `draft.head`, which `applyDraftHead` turns into the
+model's one `application/vnd.ollama.image.draft` layer. `draft.head` set to
+`none` removes the layer; unset leaves the layers alone, so a Modelfile `DRAFT`
+line and an inherited drafter work as upstream's. `xollama show` reports the
+published drafter for a model without one (`api.DrafterInfo.Recommended`).
+
+`auto` also sets `draft.tokens` to 2 when the model states no length. Upstream's
+default of 4 gains almost nothing with these heads. Measured on opencoti c10 r3
+(`2610090401001`), the 98-expert 26B-A4B merge at Q4_K_M with the Q8_0 head, RTX
+3090, 256 tokens, three runs each (`/srv/ml/xc10/drafter/live2.out`):
+
+| Draft length | tok/s |
+|---|---|
+| no drafter | 94.1 to 94.5 |
+| 4 | 93.6 to 96.3 |
+| 3 | 101.9 to 103.4 |
+| 2 | 110.5 to 112.6 |
+
+## Turning a drafter off
+
+`draft.tokens` 0 (or `PARAMETER draft_num_predict 0`) is the model's "do not
+draft". Upstream says it by passing no draft arguments, which is the whole of it
+on stock llama.cpp and for an attached drafter. opencoti selects a driver on its
+own for a model with a NextN head, so it is started with `--spec-type none`
+(`appendDraftOffArgs`, `llm/engine_draft_off.go`; `LlamaServerConfig.DraftOff`
+from `draftTurnedOff`). Measured on the same engine with Qwen3.6-27B-MTP at
+Q4_K_M (`/srv/ml/xc10/drafter/builtin.out`):
+
+| Launch | tok/s | Head |
+|---|---|---|
+| nothing passed (the engine selects `draft-mtp`) | 33.3, 31.9 | loaded, 276 MiB |
+| `--auto-mtp-policy off` | 23.9 | loaded |
+| `--spec-type none` | 24.1, 24.0 | not loaded, 722 MiB less on the card |
+
+A model that says nothing keeps the engine's choice, as before.
+
 ## The two engines name the same driver differently
 
 This is the whole reason the hook exists. Both engines run the drafter against

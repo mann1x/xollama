@@ -157,6 +157,9 @@ func (s *Server) modelOptionsWithEmbeddingBatchDefault(model *Model, requestOpts
 		opts = llm.WithDefaultEmbeddingNumBatch(opts)
 	}
 
+	// xollama-hook: drafter — see docs/features/gemma4-drafter.md
+	draftNumPredictSet = applyDraftTokens(model, &opts, draftNumPredictSet)
+
 	if model != nil && model.DraftPath == "" && !draftNumPredictSet {
 		opts.DraftNumPredict = 0
 	}
@@ -3181,6 +3184,9 @@ func llamaServerConfigForModel(m *Model) llm.LlamaServerConfig {
 		ManifestDigest:       m.Digest,
 		DraftModelPath:       m.DraftPath,
 		DraftModelShardPaths: slices.Clone(m.DraftShardPaths),
+		// xollama-hook: drafter -- "off" as the model's own word, which a
+		// draft length of 0 alone cannot carry (server/xollama_drafter.go).
+		DraftOff: draftTurnedOff(m),
 		// xollama-hook: model-config -- the launch part only: a council changes
 		// how a turn is answered, not how the model loads, and must not give a
 		// council tag its own runner (types/xollama LaunchConfig).

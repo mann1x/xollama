@@ -165,11 +165,21 @@ func (a *asker) render(cfg *xollama.Config, f field, current string) []string {
 		a.printf("   type it, `@path` to read it from a file, or `unset`\n")
 		return nil
 	case kindBlob:
+		if f.name == "drafter" {
+			a.printf("   `auto`, a file path, an hf.co/<owner>/<repo>/<file> reference, a sha256 digest, or `none`\n")
+			return nil
+		}
 		a.printf("   a file path, an hf.co/<owner>/<repo>/<file> reference, a sha256 digest, or `unset`\n")
 		return nil
 	}
 
 	for i, o := range options {
+		if f.note != nil {
+			if n := f.note(cfg, o); n != "" {
+				a.printf("   %d) %s  <- %s\n", i+1, o, n)
+				continue
+			}
+		}
 		a.printf("   %d) %s\n", i+1, o)
 	}
 	if f.kind == kindOpenChoice {

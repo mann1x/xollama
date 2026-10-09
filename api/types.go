@@ -989,6 +989,42 @@ type DrafterInfo struct {
 	Architecture      string `json:"architecture,omitempty"`
 	ParameterSize     string `json:"parameter_size,omitempty"`
 	QuantizationLevel string `json:"quantization_level,omitempty"`
+
+	// Digest is the attached drafter's blob, what draft.head names.
+	Digest string `json:"digest,omitempty"`
+
+	// Mismatch says why the attached drafter cannot run against this model,
+	// and is empty when it can.
+	Mismatch string `json:"mismatch,omitempty"`
+
+	// Recommended is the drafter published for this model, whether or not
+	// one is attached. Nil when none is known.
+	Recommended *DrafterRecommendation `json:"recommended,omitempty"`
+
+	// Tokens is the draft length the next load passes; 0 with a drafter
+	// means drafting is off. TokensFrom says who chose it: "model" (a
+	// PARAMETER or draft.tokens), "default" (upstream's, for an attached
+	// drafter) or "engine" (a built-in head left to opencoti).
+	Tokens     int    `json:"tokens,omitempty"`
+	TokensFrom string `json:"tokens_from,omitempty"`
+}
+
+// DrafterSourceNone is DrafterInfo.Source for a model with no drafter that
+// has one published for it.
+const DrafterSourceNone = "none"
+
+// DrafterRecommendation names the drafter published for a model.
+type DrafterRecommendation struct {
+	// Target is the model size it was built for ("26B-A4B").
+	Target string `json:"target"`
+	// Source is the Hugging Face file, as `xollama tweak model --drafter`
+	// takes it.
+	Source   string `json:"source"`
+	SpecType string `json:"spec_type"`
+	// Tokens is the draft length measured best for it.
+	Tokens int `json:"tokens,omitempty"`
+	// Attached is true when the model already carries this drafter's size.
+	Attached bool `json:"attached,omitempty"`
 }
 
 // ManifestSummary describes one child manifest available through a model tag.

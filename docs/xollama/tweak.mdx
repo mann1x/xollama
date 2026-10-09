@@ -253,39 +253,86 @@ engine build that is not out yet.
 The routes that serve them (`/v1/images/*`, `/v1/audio/*`) are described in
 [Images, speech and transcription](/xollama/media).
 
-## Pinning a drafter's driver
+## The drafter
 
-A drafter is attached at build time with a `DRAFT` line, and its driver is
-normally inferred from the drafter's own metadata — a gemma-4 assistant head
-declares `requires_target_arch`, which resolves to `draft-assistant` without
-anyone saying so:
+A drafter proposes several tokens per step and the model verifies them in one
+pass. A model gets one in two ways: a head inside its own weights (Qwen 3.5 and
+later with NextN), or a second file attached beside them (the Gemma 4 assistant
+heads). `xollama show` says which a model has, and for a Gemma 4 model without
+one, which drafter is published for it:
 
 ```
-FROM  gemma-4-A4B-98e-v9-agentic-it-Q4_K_M.gguf
-DRAFT gemma-4-26B-A4B-it-assistant-Q8_0.gguf
-PARAMETER draft_num_predict 3
+  Drafter
+    source       none
+    published    hf.co/ManniX-ITA/gemma-4-26B-A4B-it-assistant-GGUF/gemma-4-26B-A4B-it-assistant.Q8_0.gguf
+    attach it    --drafter=auto
 ```
 
-`--spec-type` overrides that inference, for a head built into the target as much
-as for an attached file:
+The match is made on the model's embedding width, which a fine-tune or a merge
+keeps, so a model that no longer carries a Gemma name is still recognised.
 
 ```sh
-xollama tweak model gemma4-98e-v9-agentic:q4km-drafter --spec-type=draft-assistant
-xollama tweak model gemma4-98e-v9-agentic:q4km-drafter --spec-type=unset   # back to inferring
+xollama tweak model my-gemma --drafter=auto     # fetch the published drafter and attach it
+xollama tweak model my-gemma --drafter          # the four drafter questions, one by one
+xollama tweak model my-gemma --drafter=none     # detach it
 ```
 
+| Flag | Setting | Values |
+|---|---|---|
+| `--drafter` | `draft.head` | `auto`; a file path; `hf.co/<owner>/<repo>/<file>`; a sha256 digest; `none` |
+| `--draft-tokens` | `draft.tokens` | tokens per step; `0` is off; unset is the default |
+| `--spec-type` | `draft.spec_type` | the driver; unset infers it from the drafter |
+| `--mtp-policy` | `draft.auto_mtp_policy` | `measured`; `allocator`; `taper`; `always`; `off` |
+
+- **`--drafter`** attaches a drafter in place of any the model has. A local
+  file is uploaded; a Hugging Face file is downloaded by the server. A drafter
+  built for another model size is refused when it is attached. `auto` also sets
+  `draft.tokens` to the length measured best for that drafter, unless the model
+  states one. `--clear` removes the model's settings and leaves its drafter;
+  `--drafter=none` is what detaches it.
+- **`--draft-tokens`** is the draft length. Unset is 4 for an attached drafter.
+  A head inside the weights is then left to opencoti, which picks the depth and
+  drafts by its policy; stock llama.cpp does not draft with it. `0` turns
+  drafting off: an attached drafter is not loaded, and on opencoti a built-in
+  head is not loaded either. A `PARAMETER draft_num_predict`, or the request's,
+  wins over this setting.
+- **`--spec-type`** pins the driver. The menu marks the driver this model's
+  drafter implies, which is what unset already gives.
+- **`--mtp-policy`** applies to a built-in head while opencoti chooses the
+  driver itself. `off` stops the drafting and keeps the head in memory.
+
+Measured on an RTX 3090 with opencoti c10, 256 tokens:
+
+| Model | Setting | tok/s |
+|---|---|---|
+| Gemma 4 26B-A4B fine-tune, Q4_K_M | no drafter | 94 |
+| | assistant head, length 4 | 95 |
+| | assistant head, length 3 | 102 |
+| | assistant head, length 2 (what `auto` sets) | 111 |
+| Qwen 3.6 27B with a built-in head | left to opencoti | 31 to 32 |
+| | `--draft-tokens=0` (head not loaded, 722 MiB less) | 24 |
+| | `--mtp-policy=off` (head still loaded) | 24 |
+
 <Warning>
-  A pin is an override, so it is able to be wrong. Pinning `draft-mtp` on a
-  gemma-4 assistant drafter reaches the engine and the load then fails with
+  A pinned driver is an override, so it is able to be wrong. Pinning `draft-mtp`
+  on a Gemma 4 assistant drafter reaches the engine and the load then fails with
   `Gemma4Assistant requires ctx_other to be set`. Leave it unset unless you know
   the inference is wrong for your drafter.
 </Warning>
 
-`draft_num_predict` is deliberately **not** here — it is an ordinary
-`PARAMETER`, settable per request like any other.
+A drafter setting on a model that has no drafter is dropped, with the reason,
+and the model is not rewritten.
 
-`xollama show` prints what the next load will actually use, and says where the
-answer came from:
+A drafter can also be attached when the model is built, with a `DRAFT` line:
+
+```
+FROM  gemma-4-A4B-98e-v9-agentic-it-Q4_K_M.gguf
+DRAFT gemma-4-26B-A4B-it-assistant-Q8_0.gguf
+PARAMETER draft_num_predict 2
+```
+
+`xollama show` prints what the next load will use, and says where each answer
+came from:
 
 ```
   Drafter
@@ -294,12 +341,13 @@ answer came from:
     parameters      419.71M
     quantization    Q8_0
     spec type       draft-assistant (inferred)
+    draft tokens    2 (set on the model)
 ```
 
 `(pinned)` in place of `(inferred)` means the driver came from
-`draft.spec_type` rather than from the drafter's own metadata. A head built
-into the weights shows `source built-in` and no file details. A model with no
-drafter prints no block at all.
+`draft.spec_type`. A head built into the weights shows `source built-in` and no
+file details. A model with no drafter, and none published for it, prints no
+block at all.
 
 ## Driving it from a script
 
@@ -547,6 +595,7 @@ These settings are on `tweak model` and, as defaults, on `tweak server`:
 | `--fit` | `fit.enabled` | `on`; `off` |
 | `--vram-target` | `fit.vram_target_mib` | all free VRAM minus the compute reserve; a cap in MiB |
 | `--mtp-policy` | `draft.auto_mtp_policy` | `measured`; `allocator`; `taper`; `always`; `off` |
+| `--draft-tokens` | `draft.tokens` | 4 for an attached drafter, opencoti's choice for a built-in head; a length; `0` for off |
 
 With `kv.residency_mode` set to `window`, `kv.rolling_window` decides what
 happens when the cache overflows:

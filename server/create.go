@@ -307,6 +307,12 @@ func (s *Server) CreateHandler(c *gin.Context) {
 			baseLayers = append(baseLayers, draftLayers...)
 		}
 
+		// xollama-hook: drafter — see docs/features/gemma4-drafter.md
+		if baseLayers, err = applyDraftHead(&r, baseLayers, config, fn); err != nil {
+			send(gin.H{"error": err.Error(), "status": http.StatusBadRequest})
+			return
+		}
+
 		// Info is not currently exposed by Modelfiles, but allows overriding various
 		// config values.
 		if err := applyCreateInfo(config, r.Info); err != nil {

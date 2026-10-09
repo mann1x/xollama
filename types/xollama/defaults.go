@@ -32,6 +32,9 @@ func (c *Config) ValidateDefaults() error {
 	if c.DCA != nil || !c.Devices.IsZero() || c.Council != nil {
 		return fmt.Errorf("xollama config: dca, devices and council are a model's own settings, not a server default")
 	}
+	if c.Draft != nil && c.Draft.Head != "" {
+		return fmt.Errorf("xollama config: draft.head is a model's own drafter, not a server default")
+	}
 	probe := *c
 	probe.Version = probe.requiredVersion()
 	return probe.Validate()
