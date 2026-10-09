@@ -438,6 +438,10 @@ func retainedBlobDigestsLocked() (map[string]struct{}, error) {
 		data, _, digest, err := readVerifiedManifestLocked(ref.path, ref.root)
 		if err != nil {
 			slog.Warn("bad manifest", "name", n, "error", err)
+			// xollama-hook: prune-guard — see manifest/prune_guard.go
+			if unreadableManifest(err) {
+				return nil, fmt.Errorf("%w: %s: %w", errManifestUnreadable, n.DisplayShortest(), err)
+			}
 			continue
 		}
 
@@ -602,6 +606,10 @@ func RemoveUnreferencedBlobs(candidates ...string) ([]string, error) {
 
 func removeUnreferencedBlobs(candidates ...string) ([]string, error) {
 	inUse, err := retainedBlobDigestsLocked()
+	// xollama-hook: prune-guard — see manifest/prune_guard.go
+	if pruneRefused(err) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
