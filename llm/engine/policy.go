@@ -142,7 +142,7 @@ func deviceUnsupported(p Platform, d Device) string {
 	// A card only the pin's CUDA 12 payload has code for (Volta on the dev
 	// snapshots) is served from that payload; LegacyCUDA has the engine load it.
 	if d.Backend == BackendCUDA && d.ComputeMajor > 0 {
-		if pin, err := loadPin(); err == nil && needsCUDA12(pin, d) {
+		if pin, err := loadPin(); err == nil && needsCUDA12(pin, p, d) {
 			return ""
 		}
 	}
@@ -159,36 +159,36 @@ func deviceUnsupported(p Platform, d Device) string {
 			minCUDACompute/10, minCUDACompute%10, d.ComputeMajor, d.ComputeMinor)
 	}
 	if d.Backend == BackendCUDA {
-		if pin, err := loadPin(); err == nil && !pin.CoversCUDA(d.ComputeMajor, d.ComputeMinor) {
+		if pin, err := loadPin(); err == nil && !pin.CoversCUDAOn(cudaArch(p), d.ComputeMajor, d.ComputeMinor) {
 			return fmt.Sprintf("the pinned engine %s carries CUDA code for compute %s only and this device is %d.%d",
-				pin.Tag, sassList(pin.HostCUDASASS()), d.ComputeMajor, d.ComputeMinor)
+				pin.Tag, sassList(pin.CUDASASSOn(cudaArch(p))), d.ComputeMajor, d.ComputeMinor)
 		}
 	}
 	return ""
 }
 
 // coveredByCUDA13 reports whether the main CUDA payload serves this device.
-func coveredByCUDA13(pin Pin, d Device) bool {
-	return d.compute() >= minCUDACompute && pin.CoversCUDA(d.ComputeMajor, d.ComputeMinor)
+func coveredByCUDA13(pin Pin, p Platform, d Device) bool {
+	return d.compute() >= minCUDACompute && pin.CoversCUDAOn(cudaArch(p), d.ComputeMajor, d.ComputeMinor)
 }
 
 // needsCUDA12 reports whether this device is served only by the pin's CUDA 12
 // payload: the main payload has no code for it and the CUDA 12 one does.
-func needsCUDA12(pin Pin, d Device) bool {
+func needsCUDA12(pin Pin, p Platform, d Device) bool {
 	return d.Backend == BackendCUDA && d.ComputeMajor > 0 &&
-		!coveredByCUDA13(pin, d) && pin.CoversCUDA12(d.ComputeMajor, d.ComputeMinor)
+		!coveredByCUDA13(pin, p, d) && pin.CoversCUDA12On(cudaArch(p), d.ComputeMajor, d.ComputeMinor)
 }
 
 // cudaPayload decides which CUDA payload one load runs on. One engine process
 // loads one payload (opencoti #494), so a load whose GPUs need both cannot be
 // served by either, and the reason says so.
-func cudaPayload(pin Pin, devices []Device) (cuda12 bool, reason string) {
+func cudaPayload(pin Pin, p Platform, devices []Device) (cuda12 bool, reason string) {
 	var old, current bool
 	for _, d := range devices {
 		if d.Backend != BackendCUDA {
 			continue
 		}
-		if needsCUDA12(pin, d) {
+		if needsCUDA12(pin, p, d) {
 			old = true
 		} else {
 			current = true

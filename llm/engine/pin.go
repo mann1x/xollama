@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -96,17 +95,23 @@ type Pin struct {
 	Assets   []Asset
 }
 
-// hostPackageArch is the pin platform of the running binary, "" where no
-// engine is packaged. A variable so a test can stand on another platform.
-var hostPackageArch = func() string {
-	arch, _ := PackageArch(runtime.GOOS, runtime.GOARCH)
-	return arch
+// cudaArch is the architecture whose CUDA libraries serve a platform:
+// "aarch64" on Linux aarch64, where the sbsa component is the CUDA library,
+// and "x86_64" everywhere else. It comes from the platform the question is
+// about, never from the machine that asks: Resolve is asked about linux/amd64
+// on a Mac and on an arm64 builder alike (the macOS test leg failed on a host
+// reading, 2026-10-10).
+func cudaArch(p Platform) string {
+	if arch, _ := PackageArch(p.OS, p.Arch); arch == "aarch64" {
+		return "aarch64"
+	}
+	return "x86_64"
 }
 
-// HostCUDASASS is the sass list of the CUDA library this host loads: the sbsa
-// component's on Linux aarch64, the cuda component's everywhere else.
-func (p Pin) HostCUDASASS() []int {
-	if hostPackageArch() == "aarch64" {
+// CUDASASSOn is the sass list of the CUDA library of an arch label: the sbsa
+// component's on aarch64, the cuda component's on x86_64.
+func (p Pin) CUDASASSOn(arch string) []int {
+	if arch == "aarch64" {
 		return p.SBSASASS
 	}
 	return p.CUDASASS
@@ -142,7 +147,13 @@ func (p Pin) Accelerates(arch string, b Backend) bool {
 // The failure this prevents is silent: a device the DSO has no code for makes
 // the engine run the load on the CPU, which reads as slowness, not as an error.
 func (p Pin) CoversCUDA(major, minor int) bool {
-	sass := p.HostCUDASASS()
+	return p.CoversCUDAOn("x86_64", major, minor)
+}
+
+// CoversCUDAOn is CoversCUDA for the CUDA library of an arch label: "x86_64"
+// reads the cuda component, "aarch64" the sbsa component.
+func (p Pin) CoversCUDAOn(arch string, major, minor int) bool {
+	sass := p.CUDASASSOn(arch)
 	if len(sass) == 0 {
 		return true
 	}
@@ -150,7 +161,7 @@ func (p Pin) CoversCUDA(major, minor int) bool {
 		// The sbsa library's 121 is sm_121a, the architecture-specific image:
 		// it runs on 12.1 exactly and the file carries no PTX to compile from
 		// (opencoti mail #952, cuobjdump of the published bytes).
-		if hostPackageArch() == "aarch64" && cc == 121 {
+		if arch == "aarch64" && cc == 121 {
 			if major == 12 && minor == 1 {
 				return true
 			}
@@ -168,8 +179,13 @@ func (p Pin) CoversCUDA(major, minor int) bool {
 // CoversCUDA, a pin that states no sass for it covers nothing: the CUDA 12
 // payload is optional and only ever serves what it names.
 func (p Pin) CoversCUDA12(major, minor int) bool {
-	// The payload of this host: Linux x86_64 is the only platform that has one.
-	if _, ok := p.CUDA12DSO(hostPackageArch()); !ok {
+	return p.CoversCUDA12On("x86_64", major, minor)
+}
+
+// CoversCUDA12On is CoversCUDA12 for an arch label. Only x86_64 has a CUDA 12
+// payload: the sbsa component has no legacy twin.
+func (p Pin) CoversCUDA12On(arch string, major, minor int) bool {
+	if _, ok := p.CUDA12DSO(arch); !ok {
 		return false
 	}
 	for _, cc := range p.CUDA12SASS {

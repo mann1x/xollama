@@ -246,8 +246,6 @@ func TestTheSBSAComponentServesAarch64WithItsOwnSASS(t *testing.T) {
 	if a, ok := p.DSO("aarch64"); !ok || a.StagedName() != "ggml-cuda-sbsa-aarch64.so" {
 		t.Errorf("aarch64 CUDA library = %+v, %v", a, ok)
 	}
-	host := hostPackageArch
-	t.Cleanup(func() { hostPackageArch = host })
 	for _, c := range []struct {
 		arch         string
 		major, minor int
@@ -264,14 +262,28 @@ func TestTheSBSAComponentServesAarch64WithItsOwnSASS(t *testing.T) {
 		{"x86_64", 8, 7, true},
 		{"x86_64", 11, 0, false},
 	} {
-		hostPackageArch = func() string { return c.arch }
-		if got := p.CoversCUDA(c.major, c.minor); got != c.want {
+		if got := p.CoversCUDAOn(c.arch, c.major, c.minor); got != c.want {
 			t.Errorf("on %s CoversCUDA(%d.%d) = %v, want %v", c.arch, c.major, c.minor, got, c.want)
 		}
 	}
 	// The CUDA 12 payload exists for Linux x86_64 only: no other host has it.
-	hostPackageArch = func() string { return "aarch64" }
-	if p.CoversCUDA12(7, 0) {
+	// And the answer follows the platform asked about, on any machine.
+	arm, x86 := Platform{OS: "linux", Arch: "arm64"}, Platform{OS: "linux", Arch: "amd64"}
+	spark := Device{Backend: BackendCUDA, ComputeMajor: 12, ComputeMinor: 1}
+	orin := Device{Backend: BackendCUDA, ComputeMajor: 8, ComputeMinor: 7}
+	volta := Device{Backend: BackendCUDA, ComputeMajor: 7, ComputeMinor: 0}
+	if !coveredByCUDA13(p, arm, spark) || coveredByCUDA13(p, arm, orin) || !coveredByCUDA13(p, x86, orin) {
+		t.Error("coveredByCUDA13 does not follow the platform it is asked about")
+	}
+	// The committed pin has the cuda12 component this test's pin leaves out.
+	committed, err := DefaultPin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if needsCUDA12(committed, arm, volta) || !needsCUDA12(committed, x86, volta) {
+		t.Error("needsCUDA12 does not follow the platform it is asked about")
+	}
+	if p.CoversCUDA12On("aarch64", 7, 0) {
 		t.Error("an aarch64 host is offered a CUDA 12 payload it has no file for")
 	}
 }

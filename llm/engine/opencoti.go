@@ -66,6 +66,11 @@ const EnvCUDALegacy = "OPENCOTI_CUDA_LEGACY"
 // these. An operator's XOLLAMA_ENGINE_PATH is used as given, and that engine
 // makes its own pick.
 func LegacyCUDA(devices []Device) bool {
+	return legacyCUDAOn(Host(), devices)
+}
+
+// legacyCUDAOn is LegacyCUDA for a named platform.
+func legacyCUDAOn(p Platform, devices []Device) bool {
 	if envconfig.Var(EnvPath) != "" {
 		return false
 	}
@@ -73,7 +78,7 @@ func LegacyCUDA(devices []Device) bool {
 	if err != nil {
 		return false
 	}
-	cuda12, why := cudaPayload(pin, devices)
+	cuda12, why := cudaPayload(pin, p, devices)
 	return cuda12 && why == ""
 }
 
@@ -375,7 +380,7 @@ func Launch(stockExe string, params []string, devices []Device, libOllamaPath st
 	// One engine process loads one CUDA library, so a load whose GPUs need
 	// both is llama.cpp's. Which of the two a load gets is LegacyCUDA.
 	if pin, err := loadPin(); err == nil {
-		if _, why := cudaPayload(pin, devices); why != "" {
+		if _, why := cudaPayload(pin, Host(), devices); why != "" {
 			slog.Info(fallback, "reason", why)
 			return stockExe, params, false
 		}

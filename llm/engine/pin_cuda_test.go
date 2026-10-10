@@ -106,11 +106,11 @@ func TestEachLoadRunsOnTheCUDALibraryItsGPUsNeed(t *testing.T) {
 		{"V100 + RTX 3090", []Device{v100, rtx3090}, false, true},
 		{"Vulkan", []Device{{Backend: BackendVulkan}}, false, false},
 	} {
-		cuda12, why := cudaPayload(p, tt.devices)
+		cuda12, why := cudaPayload(p, Platform{OS: "linux", Arch: "amd64"}, tt.devices)
 		if cuda12 != tt.cuda12 || (why != "") != tt.refused {
 			t.Errorf("%s: cudaPayload = %v, %q", tt.name, cuda12, why)
 		}
-		if got := LegacyCUDA(tt.devices); got != tt.cuda12 {
+		if got := legacyCUDAOn(Platform{OS: "linux", Arch: "amd64"}, tt.devices); got != tt.cuda12 {
 			t.Errorf("%s: LegacyCUDA = %v, want %v", tt.name, got, tt.cuda12)
 		}
 	}
