@@ -45,10 +45,12 @@ pre-release, a draft, a tag with no release or any branch build moves `dev`.
 
 arm64 starts with the 0.35.1 builds: `dev` has it, and `latest` gets it with
 the first 0.35.1 release. On arm64 the image carries CUDA 12, CUDA 13 and
-JetPack 5/6 payloads for NVIDIA hardware; everything else runs on the CPU. A
-Raspberry Pi 5 with 8 GB serves a 1.5B model at about 10 tokens per second,
-and speech and transcription work there. The NVIDIA payloads on arm64 have
-not been run by us. There is no ROCm build: the pinned engine declares no
+JetPack 5/6 payloads for NVIDIA hardware, and since the c11 engine the
+engine's own CUDA library for a DGX Spark or a Jetson Thor (see
+[DGX Spark and Jetson Thor](#dgx-spark-and-jetson-thor)); everything else runs
+on the CPU. A Raspberry Pi 5 with 8 GB serves a 1.5B model at about 10 tokens
+per second, and speech and transcription work there. The NVIDIA payloads on
+arm64 have not been run by us. There is no ROCm build: the pinned engine declares no
 ROCm acceleration.
 
 ## What is in the image
@@ -195,7 +197,7 @@ them to Docker: `--gpus '"device=0,1"'`. Without `--gpus` the server runs on
 the CPU.
 
 Which engine serves a load depends on the card. With the engine the image
-currently pins (opencoti build `2610040710001`):
+currently pins (opencoti c11, build `2610101328001`), on linux/amd64:
 
 | The load's NVIDIA GPUs | Served by |
 |---|---|
@@ -210,6 +212,39 @@ it are in [Choosing an engine](/xollama/engines) and
 [`docs/features/device-selection.md`](https://github.com/mann1x/xollama/blob/main/docs/features/device-selection.md).
 Loads served by stock `llama.cpp` have Ollama's own requirements; see
 [GPU support](/gpu).
+
+### DGX Spark and Jetson Thor
+
+<Warning>
+  Built blind. Neither opencoti nor xollama has a DGX Spark or a Jetson Thor:
+  the engine's CUDA library for them (`ggml-cuda-sbsa-aarch64.so`) has never
+  been run. If a load fails or misbehaves, `XOLLAMA_ENGINE=llamacpp` serves
+  everything on stock `llama.cpp`, the same build upstream Ollama ships for
+  these machines. Reports are welcome.
+</Warning>
+
+The arm64 image is the one for these machines; start it as in
+[NVIDIA](#nvidia) (driver, NVIDIA Container Toolkit, `--gpus all`). On
+linux/arm64 the routing is:
+
+| The load's NVIDIA GPU | Served by |
+|---|---|
+| compute capability 12.1 (DGX Spark, GB10) | opencoti, its arm64 CUDA 13 library |
+| compute capability 11.x (Jetson Thor) | opencoti, the same library |
+| anything else (Jetson Orin 8.7, JetPack 5 and 6 boards) | stock `llama.cpp`, on upstream's CUDA and JetPack backends |
+
+These machines share one memory between the CPU and the GPU. The engine reads
+the free memory from the system (`MemAvailable`) when CUDA reports the GPU as
+integrated. If it places too little on the GPU, pass
+`-e GGML_CUDA_ENABLE_UNIFIED_MEMORY=1`, which forces that reading.
+`-e XOLLAMA_ENGINE_FALLBACK=1` retries a load the engine fails once on stock
+`llama.cpp`.
+
+Upstream Ollama has open reports on the DGX Spark that apply to loads served
+by stock `llama.cpp` here: a crash with Gemma 4 at four parallel requests
+([#15318](https://github.com/ollama/ollama/issues/15318)), and an illegal
+memory access with flash attention on prompts of 1024 to 2044 tokens
+([#17596](https://github.com/ollama/ollama/issues/17596)).
 
 ### AMD and Intel GPUs (Vulkan)
 

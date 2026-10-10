@@ -33,7 +33,7 @@ paths.
 | `windows-twogpu-engine.ps1 -EngineDir <dir> -Blob <gguf>`: one model over the RTX 3090 and the RX 9070 XT, both on Vulkan, `-ts 1,1`; a fresh engine against one that served another request first, per-token logprobs (bug-3954). Run it on an older engine too: the control must differ | engine pin move | eleven2go |
 | `windows-install-pre.ps1`, `windows-install.ps1`, `windows-install-check.ps1` (stdin), `windows-install-measure.ps1` (`-File`) | G9 | eleven2go |
 | `windows-update.ps1` (`-File`, `-Exe <path>`): the small installer over an install | G9 | eleven2go |
-| `pi-image.sh` (engine replaced in `:dev`), `image-pi.sh` (a published image) | G10 | dietpi5 |
+| `pi-image.sh` (`TAG=`, `BASE=`: the tree's engine, staged by `stage-engine.sh aarch64` and copied to `ctx-<TAG>/engine`, replaced in a published image), `image-pi.sh` (a published image) | G10 | dietpi5 |
 | `image-x86.sh` | G10 | solidPC |
-| `bench.sh`, `speech-mac.sh` | G11 | Mac mini |
+| `mac-engine.sh` (`D=` a directory with `src/`, this tree, and `stage/`, from `stage-engine.sh macos-aarch64`): builds the server there and runs it in a copy of the installed app's Resources; `bench.sh`, `speech-mac.sh` | G11 before an app exists for the tree | Mac mini |
 | `mac-ci.sh` | G11 on the app the release workflow built (the draft's zip and DMG) | Mac mini |

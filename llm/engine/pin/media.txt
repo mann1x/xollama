@@ -3,12 +3,15 @@ component  media
 version    2610071902001
 built-from 2610071819001
 repo       ManniX-ITA/opencoti-llamafile
-rev        651c4eb90314881950fee526d7ccc7b2dfe0a613
+rev        455b729bf9bba49d8409301be811784eab675947
 abi        media b099409b3029a6e380268e31d1caefa6706569961d32e72b3543fbc73903d95c
 abi-source exported
 engine-min 2610040950001
-gated-with 2610071819001
 gated-with 2610050707001
+gated-with 2610071819001
+gated-with 2610100921001
+gated-with 2610100940001
+gated-with 2610101328001
 feature    media_codec_v1
 feature    audio_speech_audiocpp_v1
 feature    audio_speech_espeak_v1
@@ -31,4 +34,4 @@ file  any            licence    components/media/2610071902001/COPYING.espeak-ng
 file  any            licence    components/media/2610071902001/COPYING.LGPLv2.1.ffmpeg  246041b6ecf9bc32d718a62c57877c78b5eb397b6467e74ed7ae2626ab189c30  26517  for codec
 file  any            licence    components/media/2610071902001/COPYING.lame  bfe4a52dc4645385f356a8e83cc54216a293e3b6f1cb4f79f5fc0277abf937fd  25284  for codec
 file  any            licence    components/media/2610071902001/LICENSE.openh264  dd5c1c9668512530fa5a96e4c29ac4033d70a7eeb0eed7a42fddb6dd794ebdbb  1295  for codec
-file  any            build-info components/media/2610071902001/BUILD_INFO.media.md  7791c5e9718a39249e68dda2af2b3863c9d4d5ae464cc04a0fb9c92d32e18a83  5130
+file  any            build-info components/media/2610071902001/BUILD_INFO.media.md  ab98d265616db306c53f00180fd70a01df75e10b8f89dfb036e75aff0d5930bd  5319

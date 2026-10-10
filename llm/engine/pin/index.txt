@@ -15,47 +15,35 @@
 # Moving a component is one line here plus its pin file, on a MEASUREMENT
 # (scripts/phase2-engine-ab.py, as the `ollama` user), never on a changelog.
 #
-# THIS PIN (2026-10-09, opencoti mails #911, #912, #917; index 0ad2dde5,
-# pins b31394f6, payload 651c4eb9): opencoti's c10 RELEASE, re-cut r3.
-# engine 2610090401001 is the c10 release engine 2610072136001 plus 0594 (a
-# library embedded in a single-file exe unpacks beside the exe) and 0595 (on
-# Windows an unset HOME falls back to %USERPROFILE%, not the working
-# directory). Neither reaches xollama: we ship the bare engine with every
-# library beside it, and give every engine run an explicit HOME
-# (engine.PayloadHome). Every other component is the c10 r1 file byte for
-# byte; only the rev line of its pin file moved. The ggml, media and loader
-# ABI digests and the feature list are c10's. Owner, 2026-10-09: rc.1 goes
-# out on this c10 cut rather than wait for c11 (0589, bug-3957, the per-device
-# KV window on a two-GPU split, is not in it).
+# THIS PIN (2026-10-10, opencoti mails #950, #956; index 322fae03, pins
+# b14e609d, payload 455b729b): opencoti's c11 RELEASE, re-cut r2. Every
+# component but media moved from c10 (media is the c10 r3 file set); the ggml
+# ABI is ea73e6b2 on the engine and every GPU library, so a c10 library is
+# refused by name. It carries 0589 (bug-3957, the per-device KV window on a
+# two-GPU split) and 0610 to 0612 (bug-3993, bug-3995: a KVarN record window
+# sized against what an assistant drafter takes, and the drafter dropped at
+# load when keeping it would push the KV cache off the card; our bug-260).
+# r2 is the first cut (engine 2610100940001, index 6170b522) plus 0613: that
+# engine aborted loading Qwen3.5 0.8B/2B/4B when the fit streamed a host tail
+# (bug-3999, found by our G3: qwen3.5:2b with 2.4 GB of the card free). Only
+# the engine's bytes differ between the two cuts; the libraries are the same
+# files, their BUILD_INFO texts gained the r2 engine in `gated-with`.
 #
-# MEASURED 2026-10-09, these release bytes on the v0.40.1 tree (logs
-# /srv/ml/xc10/r3), solidPC as `ollama`:
-#   phase2-engine-ab: compat 8/8; llama3 77.47 tok/s (r1 77.26); 4 slots
-#     301.3 tok/s (299.7); gemma4 tool call and thinking; 70b overflow 3.75
-#     (r1 3.27, that axis is noise).
-#   /v1/systemone: opencoti loads 2, stock 0; nimble bug 0.974, clef-flash
-#     bug 0.845, image red 0.985 (r1 the same to the digit).
-#   speech: 8/8 transcribed back. Chat paths (G4): all pass, 0 KV refusals.
-#   Vulkan (G7): the engine refuses the host's 2020 Renoir drivers as c10
-#     does (bug-3936), and the load runs on the CPU, never on the refused GPU.
-#   video: Wan2.1 and Wan2.2, 33/33 frames each. Council (G5, with the
-#     continue-note fix): PolyKV tag 4/4 PASS, 5 pools and 0 refusals each;
-#     no-PolyKV and idle tags PASS; 0 crash lines.
-#   eleven2go (G8, side server, these Windows bytes): RTX 3090 CUDA 123.4 to
-#     124.1 tok/s; RX 9070 XT Vulkan 98.7 cold, 102.3 to 103.2 warm, props
-#     and kv 200, clean after 120 s idle; engine gone 1,071 ms after the
-#     server was killed (model on the 3090); iGPU 5.0 tok/s, 37/37 layers;
-#     speech 4/4 transcribed back; GPU and media ABI digests match.
-# The c10 r1 measurements on the Mac mini and eleven2go (git history of this
-# file) cover the same library bytes.
+# `sbsa` is TAKEN from this pin on (owner, 2026-10-10: "we build it blindly,
+# untested"): ggml-cuda-sbsa-aarch64.so, CUDA 13 for Linux aarch64, sass 110
+# 121 (Jetson Thor, DGX Spark). opencoti's BUILD_INFO says it was never run,
+# and no such machine is in our fleet either. It is routed with its own sass
+# list (Pin.SBSASASS, HostCUDASASS).
+#
+# MEASURED: see STATE_SUMMARY.md, entry of this pin.
 #
 format   2
 channel  release
-tag      c10
-engine   pin/engine.txt  rev b31394f609c3e8b5a91f6f279f9c0b7c7621e6ca  sha256 16630a3ca0b7f0aa0b33d74d4d8a2f77957aeba4623e5cb01784440581d58c7d  version 2610090401001
-cuda     pin/cuda.txt  rev b31394f609c3e8b5a91f6f279f9c0b7c7621e6ca  sha256 259f47e42c24c2f16227920fda857b22a6e7fb30da450466aa28f9eb7692c078  version 2610071905001
-cuda12   pin/cuda12.txt  rev b31394f609c3e8b5a91f6f279f9c0b7c7621e6ca  sha256 b0e837f8b2e3862edd01f9517e4f443c47add36208bbe128f39a21205fb31c25  version 2610071451002
-sbsa     absent
-vulkan   pin/vulkan.txt  rev b31394f609c3e8b5a91f6f279f9c0b7c7621e6ca  sha256 7fd217502716e1e1743eb05cbf190ae7bde308c4c10a4eb5030233fb53f23cc1  version 2610071443002
-macos    pin/macos.txt  rev b31394f609c3e8b5a91f6f279f9c0b7c7621e6ca  sha256 a7f29c1f76a49c0d53f39daea2cdba1bfefa97bfb74b7cb4021c40e8b5443289  version 2610041000002
-media    pin/media.txt  rev b31394f609c3e8b5a91f6f279f9c0b7c7621e6ca  sha256 7e3e6f94590abb2336f4ebd7d481b7d5ec8e7d82859f599fa4e469d5a38c0514  version 2610071902001
+tag      c11
+engine   pin/engine.txt  rev b14e609d513d4ddb2788f77eb26e9a5c79d44a8c  sha256 c59404390fb7f67d5aadad0b11f21577d005452ff9250ce1429402333f6097aa  version 2610101328001
+cuda     pin/cuda.txt  rev b14e609d513d4ddb2788f77eb26e9a5c79d44a8c  sha256 33b531799790d7253438a6c8c26b090e0da5fa5ecc4183343cf3ec857048d22a  version 2610100758001
+cuda12   pin/cuda12.txt  rev b14e609d513d4ddb2788f77eb26e9a5c79d44a8c  sha256 1372479eeb52f246bd321d42df3830ad7650630c91dd01546b14a2c33b628cc2  version 2610100758002
+sbsa     pin/sbsa.txt  rev b14e609d513d4ddb2788f77eb26e9a5c79d44a8c  sha256 a91c67b50bf7aef15499235556092e786301c755f4868351238492c0f08083bc  version 2610100758003
+vulkan   pin/vulkan.txt  rev b14e609d513d4ddb2788f77eb26e9a5c79d44a8c  sha256 dc63104c3c9e4a66794a208818d080c680394c3562f128edc87222e12d0979df  version 2610100032004
+macos    pin/macos.txt  rev b14e609d513d4ddb2788f77eb26e9a5c79d44a8c  sha256 7cc054fa2f81a341178a23c25e7c5fbae591d021e30194388de0eea64ee8a8bf  version 2610100032005
+media    pin/media.txt  rev b14e609d513d4ddb2788f77eb26e9a5c79d44a8c  sha256 1a4a53b0293ac24a8084d5415d142b6115f68c9cb114f79e060392101bffcc3c  version 2610071902001

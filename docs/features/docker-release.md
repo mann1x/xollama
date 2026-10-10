@@ -132,8 +132,11 @@ the MLX bindings include.
 
 The arm64 payload: the fork's arm64 CPU runtime, upstream's arm64 CUDA 12,
 CUDA 13 and JetPack 5/6 tarballs, and the engine's `aarch64` rows of
-`llm/engine/pin/` (the engine and its three media libraries; no GPU
-library, so on arm64 the engine serves the CPU and llama.cpp serves CUDA).
+`llm/engine/pin/`: the engine, its three media libraries and, since c11,
+`ggml-cuda-sbsa-aarch64.so` (347 MB, the `sbsa` component). The engine serves
+the CPU and, through that library, a GPU of compute 12.1 (DGX Spark) or 11.x
+(Jetson Thor); llama.cpp serves every other NVIDIA card. The library is built
+blind: neither opencoti nor xollama has such a machine.
 The engine's arm64 audio library needed the system's `libatomic` up to
 snapshot `2610031615001`; from `2610040710001` it does not, and the image no
 longer installs it (run on the Pi with the package removed).

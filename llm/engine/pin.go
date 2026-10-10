@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -87,7 +88,28 @@ type Pin struct {
 	// cards the CUDA 13 one has no code for. Both libraries sit beside one
 	// engine, and one process loads one of them (cudaPayload, LegacyCUDAEnv).
 	CUDA12SASS []int
-	Assets     []Asset
+	// SBSASASS is the list of the sbsa component: the CUDA library of Linux
+	// aarch64 (DGX Spark, Jetson Thor). It is the one CoversCUDA reads on that
+	// platform. opencoti has never run that library and neither have we: no
+	// such machine is in either test fleet (owner, 2026-10-10: built blind).
+	SBSASASS []int
+	Assets   []Asset
+}
+
+// hostPackageArch is the pin platform of the running binary, "" where no
+// engine is packaged. A variable so a test can stand on another platform.
+var hostPackageArch = func() string {
+	arch, _ := PackageArch(runtime.GOOS, runtime.GOARCH)
+	return arch
+}
+
+// HostCUDASASS is the sass list of the CUDA library this host loads: the sbsa
+// component's on Linux aarch64, the cuda component's everywhere else.
+func (p Pin) HostCUDASASS() []int {
+	if hostPackageArch() == "aarch64" {
+		return p.SBSASASS
+	}
+	return p.CUDASASS
 }
 
 // Accel is one (arch, backend) pair the pinned artifact accelerates.
@@ -120,10 +142,20 @@ func (p Pin) Accelerates(arch string, b Backend) bool {
 // The failure this prevents is silent: a device the DSO has no code for makes
 // the engine run the load on the CPU, which reads as slowness, not as an error.
 func (p Pin) CoversCUDA(major, minor int) bool {
-	if len(p.CUDASASS) == 0 {
+	sass := p.HostCUDASASS()
+	if len(sass) == 0 {
 		return true
 	}
-	for _, cc := range p.CUDASASS {
+	for _, cc := range sass {
+		// The sbsa library's 121 is sm_121a, the architecture-specific image:
+		// it runs on 12.1 exactly and the file carries no PTX to compile from
+		// (opencoti mail #952, cuobjdump of the published bytes).
+		if hostPackageArch() == "aarch64" && cc == 121 {
+			if major == 12 && minor == 1 {
+				return true
+			}
+			continue
+		}
 		if major == cc/10 && minor >= cc%10 {
 			return true
 		}
@@ -136,7 +168,8 @@ func (p Pin) CoversCUDA(major, minor int) bool {
 // CoversCUDA, a pin that states no sass for it covers nothing: the CUDA 12
 // payload is optional and only ever serves what it names.
 func (p Pin) CoversCUDA12(major, minor int) bool {
-	if _, ok := p.CUDA12DSO("x86_64"); !ok {
+	// The payload of this host: Linux x86_64 is the only platform that has one.
+	if _, ok := p.CUDA12DSO(hostPackageArch()); !ok {
 		return false
 	}
 	for _, cc := range p.CUDA12SASS {
@@ -543,12 +576,6 @@ func LoadPin(fsys fs.FS, dir string) (Pin, error) {
 		if eng.version < c.engineMin {
 			return Pin{}, fmt.Errorf("pin: %s %s needs engine %s or newer, the index names %s", c.name, c.version, c.engineMin, eng.version)
 		}
-		if c.name == "sbsa" {
-			// Its sass line is aarch64's and CoversCUDA has one list; taking
-			// it unrouted would send an arm64 CUDA card to bytes nothing here
-			// has checked against it.
-			return Pin{}, fmt.Errorf("pin: the sbsa component is not routed by this build; the index must say `sbsa absent`")
-		}
 	}
 
 	p := Pin{Repo: eng.repo, Rev: eng.rev, Version: eng.version, Channel: channel, platformFeatures: map[string][]string{}}
@@ -565,6 +592,8 @@ func LoadPin(fsys fs.FS, dir string) (Pin, error) {
 			p.CUDASASS = c.sass
 		case "cuda12":
 			p.CUDA12SASS = c.sass
+		case "sbsa":
+			p.SBSASASS = c.sass
 		}
 		for _, platform := range platforms {
 			for _, r := range c.rowsFor(platform) {

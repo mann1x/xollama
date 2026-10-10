@@ -149,7 +149,7 @@ llama.cpp.
 |---|---|---|
 | Linux x86_64 + CUDA | **opencoti** | primary, fully validated backend |
 | Linux x86_64 + Vulkan | **opencoti** | parity-gated against CUDA |
-| Linux aarch64 + CUDA (sbsa) | **opencoti** | shipped artifact |
+| Linux aarch64 + CUDA (`sbsa`: DGX Spark 12.1, Jetson Thor 11.x) | **opencoti** | taken with c11, built blind: never run by opencoti or here. Orin (8.7) and every other arm64 card: `llama-server` |
 | Linux / Windows CPU | **opencoti** | iqk FA kernels, always available |
 | Windows x86_64 + CUDA/Vulkan | **opencoti** | `-win-gpu` artifact |
 | **NVIDIA below compute 7.5** | `llama-server` | engine has no code for it; see below |
@@ -293,8 +293,9 @@ its own version, its own pin file and its own immutable commit: `engine`,
 `cuda`, `cuda12`, `sbsa`, `vulkan`, `macos`, `media`. An **index** composes
 them. opencoti publishes its recommended index per channel; xollama keeps its
 own, `llm/engine/pin/index.txt`, and vendors the component pin files it names
-byte-identical beside it (`sbsa` is absent: nothing here routes CUDA on
-arm64 servers). The build reads only this directory, then fetches each payload
+byte-identical beside it (`sbsa`, the CUDA library of Linux aarch64, is taken
+since c11; its `sass` list is its own, `Pin.SBSASASS`, and its `121` is
+`sm_121a`, which serves compute 12.1 exactly). The build reads only this directory, then fetches each payload
 file by its component's `repo` / `rev` / `path` and verifies sha256 and size.
 No pin is fetched at build time.
 

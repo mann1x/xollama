@@ -53,6 +53,22 @@ Baseline: **2026-10-04**, tree `4db0bcedb`, engine `2610041714001`, vulkan
 `2610041656001`, cuda `2610040656001`, media `2610040945001`, macos
 `2610041000001`; candidate rows from `v0.35.1-rc.1.xollama`.
 
+**The pin on opencoti c11 r2** (2026-10-10, engine `2610101328001`, cuda
+`2610100758001`, vulkan `2610100032004`, macos `2610100032005`, sbsa
+`2610100758003` new; before `v0.40.1-rc.3.xollama`; working directory
+`/srv/ml/xc11/r2`). Every component but media moved, so G1, G3 to G8, G10,
+G11. G1: gofmt silent, lint 0, 43 hooks, compat-origin 0 foreign, `go test`
+of the packages the change touches ok. G3: compat 8/8, `llama3` 76.7 to 77.6
+tok/s, four slots 302.8, Gemma 4 right, overflow 3.73. G4: decision scores as
+on c10, 0 stock loads; chat paths all pass. G5: PolyKV 4/4, 5 pools, 0
+refusals; no-PolyKV and idle pass. G6: speech 8/8, both video models 33/33.
+G8: 3090 123.0 cold, 124.7 to 124.9; 9070 XT 100.2 cold, 102.8, 103.6 after
+the idle; engine gone 831 ms after the kill; integrated 5.2; speech 4/4. G10
+(engine replaced in `:dev` on the Pi): 10.0 against 10.9 to 11.1, speech 5/5.
+G11 (`mac-engine.sh`): `qwen2.5:1.5b` 123.4 to 127.2, `llama3` 30.8 to 31.8,
+speech 7/7 answered. The drafter case of bug-260: dropped on both boots, 54.2
+to 54.9 tok/s. G7 needs an image and is run on `:dev` of the commit.
+
 **`v0.40.1-rc.2.xollama` and `v0.40.1-xollama`** (2026-10-10, engine c10 r3
 unchanged; Go-only delta: the `drafter` and `prune-guard` hooks). G1 to G3
 before the candidate (see the entry of 2026-10-09). G9, the update path on
@@ -470,7 +486,8 @@ GPU, the stock ollama on 11434 untouched).
   G11.
 - **Steps:** `RELEASE.md` step 7, "The image on dietpi5", on both hosts.
   Before an image exists for the tree, `scripts/gates/pi-image.sh` runs the
-  published `:dev` image with only the engine's files replaced.
+  published `:dev` image with only the engine's files replaced
+  (`TAG=`, `BASE=`; the engine is the tree's, from `stage-engine.sh aarch64`).
 - **Expected:** the right architecture, `GET /api/xollama` names the version,
   `/usr/lib/ollama/PAYLOAD` names the pinned runtime and engine, a 512-token
   generation on opencoti and one on llama.cpp, a speech clip transcribed
@@ -564,6 +581,9 @@ Said here so nobody takes silence for a pass:
 - **CUDA 12** (Maxwell, Pascal, Volta): legacy. It is pinned and shipped
   without a card to run it on, and never holds a release.
 - **The NVIDIA payloads of the arm64 image** (Jetson, SBSA): no such hardware.
+  That includes the engine's own arm64 CUDA library (`sbsa`, DGX Spark and
+  Jetson Thor, pinned since c11): built blind, never run by opencoti or here.
+  It never holds a release; the notes say so and name `XOLLAMA_ENGINE=llamacpp`.
 - **Image and video models on macOS**: untested.
 - **The eSpeak data path limit on Windows** (about 260 characters): not
   measured.

@@ -1,0 +1,16 @@
+format     2
+component  sbsa
+version    2610100758003
+built-from 2610100940001
+repo       ManniX-ITA/opencoti-llamafile
+rev        455b729bf9bba49d8409301be811784eab675947
+abi        ggml ea73e6b2e6fba55c93a75ee8f3e5ba968e906eb20faf8746c792ead5c92f1285
+abi-source exported
+engine-min 2610100921001
+gated-with 2610100921001
+gated-with 2610100940001
+gated-with 2610101328001
+sass       110 121
+requires   aarch64        glibc          2.29
+file  aarch64        cuda       components/sbsa/2610100758003/ggml-cuda-sbsa-aarch64.so  ff733a2f9e6aa6d27ca3febb05b632fe1e5ef467668763afb108a56396488ef6  346864920
+file  any            build-info components/sbsa/2610100758003/BUILD_INFO.sbsa.md  125806a5052120062ca04a91bd6a2d9dab796b6ab42f47fee49078d930dceffe  2018

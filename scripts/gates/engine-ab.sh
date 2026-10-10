@@ -4,7 +4,7 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd); repo=$(git -C "$here" rev-parse --show-toplevel)
 eng=$("$here/stage-engine.sh" x86_64)
-OUT=${OUT:-/srv/ml/gates/run}; mkdir -p "$OUT/ab"
+OUT=${OUT:-/srv/ml/gates/run}; install -d -o ollama "$OUT"; mkdir -p "$OUT/ab"  # the run writes its results as `ollama`
 # The script starts <dir>/xollama: give it a directory holding the binary under test.
 cp -r "$repo/scripts" "$OUT/ab/" && ln -sfn "${X:-$repo/xollama}" "$OUT/ab/xollama"
 cd "$OUT"

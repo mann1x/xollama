@@ -161,7 +161,7 @@ func deviceUnsupported(p Platform, d Device) string {
 	if d.Backend == BackendCUDA {
 		if pin, err := loadPin(); err == nil && !pin.CoversCUDA(d.ComputeMajor, d.ComputeMinor) {
 			return fmt.Sprintf("the pinned engine %s carries CUDA code for compute %s only and this device is %d.%d",
-				pin.Tag, sassList(pin.CUDASASS), d.ComputeMajor, d.ComputeMinor)
+				pin.Tag, sassList(pin.HostCUDASASS()), d.ComputeMajor, d.ComputeMinor)
 		}
 	}
 	return ""
