@@ -19,10 +19,12 @@
 # llama.cpp for Metal (llama-server, llama-quantize) is NOT here: there is no
 # pinned macOS build of it, so build_darwin.sh still compiles it.
 
+# v0.40.2 (2026-10-10): cut by the fork from upstream v0.40.2's
+# ollama-darwin.tgz (e888b763…); same MLX_VERSION, rebuilt bytes.
 repo      mann1x/ollama
-tag       v0.40.1-thinkbudget
+tag       v0.40.2-thinkbudget
 asset     ollama-darwin-mlx.tgz
-sha256    9b633135fac850a38886f07c0dde45dcd0261b23539a2948854d9eb34748fd53
-upstream  v0.40.1
+sha256    171d8c134ee425ed41a08f88914b720ac2124ae86a8e1ab52c0b8da2900484f4
+upstream  v0.40.2
 mlx       a59cc23190f1e26fabcba8693607bb4c34b2ac2b
 mlx_c     ebc88f10caa1b625e6b581437a8dea6df8a70085
