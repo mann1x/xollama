@@ -14,13 +14,15 @@
 # The gpu rows are upstream's arm64 tarballs, as its own arm64 image carries
 # them: CUDA 12 and 13 for arm servers, and the two JetPack payloads. A
 # Raspberry Pi uses none of them and runs on the CPU.
+# v0.40.2 (2026-10-10): the runtime is v0.40.1-thinkbudget's file, reused byte
+# for byte under the new tag; the gpu rows are upstream v0.40.2's.
 repo      mann1x/ollama
-tag       v0.40.1-thinkbudget
+tag       v0.40.2-thinkbudget
 asset     ollama-linux-arm64-runtime.tgz
 sha256    ec9660328ba5adccc20655638cf65a34c0dfc62a6db93d09980ec1ff50b61745
 inputs    d0cc3cdd727fb23a44722f94920d54f312f3989add1c8798a3c79a66989f7d76
 built     d0508358705978533c6ddc7fb24f23556a659f8e
-upstream  v0.40.1
-gpu       ollama-linux-arm64.tar.zst           f5cbd9a97e0de9502ef928cb993f6d16468e25be6d55a8529d7fd2b67a130bcb
-gpu       ollama-linux-arm64-jetpack5.tar.zst  cfdcf3a55a6f9c743b90e8ad7c403684f141b1f12a0a304034fe014ca2ab8afb
-gpu       ollama-linux-arm64-jetpack6.tar.zst  b5eade064bf107120b33e581b7ccb97e7ec685f0d12b1302fb883f356a7ffd82
+upstream  v0.40.2
+gpu       ollama-linux-arm64.tar.zst           92b3ef3d5e10f5849273bfa1345000f2a8ce8bc834e95061ff5b9df5d08e3c3f
+gpu       ollama-linux-arm64-jetpack5.tar.zst  fb12be570b961199bdd6a9f0872ba2af1d6ec3b9f89d0d6be34e7d8dbd6e760d
+gpu       ollama-linux-arm64-jetpack6.tar.zst  69c89b789e7b9a427a09fb33c8236777d695b50e3a13e35ce4e7e9a2851e7d4c

@@ -53,6 +53,27 @@ Baseline: **2026-10-04**, tree `4db0bcedb`, engine `2610041714001`, vulkan
 `2610041656001`, cuda `2610040656001`, media `2610040945001`, macos
 `2610041000001`; candidate rows from `v0.35.1-rc.1.xollama`.
 
+**The upstream v0.40.2 sync** (2026-10-10, `dev` at `4c0dfdd33`, engine and
+runtimes unchanged; working directory `/srv/ml/xc11/sync402`). An upstream
+sync: G1 to G5, G10, and G2, G9 on the candidate. G1: gofmt silent, vet
+clean, `go test ./...` 71 ok, lint 0, 43 hooks, compat-origin 0 foreign,
+security check without a delta. G3: compat 8/8, `llama3` 77.2 to 77.9 tok/s,
+four slots 308.3, overflow 3.05. G4: decision and chat paths pass. G5: 6 of 6
+council runs. G6: speech 8/8, video 33/33. G10 on `:dev`: amd64 85.7 to 85.9
+and 86.0 to 86.2, speech 4/4; arm64 9.9 to 10.0 against 10.9 to 11.0, speech
+3/3. G7 on `:dev`: 38.8 to 39.0 tok/s, 0 crash lines.
+
+**`v0.40.1-xollama.1`** (2026-10-10, merge `9c8a7b392`, run 38063943913;
+a re-release, full check). G2: every hosted leg passes. G12: 8 files match,
+payload id `f5836840…`, the image tag equals `:dev`, `:latest` unmoved. G9:
+the full installer over `0.40.1-xollama` exits 0 in 31 s; installed server
+3090 124.7 to 125.0 tok/s, 9070 XT 100.4 cold and 102.9 to 103.0, integrated
+4.9 to 5.0. G11 on the workflow's app: `qwen2.5:1.5b` 124.2 to 129.0,
+`llama3` 31.8 to 32.0, speech 7/7. G10 on the tag: amd64 85.7 to 85.8 and
+85.8 to 85.9, speech 4/4; arm64 10.0 against 10.9 to 11.0, speech 3/3. G7 on
+the tag: 27.6 to 37.5 tok/s on a host loaded by other tenants (38.8 to 39.0
+unloaded, same engine), 0 crash lines.
+
 **The pin on opencoti c11 r2** (2026-10-10, engine `2610101328001`, cuda
 `2610100758001`, vulkan `2610100032004`, macos `2610100032005`, sbsa
 `2610100758003` new; before `v0.40.1-rc.3.xollama`; working directory

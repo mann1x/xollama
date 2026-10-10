@@ -37,3 +37,4 @@ paths.
 | `image-x86.sh` | G10 | solidPC |
 | `mac-engine.sh` (`D=` a directory with `src/`, this tree, and `stage/`, from `stage-engine.sh macos-aarch64`): builds the server there and runs it in a copy of the installed app's Resources; `bench.sh`, `speech-mac.sh` | G11 before an app exists for the tree | Mac mini |
 | `mac-ci.sh` | G11 on the app the release workflow built (the draft's zip and DMG) | Mac mini |
+| `mac-update.sh` (`T=` the published version): the installed app updates itself to it with pre-releases allowed, a hidden start applies it; signature, staple, bench | G11, the update path, before promoting | Mac mini |

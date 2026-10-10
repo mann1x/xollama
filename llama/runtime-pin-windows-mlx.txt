@@ -33,10 +33,13 @@
 # Moves with llama/runtime-pin-darwin.txt and the two Linux runtime pins on
 # every fork sync.
 
+# v0.40.2 (2026-10-10): the same file, 31c743bd…, copied unchanged to the
+# fork's v0.40.2-thinkbudget (MLX_VERSION, MLX_C_VERSION and mlx/ did not move;
+# fork mail #926). Only the tag below changed.
 repo      mann1x/ollama
-tag       v0.40.1-thinkbudget
+tag       v0.40.2-thinkbudget
 asset     ollama-windows-amd64-mlx-reldir.zip
 sha256    31c743bded2e27639cf721bd41361e38beb478e4c7fb6c141518fb0164f89206
-upstream  v0.40.1
+upstream  v0.40.2
 mlx       a59cc23190f1e26fabcba8693607bb4c34b2ac2b
 mlx_c     ebc88f10caa1b625e6b581437a8dea6df8a70085
