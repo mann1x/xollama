@@ -67,7 +67,10 @@ the idle; engine gone 831 ms after the kill; integrated 5.2; speech 4/4. G10
 (engine replaced in `:dev` on the Pi): 10.0 against 10.9 to 11.1, speech 5/5.
 G11 (`mac-engine.sh`): `qwen2.5:1.5b` 123.4 to 127.2, `llama3` 30.8 to 31.8,
 speech 7/7 answered. The drafter case of bug-260: dropped on both boots, 54.2
-to 54.9 tok/s. G7 needs an image and is run on `:dev` of the commit.
+to 54.9 tok/s. On `:dev` of `5cd88a68f` (run 38058625153): G7 38.8 to 39.0
+tok/s on the integrated GPU through the image, 29/29 layers, polls 200, 0
+crash lines; G10 amd64 opencoti 85.4 to 85.8, llama.cpp 85.7 to 86.2, speech
+4/4; G10 arm64 10.0 to 10.1 against 11.0, speech 3/3.
 
 **`v0.40.1-rc.2.xollama` and `v0.40.1-xollama`** (2026-10-10, engine c10 r3
 unchanged; Go-only delta: the `drafter` and `prune-guard` hooks). G1 to G3
