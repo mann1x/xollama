@@ -53,6 +53,18 @@ Baseline: **2026-10-04**, tree `4db0bcedb`, engine `2610041714001`, vulkan
 `2610041656001`, cuda `2610040656001`, media `2610040945001`, macos
 `2610041000001`; candidate rows from `v0.35.1-rc.1.xollama`.
 
+**`v0.40.2-rc.1.xollama`** (2026-10-10, merge `5df6f674a`, run 38077518531;
+the first build on upstream v0.40.2, dry run 38075545766 first). G2: every
+hosted leg passes. G12: 8 files match on the draft and the candidate, payload
+id `3e97e1de…` on both, the tag's image equals `:dev`, `:latest` unmoved. G9:
+the full installer over `0.40.1-xollama.1` exit 0 in 30 s, the small one over
+the draft exit 0 in 4 s; 3090 124.7 to 125.2 tok/s, 9070 XT 102.9 to 103.2,
+integrated 5.1; stock llama.cpp on upstream's v0.40.2 CUDA backend 125.0 to
+125.3. G11 on the draft's app: `qwen2.5:1.5b` 128.2 to 128.8, `llama3` 31.7
+to 32.2, speech 7/7; MLX (`qwen3.5:2b-nvfp4`) 78.1 to 78.3. G10 on the tag:
+amd64 86.0 to 86.3 and 86.1 to 86.3, speech 4/4; arm64 10.1 against 10.9 to
+11.1, speech 3/3.
+
 **The upstream v0.40.2 sync** (2026-10-10, `dev` at `4c0dfdd33`, engine and
 runtimes unchanged; working directory `/srv/ml/xc11/sync402`). An upstream
 sync: G1 to G5, G10, and G2, G9 on the candidate. G1: gofmt silent, vet
