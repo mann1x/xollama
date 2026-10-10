@@ -28,13 +28,16 @@
 # This file is outside the digested paths on purpose, so committing it does not
 # invalidate itself.
 
+# v0.40.2 (2026-10-10): the runtime is v0.40.1-thinkbudget's file, reused byte
+# for byte under the new tag (inputs unchanged, so `built` stays d0508358);
+# the gpu rows are upstream v0.40.2's rebuilt archives.
 repo      mann1x/ollama
-tag       v0.40.1-thinkbudget
+tag       v0.40.2-thinkbudget
 asset     ollama-linux-amd64-runtime.tgz
 sha256    35b4194a8e6475e3bc31eb142033fdc6d2985d23dd6e350d97c9725c92091241
 inputs    d0cc3cdd727fb23a44722f94920d54f312f3989add1c8798a3c79a66989f7d76
 built     d0508358705978533c6ddc7fb24f23556a659f8e
 
-upstream  v0.40.1
-gpu       ollama-linux-amd64.tar.zst      a7aebbe3dd76ccf1351a56a3e57218ad4863cb5f9a9938c58de87a37555e355d
-gpu       ollama-linux-amd64-mlx.tar.zst  69d39f4bb0e0fde9cdd14790630e971c201d75e96191c85483a505fe95425858
+upstream  v0.40.2
+gpu       ollama-linux-amd64.tar.zst      726bee78706c281b0eeef00746efe51a044d71c592c3f0b195820707f31fdf04
+gpu       ollama-linux-amd64-mlx.tar.zst  74d4583c14d24da5e6240674c50b0fdcab369645ca04876f000fff8d4f6a4d66
