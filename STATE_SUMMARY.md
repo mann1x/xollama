@@ -5,6 +5,12 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-10 — `v0.40.1-xollama.1` is promoted (owner, 18:39: "promote it, then move to v0.40.2").**
+> - Before it, the step still owed: the macOS in-app update (`scripts/gates/mac-update.sh`, new in the repository, `T=0.40.1-xollama.1`). The installed `0.40.0-rc.1.xollama` app found the pre-release, "update checksum verified", "bundle passed verification", a hidden start applied it: server and bundle `0.40.1-xollama.1`, codesign ok, notarized Developer ID, staple valid, 129.6 to 130.0 tok/s. The script's wait counted log lines from before the app rotated its log and ran out its 10 minutes; it now reads lines by timestamp.
+> - `gh release edit v0.40.1-xollama.1 --prerelease=false --latest` at 18:51. Discord announced (run of 16:51Z, success). The image workflow was run on the tag again (run 38069341248) so `:latest` moves.
+> - The drafter-dropped field for `show`/`ps` comes with opencoti c12 (stage 32.2, owner and opencoti's receipt on #958); nothing to do here until its shape is mailed.
+> - Next: the sync to upstream v0.40.2 on the fork's manifest `5a7be425` (mail #926), then `v0.40.2-rc.1.xollama`.
+
 > **2026-10-10 — `v0.40.1-xollama.1` is built and published as a pre-release (not promoted): opencoti c11 r2, the Spark and Thor library, Mesa's Vulkan drivers in the image.**
 > - PR #20, merge `9c8a7b392`, run 38063943913 green; hosted test legs all pass after `a7f749831` (the macOS leg had failed on the host-architecture reading, bug-261). The name is the owner's choice: a candidate is refused once `v0.40.1-xollama` is published.
 > - G12: 8 files match `sha256sum.txt`; payload id `f5836840…` (changed, so the full installer). Image `0.40.1-xollama.1` = `:dev` (`8b497ce6…`, amd64 + arm64), `:latest` unmoved (`4acba360…`).
