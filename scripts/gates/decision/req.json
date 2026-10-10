@@ -1,0 +1,1 @@
+{"model":"nimble","state":"Our checkout has returned 500 errors since 9am.","questions":{"label":{"type":"choice","instructions":"Which label fits this ticket?","criteria":{"billing":"Payments and refunds","bug":"Software errors","account":"Login and account access"}}}}

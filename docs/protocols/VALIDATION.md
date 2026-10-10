@@ -318,19 +318,27 @@ Wrapper: `scripts/gates/council.sh <tag>...`, which runs
   with every frame the template asks for.
 - **Baseline:** speech 8 of 8; video 33 of 33 frames on both models.
 
-### G7. Vulkan on Linux
+### G7. Vulkan on Linux, through the image
 
-- **Where:** solidPC, the Renoir integrated GPU, CUDA hidden
-  (`CUDA_VISIBLE_DEVICES=`, `OLLAMA_VULKAN=true`).
-- **Steps:** `scripts/gates/vulkan-linux.sh`: four 512-token runs
-  (`bench.sh`), then `/api/engine?endpoint=props` and `kv` twice with the
-  model loaded, then one more generation.
-- **Expected:** every layer offloaded, `props` and `kv` answer 200, the
-  generation after them works. `crash lines in the server log` reads 4 on a
-  good run: they are the CUDA probes failing with the card hidden, as the
-  test intends.
-- **Baseline:** 33.5 tok/s (`qwen2.5:1.5b`), 200 on all four polls. The engine
-  before (`2610040950001`) answered 502 with the engine dead (bug-3921).
+- **Where:** solidPC, the Renoir integrated GPU, in a container of the image
+  under test with the GPU's render node passed in (`/dev/dri/renderD129`).
+  Since 2026-10-10: the host's own Vulkan drivers (RADV 20.3.5, amdgpu-pro
+  20.40) are refused by the engine since c10, so on the host this gate could
+  only show the refusal. The image carries Mesa's drivers
+  (`mesa-vulkan-drivers`, `Dockerfile.xollama`), and the container is how a
+  user in that position runs it.
+- **Steps:** `IMAGE=<image> scripts/gates/vulkan-linux.sh`: the device list,
+  four 512-token runs (`bench.sh`), `/api/engine?endpoint=props` and `kv`
+  twice with the model loaded, one more generation. The container has its own
+  store (`VKSTORE`, default `/srv/ml/gates/vkstore`) and is removed at the end.
+- **Expected:** the GPU listed with backend Vulkan and engine opencoti, every
+  layer offloaded, `props` and `kv` answer 200, the generation after them
+  works, `crash lines in the server log (want 0): 0`. With no device passed
+  the list is empty: llvmpipe is never a GPU.
+- **Baseline:** 38.3 to 38.9 tok/s (`qwen2.5:1.5b`, Mesa 25.2.8 RADV, 29/29
+  layers), 200 on all four polls, 36.2 after them; measured 2026-10-10 on a
+  test image (the `:dev` image of that day plus the package, engine c10
+  `2610072136001`). On the host before the refusal: 33.5 tok/s.
 
 ### G8. Windows, the engine beside an installed xOllama
 

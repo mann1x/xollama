@@ -211,14 +211,39 @@ it are in [Choosing an engine](/xollama/engines) and
 Loads served by stock `llama.cpp` have Ollama's own requirements; see
 [GPU support](/gpu).
 
-### Vulkan
+### AMD and Intel GPUs (Vulkan)
 
-The image carries upstream's Vulkan backend and the Vulkan loader, as
-upstream's own image does. Pass the device nodes in with
-`--device /dev/dri`. `OLLAMA_VULKAN=0` turns Vulkan discovery off, and
-`GGML_VK_VISIBLE_DEVICES` picks devices. The engine the image currently pins
-carries its own Vulkan payload, so a Vulkan load is served by opencoti;
-`XOLLAMA_ENGINE=llamacpp` keeps it on upstream's backend.
+An AMD or Intel GPU, integrated or discrete, is used through Vulkan, and the
+image carries the drivers itself (Mesa's `mesa-vulkan-drivers`, from Ubuntu
+24.04). The host needs only its kernel driver (`amdgpu`, `i915`, `xe`), which
+every current distribution loads. Pass the GPU's render node in:
+
+```shell
+docker run -d --device /dev/dri/renderD128 -v xollama:/root/.ollama -p 22434:22434 --name xollama mannixita/xollama
+```
+
+- **Which node:** `ls -l /sys/class/drm/renderD*/device/driver` names the
+  driver behind each one. On a machine that also has an NVIDIA card the AMD or
+  Intel GPU is often `renderD129`. `--device /dev/dri` passes all of them.
+- **Why the image and not the host:** the engine refuses Vulkan drivers it
+  knows to lose the device or crash, among them the RADV 20.x and `amdgpu-pro`
+  20.40 that Debian 11 carries. A machine with such drivers cannot use that
+  GPU with xollama installed on the host, and can in the container, because
+  the container brings a current Mesa.
+- **Check it:** `curl localhost:22434/api/xollama/devices` lists the GPU with
+  `"backend":"Vulkan"`, and `docker logs xollama` has an `inference compute`
+  line for it. No software renderer is ever listed as a GPU.
+- An integrated GPU shares the system's memory and is slower than a discrete
+  card. With a discrete GPU present, a model is placed on the integrated one
+  only when it is pinned there (`xollama tweak model <model> --devices=...`).
+- Together with an NVIDIA card: add `--gpus=all`; both are listed.
+- `OLLAMA_VULKAN=0` turns Vulkan discovery off, `GGML_VK_VISIBLE_DEVICES`
+  picks devices, and `XOLLAMA_ENGINE=llamacpp` serves Vulkan loads on
+  upstream's backend instead of opencoti's.
+
+Measured on a Ryzen 5000G-series integrated GPU whose host drivers (RADV
+20.3.5) the engine refuses: `qwen2.5:1.5b` at 38 tok/s in the container, all
+layers on the GPU, against 19 to 32 tok/s on that machine's CPU.
 
 ## Using it
 
