@@ -45,10 +45,12 @@ pre-release, a draft, a tag with no release or any branch build moves `dev`.
 
 arm64 starts with the 0.35.1 builds: `dev` has it, and `latest` gets it with
 the first 0.35.1 release. On arm64 the image carries CUDA 12, CUDA 13 and
-JetPack 5/6 payloads for NVIDIA hardware; everything else runs on the CPU. A
-Raspberry Pi 5 with 8 GB serves a 1.5B model at about 10 tokens per second,
-and speech and transcription work there. The NVIDIA payloads on arm64 have
-not been run by us. There is no ROCm build: the pinned engine declares no
+JetPack 5/6 payloads for NVIDIA hardware, and since the c11 engine the
+engine's own CUDA library for a DGX Spark or a Jetson Thor (see
+[DGX Spark and Jetson Thor](#dgx-spark-and-jetson-thor)); everything else runs
+on the CPU. A Raspberry Pi 5 with 8 GB serves a 1.5B model at about 10 tokens
+per second, and speech and transcription work there. The NVIDIA payloads on
+arm64 have not been run by us. There is no ROCm build: the pinned engine declares no
 ROCm acceleration.
 
 ## What is in the image
@@ -195,7 +197,7 @@ them to Docker: `--gpus '"device=0,1"'`. Without `--gpus` the server runs on
 the CPU.
 
 Which engine serves a load depends on the card. With the engine the image
-currently pins (opencoti build `2610040710001`):
+currently pins (opencoti c11, build `2610101328001`), on linux/amd64:
 
 | The load's NVIDIA GPUs | Served by |
 |---|---|
@@ -211,14 +213,72 @@ it are in [Choosing an engine](/xollama/engines) and
 Loads served by stock `llama.cpp` have Ollama's own requirements; see
 [GPU support](/gpu).
 
-### Vulkan
+### DGX Spark and Jetson Thor
 
-The image carries upstream's Vulkan backend and the Vulkan loader, as
-upstream's own image does. Pass the device nodes in with
-`--device /dev/dri`. `OLLAMA_VULKAN=0` turns Vulkan discovery off, and
-`GGML_VK_VISIBLE_DEVICES` picks devices. The engine the image currently pins
-carries its own Vulkan payload, so a Vulkan load is served by opencoti;
-`XOLLAMA_ENGINE=llamacpp` keeps it on upstream's backend.
+<Warning>
+  Built blind. Neither opencoti nor xollama has a DGX Spark or a Jetson Thor:
+  the engine's CUDA library for them (`ggml-cuda-sbsa-aarch64.so`) has never
+  been run. If a load fails or misbehaves, `XOLLAMA_ENGINE=llamacpp` serves
+  everything on stock `llama.cpp`, the same build upstream Ollama ships for
+  these machines. Reports are welcome.
+</Warning>
+
+The arm64 image is the one for these machines; start it as in
+[NVIDIA](#nvidia) (driver, NVIDIA Container Toolkit, `--gpus all`). On
+linux/arm64 the routing is:
+
+| The load's NVIDIA GPU | Served by |
+|---|---|
+| compute capability 12.1 (DGX Spark, GB10) | opencoti, its arm64 CUDA 13 library |
+| compute capability 11.x (Jetson Thor) | opencoti, the same library |
+| anything else (Jetson Orin 8.7, JetPack 5 and 6 boards) | stock `llama.cpp`, on upstream's CUDA and JetPack backends |
+
+These machines share one memory between the CPU and the GPU. The engine reads
+the free memory from the system (`MemAvailable`) when CUDA reports the GPU as
+integrated. If it places too little on the GPU, pass
+`-e GGML_CUDA_ENABLE_UNIFIED_MEMORY=1`, which forces that reading.
+`-e XOLLAMA_ENGINE_FALLBACK=1` retries a load the engine fails once on stock
+`llama.cpp`.
+
+Upstream Ollama has open reports on the DGX Spark that apply to loads served
+by stock `llama.cpp` here: a crash with Gemma 4 at four parallel requests
+([#15318](https://github.com/ollama/ollama/issues/15318)), and an illegal
+memory access with flash attention on prompts of 1024 to 2044 tokens
+([#17596](https://github.com/ollama/ollama/issues/17596)).
+
+### AMD and Intel GPUs (Vulkan)
+
+An AMD or Intel GPU, integrated or discrete, is used through Vulkan, and the
+image carries the drivers itself (Mesa's `mesa-vulkan-drivers`, from Ubuntu
+24.04). The host needs only its kernel driver (`amdgpu`, `i915`, `xe`), which
+every current distribution loads. Pass the GPU's render node in:
+
+```shell
+docker run -d --device /dev/dri/renderD128 -v xollama:/root/.ollama -p 22434:22434 --name xollama mannixita/xollama
+```
+
+- **Which node:** `ls -l /sys/class/drm/renderD*/device/driver` names the
+  driver behind each one. On a machine that also has an NVIDIA card the AMD or
+  Intel GPU is often `renderD129`. `--device /dev/dri` passes all of them.
+- **Why the image and not the host:** the engine refuses Vulkan drivers it
+  knows to lose the device or crash, among them the RADV 20.x and `amdgpu-pro`
+  20.40 that Debian 11 carries. A machine with such drivers cannot use that
+  GPU with xollama installed on the host, and can in the container, because
+  the container brings a current Mesa.
+- **Check it:** `curl localhost:22434/api/xollama/devices` lists the GPU with
+  `"backend":"Vulkan"`, and `docker logs xollama` has an `inference compute`
+  line for it. No software renderer is ever listed as a GPU.
+- An integrated GPU shares the system's memory and is slower than a discrete
+  card. With a discrete GPU present, a model is placed on the integrated one
+  only when it is pinned there (`xollama tweak model <model> --devices=...`).
+- Together with an NVIDIA card: add `--gpus=all`; both are listed.
+- `OLLAMA_VULKAN=0` turns Vulkan discovery off, `GGML_VK_VISIBLE_DEVICES`
+  picks devices, and `XOLLAMA_ENGINE=llamacpp` serves Vulkan loads on
+  upstream's backend instead of opencoti's.
+
+Measured on a Ryzen 5000G-series integrated GPU whose host drivers (RADV
+20.3.5) the engine refuses: `qwen2.5:1.5b` at 38 tok/s in the container, all
+layers on the GPU, against 19 to 32 tok/s on that machine's CPU.
 
 ## Using it
 

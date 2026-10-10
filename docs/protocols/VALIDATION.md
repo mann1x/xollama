@@ -53,6 +53,36 @@ Baseline: **2026-10-04**, tree `4db0bcedb`, engine `2610041714001`, vulkan
 `2610041656001`, cuda `2610040656001`, media `2610040945001`, macos
 `2610041000001`; candidate rows from `v0.35.1-rc.1.xollama`.
 
+**The pin on opencoti c11 r2** (2026-10-10, engine `2610101328001`, cuda
+`2610100758001`, vulkan `2610100032004`, macos `2610100032005`, sbsa
+`2610100758003` new; before `v0.40.1-rc.3.xollama`; working directory
+`/srv/ml/xc11/r2`). Every component but media moved, so G1, G3 to G8, G10,
+G11. G1: gofmt silent, lint 0, 43 hooks, compat-origin 0 foreign, `go test`
+of the packages the change touches ok. G3: compat 8/8, `llama3` 76.7 to 77.6
+tok/s, four slots 302.8, Gemma 4 right, overflow 3.73. G4: decision scores as
+on c10, 0 stock loads; chat paths all pass. G5: PolyKV 4/4, 5 pools, 0
+refusals; no-PolyKV and idle pass. G6: speech 8/8, both video models 33/33.
+G8: 3090 123.0 cold, 124.7 to 124.9; 9070 XT 100.2 cold, 102.8, 103.6 after
+the idle; engine gone 831 ms after the kill; integrated 5.2; speech 4/4. G10
+(engine replaced in `:dev` on the Pi): 10.0 against 10.9 to 11.1, speech 5/5.
+G11 (`mac-engine.sh`): `qwen2.5:1.5b` 123.4 to 127.2, `llama3` 30.8 to 31.8,
+speech 7/7 answered. The drafter case of bug-260: dropped on both boots, 54.2
+to 54.9 tok/s. On `:dev` of `5cd88a68f` (run 38058625153): G7 38.8 to 39.0
+tok/s on the integrated GPU through the image, 29/29 layers, polls 200, 0
+crash lines; G10 amd64 opencoti 85.4 to 85.8, llama.cpp 85.7 to 86.2, speech
+4/4; G10 arm64 10.0 to 10.1 against 11.0, speech 3/3.
+
+**`v0.40.1-rc.2.xollama` and `v0.40.1-xollama`** (2026-10-10, engine c10 r3
+unchanged; Go-only delta: the `drafter` and `prune-guard` hooks). G1 to G3
+before the candidate (see the entry of 2026-10-09). G9, the update path on
+eleven2go: `xOllamaUpdate.exe` rc.1 to rc.2 and rc.2 to the release, exit 0
+both times, payload id `10ffa638…` unchanged; 3090 CUDA 123.7 to 123.9 tok/s,
+9070 XT Vulkan 103.1, integrated 5.4, 37/37 layers; the release 122.4 and
+123.6 on the 3090. G12: 8 files match `sha256sum.txt` on both; the candidate's
+image is amd64 + arm64 and `:latest` did not move. **Not covered by a gate
+until now:** a drafter at depth on a card the model nearly fills (bug-260,
+`docs/features/gemma4-drafter.md`); the check is `/srv/ml/xc10/drafter/fit16.sh`.
+
 **On opencoti c8** (2026-10-05, engine `2610042347001`, the libraries
 unchanged; working directory `/srv/ml/xc8`), every engine gate was run again
 on the new bytes before candidate 2. G3: compat 8/8, llama3 77.3 tok/s, 4
@@ -307,19 +337,27 @@ Wrapper: `scripts/gates/council.sh <tag>...`, which runs
   with every frame the template asks for.
 - **Baseline:** speech 8 of 8; video 33 of 33 frames on both models.
 
-### G7. Vulkan on Linux
+### G7. Vulkan on Linux, through the image
 
-- **Where:** solidPC, the Renoir integrated GPU, CUDA hidden
-  (`CUDA_VISIBLE_DEVICES=`, `OLLAMA_VULKAN=true`).
-- **Steps:** `scripts/gates/vulkan-linux.sh`: four 512-token runs
-  (`bench.sh`), then `/api/engine?endpoint=props` and `kv` twice with the
-  model loaded, then one more generation.
-- **Expected:** every layer offloaded, `props` and `kv` answer 200, the
-  generation after them works. `crash lines in the server log` reads 4 on a
-  good run: they are the CUDA probes failing with the card hidden, as the
-  test intends.
-- **Baseline:** 33.5 tok/s (`qwen2.5:1.5b`), 200 on all four polls. The engine
-  before (`2610040950001`) answered 502 with the engine dead (bug-3921).
+- **Where:** solidPC, the Renoir integrated GPU, in a container of the image
+  under test with the GPU's render node passed in (`/dev/dri/renderD129`).
+  Since 2026-10-10: the host's own Vulkan drivers (RADV 20.3.5, amdgpu-pro
+  20.40) are refused by the engine since c10, so on the host this gate could
+  only show the refusal. The image carries Mesa's drivers
+  (`mesa-vulkan-drivers`, `Dockerfile.xollama`), and the container is how a
+  user in that position runs it.
+- **Steps:** `IMAGE=<image> scripts/gates/vulkan-linux.sh`: the device list,
+  four 512-token runs (`bench.sh`), `/api/engine?endpoint=props` and `kv`
+  twice with the model loaded, one more generation. The container has its own
+  store (`VKSTORE`, default `/srv/ml/gates/vkstore`) and is removed at the end.
+- **Expected:** the GPU listed with backend Vulkan and engine opencoti, every
+  layer offloaded, `props` and `kv` answer 200, the generation after them
+  works, `crash lines in the server log (want 0): 0`. With no device passed
+  the list is empty: llvmpipe is never a GPU.
+- **Baseline:** 38.3 to 38.9 tok/s (`qwen2.5:1.5b`, Mesa 25.2.8 RADV, 29/29
+  layers), 200 on all four polls, 38.9 after them; measured 2026-10-10 on the
+  published `:dev` image of `cb6b910b0` (engine c10 r3 `2610090401001`), 37.8
+  on the first run. On the host before the refusal: 33.5 tok/s.
 
 ### G8. Windows, the engine beside an installed xOllama
 
@@ -451,7 +489,8 @@ GPU, the stock ollama on 11434 untouched).
   G11.
 - **Steps:** `RELEASE.md` step 7, "The image on dietpi5", on both hosts.
   Before an image exists for the tree, `scripts/gates/pi-image.sh` runs the
-  published `:dev` image with only the engine's files replaced.
+  published `:dev` image with only the engine's files replaced
+  (`TAG=`, `BASE=`; the engine is the tree's, from `stage-engine.sh aarch64`).
 - **Expected:** the right architecture, `GET /api/xollama` names the version,
   `/usr/lib/ollama/PAYLOAD` names the pinned runtime and engine, a 512-token
   generation on opencoti and one on llama.cpp, a speech clip transcribed
@@ -545,6 +584,9 @@ Said here so nobody takes silence for a pass:
 - **CUDA 12** (Maxwell, Pascal, Volta): legacy. It is pinned and shipped
   without a card to run it on, and never holds a release.
 - **The NVIDIA payloads of the arm64 image** (Jetson, SBSA): no such hardware.
+  That includes the engine's own arm64 CUDA library (`sbsa`, DGX Spark and
+  Jetson Thor, pinned since c11): built blind, never run by opencoti or here.
+  It never holds a release; the notes say so and name `XOLLAMA_ENGINE=llamacpp`.
 - **Image and video models on macOS**: untested.
 - **The eSpeak data path limit on Windows** (about 260 characters): not
   measured.

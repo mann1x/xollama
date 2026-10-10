@@ -79,6 +79,54 @@ Not the cause of a low number here, checked: the engine keeps the target's
 117 to 119 tok/s on the essay with the engine called directly
 (`/srv/ml/xc10/drafter/tokembd.out`).
 
+## Known issue: a card the model nearly fills (opencoti c10)
+
+With a KVarN KV cache, opencoti c10 holds `fit target + 824 MiB` for an
+assistant head (it takes 485) and 1000 MiB for the SWA ring (it takes 736)
+before it sizes the record window. When the free memory after the weights is
+below that hold, about 2.5 GB with this head, the record budget is 0: one group
+stays on the GPU, the rest are read from host memory.
+
+| Where | Free at load | Without the head | With the head |
+|---|---|---|---|
+| pandorum, RTX 5080, deep Cerebriline turns | 14985 MiB | 85 to 122 tok/s | 12 to 19 tok/s |
+| solidPC, RTX 3090 held to the same, 45k-token prompt | 14984 MiB | 54 tok/s | 3.1 to 3.4 tok/s |
+| pandorum, a 40-token prompt | 14985 MiB | 120 to 122 tok/s | 203 to 206 tok/s |
+
+Read it in the load log: `KVarN record budget: free … hold …` and
+`record window = 1 / N groups … (0 MiB budget`. A stated
+`LLAMA_ARG_FIT_TARGET` does not lower the hold (the 824 is added to it);
+measured with 741, 512 and 256 (`/srv/ml/xc10/drafter/fit16.sh`). The fix is
+the engine's (opencoti mails #939 and #940, 2026-10-10). Until then a drafter
+is not attached on such a card: `xollama tweak model <model> --drafter=none`.
+
+### Since opencoti c11: the engine drops the drafter
+
+c11 measures the head after it is loaded (485 MiB of the 824 booked) and
+rebuilds the target's memory against it. When the record window still streams
+and dropping the head would make it fully resident, the engine drops the
+drafter and serves without it. The load log says which:
+
+- `[spec] assistant drafter DROPPED: the KV window was … short of full
+  residency with the head attached` — no drafting, the window is resident;
+- `[spec] assistant drafter KEPT with a streaming KV window` — the head stays
+  and part of the cache is read from host memory.
+
+The same 16 GB reproduction on c11 r2 (`/srv/ml/xc11/r2/fit16-r2.out`, RTX 3090
+held to 14984 MiB free, 45k-token prompt, 256 tokens generated):
+
+| Launch | c10 r3 | c11 r2 |
+|---|---|---|
+| no drafter | 54 tok/s | 51.4 to 54.1 tok/s |
+| drafter attached, two boots | 3.1 to 3.4 tok/s | 54.2 to 54.9 tok/s, drafter dropped on both |
+
+So an attached drafter no longer costs anything on such a card, and it does
+not help there either. Two things stay open. The decision moves with about
+150 MiB of free memory from one boot to the next, so a card at the edge can
+keep the head on one load and drop it on another (opencoti's c12 list). And
+`xollama show` and `xollama ps` still list the drafter as attached when the
+engine dropped it: the load log is where to read it.
+
 ## Turning a drafter off
 
 `draft.tokens` 0 (or `PARAMETER draft_num_predict 0`) is the model's "do not

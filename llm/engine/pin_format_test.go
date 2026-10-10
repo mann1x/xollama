@@ -202,10 +202,6 @@ func TestLoadPinRefuses(t *testing.T) {
 			return pinFiles(enginePin(bin, row("any", "build-info", "c/BUILD_INFO.md", "a")),
 				libPin("cuda", lib, row("any", "build-info", "c/BUILD_INFO.md", "b")))
 		},
-		// Its sass line is aarch64's; nothing here routes on it yet.
-		"the sbsa component": func() map[string]string {
-			return pinFiles(enginePin(bin), libPin("sbsa", row("aarch64", "cuda", "c/ggml-cuda-sbsa-aarch64.so", "sbsa")))
-		},
 	}
 	if _, err := loadFiles(good()); err != nil {
 		t.Fatalf("the fixture these cases break does not parse: %v", err)
@@ -229,5 +225,65 @@ func TestAnAbsentComponentIsNotTaken(t *testing.T) {
 	}
 	if p.Accelerates("x86_64", BackendCUDA) {
 		t.Error("an absent cuda component accelerates CUDA")
+	}
+}
+
+// The sbsa component is the CUDA library of Linux aarch64, with a sass list of
+// its own: a Spark (12.1) is covered there and a Jetson Orin (8.7) is not,
+// whatever the x86_64 library carries.
+func TestTheSBSAComponentServesAarch64WithItsOwnSASS(t *testing.T) {
+	bin := row("any", "bin", "components/engine/v/opencoti-1", "engine")
+	files := pinFiles(enginePin(bin),
+		libPin("cuda", row("x86_64", "cuda", "c/ggml-cuda-x86_64.so", "cuda"), "sass 75 80 86 89 90 120"),
+		libPin("sbsa", row("aarch64", "cuda", "c/ggml-cuda-sbsa-aarch64.so", "sbsa"), "sass 110 121"))
+	p, err := loadFiles(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.Accelerates("aarch64", BackendCUDA) {
+		t.Error("the sbsa library does not accelerate CUDA on aarch64")
+	}
+	if a, ok := p.DSO("aarch64"); !ok || a.StagedName() != "ggml-cuda-sbsa-aarch64.so" {
+		t.Errorf("aarch64 CUDA library = %+v, %v", a, ok)
+	}
+	for _, c := range []struct {
+		arch         string
+		major, minor int
+		want         bool
+	}{
+		{"aarch64", 12, 1, true},
+		{"aarch64", 11, 0, true},
+		{"aarch64", 11, 2, true},
+		{"aarch64", 8, 7, false},
+		{"aarch64", 12, 0, false},
+		{"aarch64", 12, 2, false},
+		{"x86_64", 12, 1, true},
+		{"x86_64", 12, 2, true},
+		{"x86_64", 8, 7, true},
+		{"x86_64", 11, 0, false},
+	} {
+		if got := p.CoversCUDAOn(c.arch, c.major, c.minor); got != c.want {
+			t.Errorf("on %s CoversCUDA(%d.%d) = %v, want %v", c.arch, c.major, c.minor, got, c.want)
+		}
+	}
+	// The CUDA 12 payload exists for Linux x86_64 only: no other host has it.
+	// And the answer follows the platform asked about, on any machine.
+	arm, x86 := Platform{OS: "linux", Arch: "arm64"}, Platform{OS: "linux", Arch: "amd64"}
+	spark := Device{Backend: BackendCUDA, ComputeMajor: 12, ComputeMinor: 1}
+	orin := Device{Backend: BackendCUDA, ComputeMajor: 8, ComputeMinor: 7}
+	volta := Device{Backend: BackendCUDA, ComputeMajor: 7, ComputeMinor: 0}
+	if !coveredByCUDA13(p, arm, spark) || coveredByCUDA13(p, arm, orin) || !coveredByCUDA13(p, x86, orin) {
+		t.Error("coveredByCUDA13 does not follow the platform it is asked about")
+	}
+	// The committed pin has the cuda12 component this test's pin leaves out.
+	committed, err := DefaultPin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if needsCUDA12(committed, arm, volta) || !needsCUDA12(committed, x86, volta) {
+		t.Error("needsCUDA12 does not follow the platform it is asked about")
+	}
+	if p.CoversCUDA12On("aarch64", 7, 0) {
+		t.Error("an aarch64 host is offered a CUDA 12 payload it has no file for")
 	}
 }

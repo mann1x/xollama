@@ -87,7 +87,34 @@ type Pin struct {
 	// cards the CUDA 13 one has no code for. Both libraries sit beside one
 	// engine, and one process loads one of them (cudaPayload, LegacyCUDAEnv).
 	CUDA12SASS []int
-	Assets     []Asset
+	// SBSASASS is the list of the sbsa component: the CUDA library of Linux
+	// aarch64 (DGX Spark, Jetson Thor). It is the one CoversCUDA reads on that
+	// platform. opencoti has never run that library and neither have we: no
+	// such machine is in either test fleet (owner, 2026-10-10: built blind).
+	SBSASASS []int
+	Assets   []Asset
+}
+
+// cudaArch is the architecture whose CUDA libraries serve a platform:
+// "aarch64" on Linux aarch64, where the sbsa component is the CUDA library,
+// and "x86_64" everywhere else. It comes from the platform the question is
+// about, never from the machine that asks: Resolve is asked about linux/amd64
+// on a Mac and on an arm64 builder alike (the macOS test leg failed on a host
+// reading, 2026-10-10).
+func cudaArch(p Platform) string {
+	if arch, _ := PackageArch(p.OS, p.Arch); arch == "aarch64" {
+		return "aarch64"
+	}
+	return "x86_64"
+}
+
+// CUDASASSOn is the sass list of the CUDA library of an arch label: the sbsa
+// component's on aarch64, the cuda component's on x86_64.
+func (p Pin) CUDASASSOn(arch string) []int {
+	if arch == "aarch64" {
+		return p.SBSASASS
+	}
+	return p.CUDASASS
 }
 
 // Accel is one (arch, backend) pair the pinned artifact accelerates.
@@ -120,10 +147,26 @@ func (p Pin) Accelerates(arch string, b Backend) bool {
 // The failure this prevents is silent: a device the DSO has no code for makes
 // the engine run the load on the CPU, which reads as slowness, not as an error.
 func (p Pin) CoversCUDA(major, minor int) bool {
-	if len(p.CUDASASS) == 0 {
+	return p.CoversCUDAOn("x86_64", major, minor)
+}
+
+// CoversCUDAOn is CoversCUDA for the CUDA library of an arch label: "x86_64"
+// reads the cuda component, "aarch64" the sbsa component.
+func (p Pin) CoversCUDAOn(arch string, major, minor int) bool {
+	sass := p.CUDASASSOn(arch)
+	if len(sass) == 0 {
 		return true
 	}
-	for _, cc := range p.CUDASASS {
+	for _, cc := range sass {
+		// The sbsa library's 121 is sm_121a, the architecture-specific image:
+		// it runs on 12.1 exactly and the file carries no PTX to compile from
+		// (opencoti mail #952, cuobjdump of the published bytes).
+		if arch == "aarch64" && cc == 121 {
+			if major == 12 && minor == 1 {
+				return true
+			}
+			continue
+		}
 		if major == cc/10 && minor >= cc%10 {
 			return true
 		}
@@ -136,7 +179,13 @@ func (p Pin) CoversCUDA(major, minor int) bool {
 // CoversCUDA, a pin that states no sass for it covers nothing: the CUDA 12
 // payload is optional and only ever serves what it names.
 func (p Pin) CoversCUDA12(major, minor int) bool {
-	if _, ok := p.CUDA12DSO("x86_64"); !ok {
+	return p.CoversCUDA12On("x86_64", major, minor)
+}
+
+// CoversCUDA12On is CoversCUDA12 for an arch label. Only x86_64 has a CUDA 12
+// payload: the sbsa component has no legacy twin.
+func (p Pin) CoversCUDA12On(arch string, major, minor int) bool {
+	if _, ok := p.CUDA12DSO(arch); !ok {
 		return false
 	}
 	for _, cc := range p.CUDA12SASS {
@@ -543,12 +592,6 @@ func LoadPin(fsys fs.FS, dir string) (Pin, error) {
 		if eng.version < c.engineMin {
 			return Pin{}, fmt.Errorf("pin: %s %s needs engine %s or newer, the index names %s", c.name, c.version, c.engineMin, eng.version)
 		}
-		if c.name == "sbsa" {
-			// Its sass line is aarch64's and CoversCUDA has one list; taking
-			// it unrouted would send an arm64 CUDA card to bytes nothing here
-			// has checked against it.
-			return Pin{}, fmt.Errorf("pin: the sbsa component is not routed by this build; the index must say `sbsa absent`")
-		}
 	}
 
 	p := Pin{Repo: eng.repo, Rev: eng.rev, Version: eng.version, Channel: channel, platformFeatures: map[string][]string{}}
@@ -565,6 +608,8 @@ func LoadPin(fsys fs.FS, dir string) (Pin, error) {
 			p.CUDASASS = c.sass
 		case "cuda12":
 			p.CUDA12SASS = c.sass
+		case "sbsa":
+			p.SBSASASS = c.sass
 		}
 		for _, platform := range platforms {
 			for _, r := range c.rowsFor(platform) {
