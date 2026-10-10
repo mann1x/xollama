@@ -336,9 +336,9 @@ Wrapper: `scripts/gates/council.sh <tag>...`, which runs
   works, `crash lines in the server log (want 0): 0`. With no device passed
   the list is empty: llvmpipe is never a GPU.
 - **Baseline:** 38.3 to 38.9 tok/s (`qwen2.5:1.5b`, Mesa 25.2.8 RADV, 29/29
-  layers), 200 on all four polls, 36.2 after them; measured 2026-10-10 on a
-  test image (the `:dev` image of that day plus the package, engine c10
-  `2610072136001`). On the host before the refusal: 33.5 tok/s.
+  layers), 200 on all four polls, 38.9 after them; measured 2026-10-10 on the
+  published `:dev` image of `cb6b910b0` (engine c10 r3 `2610090401001`), 37.8
+  on the first run. On the host before the refusal: 33.5 tok/s.
 
 ### G8. Windows, the engine beside an installed xOllama
 
