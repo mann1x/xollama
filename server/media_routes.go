@@ -624,6 +624,9 @@ func (s *Server) serveTranscription(c *gin.Context, form *multipart.Form, transl
 	if media.STT != nil {
 		path = fillTranscription(fields, media.STT, translate)
 	}
+	if serveWhisperWordTimestamps(c, form, media, name, path == "/v1/audio/translations") {
+		return
+	}
 	data, ct, err := encodeForm(form)
 	if err != nil {
 		mediaError(c, http.StatusBadRequest, err.Error())
