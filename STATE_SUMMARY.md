@@ -5,6 +5,11 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-22 — `v0.40.6-xollama.1` started (owner 05:53: "make the release").**
+> - It is a re-release on v0.40.6. The fork is still on `v0.40.6-thinkbudget` (rule 7 checked), and the engine pin and runtimes are unchanged. It carries `555fe9076` (repeat_last_n), `ae60fdc03` (memory lines) and `31e5ef920` (tool_choice none).
+> - G1 passes on `31e5ef920`: gofmt and build clean, every package ok, lint 0, 56 hooks, compat-origin 0.
+> - Security check: 100 Dependabot alerts open (99 before). The new one is `github.com/klauspost/compress` <= 1.18.6, s2 integer overflow (high, fixed in 1.18.7). It sits on upstream's own `go.mod` line (v1.18.3, unchanged by the fork), and govulncheck lists it only at module level (GO-2026-5841), with 0 reachable. So it is upstream's and recorded, not bumped. govulncheck: 0 reachable.
+
 > **2026-10-22 — `tool_choice: "none"` on `/api/chat` (`tool-choice` hook, `tool_choice_none_v1`; for the next release).**
 > - Asked by cerebriline (mail #1733). A pandorum side call on eleven2go (`0.40.6-xollama`, gemma-4 v9-agentic) sent `tool_choice: "none"` with its 21 tools, and the model wrote an editor call to its 4000-token cap: 36 s, empty answer. `api.ChatRequest` had no such field, so the value was dropped. Owner 05:42: "add 2 to this new release, it should not need an engine change".
 > - **Prompt unchanged:** the tools stay rendered, so the prefix is reused.
