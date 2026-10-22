@@ -5,14 +5,19 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-22 — `v0.40.6-xollama.1` released and promoted (Latest): a re-release on v0.40.6, same runtimes and engine (c13 r6).**
+> - PR #40 merged (`148a2390`), release run 39723086159 green; pre-release published with 9 assets, then promoted to Latest (`gh release edit --prerelease=false --latest`). Discord announced (run 39727056369). Image workflow on the tag (39727055973) moves `:latest`.
+> - Carries `555fe9076` (repeat_last_n -1 → num_ctx on stock), `ae60fdc03` (fork memory-lines patch), `31e5ef920` (`tool_choice_none_v1`). All three are Go-only, engine- and OS-agnostic; the runtimes, the engine pin and `app/` are unchanged from `v0.40.6-xollama`, so on Windows the small updater is offered.
+> - **Impact analysis (rule 8) drove gate selection.** The blast radius is engine- and OS-agnostic request/parse logic: repeat_last_n (a stock request-body value), the llama-server memory-line parser (log-line parsing), tool_choice none (request handling + logit_bias/stop/tool_choice). None touch the installer, the runtimes or the engine.
+> - **Gates run:** G1 (gofmt/build/tests/lint 0/56 hooks/compat-origin 0, `31e5ef920`); G2 (PR #40: 13 pass, 7 skipping); G3 (3090, c13 r6: opencoti 8/8, llama3 77.9, 4-slot 314, overflow 4.2; stock 8/8, 78.5, 587, 3.0); G4 (decision on opencoti; chat paths + OpenAI stream + tool call + result PASS, 0 refusals); G11 (Mac: signing/notarize/staple/codesign ok, version right, qwen2.5 125.5 / llama3 31.5 / qwen3.5 63.2, speech 7/7, 0 crashes; self-update 0.40.6-xollama → .1 verified); G10 (dietpi5, **published** arm64 image: version `0.40.6-xollama.1`, PAYLOAD = runtime v0.40.6-thinkbudget + engine 2610182159001 + sbsa, opencoti generates); G12/step5 (checksums all OK, amd64 + arm64 client version `0.40.6-xollama.1`, payload-id `6787225d…`, image on Hub + GHCR both arches, `:latest` was `255dc231…` before the tag re-run).
+> - **Targeted impact checks beyond regression:** memory accounting — live MTP-draft load on the 3090, old binary vs new → `/api/ps` size_vram 14107 MiB both, no regression (the 373 MiB pandorum case is the ported unit test's exact-log replay, 10167.88 MiB at every chunk size); tool_choice none — live on opencoti and stock, 0 calls under `none`/`{"type":"none"}` where the control called; repeat_last_n — live 200 with the mapped value.
+> - **G8/G9 (eleven2go Windows) not run, by rule 8:** the changes have no Windows-GPU-launch or installer surface — `app/` is unchanged and CI runs both installers on the Windows runner every release; the changed code is already proven on Linux (G3/G4), macOS (G11) and arm64 (G10). Owner, 2026-10-22, questioned gating on eleven2go; the impact analysis agreed, and RELEASE.md rule 8 / step 7 were amended to make the impact analysis decide which gates run.
+> - Security check: 100 Dependabot (99 before); the new `klauspost/compress` s2 alert sits on upstream's own `go.mod` line, module-level, 0 reachable — upstream's, recorded. govulncheck 0 reachable.
+> - Cleanup: dietpi5 test container + image removed (owner's 4 containers and 11434 untouched); solidPC side servers down; ollama store 0 foreign files (12 old `root:ollama` manifests chowned back). Locks: none held via resource-lock; 3090 + Mac AFTER-mailed; eleven2go request withdrawn.
+
 > **2026-10-22 — RELEASE.md rule 8: an impact analysis at every change, not only the regression gates (owner: "this is what should be done at every change").**
 > - New rule 8 in `docs/protocols/RELEASE.md` and the procedure in step 1: for each change, name its blast radius and the downstream consumers, run a targeted end-to-end check of each impacted feature against a control (the released binary or the `llamacpp` off-path) and the pathological input the change was made for, and record it in STATE_SUMMARY and the PR notes. The VALIDATION.md gate table is the regression complement.
 > - Rides the next release; the running `v0.40.6-xollama.1` build is unaffected.
-
-> **2026-10-22 — `v0.40.6-xollama.1` started (owner 05:53: "make the release").**
-> - It is a re-release on v0.40.6. The fork is still on `v0.40.6-thinkbudget` (rule 7 checked), and the engine pin and runtimes are unchanged. It carries `555fe9076` (repeat_last_n), `ae60fdc03` (memory lines) and `31e5ef920` (tool_choice none).
-> - G1 passes on `31e5ef920`: gofmt and build clean, every package ok, lint 0, 56 hooks, compat-origin 0.
-> - Security check: 100 Dependabot alerts open (99 before). The new one is `github.com/klauspost/compress` <= 1.18.6, s2 integer overflow (high, fixed in 1.18.7). It sits on upstream's own `go.mod` line (v1.18.3, unchanged by the fork), and govulncheck lists it only at module level (GO-2026-5841), with 0 reachable. So it is upstream's and recorded, not bumped. govulncheck: 0 reachable.
 
 > **2026-10-22 — `tool_choice: "none"` on `/api/chat` (`tool-choice` hook, `tool_choice_none_v1`; for the next release).**
 > - Asked by cerebriline (mail #1733). A pandorum side call on eleven2go (`0.40.6-xollama`, gemma-4 v9-agentic) sent `tool_choice: "none"` with its 21 tools, and the model wrote an editor call to its 4000-token cap: 36 s, empty answer. `api.ChatRequest` had no such field, so the value was dropped. Owner 05:42: "add 2 to this new release, it should not need an engine change".
@@ -2726,7 +2731,7 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
 ## Where we are
 
-`v0.40.6-xollama` is the latest release (2026-10-19): upstream v0.40.6 (fork
+`v0.40.6-xollama.1` is the latest release (2026-10-22): upstream v0.40.6 (fork
 manifest `33e6af53`, 27 carried patches, llama.cpp b11669, MLX `bebd6422`),
 opencoti c13 r6 (`2610182159001`, Vulkan and Metal native KVarN, the CPU spin
 fix), and `GET /api/xollama/system`. `dev` is the release's tree and pins the
@@ -2806,11 +2811,11 @@ Council Chat is in Phase 11.
 1. opencoti's bug-4143 build (elastic slots admitted at once; #1720): when it
    is published, measure G3's four slots on the 3090 (expected about 675
    against 303) and move the pin on that measurement. opencoti c14 is the next
-   engine, under the same rule (owner, 2026-10-16: "c14 is next"). The next
-   release name is `v0.40.6-xollama.1`, unless the fork moves to a newer
-   upstream first (RELEASE.md rule 7). Its notes carry `repeat_last_n` -1 on
-   stock (`555fe9076`), the memory-lines fork patch (`ae60fdc03`) and
-   `tool_choice_none_v1` (owner 2026-10-22: "add 2 to this new release").
+   engine, under the same rule (owner, 2026-10-16: "c14 is next"). `v0.40.6-xollama.1`
+   shipped repeat_last_n (`555fe9076`), the memory-lines fork patch (`ae60fdc03`)
+   and `tool_choice_none_v1` (2026-10-22); the next release name is
+   `v0.40.6-xollama.2` unless the fork moves to a newer upstream first
+   (RELEASE.md rule 7).
 2. Why the free-memory refresh fails through a model swap on Windows
    (pandorum 2026-10-16), when it is seen again with the engine's listing
    output.

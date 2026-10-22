@@ -68,7 +68,17 @@ it an update, stop. That is the procedure this replaces.**
    released binary, or the `XOLLAMA_ENGINE=llamacpp` off-path) and the
    **pathological input the change was made for**, not only its unit test. Record
    the analysis and the targeted results in the release's `STATE_SUMMARY.md` entry
-   and the PR notes. The procedure is step 1; owner, 2026-10-22.
+   and the PR notes. **The impact analysis decides which gates run, every
+   release.** Beyond the always-gates (G1, G2, G12) and any gate that failed or
+   regressed since the last baseline, a gate runs only when a change's blast
+   radius reaches what it covers. This governs a re-release's "full check" too:
+   it is run in full only when the changes warrant it, and a gate skipped for
+   want of impact is named, with the reason, in `STATE_SUMMARY.md`. Do not repeat
+   a gate for form's sake — a Go-only, engine- and OS-agnostic change already
+   proven on one platform does not need the Windows or image gates re-run to
+   re-prove the host, only the always-gates and whatever its own blast radius
+   touches. The procedure is step 1; owner, 2026-10-22 ("always impact analysis,
+   no need to repeat gates unless there's a reason for it").
 
 ## Versions and tags
 
@@ -98,7 +108,8 @@ v0.35.0 is only ever released here as a `v0.35.0-…xollama…` version:
   same, and the release takes the **short check** (step 7).
 - **A re-release has no candidates.** It fixes a release that is already out.
   It is cut from `dev` as `v<upstream>-xollama.<n>`, published as a pre-release,
-  given the full check, and promoted as the same bytes. Once
+  given the checks its impact analysis calls for (rule 8; not the full check by
+  default), and promoted as the same bytes. Once
   `v<upstream>-xollama` is published, a candidate of that upstream sorts below
   it and is refused.
 - The binary reports the tag without the leading `v`
@@ -459,7 +470,10 @@ Remove the test container when the check is done (`docker rm -f xollama-test`).
 
 ### 7. Verify the install
 
-A candidate and a re-release take the **full check**. The release made from a
+A candidate and a re-release take the checks their **impact analysis** calls for
+(rule 8): the always-gates (G1, G2, G12) and any regression every time, the full
+check in full only when the changes' blast radius warrants it — a gate skipped
+for want of impact is named with its reason in `STATE_SUMMARY.md`. The release made from a
 candidate takes the **short check**, because the workflow has already proved it
 is that candidate's tree with the same pins: install it over the candidate
 through the updater's small installer, then check only that

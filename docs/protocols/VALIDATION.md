@@ -648,6 +648,8 @@ registries, `:dev` moved. Promoted 2026-10-08, Discord announced.
   prompt; it is a comparison between engines on one script, not a tok/s to
   quote.
 
+- **Last run (`v0.40.6-xollama.1`, 2026-10-22, 3090, c13 r6):** opencoti 8/8, llama3 77.9, 4-slot 314, overflow 4.2; stock 8/8, 78.5, 587, 3.0. Within noise.
+
 ### G4. Chat paths
 
 - **Where:** solidPC, side server as `ollama`.
@@ -676,6 +678,8 @@ registries, `:dev` moved. Promoted 2026-10-08, Discord announced.
   routing a Clef model fails on opencoti c9 at load, "wrong number of tensors;
   expected 549, got 427", and every call is a 500: that shipped in
   `v0.35.1-xollama.2`.
+
+- **Last run (`v0.40.6-xollama.1`, 2026-10-22, side server):** decision on opencoti; chat paths + OpenAI stream + tool call + result PASS; 0 refusals.
 
 ### G5. Council
 
@@ -889,6 +893,8 @@ GPU, the stock ollama on 11434 untouched).
   2026-10-07; it now takes `LLM=` and `MEDIA=`, scratch stores of hard links
   mounted writable (0 files of another owner afterwards).
 
+- **Last run (`v0.40.6-xollama.1`, 2026-10-22, dietpi5, published arm64 image):** version `0.40.6-xollama.1`; PAYLOAD = runtime v0.40.6-thinkbudget + engine 2610182159001 + sbsa; opencoti generates; container + image removed after, owner's containers and 11434 untouched.
+
 ### G11. macOS
 
 - **Where:** the Mac mini (`ssh macmini`, Apple silicon), in `~/dev/xollama`
@@ -910,6 +916,8 @@ GPU, the stock ollama on 11434 untouched).
   model per architecture the engine has its own kernels for, not one per
   size.
 - **Baseline:** bundle built, signed and notarized from `4db0bcedb` (7 minutes); the engine through `ape` on Metal ("metal: abi ggml 41ba479c24d7 matches this engine"); `qwen2.5:1.5b` 125.9 to 127.4 tok/s, 29/29 layers; `llama3` 31.3 to 31.7 tok/s, 33/33 layers (four 512-token runs each); speech 7 of 7 answered, 6 transcribed back exactly and the OuteTTS `narrator` voice as "The first shoot came in at dawn."; no crash line in the server log.
+
+- **Last run (`v0.40.6-xollama.1`, 2026-10-22, Mac mini):** signing/notarize/staple/codesign ok; version right; qwen2.5 125.5 / llama3 31.5 / qwen3.5 63.2 tok/s; speech 7/7; 0 crashes; self-update 0.40.6-xollama → .1 verified.
 
 ### G12. The published artifact
 
