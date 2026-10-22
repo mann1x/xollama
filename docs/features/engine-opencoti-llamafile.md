@@ -303,6 +303,20 @@ cannot be bound is a Warn, never a failed load. Up to v0.40.4 the LLM launch
 used the same binding through the `engine-lifetime` hook, which the v0.40.6
 sync retired.
 
+### `repeat_last_n = -1` on stock llama.cpp
+
+In Ollama's API `repeat_last_n = -1` means the whole context. opencoti
+accepts it and resolves it to the slot's context. Stock `llama-server` only
+accepts 0 and up, and answered `-1` with a 400 ("Field 'repeat_last_n':
+Value must be between 0 <= value <= 2147483647, but got -1"; seen on
+eleven2go's stock Ollama, 2026-10-20). So on stock llama.cpp a negative value
+goes out as `num_ctx`, the per-sequence context each slot was launched with
+(`stockRepeatLastN`, `llm/engine_repeat_last_n.go`, `repeat-last-n` hook in
+both request bodies). The owner asked for this ("map -1 to num_ctx for stock
+llama.cpp", 2026-10-20), and it departs on purpose from upstream's stock path,
+which passes `-1` through and fails. Every other value reaches either engine
+unchanged.
+
 ## Packaging
 
 The pin is opencoti's **pin format 2**, in `llm/engine/pin/`. The engine and

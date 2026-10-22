@@ -98,3 +98,4 @@ GHSA-5xrq-8626-4rwp	critical	development	app/ui/app/package-lock.json	vitest	< 3
 GHSA-82fw-gwwq-j7x9	medium	development	app/ui/app/package-lock.json	vitest	>= 2.1.0, < 4.1.11	4.1.11	2026-09-18	Vitest: Path Traversal / Arbitrary File Read via @vitest/mocker Redirect Mock
 GHSA-96hv-2xvq-fx4p	high	development	app/ui/app/package-lock.json	ws	>= 8.0.0, < 8.21.0	8.21.0	2026-09-18	ws: Memory exhaustion DoS from tiny fragments and data chunks
 GHSA-6g7g-w4f8-9c9x	high	runtime	go.mod	github.com/buger/jsonparser	<= 1.1.1	1.1.2	2026-09-18	github.com/buger/jsonparser has a denial of service vulnerability
+GHSA-259r-337f-4rfw	high	runtime	go.mod	github.com/klauspost/compress	<= 1.18.6	1.18.7	2026-10-21	Compress/s2: Integer Overflow or Wraparound and Out-of-bounds Write in compress

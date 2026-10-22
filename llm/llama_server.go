@@ -1582,6 +1582,12 @@ func (s *llamaServerRunner) resetLoadAccounting() {
 	for k := range s.systemFreeAtLoad {
 		delete(s.systemFreeAtLoad, k)
 	}
+	// The parsed buffers belong to the process being replaced. Kept, a
+	// projector buffer from a GPU attempt stayed counted after the retry put
+	// the projector on the CPU.
+	if s.output != nil {
+		s.output.resetLocked()
+	}
 	if s.status != nil {
 		s.status.SetLastError("")
 	}
@@ -1902,6 +1908,9 @@ type llamaServerCompletionRequest struct {
 	// xollama-hook: notices -- opencoti's generation notices, only on an
 	// engine that declares them (llm/engine_notice.go).
 	Notices json.RawMessage `json:"notices,omitempty"`
+	// xollama-hook: tool-choice -- the tool-call tag banned for tool_choice
+	// "none" (llm/engine_tool_choice.go); absent on every other request.
+	LogitBias []any `json:"logit_bias,omitempty"`
 }
 
 // schemaGrammars caches the grammars llama-server derives from JSON schemas,
@@ -2197,7 +2206,7 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 		MinP:            req.Options.MinP,
 		Stop:            req.Options.Stop,
 		RepeatPenalty:   req.Options.RepeatPenalty,
-		RepeatLastN:     req.Options.RepeatLastN,
+		RepeatLastN:     stockRepeatLastN(req.Options.RepeatLastN, s.options.NumCtx, s.usedOpencoti), // xollama-hook: repeat-last-n
 		FreqPenalty:     req.Options.FrequencyPenalty,
 		PresPenalty:     req.Options.PresencePenalty,
 		TypicalP:        req.Options.TypicalP,
@@ -2245,6 +2254,9 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 		poolID = s.poolFor(req.PoolKey)
 	}
 	applySession(&lsReq, s.usedOpencoti, s.launch.config, req.SessionID, poolID)
+	if req.NoToolCallTag != "" { // xollama-hook: tool-choice
+		s.banToolCall(ctx, req.NoToolCallTag).apply(&lsReq)
+	}
 	// xollama-hook: notices
 	if n := s.noticesFor(ctx, req.Notices); n != nil {
 		lsReq.Notices = n
@@ -2938,7 +2950,7 @@ func (s *llamaServerRunner) llamaServerChatRequest(req ChatRequest, stream bool)
 		"min_p":             req.Options.MinP,
 		"stop":              req.Options.Stop,
 		"repeat_penalty":    req.Options.RepeatPenalty,
-		"repeat_last_n":     req.Options.RepeatLastN,
+		"repeat_last_n":     stockRepeatLastN(req.Options.RepeatLastN, s.options.NumCtx, s.usedOpencoti), // xollama-hook: repeat-last-n
 		"frequency_penalty": req.Options.FrequencyPenalty,
 		"presence_penalty":  req.Options.PresencePenalty,
 		"typical_p":         req.Options.TypicalP,
@@ -2973,6 +2985,9 @@ func (s *llamaServerRunner) llamaServerChatRequest(req ChatRequest, stream bool)
 
 	if len(req.Tools) > 0 {
 		body["tools"] = req.Tools
+	}
+	if choice := chatToolChoice(req); choice != nil { // xollama-hook: tool-choice
+		body["tool_choice"] = choice
 	}
 	if req.Logprobs {
 		body["logprobs"] = true
@@ -3562,6 +3577,12 @@ func PredictServerVRAM(modelPath string, f *gguf.Model, numCtx int) uint64 {
 //	CUDA_Host compute buffer size =   268.05 MiB
 //	MTL0_Mapped model buffer size =  1918.35 MiB
 //	ROCm0 model buffer size =  1918.35 MiB
+//
+// Output is parsed a line at a time. llama-server's stdout and stderr share
+// one pipe, and a read from it ends wherever the pipe had data, not at a line
+// end: a buffer line split across two writes matched in neither, and a 9B
+// model fully on the GPU was reported at 373 MiB because its model and KV
+// lines were lost that way.
 type memoryParsingWriter struct {
 	inner   io.Writer
 	runner  *llamaServerRunner
@@ -3581,6 +3602,15 @@ type memoryParsingWriter struct {
 	// head's own buffers (solidPC, c13 r2, 2026-10-15). Each model's lines
 	// now count apart.
 	model string
+
+	// pending holds the unterminated tail of the last write.
+	pending []byte
+	// inDraft is set while llama-server builds a speculative draft model or
+	// context, whose buffers are allocated beside the target's.
+	inDraft bool
+	// lastDraft is whether the run of lines lastComponent began was the
+	// draft's; the rest of that run keeps it.
+	lastDraft bool
 }
 
 type memoryBufferKey struct {
@@ -3593,7 +3623,22 @@ type memoryBufferKey struct {
 	// separate allocation, so it belongs in the key -- without it the streams
 	// collide and only the last one is counted.
 	stream string
+	// draft marks a buffer of the speculative draft. The draft logs the same
+	// component and backend names as the target, so without it an MTP
+	// draft's 512 MiB KV cache replaced the target's 2176 MiB one.
+	draft bool
 }
+
+// maxPendingLine bounds the unterminated tail kept between writes. A buffer
+// line is under 100 bytes; anything this long without a newline is not one.
+const maxPendingLine = 64 * 1024
+
+// draftStartRegex and draftEndRegex bracket the draft's construction
+// (common/speculative.cpp, tools/server).
+var (
+	draftStartRegex = regexp.MustCompile(`creating MTP draft context|loading draft model`)
+	draftEndRegex   = regexp.MustCompile(`speculative decoding context initialized|model loaded`)
+)
 
 type memoryBuffer struct {
 	bytes uint64
@@ -3672,38 +3717,48 @@ func (w *memoryParsingWriter) Write(b []byte) (int, error) {
 			w.runner.memoryMu.Lock()
 			defer w.runner.memoryMu.Unlock()
 
-			if match := deviceFreeRegex.FindSubmatch(b); match != nil {
-				devName := string(match[1])
-				if mib, err := strconv.ParseUint(string(match[2]), 10, 64); err == nil {
-					w.runner.systemFreeAtLoad[devName] = mib * 1024 * 1024
+			data := append(w.pending, b...)
+			end := bytes.LastIndexByte(data, '\n')
+			if end < 0 {
+				if len(data) > maxPendingLine {
+					data = data[len(data)-maxPendingLine:]
 				}
+				w.pending = data
+				return
 			}
-			for _, match := range offloadedLayersRegex.FindAllSubmatch(b, -1) {
-				loaded, loadedErr := strconv.ParseUint(string(match[1]), 10, 64)
-				total, totalErr := strconv.ParseUint(string(match[2]), 10, 64)
-				if loadedErr == nil && totalErr == nil {
-					w.runner.gpuLayers = loaded
-					w.runner.totalLayers = total
-				}
+			for _, line := range bytes.Split(data[:end], []byte("\n")) {
+				w.parseLineLocked(bytes.TrimSuffix(line, []byte("\r")))
 			}
-			for _, match := range fitOverflowingLayersRegex.FindAllSubmatch(b, -1) {
-				overflowing, err := strconv.ParseUint(string(match[1]), 10, 64)
-				if err == nil && overflowing > 0 {
-					w.runner.gpuLayerOverflow += int(overflowing)
-				}
-			}
-			for _, line := range bytes.SplitAfter(b, []byte("\n")) {
-				w.parseBufferLineLocked(line)
-			}
+			w.pending = append([]byte(nil), data[end+1:]...)
 		}()
 	}
 	return w.inner.Write(b)
 }
 
-// parseBufferLineLocked reads one line for the model it opens or a buffer it
-// sizes. Line by line, so a loader line and the buffers after it in one write
-// are taken in order.
-func (w *memoryParsingWriter) parseBufferLineLocked(line []byte) {
+// parseLineLocked reads one complete line of llama-server output: the free
+// memory and layer counts it reports, the model it opens, a speculative
+// draft's bracket, or a buffer it sizes.
+func (w *memoryParsingWriter) parseLineLocked(line []byte) {
+	if match := deviceFreeRegex.FindSubmatch(line); match != nil {
+		devName := string(match[1])
+		if mib, err := strconv.ParseUint(string(match[2]), 10, 64); err == nil {
+			w.runner.systemFreeAtLoad[devName] = mib * 1024 * 1024
+		}
+	}
+	if match := offloadedLayersRegex.FindSubmatch(line); match != nil {
+		loaded, loadedErr := strconv.ParseUint(string(match[1]), 10, 64)
+		total, totalErr := strconv.ParseUint(string(match[2]), 10, 64)
+		if loadedErr == nil && totalErr == nil {
+			w.runner.gpuLayers = loaded
+			w.runner.totalLayers = total
+		}
+	}
+	if match := fitOverflowingLayersRegex.FindSubmatch(line); match != nil {
+		overflowing, err := strconv.ParseUint(string(match[1]), 10, 64)
+		if err == nil && overflowing > 0 {
+			w.runner.gpuLayerOverflow += int(overflowing)
+		}
+	}
 	if match := modelLoaderRegex.FindSubmatch(line); match != nil {
 		if model := string(match[1]); model != w.model {
 			w.model = model
@@ -3711,52 +3766,92 @@ func (w *memoryParsingWriter) parseBufferLineLocked(line []byte) {
 		}
 		return
 	}
-	for _, match := range bufferSizeRegex.FindAllSubmatch(line, -1) {
-		component := string(match[1])
-		backendName := string(match[2])
-		// KVarN is a KV cache under another name; count it as one.
-		kind := string(match[3])
-		if kind == "KVarN" {
-			kind = "KV"
-		}
-		stream := string(match[4])
-		if mib, err := strconv.ParseFloat(string(match[5]), 64); err == nil {
-			if w.buffers == nil {
-				w.buffers = make(map[memoryBufferKey]memoryBuffer)
-			}
-			// Per-key overwrite alone is not enough when a component
-			// re-logs a *smaller* set of buffers than it did before.
-			// An engine that revises an allocation plan — opencoti's
-			// rolling-KV sizing converges over two passes, and the
-			// first pass splits the KV cache across CUDA0 and
-			// CUDA_Host while later passes keep it all on CUDA0 —
-			// only restates the devices it still uses. The dropped
-			// device's line is never superseded, so its bytes linger
-			// and memTotal is overstated by the size of an allocation
-			// that no longer exists.
-			//
-			// A component beginning a new run of lines is restating
-			// its whole allocation, not adding to it, so drop what it
-			// said last time first. Lines from one block are
-			// contiguous, so this never discards a half-read block.
-			if component != w.lastComponent {
-				for key := range w.buffers {
-					if key.component == component && key.model == w.model {
-						delete(w.buffers, key)
-					}
-				}
-				w.lastComponent = component
-			}
-			w.buffers[memoryBufferKey{
-				model:     w.model,
-				component: component,
-				backend:   backendName,
-				kind:      kind,
-				stream:    stream,
-			}] = memoryBuffer{bytes: uint64(mib * 1024 * 1024)}
-			w.updateRunnerMemoryLocked()
+	if draftStartRegex.Match(line) {
+		w.inDraft = true
+		w.lastComponent = ""
+		return
+	}
+	if draftEndRegex.Match(line) {
+		w.inDraft = false
+		w.lastComponent = ""
+		return
+	}
+	match := bufferSizeRegex.FindSubmatch(line)
+	if match == nil {
+		return
+	}
+	mib, err := strconv.ParseFloat(string(match[5]), 64)
+	if err != nil {
+		return
+	}
+	if w.buffers == nil {
+		w.buffers = make(map[memoryBufferKey]memoryBuffer)
+	}
+	// KVarN is a KV cache under another name; count it as one.
+	kind := string(match[3])
+	if kind == "KVarN" {
+		kind = "KV"
+	}
+	key := memoryBufferKey{
+		model:     w.model,
+		component: string(match[1]),
+		backend:   string(match[2]),
+		kind:      kind,
+		stream:    string(match[4]),
+		draft:     w.inDraft,
+	}
+	buffer := memoryBuffer{bytes: uint64(mib * 1024 * 1024)}
+	newRun := key.component != w.lastComponent
+	switch {
+	case !newRun:
+		// The rest of a run belongs to whoever began it.
+		key.draft = w.lastDraft
+	case !key.draft:
+		// After loading, both contexts re-reserve their compute buffers
+		// without saying which one is speaking. A size the draft already
+		// holds, and the target does not, is the draft's.
+		draftKey := key
+		draftKey.draft = true
+		if held, ok := w.buffers[draftKey]; ok && held == buffer && w.buffers[key] != buffer {
+			key = draftKey
 		}
 	}
+	// Per-key overwrite alone is not enough when a component re-logs a
+	// *smaller* set of buffers than it did before. An engine that revises an
+	// allocation plan — opencoti's rolling-KV sizing converges over two
+	// passes, and the first pass splits the KV cache across CUDA0 and
+	// CUDA_Host while later passes keep it all on CUDA0 — only restates the
+	// devices it still uses. The dropped device's line is never superseded,
+	// so its bytes linger and memTotal is overstated by the size of an
+	// allocation that no longer exists.
+	//
+	// A component beginning a new run of lines is restating its whole
+	// allocation, not adding to it, so drop what it said last time first.
+	// Lines from one block are contiguous, so this never discards a
+	// half-read block. The draft restates only its own: an MTP draft is
+	// built from the target's model file, and its KV and compute blocks
+	// deleted the target's.
+	if newRun {
+		for k := range w.buffers {
+			if k.component == key.component && k.model == key.model && k.draft == key.draft {
+				delete(w.buffers, k)
+			}
+		}
+		w.lastComponent = key.component
+		w.lastDraft = key.draft
+	}
+	w.buffers[key] = buffer
+	w.updateRunnerMemoryLocked()
+}
+
+// resetLocked forgets everything parsed, for a llama-server started again.
+func (w *memoryParsingWriter) resetLocked() {
+	w.buffers = nil
+	w.pending = nil
+	w.inDraft = false
+	w.lastComponent = ""
+	w.lastDraft = false
+	w.model = ""
 }
 
 func (w *memoryParsingWriter) updateRunnerMemoryLocked() {

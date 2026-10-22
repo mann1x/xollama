@@ -199,6 +199,48 @@ self-update from `.3`, 126.5 to 127.0. G10 on the tag: amd64 85.8 to 85.9
 against 85.9 to 86.2, speech 4/4; arm64 10.0 to 10.1 against 10.8 to 11.0,
 speech 3/3. Promoted.
 
+**`v0.40.6-xollama`** (2026-10-19, the tree of `v0.40.6-rc.1.xollama`, short
+check; cut `2d2833932`, PR #38, merge `7e7d3ce58`, release run 39246145299,
+`tree matches`; payload id `6787225d…` unchanged). G2: every hosted leg
+passes. G12: 8 files match, the amd64 binary names the version, the tag's
+image equals `:dev` on Docker Hub (`d194763f…`) and GHCR (`7ddab00d…`),
+`:latest` unmoved. G11, the update path: the Mac's installed app updated
+itself from rc.1, 126.8 to 126.9 tok/s. G9 eleven2go (after claude-hooks'
+bench, which held 22434 until 15:30): the release's `xOllamaUpdate.exe`
+(`df3164e8…`) over rc.1 exit 0 in 4 s, version `0.40.6-xollama`, payload id
+unchanged, new server; 3090 `qwen3:8b` 123.6 cold, 125.1 to 125.3 warm (512
+tokens), displays OK, no orphan process, 11434 untouched. Promoted 15:36 under
+RELEASE.md rule 7, Discord announced (39261549777); the image run on the tag
+after promotion (39261556041) moved `:latest` on Docker Hub (`255dc231…`) and
+GHCR (`845f0455…`).
+
+**`v0.40.6-rc.1.xollama`** (2026-10-19, the first build on upstream v0.40.6,
+fork manifest `33e6af53`; PR #37, merge `05fc5511d`, release run 39239784139,
+image run 39241498630; engine c13 r6 `2610182159001`, unchanged; llama.cpp
+b11669, MLX `bebd6422`, Windows MLX reldir `f9bde5de`; payload id `6787225d…`,
+new, so Windows takes the full installer). The solidPC gate set ran on the
+synced tree (`/srv/ml/x0406`): G3 opencoti compat 8/8, `llama3` 77.6, four
+slots 303.3, overflow 3.89; stock llama.cpp b11669 8/8, 78.2, 603.9, 2.85
+(the four-slot gap is the engine's elastic admission, bug-4143, never past two
+live slots under `-np 1 --max-parallel 4`; opencoti fixes it, the launch
+stays). G4 decision 7/7 on opencoti (`decision.sh` reads its default from the
+pin since this run, bug-291), chat paths all pass. G6 speech 8/8, video 2/2.
+G5 6/6, 0 crash lines. G2: every hosted leg passes after
+`TestGetErrorServerResponse` was moved to `XOLLAMA_HOST` (bug-292). G12: 8
+files match, the tag's image equals `:dev` (Docker Hub `d4c74267…`, GHCR
+`aaed3cdd…`), `:latest` unmoved. G9 eleven2go: `xOllamaSetup.exe` over `.5`
+exit 0 in 203 s with the MLX download (MLX_ID `f9bde5de`, 2,642 files, 8 cuDNN
+DLLs, no system cuDNN); 3090 123.1 cold, 124.9 to 125.1, 9070 XT 102.8 to
+103.4, iGPU 4.8 to 4.9, displays OK, 0 ERROR lines; MLX on the installed
+runtime: Qwen3-0.6B safetensors 91.6 cold, 103.4 to 105.6, `qwen3.5:0.8b` 62.5
+cold, 109.2, 0 panics; small installer exit 0 in 4 s; 11434 untouched, no
+orphan process. G11 Mac mini: the workflow's app and dmg notarized,
+`qwen2.5:1.5b` 126.5 to 126.7, `llama3` 31.5 to 31.8, `qwen3.5:2b` 62.4 to
+64.0, MLX `qwen3.5:2b-nvfp4` 77.8 to 78.9, speech 7/7; self-update from `.5`,
+126.7 to 126.9. G10 on the tag: amd64 86.0 to 86.3 against 85.0 to 85.6,
+speech 4/4; arm64 10.9 to 11.3 against 11.0 to 11.4, speech 3/3, the owner's
+containers up, no image left on either host. Candidate: not promoted.
+
 **`v0.40.4-xollama.5`** (2026-10-19, re-release, full check; PR #36, merge
 `3726e10ee`, image run 39174967989; engine c13 r6 `2610182159001`, index
 `b6334984`, vulkan `2610182214001` and macos `2610182214002` new, cuda, cuda12,

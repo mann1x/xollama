@@ -175,6 +175,7 @@
               "/xollama/think-budget",
               "/xollama/tokenize",
               "/xollama/tool-call-progress",
+              "/xollama/tool-choice",
               "/xollama/gemma4-drafter"
             ]
           },

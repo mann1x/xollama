@@ -5,6 +5,57 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-22 — `v0.40.6-xollama.1` started (owner 05:53: "make the release").**
+> - It is a re-release on v0.40.6. The fork is still on `v0.40.6-thinkbudget` (rule 7 checked), and the engine pin and runtimes are unchanged. It carries `555fe9076` (repeat_last_n), `ae60fdc03` (memory lines) and `31e5ef920` (tool_choice none).
+> - G1 passes on `31e5ef920`: gofmt and build clean, every package ok, lint 0, 56 hooks, compat-origin 0.
+> - Security check: 100 Dependabot alerts open (99 before). The new one is `github.com/klauspost/compress` <= 1.18.6, s2 integer overflow (high, fixed in 1.18.7). It sits on upstream's own `go.mod` line (v1.18.3, unchanged by the fork), and govulncheck lists it only at module level (GO-2026-5841), with 0 reachable. So it is upstream's and recorded, not bumped. govulncheck: 0 reachable.
+
+> **2026-10-22 — `tool_choice: "none"` on `/api/chat` (`tool-choice` hook, `tool_choice_none_v1`; for the next release).**
+> - Asked by cerebriline (mail #1733). A pandorum side call on eleven2go (`0.40.6-xollama`, gemma-4 v9-agentic) sent `tool_choice: "none"` with its 21 tools, and the model wrote an editor call to its 4000-token cap: 36 s, empty answer. `api.ChatRequest` had no such field, so the value was dropped. Owner 05:42: "add 2 to this new release, it should not need an engine change".
+> - **Prompt unchanged:** the tools stay rendered, so the prefix is reused.
+> - **Completion path:** the tag a call opens with is banned. The tag is the built-in parser's (`ToolCallStartTagForParser`), else the template parser's. The engine tokenizes it with `parse_special`: one token is banned through `logit_bias [[id,false]]`, several tokens become a stop string (logged at Warn), and a tag with no letter (`{`) is left alone.
+> - **Chat path:** the engine gets `tool_choice: "none"`.
+> - **Floor:** a call written anyway is dropped and logged at Warn. `{"type":"none"}` is accepted too.
+> - Tests: `api/xollama_tool_choice_test.go`, `llm/engine_tool_choice_test.go`, `server/xollama_tool_choice_test.go`. `api`, `llm` and `server` pass; lint is clean; `check-hooks.sh` reports 56 hooks.
+> - Live on solidPC (CPU, side port 22498, `ollama` user, `/srv/ml/xtc`, qwen2.5:1.5b, `<tool_call>` via the template, temp 0), on stock llama.cpp and on opencoti:
+>   - With no `tool_choice`, and with `auto`, the model made the call.
+>   - With `"none"` and with `{"type":"none"}`: 0 calls and a text answer.
+>   - No drop was logged, so the ban held.
+>   - gemma4's `<|tool_call>` is covered by the unit test only.
+> - Doc: `docs/xollama/tool-choice.mdx`. Registry row `tool-choice`. CARRIED-PATCHES row for the memory-lines merge `ae60fdc03`.
+
+> **2026-10-22 — fork patch `up-llama-server-memory-lines@43d27453` merged: llama-server memory is read by whole lines, and an MTP draft no longer replaces the target's KV and compute (for the next release).**
+> - Fork mails #1766/#1769 (manifest think-budget `9a6bf9b61`, integration `b6a9febd`); owner 05:42: "yes go ahead with 1".
+> - Two faults in the memory scrape, both on our dev:
+>   - A buffer line split across two pipe writes matched in neither. On pandorum, `/api/ps` showed 373 MiB for a 9B Q6_K fully on the GPU.
+>   - An MTP draft is built from the target's own model file and got the same key, and its blocks restate-deleted the target's: 2176 MiB KV read as 512, 704 MiB compute as 172.
+> - The `--no-ff` merge at the manifest's sha conflicted with our `memory-scrape` parser. It was resolved to both: whole lines with the tail kept (64 KiB cap), the key `(model, draft, component, backend, kind, stream)`, restate-delete per `(model, draft, component)`, and a run of lines keeping the draft attribution of its first. `resetLoadAccounting` clears the writer too.
+> - The fork's two tests came across unchanged and pass: `TestMemoryParsingWriterCountsSplitLinesAndTheDraft` gives 10167.88 MiB at every chunk size from 1 byte to the whole log, and `TestResetLoadAccountingForgetsParsedBuffers` passes. `go test ./llm/` passes and lint is clean.
+
+> **2026-10-20 — `repeat_last_n = -1` reaches stock llama.cpp as `num_ctx` (`repeat-last-n` hook; for the next release).**
+> - The owner hit a 400 on eleven2go: "Field 'repeat_last_n': Value must be between 0 <= value <= 2147483647, but got -1". It came from their stock Ollama on 11434 (`0.40.0-thinkbudget`, stock `llama-server`), not xOllama. xOllama on 22434 with opencoti c13 r6 resolved -1 to 32768 (checked live).
+> - Stock `llama-server`'s schema accepts only 0 and up, while opencoti takes -1 (the slot's context). Owner 07:39: "yes map -1 to num_ctx for stock llama.cpp. will go in the next release".
+> - `llm/engine_repeat_last_n.go` (`stockRepeatLastN`): a negative value becomes `num_ctx` on stock only. One trailing-comment hook line in each request body of `llm/llama_server.go`; Registry row `repeat-last-n`; engine doc section. A deliberate departure from upstream's stock path, so `XOLLAMA_ENGINE=llamacpp` with -1 now succeeds where upstream fails.
+> - Tests: `TestStockRepeatLastN`, `TestChatBodyRepeatLastNOnStockAndOpencoti`; `llm` and `server` pass; vet, lint and `check-hooks.sh` (55) clean.
+> - Live on solidPC (CPU, side port 22498, `ollama` user, `/srv/ml/xrln`): this tree gave 200 on `/api/chat` and `/api/generate` with -1, and the engine logged `repeat_last_n = 4096`. The installed `0.40.3-xollama.2` as control gave the owner's exact 400 on both.
+> - The owner's Ollama on 11434 keeps the 400 until the fork carries the same mapping (the fork's call).
+
+> **2026-10-19 — `v0.40.6-xollama` released and promoted (Latest, 15:36): upstream v0.40.6, llama.cpp b11669, opencoti c13 r6.**
+> - `v0.40.6-rc.1.xollama` (PR #37, merge `05fc5511d`, release run 39239784139) passed the full check on its published bytes (numbers in `docs/protocols/VALIDATION.md`):
+>   - G2 green after bug-292.
+>   - G12 8 files match.
+>   - G9 eleven2go: full installer 203 s including the MLX download; 3090 125, 9070 XT 103, iGPU 4.9; MLX without system cuDNN 105/109.
+>   - G11 Mac: notarized; 126.7, MLX 78, speech 7/7; self-update from `.5`.
+>   - G10: amd64 86 / 85; Pi 11.0 / 11.0.
+> - `v0.40.6-xollama` was cut from rc.1's tree (`2d2833932`, PR #38, merge `7e7d3ce58`, run 39246145299, `tree matches`):
+>   - G12 8 files match; the image equals `:dev`.
+>   - Mac self-update from rc.1: 126.8–126.9.
+>   - eleven2go (after claude-hooks' bench released 22434): small updater over rc.1 exit 0 in 4 s; 3090 qwen3:8b 123.6 cold, 125.1–125.3 warm; 11434 untouched.
+> - Promoted under RELEASE.md rule 7 (no further word needed). Discord announced (39261549777). The image run on the tag (39261556041) moved `:latest` (Docker Hub `255dc231…`, GHCR `845f0455…`).
+> - G3's four-slot gap (303 against stock's 604) is opencoti's bug-4143. The engine's elastic tick admitted one slot per three held seconds, so a burst never went past two live slots. opencoti fixes it in a dev build (#1720); xOllama's `-np 1 --max-parallel 4` stays. G3 is rerun when the pin moves.
+> - Mails: eleven2go BEFORE/AFTER to opencoti (#1723/#1724), done to claude-hooks (#1725).
+> - Left: the bug-4143 engine build and its pin; opencoti c14; the c12 readers; the realtime proxy.
+
 > **2026-10-19 — `dev` is on upstream v0.40.6 (fork manifest `33e6af53`, 27 patches, llama.cpp b11669, MLX `bebd6422`).**
 > - `c91637c4d` merges the upstream tag (27 commits, 87 files). Two conflicts:
 >   - `llm/llama_server.go`: upstream's new `AddRunnerToJob` (every runner in one kill-on-close Windows job) is taken as written. The `engine-lifetime` hook there is retired: Registry row removed, the media engine keeps its own binding, engine doc updated.
@@ -2671,10 +2722,13 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
 ## Where we are
 
-`v0.40.4-xollama.5` is the latest release (2026-10-19): upstream v0.40.4, the
-fork's carried patches, opencoti c13 r6 (`2610182159001`, Vulkan and Metal
-native KVarN, the CPU spin fix), and `GET /api/xollama/system`. `dev` is the
-release's tree and pins the same engine. It carries generation notices v2 and
+`v0.40.6-xollama` is the latest release (2026-10-19): upstream v0.40.6 (fork
+manifest `33e6af53`, 27 carried patches, llama.cpp b11669, MLX `bebd6422`),
+opencoti c13 r6 (`2610182159001`, Vulkan and Metal native KVarN, the CPU spin
+fix), and `GET /api/xollama/system`. `dev` is the release's tree and pins the
+same engine. xollama follows the fork to every new upstream with a release
+(RELEASE.md rule 7). The engine's four-slot admission bug (bug-4143) is fixed
+in an opencoti dev build, not pinned yet. It carries generation notices v2 and
 v3 with per-model templates, `num_ctx_hold`, the gemma4 re-opened channel fix
 (`up-gemma4-channel-in-thinking`), the batch kept at 512 on unread memory, the
 shared-store anchor, the template-swallowed refusal and the Qwen3.5 tool-path
@@ -2745,11 +2799,14 @@ Council Chat is in Phase 11.
 
 ## Immediate next steps (in order)
 
-1. Sync `dev` to upstream v0.40.6, which the fork reached on 2026-10-17
-   (`v0.40.6-thinkbudget`, PATCHES.json `33e6af53c`), and release on it:
-   `v0.40.6-rc.1.xollama`, then `v0.40.6-xollama`. This is due now under
-   RELEASE.md rule 7. opencoti c14 is the next engine: the pin moves on a
-   measurement once it is published (owner, 2026-10-16: "c14 is next").
+1. opencoti's bug-4143 build (elastic slots admitted at once; #1720): when it
+   is published, measure G3's four slots on the 3090 (expected about 675
+   against 303) and move the pin on that measurement. opencoti c14 is the next
+   engine, under the same rule (owner, 2026-10-16: "c14 is next"). The next
+   release name is `v0.40.6-xollama.1`, unless the fork moves to a newer
+   upstream first (RELEASE.md rule 7). Its notes carry `repeat_last_n` -1 on
+   stock (`555fe9076`), the memory-lines fork patch (`ae60fdc03`) and
+   `tool_choice_none_v1` (owner 2026-10-22: "add 2 to this new release").
 2. Why the free-memory refresh fails through a model swap on Windows
    (pandorum 2026-10-16), when it is seen again with the engine's listing
    output.

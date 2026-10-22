@@ -235,6 +235,11 @@ type ChatRequest struct {
 	// ToolCallProgress asks for Message.ToolCallProgress chunks while the
 	// model writes a tool call (tool_call_progress_v1). Streaming only.
 	ToolCallProgress bool `json:"tool_call_progress,omitempty"`
+
+	// xollama-hook: tool-choice — see docs/xollama/tool-choice.mdx
+	// ToolChoice "none" (or {"type":"none"}) keeps the tools in the prompt and
+	// the model from calling them (tool_choice_none_v1). Read by ToolChoiceNone.
+	ToolChoice json.RawMessage `json:"tool_choice,omitempty"`
 }
 
 type Tools []Tool

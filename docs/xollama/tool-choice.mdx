@@ -1,0 +1,46 @@
+---
+title: Tool choice none
+---
+
+A client that wants an answer in plain text, in the middle of a conversation
+that carries tools, has two bad options on upstream Ollama: drop the tools,
+which changes the prompt and throws away the cached prefix, or keep them and
+hope the model does not call one. xOllama adds a third option.
+`tool_choice: "none"` keeps the tools in the prompt and keeps the model from
+calling them.
+
+```json
+{
+  "model": "gemma4",
+  "messages": [ ... ],
+  "tools": [ ... ],
+  "tool_choice": "none"
+}
+```
+
+`{"type": "none"}` (Anthropic's spelling) works the same way. Any other value,
+or no `tool_choice` at all, leaves the model free to call, as before.
+
+Check `/api/xollama`: a server that lists `tool_choice_none_v1` enforces this.
+Older servers ignore the field.
+
+## How it is enforced
+
+- **The prompt is unchanged.** The tools are rendered exactly as they would be
+  without `tool_choice`, so a request that shares a conversation's prefix
+  reuses its cache.
+- **The model cannot open a call.** Where the server renders the prompt, the
+  tag a tool call opens with (`<|tool_call>` on Gemma 4, `<tool_call>` on Qwen,
+  the tag in the model's template otherwise) is banned from sampling, so the
+  model goes on in plain text. A tag the engine does not read as one token
+  cannot be banned without banning its pieces everywhere. For that tag the
+  answer ends where a call would start (`done_reason: "stop"`), and the server
+  logs a warning.
+- **Where the engine renders the template,** it gets `tool_choice: "none"` and
+  honours it itself.
+- **A call written anyway is dropped.** A model whose calls open with no tag
+  the engine can be kept from writing could still write one. The client never
+  receives it, and the server logs the dropped call's tool names.
+
+Both engines, opencoti and stock llama.cpp, enforce it. No engine change is
+needed.

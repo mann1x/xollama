@@ -81,6 +81,23 @@ on the push to `dev`.
 | fork-only | `up-qwen35-empty-think-history` | `915f47ac` | `969691fea` |
 | fork-only | `up-mlxrunner-manifest-list` | `d688515b` | `c19db82b9` |
 | fork-only | `up-gemma4-channel-in-thinking` | `1c911e9a` | `784d930d5` |
+| fork-only | `up-llama-server-memory-lines` | `43d27453` | `ae60fdc03` |
+
+**2026-10-22: a twenty-eighth patch, `up-llama-server-memory-lines`**
+(fork-only, last in `patches[]`; think-budget `9a6bf9b61`, integration
+`b6a9febd`; fork mails #1766, #1769, on the owner's word). llama-server's
+memory lines were read per pipe write, so a line split across two writes was
+lost (pandorum: `/api/ps` 373 MiB for a 9B Q6_K fully on an RTX 5080), and an
+MTP draft, built from the target's own model file, replaced the target's KV
+and compute (2176 MiB KV read as 512, 704 MiB compute as 172). Merged at its
+sha `43d27453` with `--no-ff`; `llm/llama_server.go` conflicted with our
+`memory-scrape` parser (model and stream keys, restate-delete) and was
+resolved to both: whole lines with the tail kept, the key `(model, draft,
+component, backend, kind, stream)`, restate-delete per `(model, draft,
+component)`, and a run of lines keeping the draft attribution of its first.
+The fork's two tests came across unchanged and pass
+(`TestMemoryParsingWriterCountsSplitLinesAndTheDraft`: 10167.88 MiB at every
+chunk size from 1 byte to the whole log; `TestResetLoadAccountingForgetsParsedBuffers`).
 
 **Status as of 2026-10-14: the set moved to upstream v0.40.4.** Manifest
 `054fe328` (`base: v0.40.4`, `integration.sha 3123bb66`, 25 patches, same
