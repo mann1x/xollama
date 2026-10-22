@@ -5,6 +5,14 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-22 — fork patch `up-llama-server-memory-lines@43d27453` merged: llama-server memory is read by whole lines, and an MTP draft no longer replaces the target's KV and compute (for the next release).**
+> - Fork mails #1766/#1769 (manifest think-budget `9a6bf9b61`, integration `b6a9febd`); owner 05:42: "yes go ahead with 1".
+> - Two faults in the memory scrape, both on our dev:
+>   - A buffer line split across two pipe writes matched in neither. On pandorum, `/api/ps` showed 373 MiB for a 9B Q6_K fully on the GPU.
+>   - An MTP draft is built from the target's own model file and got the same key, and its blocks restate-deleted the target's: 2176 MiB KV read as 512, 704 MiB compute as 172.
+> - The `--no-ff` merge at the manifest's sha conflicted with our `memory-scrape` parser. It was resolved to both: whole lines with the tail kept (64 KiB cap), the key `(model, draft, component, backend, kind, stream)`, restate-delete per `(model, draft, component)`, and a run of lines keeping the draft attribution of its first. `resetLoadAccounting` clears the writer too.
+> - The fork's two tests came across unchanged and pass: `TestMemoryParsingWriterCountsSplitLinesAndTheDraft` gives 10167.88 MiB at every chunk size from 1 byte to the whole log, and `TestResetLoadAccountingForgetsParsedBuffers` passes. `go test ./llm/` passes and lint is clean.
+
 > **2026-10-20 — `repeat_last_n = -1` reaches stock llama.cpp as `num_ctx` (`repeat-last-n` hook; for the next release).**
 > - The owner hit a 400 on eleven2go: "Field 'repeat_last_n': Value must be between 0 <= value <= 2147483647, but got -1". It came from their stock Ollama on 11434 (`0.40.0-thinkbudget`, stock `llama-server`), not xOllama. xOllama on 22434 with opencoti c13 r6 resolved -1 to 32768 (checked live).
 > - Stock `llama-server`'s schema accepts only 0 and up, while opencoti takes -1 (the slot's context). Owner 07:39: "yes map -1 to num_ctx for stock llama.cpp. will go in the next release".

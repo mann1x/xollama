@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -3258,6 +3259,104 @@ func TestMemoryParsingWriter(t *testing.T) {
 				t.Errorf("MemorySize vram = %d, want %d", vram, expectedGPU)
 			}
 		})
+	}
+}
+
+// A Qwen3.5 9B Q6_K with an MTP draft, fully on an RTX 5080, as llama-server
+// logged it (pandorum, v0.40.4-thinkbudget). /api/ps reported 373 MiB, then
+// 905 MiB after the first request.
+const mtpDraftLoadLog = `common_params_fit_impl: projected to use 10167 MiB of device memory vs. 14783 MiB of free device memory
+llama_prepare_model_devices: using device CUDA0 (NVIDIA GeForce RTX 5080) (0000:2b:00.0) - 14985 MiB free
+load_tensors: offloaded 34/34 layers to GPU
+load_tensors:        CUDA0 model buffer size =  6402.57 MiB
+load_tensors:    CUDA_Host model buffer size =   795.70 MiB
+llama_context: constructing llama_context
+llama_context: n_ctx                 = 131072
+llama_context:  CUDA_Host  output buffer size =     0.95 MiB
+llama_kv_cache:      CUDA0 KV buffer size =  2176.00 MiB
+llama_kv_cache: size = 2176.00 MiB (131072 cells,   8 layers,  1/1 seqs), K (q8_0): 1088.00 MiB, V (q8_0): 1088.00 MiB
+llama_memory_recurrent:      CUDA0 RS buffer size =   201.00 MiB
+sched_reserve: reserving ...
+sched_reserve:      CUDA0 compute buffer size =   704.29 MiB
+sched_reserve:  CUDA_Host compute buffer size =   160.29 MiB
+common_speculative_init_result: creating MTP draft context against the target model 'J:\ollama_models\blobs\sha256-c94d907c'
+llama_context: constructing llama_context
+llama_context:  CUDA_Host  output buffer size =     0.95 MiB
+llama_kv_cache:      CUDA0 KV buffer size =   512.00 MiB
+sched_reserve: reserving ...
+sched_reserve:      CUDA0 compute buffer size =   172.02 MiB
+sched_reserve:  CUDA_Host compute buffer size =   144.02 MiB
+srv    load_model: initializing, n_slots = 1, n_ctx_slot = 131072, kv_unified = 'false'
+spec common_specu: adding speculative implementation 'draft-mtp'
+sched_reserve: reserving ...
+sched_reserve:      CUDA0 compute buffer size =   172.02 MiB
+sched_reserve:  CUDA_Host compute buffer size =   144.02 MiB
+srv    load_model: speculative decoding context initialized
+srv  llama_server: model loaded
+slot   operator(): id  0 | task 0 | cached n_tokens = 0, memory_seq_rm [0, end)
+sched_reserve: reserving ...
+sched_reserve:      CUDA0 compute buffer size =   704.29 MiB
+sched_reserve:  CUDA_Host compute buffer size =   160.29 MiB
+`
+
+func TestMemoryParsingWriterCountsSplitLinesAndTheDraft(t *testing.T) {
+	// llama-server's own projection, and the sum of every CUDA0 line above:
+	// target model, KV, RS and compute, then the draft's KV and compute.
+	wantGPU := 6402.57 + 2176 + 201 + 704.29 + 512 + 172.02
+	wantTotal := wantGPU + 795.70 + 0.95 + 160.29 + 0.95 + 144.02
+	mib := func(v uint64) float64 { return float64(v) / (1024 * 1024) }
+
+	// A pipe read ends wherever the pipe had data, so every chunk size is a
+	// way llama-server's output can arrive.
+	for _, size := range []int{1, 2, 3, 7, 13, 64, 100, 511, 4096, len(mtpDraftLoadLog)} {
+		t.Run(fmt.Sprintf("chunks of %d", size), func(t *testing.T) {
+			runner := &llamaServerRunner{
+				vramByDevice:     make(map[string]uint64),
+				systemFreeAtLoad: make(map[string]uint64),
+			}
+			w := &memoryParsingWriter{inner: io.Discard, runner: runner}
+			for log := []byte(mtpDraftLoadLog); len(log) > 0; {
+				n := min(size, len(log))
+				if _, err := w.Write(log[:n]); err != nil {
+					t.Fatal(err)
+				}
+				log = log[n:]
+			}
+
+			if got := mib(runner.memGPU); math.Abs(got-wantGPU) > 0.01 {
+				t.Errorf("memGPU = %.2f MiB, want %.2f", got, wantGPU)
+			}
+			if got := mib(runner.memTotal); math.Abs(got-wantTotal) > 0.01 {
+				t.Errorf("memTotal = %.2f MiB, want %.2f", got, wantTotal)
+			}
+			if got := mib(runner.vramByDevice["CUDA0"]); math.Abs(got-wantGPU) > 0.01 {
+				t.Errorf("vramByDevice[CUDA0] = %.2f MiB, want %.2f", got, wantGPU)
+			}
+			if runner.gpuLayers != 34 || runner.totalLayers != 34 {
+				t.Errorf("layers = %d/%d, want 34/34", runner.gpuLayers, runner.totalLayers)
+			}
+			if got := runner.systemFreeAtLoad["CUDA0"]; got != 14985*1024*1024 {
+				t.Errorf("systemFreeAtLoad[CUDA0] = %d, want 14985 MiB", got)
+			}
+		})
+	}
+}
+
+func TestResetLoadAccountingForgetsParsedBuffers(t *testing.T) {
+	runner := &llamaServerRunner{
+		vramByDevice:     make(map[string]uint64),
+		systemFreeAtLoad: make(map[string]uint64),
+	}
+	w := &memoryParsingWriter{inner: io.Discard, runner: runner}
+	runner.output = w
+
+	// The projector on the GPU, then a retry that put it on the CPU.
+	w.Write([]byte("clip_ctx:        CUDA0 model buffer size =   900.00 MiB\nload_tensors:        CUDA0 model buffer size =  1000.00 MiB\nload_tens"))
+	runner.resetLoadAccounting()
+	w.Write([]byte("load_tensors:        CUDA0 model buffer size =  1000.00 MiB\n"))
+
+	if got := runner.memGPU; got != 1000*1024*1024 {
+		t.Errorf("memGPU = %d MiB, want 1000", got/(1024*1024))
 	}
 }
 
