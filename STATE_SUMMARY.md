@@ -5,6 +5,10 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-22 — RELEASE.md rule 8: an impact analysis at every change, not only the regression gates (owner: "this is what should be done at every change").**
+> - New rule 8 in `docs/protocols/RELEASE.md` and the procedure in step 1: for each change, name its blast radius and the downstream consumers, run a targeted end-to-end check of each impacted feature against a control (the released binary or the `llamacpp` off-path) and the pathological input the change was made for, and record it in STATE_SUMMARY and the PR notes. The VALIDATION.md gate table is the regression complement.
+> - Rides the next release; the running `v0.40.6-xollama.1` build is unaffected.
+
 > **2026-10-22 — `v0.40.6-xollama.1` started (owner 05:53: "make the release").**
 > - It is a re-release on v0.40.6. The fork is still on `v0.40.6-thinkbudget` (rule 7 checked), and the engine pin and runtimes are unchanged. It carries `555fe9076` (repeat_last_n), `ae60fdc03` (memory lines) and `31e5ef920` (tool_choice none).
 > - G1 passes on `31e5ef920`: gofmt and build clean, every package ok, lint 0, 56 hooks, compat-origin 0.
