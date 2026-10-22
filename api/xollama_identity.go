@@ -91,6 +91,12 @@ const (
 	// back while a tool call is written, by one rule for every model; the
 	// parsed call still arrives whole in tool_calls.
 	FeatureToolCallProgress = "tool_call_progress_v1"
+	// FeatureToolChoiceNone: a chat request with tool_choice "none" (or
+	// {"type":"none"}) keeps its tools in the prompt, so the prefix is reused,
+	// and the model cannot open a tool call: the tag a call opens with is
+	// banned from sampling, or ends the answer where it is more than one
+	// token, and a call written anyway is dropped.
+	FeatureToolChoiceNone = "tool_choice_none_v1"
 )
 
 // IsXollama reports whether the server at base is this fork, by the identity

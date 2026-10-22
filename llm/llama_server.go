@@ -1908,6 +1908,9 @@ type llamaServerCompletionRequest struct {
 	// xollama-hook: notices -- opencoti's generation notices, only on an
 	// engine that declares them (llm/engine_notice.go).
 	Notices json.RawMessage `json:"notices,omitempty"`
+	// xollama-hook: tool-choice -- the tool-call tag banned for tool_choice
+	// "none" (llm/engine_tool_choice.go); absent on every other request.
+	LogitBias []any `json:"logit_bias,omitempty"`
 }
 
 // schemaGrammars caches the grammars llama-server derives from JSON schemas,
@@ -2251,6 +2254,9 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 		poolID = s.poolFor(req.PoolKey)
 	}
 	applySession(&lsReq, s.usedOpencoti, s.launch.config, req.SessionID, poolID)
+	if req.NoToolCallTag != "" { // xollama-hook: tool-choice
+		s.banToolCall(ctx, req.NoToolCallTag).apply(&lsReq)
+	}
 	// xollama-hook: notices
 	if n := s.noticesFor(ctx, req.Notices); n != nil {
 		lsReq.Notices = n
@@ -2979,6 +2985,9 @@ func (s *llamaServerRunner) llamaServerChatRequest(req ChatRequest, stream bool)
 
 	if len(req.Tools) > 0 {
 		body["tools"] = req.Tools
+	}
+	if choice := chatToolChoice(req); choice != nil { // xollama-hook: tool-choice
+		body["tool_choice"] = choice
 	}
 	if req.Logprobs {
 		body["logprobs"] = true

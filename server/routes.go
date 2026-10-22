@@ -3745,6 +3745,8 @@ func (s *Server) ChatHandler(c *gin.Context) {
 			// xollama-hook: council -- a council member's pool and window.
 			Placement: councilPlacement(c),
 			Notices:   req.Notices, // xollama-hook: notices
+
+			NoToolCallTag: noToolCallTag(&req, builtinParser, toolParser), // xollama-hook: tool-choice
 		}, func(r llm.CompletionResponse) {
 			if n, ok := noticeChunk(req.Model, r.Notice); ok { // xollama-hook: notices
 				ch <- n
@@ -3791,6 +3793,7 @@ func (s *Server) ChatHandler(c *gin.Context) {
 				res.Message.Content = content
 				res.Message.Thinking = thinking
 				toolCalls = completeToolCalls(toolCalls, req.Tools, r.Done && r.DoneReason == llm.DoneReasonLength)
+				toolCalls = forbiddenToolCalls(&req, toolCalls) // xollama-hook: tool-choice
 				for i := range toolCalls {
 					toolCalls[i].ID = toolCallId()
 				}
@@ -3818,6 +3821,7 @@ func (s *Server) ChatHandler(c *gin.Context) {
 			if len(req.Tools) > 0 {
 				toolCalls, content := toolParser.Add(res.Message.Content)
 				toolCalls = completeToolCalls(toolCalls, req.Tools, r.Done && r.DoneReason == llm.DoneReasonLength)
+				toolCalls = forbiddenToolCalls(&req, toolCalls) // xollama-hook: tool-choice
 				if len(content) > 0 {
 					res.Message.Content = content
 				} else if len(toolCalls) > 0 {
@@ -3958,6 +3962,8 @@ func (s *Server) handleNativeChat(c *gin.Context, req api.ChatRequest, m *Model,
 		// xollama-hook: council -- a council member's pool and window.
 		Placement: councilPlacement(c),
 		Notices:   req.Notices, // xollama-hook: notices
+
+		ToolChoiceNone: api.ToolChoiceNone(req.ToolChoice), // xollama-hook: tool-choice
 	}, truncate)
 	if err != nil {
 		slog.Error("chat template prompt error", "error", err)

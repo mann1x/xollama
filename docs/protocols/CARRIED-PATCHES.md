@@ -81,6 +81,7 @@ on the push to `dev`.
 | fork-only | `up-qwen35-empty-think-history` | `915f47ac` | `969691fea` |
 | fork-only | `up-mlxrunner-manifest-list` | `d688515b` | `c19db82b9` |
 | fork-only | `up-gemma4-channel-in-thinking` | `1c911e9a` | `784d930d5` |
+| fork-only | `up-llama-server-memory-lines` | `43d27453` | `ae60fdc03` |
 
 **2026-10-22: a twenty-eighth patch, `up-llama-server-memory-lines`**
 (fork-only, last in `patches[]`; think-budget `9a6bf9b61`, integration

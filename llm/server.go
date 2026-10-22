@@ -376,6 +376,10 @@ type CompletionRequest struct {
 	// xollama-hook: notices -- the client's `notices` object, sent only to an
 	// engine that declares generation_notice_v1 (llm/engine_notice.go).
 	Notices json.RawMessage
+
+	// xollama-hook: tool-choice -- the tag a tool call opens with, which the
+	// model must not write (tool_choice "none"); empty for every other request.
+	NoToolCallTag string
 }
 
 type ChatRequest struct {
@@ -413,6 +417,10 @@ type ChatRequest struct {
 
 	// xollama-hook: notices -- as CompletionRequest.Notices.
 	Notices json.RawMessage
+
+	// xollama-hook: tool-choice -- tool_choice "none": the engine renders the
+	// tools and is told not to call them (chatToolChoice).
+	ToolChoiceNone bool
 }
 
 type ChatResponse struct {

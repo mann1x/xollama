@@ -5,6 +5,20 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-22 — `tool_choice: "none"` on `/api/chat` (`tool-choice` hook, `tool_choice_none_v1`; for the next release).**
+> - Asked by cerebriline (mail #1733). A pandorum side call on eleven2go (`0.40.6-xollama`, gemma-4 v9-agentic) sent `tool_choice: "none"` with its 21 tools, and the model wrote an editor call to its 4000-token cap: 36 s, empty answer. `api.ChatRequest` had no such field, so the value was dropped. Owner 05:42: "add 2 to this new release, it should not need an engine change".
+> - **Prompt unchanged:** the tools stay rendered, so the prefix is reused.
+> - **Completion path:** the tag a call opens with is banned. The tag is the built-in parser's (`ToolCallStartTagForParser`), else the template parser's. The engine tokenizes it with `parse_special`: one token is banned through `logit_bias [[id,false]]`, several tokens become a stop string (logged at Warn), and a tag with no letter (`{`) is left alone.
+> - **Chat path:** the engine gets `tool_choice: "none"`.
+> - **Floor:** a call written anyway is dropped and logged at Warn. `{"type":"none"}` is accepted too.
+> - Tests: `api/xollama_tool_choice_test.go`, `llm/engine_tool_choice_test.go`, `server/xollama_tool_choice_test.go`. `api`, `llm` and `server` pass; lint is clean; `check-hooks.sh` reports 56 hooks.
+> - Live on solidPC (CPU, side port 22498, `ollama` user, `/srv/ml/xtc`, qwen2.5:1.5b, `<tool_call>` via the template, temp 0), on stock llama.cpp and on opencoti:
+>   - With no `tool_choice`, and with `auto`, the model made the call.
+>   - With `"none"` and with `{"type":"none"}`: 0 calls and a text answer.
+>   - No drop was logged, so the ban held.
+>   - gemma4's `<|tool_call>` is covered by the unit test only.
+> - Doc: `docs/xollama/tool-choice.mdx`. Registry row `tool-choice`. CARRIED-PATCHES row for the memory-lines merge `ae60fdc03`.
+
 > **2026-10-22 — fork patch `up-llama-server-memory-lines@43d27453` merged: llama-server memory is read by whole lines, and an MTP draft no longer replaces the target's KV and compute (for the next release).**
 > - Fork mails #1766/#1769 (manifest think-budget `9a6bf9b61`, integration `b6a9febd`); owner 05:42: "yes go ahead with 1".
 > - Two faults in the memory scrape, both on our dev:
@@ -2785,7 +2799,9 @@ Council Chat is in Phase 11.
    against 303) and move the pin on that measurement. opencoti c14 is the next
    engine, under the same rule (owner, 2026-10-16: "c14 is next"). The next
    release name is `v0.40.6-xollama.1`, unless the fork moves to a newer
-   upstream first (RELEASE.md rule 7).
+   upstream first (RELEASE.md rule 7). Its notes carry `repeat_last_n` -1 on
+   stock (`555fe9076`), the memory-lines fork patch (`ae60fdc03`) and
+   `tool_choice_none_v1` (owner 2026-10-22: "add 2 to this new release").
 2. Why the free-memory refresh fails through a model swap on Windows
    (pandorum 2026-10-16), when it is seen again with the engine's listing
    output.
