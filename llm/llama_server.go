@@ -423,12 +423,20 @@ func engineDevices(gpus []ml.DeviceInfo) []engine.Device {
 
 // startLlamaServer spawns the upstream llama-server process with appropriate CLI flags.
 func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.Cmd, port int, usedOpencoti bool, err error) {
-	exe, err := FindLlamaServer()
-	if err != nil {
+	exe, findErr := FindLlamaServer()
+	if findErr != nil {
 		// xollama-hook: stockless — macOS ships no stock llama-server; opencoti
-		// serves every load there (llm/engine/stockless.go).
-		if engine.StockShipped(runtime.GOOS) {
-			return nil, 0, false, err
+		// serves every load there (llm/engine/stockless.go). A platform that
+		// does ship one normally has it in lib/ollama, so its absence is fatal
+		// for a load bound for stock llama.cpp — but not for one bound for
+		// opencoti (XOLLAMA_ENGINE=opencoti, or a model that pins engine=opencoti):
+		// a Go-only build with the engine staged (the council gate) has no stock
+		// binary and must still run on opencoti. Defer to engine.Launch below;
+		// the guard after it returns findErr if opencoti does not take the load.
+		opencotiWanted := strings.EqualFold(envconfig.Var(engine.EnvSelector), xollama.EngineOpencoti) ||
+			launch.config.enginePin() == xollama.EngineOpencoti
+		if engine.StockShipped(runtime.GOOS) && !opencotiWanted {
+			return nil, 0, false, findErr
 		}
 		exe = ""
 	}
@@ -525,6 +533,15 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	name, args, usedOpencoti := exe, params, false
 	if !launch.forceStockEngine && enginePin != xollama.EngineLlamaCpp {
 		name, args, usedOpencoti = engine.Launch(exe, params, engineDevices(launch.gpus), ml.LibOllamaPath)
+	}
+
+	// xollama-hook: stockless — a stock-shipping platform whose stock binary is
+	// absent (a Go-only build, no lib/ollama) and a load opencoti did not take
+	// has nothing to run: return the missing-binary error deferred above, not a
+	// bare exec of "". exe is "" only when FindLlamaServer failed, so findErr is
+	// set here.
+	if !usedOpencoti && exe == "" && engine.StockShipped(runtime.GOOS) {
+		return nil, 0, false, findErr
 	}
 
 	// A model pinned to opencoti that did not get it must not quietly run on
