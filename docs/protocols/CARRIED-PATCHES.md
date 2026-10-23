@@ -27,6 +27,73 @@ first if a patch looks missing or out of date.
    other row in this file keys on the PR number, and these cannot. They are
    listed apart, below.
 
+**Status as of 2026-10-23: the set moved to upstream v0.40.9, and the
+think-budget `-1` fix was added (30 patches).** Manifest `0aeb9fa1`
+(`base: v0.40.9`, `integration.sha caf2c13a`, release `v0.40.9-1-thinkbudget`
+@ `0e85a55c`; fork mails #1806/#1807/#1817; v0.40.7 and v0.40.8 were skipped by
+the fork). Consumed on branch `sync/upstream-20261023` (not yet on `dev`/`main`)
+after the upstream v0.40.9 tag merge: the 29 patches at the shas below, each its
+own `--no-ff` merge in `patches[]` order, then a **thirtieth** added last —
+`up-completion-generation-prompt` (`llama/compat/006`), which re-registers
+llama-server's `/completion` `generation_prompt` field that llama.cpp dropped at
+b11669; without it a `think_budget` on any model whose template opens the
+thinking block (qwen3, gemma4) was echoed but never enforced, from
+`v0.40.6-thinkbudget` through `v0.40.9-thinkbudget`. Conflicts kept HEAD (dev
+already carried the patches and the fork hooks) except where a patch brought
+genuinely new v0.40.9 content — `up-native-thinking-replay` now carries
+`a5014b7c` ("thinking to the template on assistant turns only"), and
+`up-think-budget`'s three ports (routes_test keep-both; `ShowResponse` with the
+new `TemplateSource`; `model.ErrInvalidThinkBudget` into upstream's new
+`scheduleError`); `llama/compat` took the fork's.
+
+Three bugs the merges surfaced were fixed (`bug-313/314/315`): a keep-both
+duplicate in `server/routes_test.go`; `windowWriter` not forwarding `SetThinking`
+(the upstream #19098 web-search follow-up regression); and `DraftTypeFor`
+over-adopting upstream's empty drafter default (restored `draft-mtp`).
+
+llama.cpp moved b11669 → b11803 and then `006` landed, so the inputs digest
+moved `83f79eeb…` → `0584023f…` → `c3f7c881…` (README excluded, `+ llama/clef`),
+equal to this tree's and to the runtimes' build commit `0e85a55c`. The four
+MLX/runtime pins move to `v0.40.9-1-thinkbudget`; upstream #17956 deduplicated
+the CUDA libraries MLX shares with GGML, so the Windows MLX pin is now upstream's
+own `ollama-windows-amd64-mlx.zip` and the fork's `-reldir` build and its
+`only=mlx-windows` job are retired (owner, 2026-10-23; no-cuDNN verified on
+eleven2go). The Windows CPU runtime (`llama/runtime-pin.txt`) is rebuilt by
+`xollama-runtime.yaml` and moved with the release.
+
+| PR | branch | manifest sha | 2026-10-23 merge |
+|---|---|---|---|
+| #17563 | `up-repeat-guard` | `1c2722b4` | `6faac5a69` |
+| #17564 | `up-truncated-tool-calls` | `9d14bec9` | `d5e015996` |
+| #17565 | `up-gemma4-object-close` | `6ce108d2` | `60df7f790` |
+| #17566 | `up-think-budget` | `a5e3ca20` | `b1c27dd78` |
+| #17567 | `up-mlx-libdl` | `f1b10b9c` | `65761d579` |
+| #17626 | `up-gemma4-stray-channel-name` | `5658a17f` | `becdc9404` |
+| #17914 | `qwen3coder-tolerate-malformed-tool-calls` | `b4128129` | `21d61cd2f` |
+| #18212 | `up-reasoning-budget-line-boundary` | `ffea3884` | `9920123d5` |
+| #18281 | `up-native-thinking-replay` | `9760a4bc` | `7dca85815` |
+| #18288 | `up-gemma4-stray-closer` | `5018d1ea` | `935a28ef7` |
+| #18289 | `up-jinja-runner-reuse` | `abcbe62a` | `cdce474a7` |
+| fork-only | `gemma4-toolcall-in-thinking` | `10790678` | `108a8ca1a` |
+| #18624 | `qwen35-toolcall-in-thinking` | `eada7ecb` | `f55498ffd` |
+| fork-only | `up-gemma4-unparsed-tool-call-content` | `464b5368` | `b0e8a94f6` |
+| fork-only | `up-toolcall-tags` | `c10652f3` | `d74104479` |
+| fork-only | `up-codex-request-count-mtime` | `b33a0d28` | `7b9489d75` |
+| fork-only | `up-fileutil-root-permission-tests` | `175aa1a1` | `c332278d9` |
+| fork-only | `up-gofmt-vision-test-data` | `f9544c94` | `978ba029f` |
+| fork-only | `up-lfm2-think-off-discard` | `26492cd0` | `01233629b` |
+| fork-only | `up-gemma4-assistant-shape` | `a0005106` | `12ed96ef6` |
+| fork-only | `up-gemma4-swallowed-key` | `9cc25b3e` | `f93706c88` |
+| fork-only | `up-compat-readme` | `3464ce0a` | `83ec53efd` |
+| fork-only | `up-response-scope-think-budget` | `63cfbc54` | `8f89b4cf7` |
+| fork-only | `up-modelfile-roundtrip` | `2fd9cfbf` | `a9d7d7ff8` |
+| fork-only | `up-qwen35-empty-think-history` | `eccad329` | `531bb795d` |
+| fork-only | `up-mlxrunner-manifest-list` | `e0f51b1b` | `aae34dd97` |
+| fork-only | `up-gemma4-channel-in-thinking` | `cc1fcbec` | `cf627ad23` |
+| fork-only | `up-llama-server-memory-lines` | `3bfde227` | `cf7f43866` |
+| fork-only | `up-qwen-unclosed-tool-call` | `50d6497e` | `2ee7e87f8` |
+| fork-only | `up-completion-generation-prompt` | `d2d1694d` | `25873e972` |
+
 **Status as of 2026-10-19: the set moved to upstream v0.40.6.** Manifest
 `33e6af53` (`base: v0.40.6`, `integration.sha e025d6e7`, 27 patches, same
 order, none added or dropped; fork mails #1586/#1588; none retires, every
