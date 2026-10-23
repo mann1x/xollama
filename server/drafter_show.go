@@ -50,14 +50,13 @@ func drafterShowInfo(m *Model, targetKV *gguf.Metadata, targetTensors gguf.Tenso
 	}
 
 	if m.DraftPath != "" {
-		draftKV, draftTensors, err := getModelData([]string{m.DraftPath}, false)
+		draftKV, _, err := getModelData([]string{m.DraftPath}, false)
 		if err != nil {
 			return nil
 		}
 		attached = &llm.DrafterMetadata{
 			Architecture:       draftKV.Architecture(),
 			RequiresTargetArch: draftKV.String("requires_target_arch"),
-			HasMTPDraft:        llm.BuiltInDrafter(draftKV.Architecture(), draftKV.Uint("nextn_predict_layers"), draftTensors.Items("mtp.")),
 		}
 		info.Source = "attached"
 		info.Architecture = draftKV.Architecture()

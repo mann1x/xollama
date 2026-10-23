@@ -90,7 +90,9 @@ func TestSynthesize(t *testing.T) {
 		w.Write(wav)
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	// xollama: the CLI resolves its host from XOLLAMA_HOST only (envconfig.Host),
+	// so OLLAMA_HOST does not steer it -- see .claude/rules/default-port.md.
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	wav, err := synthesize(t.Context(), "phonon", "Toby", "hello")
 	if err != nil || binary.LittleEndian.Uint32(wav[4:]) != 40 || binary.LittleEndian.Uint32(wav[40:]) != 4 {
