@@ -1,9 +1,12 @@
 ghsa	severity	scope	manifest	package	vulnerable	fixed	created	summary
 GHSA-4x5r-pxfx-6jf8	low	development	app/ui/app/package-lock.json	@babel/core	<= 7.29.0	7.29.6	2026-09-18	@babel/core: Arbitrary File Read via sourceMappingURL Comment
 GHSA-p498-v437-472g	medium	development	app/ui/app/package-lock.json	@humanfs/node	< 0.16.8	0.16.8	2026-09-18	humanfs: Recursive copy follows symlinked files and copies data from outside the source tree
+GHSA-f2ph-cmg5-wxc8	critical	development	app/ui/app/package-lock.json	@storybook/addon-vitest	>= 9.0.0, < 9.1.21	9.1.21	2026-10-23	Storybook: Missing origin validation in Storybook preview allows code injection from malicious websites
+GHSA-px85-f4q5-jh77	high	development	app/ui/app/package-lock.json	@storybook/addon-vitest	>= 9.0.0, < 9.1.21	9.1.21	2026-10-23	Storybook dev server vulnerable to code injection from the local network
 GHSA-g8mr-85jm-7xhm	critical	development	app/ui/app/package-lock.json	@vitest/browser	>= 3.0.0, <= 3.2.4	3.2.5	2026-09-18	Vitest Browser: Exposed Browser Mode API Can Proxy CDP and Overwrite Config Files, Leading to RCE
 GHSA-p63j-vcc4-9vmv	critical	development	app/ui/app/package-lock.json	@vitest/browser	< 3.2.7	3.2.7	2026-09-18	@vitest/browser: Browser Mode provider commands bypass the file-access permission gate
 GHSA-82fw-gwwq-j7x9	medium	development	app/ui/app/package-lock.json	@vitest/mocker	>= 2.1.0, < 4.1.11	4.1.11	2026-09-18	Vitest: Path Traversal / Arbitrary File Read via @vitest/mocker Redirect Mock
+GHSA-qxg6-89mg-rqv8	medium	development	app/ui/app/package-lock.json	@vitest/mocker	>= 2.1.0-beta.7, < 4.1.12	4.1.12	2026-10-23	Vitest: Code injection via unauthenticated manual mock registration
 GHSA-3jxr-9vmj-r5cp	high	development	app/ui/app/package-lock.json	brace-expansion	< 1.1.16	1.1.16	2026-09-18	brace-expansion: DoS via exponential-time expansion of consecutive non-expanding {} groups
 GHSA-3jxr-9vmj-r5cp	high	development	app/ui/app/package-lock.json	brace-expansion	>= 2.0.0, < 2.1.2	2.1.2	2026-09-18	brace-expansion: DoS via exponential-time expansion of consecutive non-expanding {} groups
 GHSA-q2hr-2g5m-vwhr	medium	development	app/ui/app/package-lock.json	brace-expansion	< 1.1.21	1.1.21	2026-10-04	brace-expansion: Quadratic-time expansion of the `{a},b}` rewrite causes CPU denial of service
@@ -14,6 +17,7 @@ GHSA-55q2-fjhq-7xh7	medium	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4
 GHSA-6688-9rhm-gjv2	low	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.15	3.4.16	2026-10-07	DOMPurify: IN_PLACE returns a force-removed rawtext root whose text carries attacker markup — pure HTML reparse executes
 GHSA-76mc-f452-cxcm	medium	runtime	app/ui/app/package-lock.json	dompurify	< 3.4.7	3.4.7	2026-09-18	DOMPurify: Hook mutation of `data.allowedTags` / `data.allowedAttributes` permanently pollutes `DEFAULT_ALLOWED_TAGS` / 
 GHSA-c2j3-45gr-mqc4	low	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.11	3.4.12	2026-09-18	DOMPurify: `CUSTOM_ELEMENT_HANDLING` bypasses `afterSanitizeElements` for allowed custom elements.
+GHSA-c6gr-qvv4-5v3f	low	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.16	3.4.17	2026-10-23	DOMPurify: SMIL attributeName=href guard is skipped when PARSER_MEDIA_TYPE is application/xhtml+xml
 GHSA-cj63-jhhr-wcxv	medium	runtime	app/ui/app/package-lock.json	dompurify	<= 3.3.1	3.3.2	2026-09-18	DOMPurify USE_PROFILES prototype pollution allows event handlers
 GHSA-cjmm-f4jc-qw8r	medium	runtime	app/ui/app/package-lock.json	dompurify	<= 3.3.1	3.3.2	2026-09-18	DOMPurify ADD_ATTR predicate skips URI validation
 GHSA-cmwh-pvxp-8882	medium	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.10	3.4.11	2026-09-18	DOMPurify: Permanent `ALLOWED_ATTR` pollution via `setConfig()` bypassing the hook clone-guard (incomplete fix of the 3.
@@ -22,6 +26,7 @@ GHSA-gvmj-g25r-r7wr	low	runtime	app/ui/app/package-lock.json	dompurify	>= 3.0.0,
 GHSA-h7mw-gpvr-xq4m	medium	runtime	app/ui/app/package-lock.json	dompurify	< 3.4.0	3.4.0	2026-09-18	DOMPurify: FORBID_TAGS bypassed by function-based ADD_TAGS predicate (asymmetry with FORBID_ATTR fix)
 GHSA-h8r8-wccr-v5f2	medium	runtime	app/ui/app/package-lock.json	dompurify	< 3.3.2	3.3.2	2026-09-18	DOMPurify is vulnerable to mutation-XSS via Re-Contextualization 
 GHSA-hpcv-96wg-7vj8	medium	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.5	3.4.6	2026-09-18	DOMPurify: Cross-realm IN_PLACE sanitization leaves executable markup intact via realm-bound `instanceof` checks
+GHSA-mrv2-3pqr-j5jr	high	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.16	3.4.17	2026-10-23	DOMPurify IN_PLACE: hook that removes a parent or sibling leaves the detached subtree's event handlers armed (incomplete
 GHSA-r47g-fvhr-h676	medium	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.5	3.4.6	2026-09-18	DOMPurify: IN_PLACE mode preserves attributes of a clobbered root element, allowing XSS via attacker-controlled root DOM
 GHSA-rp9w-3fw7-7cwq	medium	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.6	3.4.7	2026-09-18	DOMPurify IN_PLACE Sanitization Bypass via Attached Shadow Root Inside <template>.content
 GHSA-v2wj-7wpq-c8vv	medium	runtime	app/ui/app/package-lock.json	dompurify	>= 3.1.3, <= 3.3.1	3.3.2	2026-09-18	DOMPurify contains a Cross-site Scripting vulnerability
@@ -75,7 +80,9 @@ GHSA-mv8w-475r-vwqw	critical	runtime	app/ui/app/package-lock.json	seroval	<= 1.5
 GHSA-p6vx-979v-rg4c	critical	runtime	app/ui/app/package-lock.json	seroval	>= 0.12.0, <= 1.6.0	1.6.2	2026-10-07	Seroval: `fromJSON()` Promise thenable assimilation invokes plugin-produced callables (bypass of GHSA-mv8w-475r-vwqw)
 GHSA-68fv-2mgg-jv7q	high	development	app/ui/app/package-lock.json	source-map-js	>= 1.0.0, < 1.2.2	1.2.2	2026-10-07	source-map-js allows event-loop denial of service through indexed source-map section offsets
 GHSA-8452-54wp-rmv6	high	development	app/ui/app/package-lock.json	storybook	>= 9.0.0, < 9.1.17	9.1.17	2026-09-18	Storybook manager bundle may expose environment variables during build
+GHSA-f2ph-cmg5-wxc8	critical	development	app/ui/app/package-lock.json	storybook	>= 9.0.0, < 9.1.21	9.1.21	2026-10-23	Storybook: Missing origin validation in Storybook preview allows code injection from malicious websites
 GHSA-mjf5-7g4m-gx5w	high	development	app/ui/app/package-lock.json	storybook	>= 8.7.0-alpha.0, < 9.1.19	9.1.19	2026-09-18	Storybook Dev Server is Vulnerable to WebSocket Hijacking
+GHSA-px85-f4q5-jh77	high	development	app/ui/app/package-lock.json	storybook	>= 9.0.0, < 9.1.21	9.1.21	2026-10-23	Storybook dev server vulnerable to code injection from the local network
 GHSA-34x7-hfp2-rc4v	high	development	app/ui/app/package-lock.json	tar	< 7.5.7	7.5.7	2026-09-18	node-tar Vulnerable to Arbitrary File Creation/Overwrite via Hardlink Path Traversal
 GHSA-83g3-92jg-28cx	high	development	app/ui/app/package-lock.json	tar	< 7.5.8	7.5.8	2026-09-18	Arbitrary File Read/Write via Hardlink Target Escape Through Symlink Chain in node-tar Extraction
 GHSA-8qq5-rm4j-mr97	high	development	app/ui/app/package-lock.json	tar	<= 7.5.2	7.5.3	2026-09-18	node-tar is Vulnerable to Arbitrary File Overwrite and Symlink Poisoning via Insufficient Path Sanitization
@@ -88,14 +95,17 @@ GHSA-5gmw-xhrv-c9v3	critical	development	app/ui/app/package-lock.json	tinypool	<
 GHSA-85c8-ppgw-ccpr	critical	development	app/ui/app/package-lock.json	tinypool	< 2.1.2	2.1.2	2026-10-07	Tinypool: Prototype Pollution Gadget to RCE in run() options
 GHSA-w5hq-g745-h8pq	medium	runtime	app/ui/app/package-lock.json	uuid	< 11.1.1	11.1.1	2026-09-18	uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided
 GHSA-4w7w-66w2-5vf9	medium	development	app/ui/app/package-lock.json	vite	<= 6.4.1	6.4.2	2026-09-18	Vite Vulnerable to Path Traversal in Optimized Deps `.map` Handling
+GHSA-587h-7wmj-h5pm	high	development	app/ui/app/package-lock.json	vite	<= 6.4.3	6.4.4	2026-10-23	launch-editor: `fs.existsSync()` existence check can be bypassed on Windows
+GHSA-698v-4r3x-3vcv	medium	development	app/ui/app/package-lock.json	vite	<= 6.4.3	6.4.4	2026-10-23	launch-editor: escapeCmdArgs() omits % escaping on Windows
 GHSA-93m4-6634-74q7	medium	development	app/ui/app/package-lock.json	vite	>= 6.0.0, <= 6.4.0	6.4.1	2026-09-18	vite allows server.fs.deny bypass via backslash on Windows
+GHSA-9jrq-w75r-8gcw	low	development	app/ui/app/package-lock.json	vite	<= 6.4.3	6.4.4	2026-10-23	Vite: Cross origin script execution through Vite custom middleware
 GHSA-fx2h-pf6j-xcff	high	development	app/ui/app/package-lock.json	vite	<= 6.4.2	6.4.3	2026-09-18	vite: `server.fs.deny` bypass on Windows alternate paths
 GHSA-g4jq-h2w9-997c	low	development	app/ui/app/package-lock.json	vite	>= 6.0.0, <= 6.3.5	6.3.6	2026-09-18	Vite middleware may serve files starting with the same name with the public directory
 GHSA-jqfw-vq24-v9c3	low	development	app/ui/app/package-lock.json	vite	>= 6.0.0, <= 6.3.5	6.3.6	2026-09-18	Vite's `server.fs` settings were not applied to HTML files
 GHSA-p9ff-h696-f583	high	development	app/ui/app/package-lock.json	vite	>= 6.0.0, <= 6.4.1	6.4.2	2026-09-18	Vite Vulnerable to Arbitrary File Read via Vite Dev Server WebSocket
+GHSA-r825-w8mm-5pxw	medium	development	app/ui/app/package-lock.json	vite	<= 6.4.3	6.4.4	2026-10-23	launch-editor: Editor CLI flag misinterpretation causing arbitrary command execution for some editors
+GHSA-rq7h-c2jc-7f22	medium	development	app/ui/app/package-lock.json	vite	<= 6.4.3	6.4.4	2026-10-23	Vite: Files outside `server.fs.allow` could be served when project paths match system paths on non-Windows machine
 GHSA-v6wh-96g9-6wx3	medium	development	app/ui/app/package-lock.json	vite	<= 6.4.2	6.4.3	2026-09-18	launch-editor: NTLMv2 hash disclosure via UNC path handling on Windows
 GHSA-5xrq-8626-4rwp	critical	development	app/ui/app/package-lock.json	vitest	< 3.2.6	3.2.6	2026-09-18	When Vitest UI server is listening, arbitrary file can be read and executed
 GHSA-82fw-gwwq-j7x9	medium	development	app/ui/app/package-lock.json	vitest	>= 2.1.0, < 4.1.11	4.1.11	2026-09-18	Vitest: Path Traversal / Arbitrary File Read via @vitest/mocker Redirect Mock
 GHSA-96hv-2xvq-fx4p	high	development	app/ui/app/package-lock.json	ws	>= 8.0.0, < 8.21.0	8.21.0	2026-09-18	ws: Memory exhaustion DoS from tiny fragments and data chunks
-GHSA-6g7g-w4f8-9c9x	high	runtime	go.mod	github.com/buger/jsonparser	<= 1.1.1	1.1.2	2026-09-18	github.com/buger/jsonparser has a denial of service vulnerability
-GHSA-259r-337f-4rfw	high	runtime	go.mod	github.com/klauspost/compress	<= 1.18.6	1.18.7	2026-10-21	Compress/s2: Integer Overflow or Wraparound and Out-of-bounds Write in compress
