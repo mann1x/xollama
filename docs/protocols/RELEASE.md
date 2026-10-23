@@ -553,6 +553,34 @@ too; fix it on `dev` and cut the next re-release, `xollama.<n+1>`. A published t
 pre-release should not stay on offer, delete the release (`gh release delete`,
 which leaves the tag) so the updater stops seeing it.
 
+### 9. Clean up what the release put on disk
+
+**A release leaves nothing behind on any host it touched.** This is not
+housekeeping: a session once filled solidPC's root disk with gate images
+(2026-10-11) and left a 9 GB assemble tree (2026-10-23). Before the release is
+done, on every host used, remove what this cycle created and keep only what a
+rollback needs:
+
+- **Artifact-check downloads** (step 5): `backup_models/release-check/<tag>/`,
+  for the draft and the release both (about 2 GB each). Remove once the checks
+  have read them.
+- **Host assemble trees** built to update a service bare-metal
+  (`scripts/docker-assemble.sh` into `/srv/ml/xollama-phase2/<host>-<version>/`
+  and its `.assets`, about 9 GB): remove once the swap is installed and verified
+  — the live `/usr/local` copy is what runs.
+- **Service backups** on a swapped host: the swap keeps the old binary and lib
+  as `.bak-<ts>`. Keep only the **latest**; remove older ones (each lib is
+  several GB, and they sit on the service host's root disk).
+- **Gate Docker images**: the image gate removes its own (`KEEP=1` only when
+  another gate follows). Finish with `docker images | grep xollama` empty and
+  `df -h /` checked, on every host an image was pulled to (solidPC, dietpi5).
+- **Staged gate engines** under `/srv/ml/gates/` beyond the shared
+  `opencoti-cache`: large per-engine `engine-<arch>-<version>` trees from old
+  pins can go.
+
+Check `df -h /` on solidPC at the end; a release that grew the root disk is not
+finished.
+
 ## The council gate
 
 A candidate is not cut before a council has answered on the tree it is cut
@@ -589,7 +617,12 @@ xollama tweak model gate/council-kv3-nopolykv --council-polykv=off
 
 **The steps.** Build the tree (`go build -o xollama .`), stage the pinned
 engine, start a side server as `ollama` with `OLLAMA_DEBUG=1` and its log
-kept, then:
+kept, then (`scripts/gates/council.sh` does the build-stage-serve for you via
+`serve-side.sh`, which sets `XOLLAMA_ENGINE=opencoti` and the staged engine
+path). The council runs **on opencoti alone**: a `go build` tree has no stock
+`llama-server`, and that is fine — `startLlamaServer` no longer aborts on a
+missing stock binary when the load is bound for opencoti (`XOLLAMA_ENGINE=opencoti`
+or a model pin), so the gate needs no `cmake` CPU-engine build. Then:
 
 ```sh
 scripts/council-gate.py --host 127.0.0.1:22498 --timeout 600 \

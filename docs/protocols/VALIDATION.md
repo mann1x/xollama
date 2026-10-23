@@ -53,6 +53,32 @@ Baseline: **2026-10-04**, tree `4db0bcedb`, engine `2610041714001`, vulkan
 `2610041656001`, cuda `2610040656001`, media `2610040945001`, macos
 `2610041000001`; candidate rows from `v0.35.1-rc.1.xollama`.
 
+**`v0.40.9-xollama`** (2026-10-23, the tree of `v0.40.9-rc.1.xollama`, short
+check; PR #42, merge `2974a09511ed`, release run 39987359343, dry run
+39984849195 first; the first release on upstream v0.40.9). Engine c13 r6
+`2610182159001`, runtimes `v0.40.9-1-thinkbudget`. Gates run (the rc candidate's
+own artifacts; same tree and pins, so the release takes the short check): G1
+gofmt/build/vet/`go test ./...`/golangci-lint clean, govulncheck 0 reachable,
+`check-compat-origin` 0 bad. G8/G9 on eleven2go: full installer clean,
+`PAYLOAD_ID` `fca99d4c…`, MLX #17956 two-dir layout correct; `qwen3:8b` 512
+tokens on CUDA RTX 3090 125.1 to 125.3, Vulkan RX 9070 XT 102.3 to 102.6 (no
+freeze, driver 32.0.32015.2008), Vulkan integrated 4.8; the small
+`xOllamaUpdate.exe` (17 MB) over the install exit 0 in 4 s, payload + 15 engines
+kept; the short check over the candidate → version `0.40.9-xollama`, `/api/xollama`
+on 22434, `qwen3:8b` 103.5 tok/s; think-budget ollama on 11434 untouched. G10 on
+dietpi5 (arm64 image): version and PAYLOAD (runtime `v0.40.9-1-thinkbudget`,
+engine `2610182159001`, sbsa), `qwen2.5`-class 512 tokens opencoti 10.0 to 11.0
+and llama.cpp 10.4 to 11.0, speech 3/3; owner's containers and 11434 untouched.
+G11 on the Mac mini: app and dmg Notarized Developer ID, stapled, codesigned,
+`minos 14.0`, MLX Metal libs; opencoti on Metal with no fallback — `qwen2.5:1.5b`
+128.6 to 128.9, `llama3` 32.2, `qwen3.5:2b` (Gated Delta Net) a full 512 tokens
+63.5 (the c11 empty-output regression gone on c13), speech 7/7, 0 crashes;
+self-update `0.40.6-xollama.1` → the fork feed's pre-release applied and stayed
+notarized. G12/step 5: dry-run draft 9 assets, `sha256sum` all OK, binary client
+version `0.40.9-xollama`, payload id `fca99d4c…` (= rc.1), draft deleted; the
+release's own 9 assets `sha256sum` all OK; image `:latest` moved to
+`e63088c7…` (= `:0.40.9-xollama`). Promoted; Discord announced (run 39989992792).
+
 **`v0.40.2-xollama`** (2026-10-11, merge `6fa4ba9da`, run 38100508640; the
 tree of `v0.40.2-rc.1.xollama`, short check). G12: 8 files match, payload id
 unchanged. G9: the small installer over the candidate exit 0 in 4 s; 3090
