@@ -60,16 +60,17 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   `go` line of `go.mod`, never `GOTOOLCHAIN: auto`; promote after the eleven2go
   install check — promotion (the `released` event, never a pre-release) posts
   the notes to Discord via `.github/workflows/discord-announce.yaml`.
-  Never push a `v*` tag, never copy exes onto a host as an "update".
+  Never push a `v*` tag, never copy exes onto a host as an "update". A release
+  leaves nothing on disk (step 9): artifact-check downloads, host assemble
+  trees, older `.bak-<ts>` service backups and gate images go, and `df -h /` on
+  solidPC ends it.
 - `docs/protocols/VALIDATION.md` — the gates of a release (G1 to G12): host,
   steps, expected result and the last measured baseline of each; the first
   release passes all, a later one the delta its changes touch, and a gate that
   is run updates its row. Scripts as run: `scripts/gates/`.
-- `docs/features/engine-opencoti-llamafile.md` · `docs/features/rebrand.md` ·
-  `docs/features/store-ownership.md` · `docs/features/windows-installer.md` ·
-  `docs/features/model-config.md` · `docs/features/modelfile-roundtrip.md` ·
-  `docs/features/docker-release.md` · `docs/features/device-selection.md` ·
-  `docs/features/council.md` ·
+- `docs/features/engine-opencoti-llamafile.md` · `docs/features/rebrand.md` · `docs/features/store-ownership.md` ·
+  `docs/features/windows-installer.md` · `docs/features/model-config.md` · `docs/features/modelfile-roundtrip.md` ·
+  `docs/features/docker-release.md` · `docs/features/device-selection.md` · `docs/features/council.md` ·
   `docs/features/system-settings.md`
 - `docs/evaluations/phase0-engine-compat.md` — measured engine-compat baseline.
 
@@ -114,22 +115,21 @@ gitleaks protect --staged --config .gitleaks.toml
 **Entry**: `main.go` → `cmd/cmd.go` (Cobra) · **HTTP**: `server/routes.go` (Gin),
 scheduling `server/sched.go`, model IO `server/images.go` `server/create.go`
 `server/prompt.go`.
-**Runners**: GGUF as a `llama-server` subprocess via `llm/server.go` +
-`llm/llama_server.go`, built from `llama/server/CMakePresets.json`; MLX via
-`mlxrunner/` (`runner.go`, `pipeline.go`, `prefix_cache.go`, `cache/`, `model/`,
-`tokenizer/`, `xgrammar/`). `llm/engine_args.go` appends the operator's
-`XOLLAMA_ENGINE_ARGS` last on the engine command line. On opencoti,
-`llm/engine_fit_target.go` drops upstream's vision-projector padding from
-`LLAMA_ARG_FIT_TARGET` (`engine-fit` hook) — see `.claude/rules/engine-fit.md`.
-A `/health` dial that fails against a live opencoti is tried again with backoff
-(`retryHealth` in `llm/engine_health_retry.go`, `engine-health-retry` hook in
-`getServerStatusRetry`); stock llama.cpp keeps upstream's single failure.
-On Windows an opencoti engine ends with its server: `bindEngineLifetime`
-(`llm/engine_lifetime.go`, `engine-lifetime` hook) puts it in a kill-on-close job
-object (`engine.BindLifetime`, `llm/engine/lifetime_windows.go`).
-`llm/drafter.go` holds
-the drafter rules (built-in vs attached head, `--spec-type`) as pure functions
-shared by the launch and `show` (`server/drafter_show.go`), so the two cannot drift.
+**Runners**: GGUF as a `llama-server` subprocess via `llm/server.go` + `llm/llama_server.go`, built from
+`llama/server/CMakePresets.json`; MLX via `mlxrunner/` (`runner.go`, `pipeline.go`, `prefix_cache.go`, `cache/`,
+`model/`, `tokenizer/`, `xgrammar/`). A missing stock `llama-server` is fatal only for a load bound for stock
+llama.cpp: with `XOLLAMA_ENGINE=opencoti` or a model's `engine=opencoti` pin, `startLlamaServer` defers the miss
+to `engine.Launch` (`stockless` hook), so a `go build` tree with the engine staged runs the council gate with no
+stock binary — see `.claude/rules/stockless.md`. `llm/engine_args.go` appends the operator's
+`XOLLAMA_ENGINE_ARGS` last on the engine command line. On opencoti, `llm/engine_fit_target.go` drops upstream's
+vision-projector padding from `LLAMA_ARG_FIT_TARGET` (`engine-fit` hook) — see `.claude/rules/engine-fit.md`. A
+`/health` dial that fails against a live opencoti is tried again with backoff (`retryHealth` in
+`llm/engine_health_retry.go`, `engine-health-retry` hook in `getServerStatusRetry`); stock llama.cpp keeps
+upstream's single failure. On Windows an opencoti engine ends with its server: `bindEngineLifetime`
+(`llm/engine_lifetime.go`, `engine-lifetime` hook) puts it in a kill-on-close job object (`engine.BindLifetime`,
+`llm/engine/lifetime_windows.go`). `llm/drafter.go` holds the drafter rules (built-in vs attached head,
+`--spec-type`) as pure functions shared by the launch and `show` (`server/drafter_show.go`), so the two cannot
+drift.
 The ollama#4165 single-sequence deny-list binds only on stock llama.cpp:
 `server/sched.go` asks `llm.WouldUseOpencoti` before clamping, and
 `servedSequences` (`llm/engine_estimate.go`) drops a launch that lands on stock
@@ -143,51 +143,40 @@ opencoti's granted window (`X-Context-Window`) reaches the client through the
 `server/context_window.go`; stock llama.cpp stays header-free — see
 `.claude/rules/context-window.md`.
 **Decision scoring** (upstream v0.35.1, MLX scoring since v0.40.0): `/v1/systemone` (`SystemOneHandler` in
-`server/routes.go`) compiles typed questions with `decision/` (`systemone.go`,
-`clef.go`, `types.go`) and scores them through `llm.Scorer` (`llm/score.go`,
-`llm/llama_server_score.go`); a model whose GGUF carries `decision.type` gets the
-`decision` capability (`types/model/capability.go`), and the CLEF head in
-`llama/clef/` is compiled into `llama-server` by `llama/server/CMakeLists.txt` —
-see `docs/capabilities/decision.mdx`. A Clef model (`decision.type = clef`) is served by stock
-`llama-server` while the pinned opencoti declares no `clef_score_v1` (`clefEngine`,
-`server/decision_engine.go`; `engine.HasClefHead`); `nimble` stays on opencoti.
-**Prompting**: `model/renderers/` (per-model `Render`) ↔ `model/parsers/`
-(streaming output), plus `template/`, `thinking/`, `harmony/`; a model's named
-thinking efforts are `types/model/thinking.go`.
-**API shims**: `api/types.go`, `openai/openai.go`, `anthropic/anthropic.go`,
-`middleware/` (`middleware/thinking.go` maps OpenAI/Anthropic efforts). **Config**: `envconfig/config.go` holds every `OLLAMA_*` var;
-the listen address is `envconfig.DefaultPort` (22434), read from `XOLLAMA_HOST`
-only — see `.claude/rules/default-port.md`. Where the CLI *connects* with no host
-set is `api/xollama_host.go` (`ResolveHost`), run once from `cmd/xollama_host.go`;
-it tells the fork apart via `/api/xollama` (`api/xollama_identity.go`,
-`server/identity.go`), then the fork's name in `/api/version`, and refuses a
-stock ollama found on the 11434 fallback rather than driving it.
-**Local API key** (`api-key` hook, off unless a key is configured):
-`XOLLAMA_API_KEY` or the key file (`envconfig/xollama_apikey.go`) is checked by
-`apiKeyMiddleware` in `server/xollama_apikey.go`; the loopback-only admin route
-`/api/xollama/api-key` is `server/xollama_apikey_admin.go`; the CLI sends it via
-`api/xollama_apikey_client.go` and sets it with `xollama tweak server --api-key`
-(`cmd/tweak/server.go`); the desktop UI via `app/ui/apikey.go` — see
-`.claude/rules/api-key.md` and `docs/xollama/api-key.mdx`.
-**Server settings** (`system-settings` hook, plan `plans/system-settings.md`): the
-server's `~/.ollama/xollama-settings.json` overrides the environment — `Var`
-reads its `envs` first (`envconfig/xollama_settings.go`), engines get it via
-`envconfig.Environ()`; written only by `/api/xollama/settings`
-(`server/xollama_settings.go`, loopback); CLI `xollama tweak envs` and
-`xollama tweak show server|envs|model` (`cmd/tweak/envs.go`, `cmd/tweak/show.go`).
-Its `defaults` section is the server's default for every `tweak model` setting
-in `xollama.DefaultSections()`, merged under the model's own by
-`WithDefaults` (`types/xollama/defaults.go`) in `launchXollama`; set with
-`xollama tweak server` (`serverFields`, `cmd/tweak/server.go`).
-Its `gpu` section (`types/xollama/gpu.go`) is `xollama tweak server gpu`
-(`cmd/tweak/gpu.go`): allowed GPUs, priority (fill order), backend per GPU,
-forced link (`OPENCOTI_LINK_GBPS=<pci>=<GB/s>,...`, one entry per forced GPU), split
-auto/spread/single and split mode, applied in `server/xollama_gpu.go` via
-`server/sched.go` hooks and `llm.DeviceEnvs`. Its menu shows each GPU's link as
-the engine measures it: `/api/xollama/link-probe` (`api/xollama_linkprobe.go`,
-`LinkProbeHandler` in `server/xollama_linkprobe.go`, loopback only) runs
-`engine.LinkProbeCommand` (`llm/engine/linkprobe.go`) once per backend, never
-on one with a model generating.
+`server/routes.go`) compiles typed questions with `decision/` (`systemone.go`, `clef.go`, `types.go`) and scores
+them through `llm.Scorer` (`llm/score.go`, `llm/llama_server_score.go`); a model whose GGUF carries
+`decision.type` gets the `decision` capability (`types/model/capability.go`), and the CLEF head in `llama/clef/`
+is compiled into `llama-server` by `llama/server/CMakeLists.txt` — see `docs/capabilities/decision.mdx`. A Clef
+model (`decision.type = clef`) is served by stock `llama-server` while the pinned opencoti declares no
+`clef_score_v1` (`clefEngine`, `server/decision_engine.go`; `engine.HasClefHead`); `nimble` stays on opencoti.
+**Prompting**: `model/renderers/` (per-model `Render`) ↔ `model/parsers/` (streaming output), plus `template/`,
+`thinking/`, `harmony/`; a model's named thinking efforts are `types/model/thinking.go`.
+**API shims**: `api/types.go`, `openai/openai.go`, `anthropic/anthropic.go`, `middleware/`
+(`middleware/thinking.go` maps OpenAI/Anthropic efforts). **Config**: `envconfig/config.go` holds every
+`OLLAMA_*` var; the listen address is `envconfig.DefaultPort` (22434), read from `XOLLAMA_HOST` only — see
+`.claude/rules/default-port.md`. Where the CLI *connects* with no host set is `api/xollama_host.go`
+(`ResolveHost`), run once from `cmd/xollama_host.go`; it tells the fork apart via `/api/xollama`
+(`api/xollama_identity.go`, `server/identity.go`), then the fork's name in `/api/version`, and refuses a stock
+ollama found on the 11434 fallback rather than driving it.
+**Local API key** (`api-key` hook, off unless a key is configured): `XOLLAMA_API_KEY` or the key file
+(`envconfig/xollama_apikey.go`) is checked by `apiKeyMiddleware` in `server/xollama_apikey.go`; the
+loopback-only admin route `/api/xollama/api-key` is `server/xollama_apikey_admin.go`; the CLI sends it via
+`api/xollama_apikey_client.go` and sets it with `xollama tweak server --api-key` (`cmd/tweak/server.go`); the
+desktop UI via `app/ui/apikey.go` — see `.claude/rules/api-key.md` and `docs/xollama/api-key.mdx`.
+**Server settings** (`system-settings` hook, plan `plans/system-settings.md`): the server's
+`~/.ollama/xollama-settings.json` overrides the environment — `Var` reads its `envs` first
+(`envconfig/xollama_settings.go`), engines get it via `envconfig.Environ()`; written only by
+`/api/xollama/settings` (`server/xollama_settings.go`, loopback); CLI `xollama tweak envs` and `xollama tweak
+show server|envs|model` (`cmd/tweak/envs.go`, `cmd/tweak/show.go`). Its `defaults` section is the server's
+default for every `tweak model` setting in `xollama.DefaultSections()`, merged under the model's own by
+`WithDefaults` (`types/xollama/defaults.go`) in `launchXollama`; set with `xollama tweak server`
+(`serverFields`, `cmd/tweak/server.go`). Its `gpu` section (`types/xollama/gpu.go`) is `xollama tweak server
+gpu` (`cmd/tweak/gpu.go`): allowed GPUs, priority (fill order), backend per GPU, forced link
+(`OPENCOTI_LINK_GBPS=<pci>=<GB/s>,...`, one entry per forced GPU), split auto/spread/single and split mode,
+applied in `server/xollama_gpu.go` via `server/sched.go` hooks and `llm.DeviceEnvs`. Its menu shows each GPU's
+link as the engine measures it: `/api/xollama/link-probe` (`api/xollama_linkprobe.go`, `LinkProbeHandler` in
+`server/xollama_linkprobe.go`, loopback only) runs `engine.LinkProbeCommand` (`llm/engine/linkprobe.go`) once
+per backend, never on one with a model generating.
 **Discovery** `discover/` · **Transfers** `transfer/` · **GGUF** `fs/gguf/`,
 `fs/safetensors/` · **Types** `types/model/`.
 **CLI support packages**: Modelfile parsing in `parser/` (`parser.go`,
