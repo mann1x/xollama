@@ -5,6 +5,14 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-23 — upstream sync v0.40.9 → v0.40.10 (`sync/upstream-v0.40.10`), plus the council-gate root-cause fix and a release-cleanup protocol step; releasing `v0.40.10-xollama` (fork-follow).**
+> - **Council gate — real root cause found and fixed, correcting the v0.40.9 entry's "environment issue".** It was not the host: `startLlamaServer` returned `FindLlamaServer`'s missing-binary error before `engine.Launch` could resolve the load, so a Go-only build (the gate builds with `go build`, no `lib/ollama`) on a stock-shipping platform could never reach opencoti. The `stockless` hook now defers that error when the load is opencoti-bound (`XOLLAMA_ENGINE=opencoti` or an `engine=opencoti` pin) and returns it only if opencoti did not take the load; `XOLLAMA_ENGINE=llamacpp` is byte-identical to upstream. Gate re-run PASS: direct 200, convened 200 (PolyKV pools 5, 0 refusals, 0 crashes). `5231daa79` on dev + the `stockless` Registry row; `bug-318`; `xo-36` done.
+> - **Release cleanup is now protocol.** `docs/protocols/RELEASE.md` step 9: remove the release-check downloads, per-host assemble trees, stale service backups, gate Docker images and staged gate engines, with a `df -h /` check — the v0.40.9 cycle left gate images and assemble trees on solidPC's root disk. `a1ce492f0`.
+> - **The sync.** Merge of upstream tag v0.40.10 into dev (one commit, #19241 "Update gemma renderers"), then the fork's 30 patches as `--no-ff` merges at the `v0.40.10-thinkbudget` manifest (think-budget `d5fea9a5`, integration `9a03aea7`, fork mail #1862), same set and `patches[]` order as v0.40.9. Conflicts kept HEAD (dev carried the patches and the fork hooks); the renderer files `#19241` touched came out **byte-identical to the fork integration tree** `9a03aea7`. One merge artifact: the `up-think-budget` re-merge duplicated `TestThinkBudgetForCompletion{,Harmony}` in `server/routes_test.go` (`bug-319`), restored to dev's pre-sync file (`7b6e4aba3`).
+> - **Nothing native moved.** `LLAMA_CPP_VERSION b11803`, `llama/server`, `llama/compat`, `MLX_VERSION`, `MLX_C_VERSION` all unchanged, so the inputs digest stays `c3f7c881` (= this tree) and the CPU runtimes are reused byte-for-byte from `v0.40.9-1-thinkbudget`. The four fork pins move to `v0.40.10-thinkbudget` (gpu + MLX rows take upstream v0.40.10's rebuilt archives; MLX versions unchanged). `llm/engine/pin` stays at c13. `llama/runtime-pin.txt` (xollama's own Windows CPU runtime) is unchanged — its llama inputs did not move. `check-compat-origin origin/main..HEAD` = 0 bad.
+> - **Go gate green on HEAD:** gofmt, `go build .`, `go vet ./...`, full `go test ./...`, `golangci-lint run` (0 issues). CARRIED-PATCHES updated (`ee4dde01d`).
+> - **Left:** land the sync on dev, cut `v0.40.10-rc.1.xollama` (PR dev→main), the rule-8 delta gates on the rc artifacts (the blast radius is Go-only gemma-renderer changes + unchanged runtimes), then `v0.40.10-xollama`, promote, Docker `:latest`, Discord.
+
 > **2026-10-23 — `v0.40.9-xollama` released and promoted (Latest): the tree of `v0.40.9-rc.1.xollama`, engine c13 r6, runtimes `v0.40.9-1-thinkbudget`.**
 > - Release-cut empty commit `2cf125be8` on dev (`git -c caliber.autostage=false`), tree `f8c83776` = the rc.1 tree; PR #42, check job printed `tree matches v0.40.9-rc.1.xollama`. Dry run (run 39984849195, required for the first release of a new base) published a draft, verified (9 assets, `sha256` OK, payload id `fca99d4c…` = rc.1, binary client version `0.40.9-xollama`) and deleted. Merge `2974a09511ed`, release run 39987359343; pre-release published with 9 assets, then promoted (`gh release edit --prerelease=false --latest`; `v0.40.6-xollama.1` lost Latest). Discord announced on the `released` event (run 39989992792, success). Docker `:latest` moved to `e63088c7…` (= `:0.40.9-xollama`; run 39990029328).
 > - **Host gates (rule 8 — the sync's blast radius → G1, G8/G9, G10, G11), all green on the rc.1 artifacts (same tree and pins as the release):** G1 gofmt/build/vet/`go test ./...`/golangci-lint clean, govulncheck 0 reachable, `check-compat-origin` 0 bad. G8/G9 eleven2go: install clean + MLX #17956 two-dir layout; `qwen3:8b` 512 tokens CUDA RTX 3090 125, Vulkan RX 9070 XT 102 (no freeze, driver 32.0.32015.2008), Vulkan iGPU 4.8; small `xOllamaUpdate.exe` (17 MB) over the install exit 0 in 4 s, payload + 15 engines kept; the short check over the candidate → `0.40.9-xollama`, 103.5 tok/s; 11434 untouched. G10 dietpi5 arm64 image: version + PAYLOAD, opencoti + llama.cpp 512 tokens ~10–11, speech 3/3, owner's containers + 11434 untouched. G11 Mac mini: notarized/stapled/codesigned, Metal via opencoti with no fallback — `qwen3.5:2b` (Gated Delta Net) a full 512 tokens @63.5 (the c11 empty-output regression gone on c13), speech 7/7, self-update from the fork feed applied and stayed notarized. Full numbers in `docs/protocols/VALIDATION.md`.
@@ -2748,12 +2756,14 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
 ## Where we are
 
-`v0.40.6-xollama.1` is the latest release (2026-10-22): upstream v0.40.6 (fork
-manifest `33e6af53`, 27 carried patches, llama.cpp b11669, MLX `bebd6422`),
-opencoti c13 r6 (`2610182159001`, Vulkan and Metal native KVarN, the CPU spin
-fix), and `GET /api/xollama/system`. `dev` is the release's tree and pins the
-same engine. xollama follows the fork to every new upstream with a release
-(RELEASE.md rule 7). The engine's four-slot admission bug (bug-4143) is fixed
+`v0.40.9-xollama` is the latest release (promoted Latest 2026-10-23): upstream
+v0.40.9 (fork manifest `0aeb9fa1`, 30 carried patches, llama.cpp b11803, MLX
+`bebd6422`), opencoti c13 r6 (`2610182159001`, Vulkan and Metal native KVarN,
+the CPU spin fix), and `GET /api/xollama/system`. **`v0.40.10-xollama` is being
+cut now** (fork-follow, RELEASE.md rule 7): upstream v0.40.10 is one commit over
+v0.40.9 (#19241 gemma renderers), the runtimes and engine are unchanged, and
+`dev` carries the sync. xollama follows the fork to every new upstream with a
+release. The engine's four-slot admission bug (bug-4143) is fixed
 in an opencoti dev build, not pinned yet. It carries generation notices v2 and
 v3 with per-model templates, `num_ctx_hold`, the gemma4 re-opened channel fix
 (`up-gemma4-channel-in-thinking`), the batch kept at 512 on unread memory, the
