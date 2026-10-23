@@ -27,6 +27,41 @@ first if a patch looks missing or out of date.
    other row in this file keys on the PR number, and these cannot. They are
    listed apart, below.
 
+**Status as of 2026-10-23: the set moved to upstream v0.40.10 (30 patches, same set and `patches[]` order).** Manifest `d5fea9a5` (`base: v0.40.10`, `integration.sha 9a03aea7`, release `v0.40.10-thinkbudget` @ `5bd0efc6`; fork mail #1862). Upstream v0.40.10 is one commit over v0.40.9 — #19241 "Update gemma renderers". Consumed on branch `sync/upstream-v0.40.10` (not yet on `dev`/`main`) after the upstream v0.40.10 tag merge: the 30 patches at the shas below, each its own `--no-ff` merge in `patches[]` order. Conflicts kept HEAD (dev already carried the patches and the fork hooks); #19241 touched only `model/renderers/*`, `mlxrunner/model/gemma4`, `mlxrunner/model/dflash` and `server/show_safetensors*`, none of which a patch conflicted on — the 3-way auto-merge folded them into the patch tree byte-identically to the fork's integration tree `9a03aea7` (verified by `git diff 9a03aea7:<f> HEAD:<f>` = 0 on the renderer files). One merge artifact fixed (`bug-319`): the re-merge of `up-think-budget` appended a duplicate `TestThinkBudgetForCompletion{,Harmony}` to `server/routes_test.go` (git treated the branch's additive test block as new although HEAD already carried it); restored to dev's pre-sync file. LLAMA_CPP_VERSION (b11803), llama/server, llama/compat, MLX_VERSION and MLX_C_VERSION are unchanged, so the inputs digest stays `c3f7c881` (= this tree) and the runtimes are reused from `v0.40.9-1-thinkbudget`; the four MLX/runtime pins move to `v0.40.10-thinkbudget` (CPU runtime bytes unchanged, the gpu and MLX rows take upstream v0.40.10's rebuilt archives).
+
+| PR | branch | manifest sha | v0.40.10 merge |
+|---|---|---|---|
+| #17563 | `up-repeat-guard` | `187a5d21` | `74cd7ef0c` |
+| #17564 | `up-truncated-tool-calls` | `5b5f8295` | `c96c921de` |
+| #17565 | `up-gemma4-object-close` | `5eb6f7a8` | `75f4a2e4e` |
+| #17566 | `up-think-budget` | `47bb2abb` | `eb24ea157` |
+| #17567 | `up-mlx-libdl` | `62f02063` | `9173eec39` |
+| #17626 | `up-gemma4-stray-channel-name` | `cc50952c` | `63abf6f8c` |
+| #17914 | `qwen3coder-tolerate-malformed-tool-calls` | `28ec38d6` | `c1ad73a87` |
+| #18212 | `up-reasoning-budget-line-boundary` | `c34069e6` | `0c02677d2` |
+| #18281 | `up-native-thinking-replay` | `0ae0d5e4` | `f4539260e` |
+| #18288 | `up-gemma4-stray-closer` | `a0d7ac8c` | `28cceffab` |
+| #18289 | `up-jinja-runner-reuse` | `dbb49b04` | `7ea34ef63` |
+| fork-only | `gemma4-toolcall-in-thinking` | `d3e57a3d` | `5a7ebbecb` |
+| #18624 | `qwen35-toolcall-in-thinking` | `8ccc1d44` | `b914933c7` |
+| fork-only | `up-gemma4-unparsed-tool-call-content` | `564a10a7` | `40d02fdce` |
+| fork-only | `up-toolcall-tags` | `00fe1073` | `62cd127e2` |
+| fork-only | `up-codex-request-count-mtime` | `e9bb7eb6` | `576d96a6a` |
+| fork-only | `up-fileutil-root-permission-tests` | `cd36414a` | `f17bc5558` |
+| fork-only | `up-gofmt-vision-test-data` | `3c90867b` | `0f9f363fe` |
+| fork-only | `up-lfm2-think-off-discard` | `bed874b5` | `6d865ccc5` |
+| fork-only | `up-gemma4-assistant-shape` | `85fb5173` | `a716e2888` |
+| fork-only | `up-gemma4-swallowed-key` | `8a30602b` | `f96b3771a` |
+| fork-only | `up-response-scope-think-budget` | `f09a36cf` | `7623a4e45` |
+| fork-only | `up-modelfile-roundtrip` | `dfab7855` | `a028c3a53` |
+| fork-only | `up-qwen35-empty-think-history` | `e515037f` | `8eee533b0` |
+| fork-only | `up-mlxrunner-manifest-list` | `5c9cb22a` | `74778cc6e` |
+| fork-only | `up-gemma4-channel-in-thinking` | `a66bcac6` | `3d8a7beb1` |
+| fork-only | `up-llama-server-memory-lines` | `7839970c` | `0ba7b14eb` |
+| fork-only | `up-qwen-unclosed-tool-call` | `65055d67` | `0ba38049d` |
+| fork-only | `up-completion-generation-prompt` | `a280600e` | `5de74342a` |
+| fork-only | `up-compat-readme` | `9a4a244b` | `c1ebf3984` |
+
 **Status as of 2026-10-23: the set moved to upstream v0.40.9, and the
 think-budget `-1` fix was added (30 patches).** Manifest `0aeb9fa1`
 (`base: v0.40.9`, `integration.sha caf2c13a`, release `v0.40.9-1-thinkbudget`
