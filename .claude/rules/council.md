@@ -88,7 +88,10 @@ paths:
 - Every member is an ordinary chat turn served in process through
   `ChatHandler`, thinking off unless its role states `council.<role>.think`.
   A thinking role is sent an explicit **token** budget
-  (`council.ThinkBudget(setting, r.MaxTokens, window)`), never a level. The
+  (`council.ThinkBudget(setting, r.MaxTokens, window)`), never a level, as
+  `think: true` plus `options.think_budget` (the fork's split refuses a number
+  in `think` with a 400); a cloud model or a stock ollama gets `think: true`
+  alone (`councilTakesBudget`). The
   budget is **inside** the reply cap: `num_predict` is the cap, never
   cap + budget (Cerebriline's output budget, 11.29). With a cap, a level is
   its share of the cap, `on` is medium, and a token count is held to 4/5 of

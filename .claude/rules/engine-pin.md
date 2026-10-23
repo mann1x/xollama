@@ -10,7 +10,7 @@ paths:
 - The pin is opencoti's **pin format 2** (their `docs/protocols/PIN_FORMAT.md`),
   in `llm/engine/pin/`: `index.txt` is OUR index (channel, tag, one line per
   component or `<component> absent`), and each component it names
-  (`engine`, `cuda`, `cuda12`, `vulkan`, `macos`, `media`; `sbsa` is absent)
+  (`engine`, `cuda`, `cuda12`, `sbsa`, `vulkan`, `macos`, `media`)
   has its pin file vendored beside it, **byte-identical** to the published
   one. Never edit a vendored pin: the index carries its sha256 and both
   parsers refuse a copy that differs. No pin is fetched at build time.
@@ -34,7 +34,8 @@ paths:
   Extra trailing fields on a fixed KEY are ignored.
 - **Published names only, nothing renamed.** A file is staged beside the
   engine under the name in its row (`ggml-cuda-x86_64.so`,
-  `ggml-cuda-cu12-x86_64.so`, `ggml-vulkan-win-x86_64.dll`,
+  `ggml-cuda-cu12-x86_64.so`, `ggml-cuda-sbsa-aarch64.so`,
+  `ggml-vulkan-win-x86_64.dll`,
   `oc-codec-linux-x86_64.so`), which is the name the engine looks for. The
   engine is `file any bin` for every platform plus `file win-x86_64 bin
   ....exe` for Windows; a platform takes its own row when there is one. A
@@ -61,7 +62,20 @@ paths:
 - `sass` on the `cuda` component is `Pin.CUDASASS` (major*10+minor;
   `Pin.CoversCUDA` matches the same major at that minor or later, no line
   means no narrowing); on `cuda12` it is `Pin.CUDA12SASS` (no component
-  covers nothing). `deviceUnsupported` refuses an uncovered device by name.
+  covers nothing; `Pin.CoversCUDA12On` asks by arch label, and only x86_64
+  has that payload). `deviceUnsupported` refuses an uncovered device by name.
+- **`sbsa` is the CUDA library of Linux aarch64** (DGX Spark, Jetson Thor),
+  taken since c11 with its own list, `Pin.SBSASASS`. `Pin.CUDASASSOn(arch)` is
+  the list `Pin.CoversCUDAOn` and `deviceUnsupported` read: `sbsa`'s on
+  aarch64, `cuda`'s on x86_64 (`CoversCUDA` / `CoversCUDA12` are the x86_64
+  answers). **The arch is `cudaArch(p)`, from the `Platform` the question is
+  about, never the running binary**: `coveredByCUDA13`, `needsCUDA12` and
+  `cudaPayload` take the `Platform` (`legacyCUDAOn` for `LegacyCUDA`). A host
+  reading failed the macOS test leg and an arm64 builder (2026-10-10).
+  Its 121 is `sm_121a` and matches compute 12.1 exactly, never a later minor.
+  It is built blind: neither opencoti nor we have run it (owner, 2026-10-10).
+  Guard: `TestTheSBSAComponentServesAarch64WithItsOwnSASS`
+  (`llm/engine/pin_format_test.go`).
 - **CUDA 12 sits beside the same engine.** One process loads one CUDA
   library; the engine picks CUDA 12 itself only when every NVIDIA card is
   older than 7.5. `cudaPayload` decides per load, a load spanning both goes

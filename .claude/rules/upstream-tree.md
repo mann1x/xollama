@@ -30,7 +30,8 @@ paths:
 - **A fallback is loud.** A path that degrades says why at Warn, or fails with
   the cause, never Debug: a device listing that fails carries the engine's last
   lines (`outputTail`, `discover/opencoti.go`), a refresh that finds nothing
-  names the cooldown (`discover/refresh_opencoti.go`). Guard:
+  names the cooldown, or the 3 s budget it ran out of (`forkRefresh` in
+  `discover/refresh_opencoti.go` lists the backends side by side inside it). Guard:
   `discover/opencoti_loud_test.go`. A backend is only listed where it can exist
   (`existsOn`, `discover/opencoti.go`: Metal on macOS only, and nothing else
   there), even with `XOLLAMA_ENGINE=opencoti`. Guard:
@@ -38,5 +39,11 @@ paths:
   `opencotiHost` (`discover/opencoti.go`), so a test about CUDA or Vulkan sets
   the platform it is about (`discover/opencoti_test.go`,
   `discover/opencoti_cuda12_test.go`) and runs the same on a macOS runner.
+- **An engine's refusal is an answer, not a failed listing.** A listing in
+  which opencoti refused every device (`ggml_vulkan: <name> (driver <x>) is
+  REFUSED: …`, since c10) drops that backend's devices at Warn
+  (`withRefusals` / `isRefusedListing`, `discover/opencoti_refused.go`), never
+  falls back to llama.cpp's view: that placed models on the refused device and
+  every load failed. Guard: `discover/opencoti_refused_test.go`.
 - Run `golangci-lint run` before pushing — `.golangci.yaml` uses `gofumpt` and a
   `depguard` rule denying `internal/testutil` outside `_test.go` files.

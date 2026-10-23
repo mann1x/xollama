@@ -4,6 +4,8 @@ paths:
   - types/xollama/device_name.go
   - server/xollama_gpu.go
   - server/xollama_gpu_test.go
+  - server/backend_copies.go
+  - discover/backend_copies.go
   - server/xollama_settings.go
   - server/xollama_linkprobe.go
   - server/xollama_linkprobe_test.go
@@ -39,7 +41,10 @@ paths:
   `priorityOrder` compares two GPUs without their list, so two cards of one
   name and no PCI ID are both read as the first. A GPU not listed is allowed, at
   priority 0, on its first backend. `preferredBackend` keeps a GPU on another
-  backend only when its chosen one is not present.
+  backend only when its chosen one is not present; with none chosen it keeps
+  upstream's CUDA/ROCm preference (`upstreamPreferred`). A GPU's Vulkan copy
+  reaches the list only through `withBackendCopies` (`server/backend_copies.go`,
+  `backend-copies` hook), for a load whose pin or policy names a backend.
 - **Split:** `schedSpread()` replaces `envconfig.SchedSpread()`. `spread`
   always splits, `single` never does (`neverSplit()`: the rest of the layers
   stay on the CPU), `auto` or unset keeps `OLLAMA_SCHED_SPREAD`'s meaning only

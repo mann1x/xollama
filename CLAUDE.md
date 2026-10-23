@@ -2,30 +2,24 @@
 
 @.wolf/OPENWOLF.md
 
-Soft fork of ollama. `dev` = upstream release v0.40.6 + fork changes (`main` is
-v0.40.4 since `v0.40.4-xollama`), carrying the
-full upstream history so every `git merge upstream/main` has a real merge-base.
+Soft fork of ollama. `dev` = upstream release v0.40.10 + fork changes (`main` is v0.40.10 since `v0.40.10-xollama`), carrying the full upstream history so every `git merge upstream/main` has a real merge-base.
 Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING.md
 
 ## Standing rules
 
-1. **Never rename the Go module path.** It stays upstream's, exactly as declared
-   on the first line of `go.mod`. Renaming costs a ~33% conflict rate per sync
-   (measured: 155 of the 474 files upstream touched between the v0.34.0 and
-   v0.34.2 tags). The binary is xollama; the import path is upstream's.
-2. **Off means off.** With `XOLLAMA_ENGINE=llamacpp` and no xollama flags,
-   behaviour must be byte-identical to upstream. That is what keeps an A/B
-   against vanilla honest.
-3. **Keep the record current.** Every session that changes code, releases,
-   pins or plans adds a dated entry to `STATE_SUMMARY.md` and, when a plan's
-   status or phase moves, updates its row in `plans/MASTER_PLAN.md` and the
+1. **Never rename the Go module path.** It stays upstream's, exactly as declared on the first line of `go.mod`.
+   Renaming costs a ~33% conflict rate per sync (measured: 155 of the 474 files upstream touched between the
+   v0.34.0 and v0.34.2 tags). The binary is xollama; the import path is upstream's.
+2. **Off means off.** With `XOLLAMA_ENGINE=llamacpp` and no xollama flags, behaviour must be byte-identical
+   to upstream. That is what keeps an A/B against vanilla honest.
+3. **Keep the record current.** Every session that changes code, releases, pins or plans adds a dated entry to
+   `STATE_SUMMARY.md` and, when a plan's status or phase moves, updates its row in `plans/MASTER_PLAN.md` and the
    plan itself, in the same commit as the change.
 
 ## Read before touching the upstream tree
 
 - `STATE_SUMMARY.md` — where the work stands, newest entry first.
-- `plans/MASTER_PLAN.md` — the index of every plan in `plans/`, with status and
-  phase.
+- `plans/MASTER_PLAN.md` — the index of every plan in `plans/`, with status and phase.
 - `docs/protocols/UPSTREAM-SYNC.md` — every change is either an additive file or
   a marked surgical hook, and hooks go in the Registry in the same commit.
   Before any sync, `git worktree list --porcelain | awk '/^branch /{print $2}'
@@ -45,8 +39,7 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   `llama/compat` (README included) change in the fork first, never here —
   enforced by `.github/workflows/compat-origin.yaml` running
   `scripts/check-compat-origin.sh origin/main..HEAD` (needs `git fetch fork`
-  and `git fetch upstream` locally); `llama/clef` is upstream's and outside
-  that set.
+  and `git fetch upstream` locally).
 - `docs/protocols/RELEASE.md` — how a release is cut: a PR `dev`→`main` titled
   `release: v<upstream>-rc.<k>.xollama` (a candidate, never promoted), then
   `release: v<upstream>-xollama` (the last candidate's tree, short check), and
@@ -70,12 +63,10 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   is run updates its row. Scripts as run: `scripts/gates/`.
 - `docs/features/engine-opencoti-llamafile.md` · `docs/features/rebrand.md` · `docs/features/store-ownership.md` ·
   `docs/features/windows-installer.md` · `docs/features/model-config.md` · `docs/features/modelfile-roundtrip.md` ·
-  `docs/features/docker-release.md` · `docs/features/device-selection.md` · `docs/features/council.md` ·
-  `docs/features/system-settings.md`
+  `docs/features/docker-release.md` · `docs/features/device-selection.md` · `docs/features/council.md` · `docs/features/system-settings.md`
 - `docs/evaluations/phase0-engine-compat.md` — measured engine-compat baseline.
 
-Remotes: `origin` = mann1x/xollama · `upstream` = ollama/ollama ·
-`fork` = mann1x/ollama (where PRs to upstream are staged).
+Remotes: `origin` = mann1x/xollama · `upstream` = ollama/ollama · `fork` = mann1x/ollama (where PRs to upstream are staged).
 
 ## Commands
 
@@ -97,8 +88,7 @@ cmake -B build . -DOLLAMA_LLAMA_BACKENDS="cuda_v13;vulkan"
 cmake -B build . -DOLLAMA_MLX_BACKENDS=cuda_v13
 ```
 
-End-to-end suites live in `integration/` and are build-tagged, so they are not
-part of the default sweep:
+End-to-end suites live in `integration/` and are build-tagged, so they are not part of the default sweep:
 
 ```sh
 go test -tags integration ./integration/...
@@ -115,21 +105,25 @@ gitleaks protect --staged --config .gitleaks.toml
 **Entry**: `main.go` → `cmd/cmd.go` (Cobra) · **HTTP**: `server/routes.go` (Gin),
 scheduling `server/sched.go`, model IO `server/images.go` `server/create.go`
 `server/prompt.go`.
-**Runners**: GGUF as a `llama-server` subprocess via `llm/server.go` + `llm/llama_server.go`, built from
-`llama/server/CMakePresets.json`; MLX via `mlxrunner/` (`runner.go`, `pipeline.go`, `prefix_cache.go`, `cache/`,
-`model/`, `tokenizer/`, `xgrammar/`). A missing stock `llama-server` is fatal only for a load bound for stock
+**Runners**: GGUF as a `llama-server` subprocess via `llm/server.go` +
+`llm/llama_server.go`, built from `llama/server/CMakePresets.json`; MLX via
+`mlxrunner/` (`runner.go`, `pipeline.go`, `prefix_cache.go`, `cache/`, `model/`,
+`tokenizer/`, `xgrammar/`). A missing stock `llama-server` is fatal only for a load bound for stock
 llama.cpp: with `XOLLAMA_ENGINE=opencoti` or a model's `engine=opencoti` pin, `startLlamaServer` defers the miss
 to `engine.Launch` (`stockless` hook), so a `go build` tree with the engine staged runs the council gate with no
 stock binary — see `.claude/rules/stockless.md`. `llm/engine_args.go` appends the operator's
-`XOLLAMA_ENGINE_ARGS` last on the engine command line. On opencoti, `llm/engine_fit_target.go` drops upstream's
-vision-projector padding from `LLAMA_ARG_FIT_TARGET` (`engine-fit` hook) — see `.claude/rules/engine-fit.md`. A
-`/health` dial that fails against a live opencoti is tried again with backoff (`retryHealth` in
-`llm/engine_health_retry.go`, `engine-health-retry` hook in `getServerStatusRetry`); stock llama.cpp keeps
-upstream's single failure. On Windows an opencoti engine ends with its server: `bindEngineLifetime`
-(`llm/engine_lifetime.go`, `engine-lifetime` hook) puts it in a kill-on-close job object (`engine.BindLifetime`,
-`llm/engine/lifetime_windows.go`). `llm/drafter.go` holds the drafter rules (built-in vs attached head,
-`--spec-type`) as pure functions shared by the launch and `show` (`server/drafter_show.go`), so the two cannot
-drift.
+`XOLLAMA_ENGINE_ARGS` last on the engine command line. On opencoti,
+`llm/engine_fit_target.go` drops upstream's vision-projector padding from
+`LLAMA_ARG_FIT_TARGET` (`engine-fit` hook) — see `.claude/rules/engine-fit.md`.
+A `/health` dial that fails against a live opencoti is tried again with backoff
+(`retryHealth` in `llm/engine_health_retry.go`, `engine-health-retry` hook in
+`getServerStatusRetry`); stock llama.cpp keeps upstream's single failure.
+On Windows every runner joins upstream's kill-on-close job (`AddRunnerToJob`,
+`llm/runner_job_windows.go`; the `engine-lifetime` hook was retired at v0.40.6); the media
+engine is bound by `bindEngineLifetime` (`llm/engine_lifetime.go`, `engine.BindLifetime`). macOS ships no stock `llama-server`: a load there that does not get opencoti is refused (`engine.StockShipped`, `engine.StocklessRefusal` in `llm/engine/stockless.go`; `stockless` and `macos-stockless` hooks).
+`llm/drafter.go` holds
+the drafter rules (built-in vs attached head, `--spec-type`) as pure functions
+shared by the launch and `show` (`server/drafter_show.go`), so the two cannot drift; `xollama tweak model --drafter` / `--draft-tokens` (`cmd/tweak/drafter.go`, `types/xollama/drafter.go`) attach the DRAFT layer and set its length through `server/xollama_drafter.go`, and a length of 0 starts opencoti with `--spec-type none` (`llm/engine_draft_off.go`; `drafter` hook, `docs/features/gemma4-drafter.md`); a drafter the engine dropped at load (opencoti `drafter_state_v1`) is reported by `ps` and `show` (`llm/engine_drafter_state.go`, `server/drafter_state.go`; `DrafterState` in `api/types.go`).
 The ollama#4165 single-sequence deny-list binds only on stock llama.cpp:
 `server/sched.go` asks `llm.WouldUseOpencoti` before clamping, and
 `servedSequences` (`llm/engine_estimate.go`) drops a launch that lands on stock
@@ -142,41 +136,56 @@ opencoti's granted window (`X-Context-Window`) reaches the client through the
 `llm.ContextWindow` collector (`llm/engine_context_window.go`) and
 `server/context_window.go`; stock llama.cpp stays header-free — see
 `.claude/rules/context-window.md`.
+Generation notices (`notices` hook, opt-in per request): `ChatRequest.Notices` goes to an engine whose pin declares `generation_notice_v2` (`noticesFor` in `llm/engine_notice.go`, `engine.HasGenerationNotice`), and `generation_notice_v3` beside it (`engine.HasGenerationNoticeV3`) streams each planted line as `ChatResponse.Notice` on a chunk of its own before its text (`noticeChunk`, `server/notice.go`) and lists them in `Metrics.Notices`; a model's templates are its `xollama.MediaTypeNotices` layer (else `xollama.DefaultNoticeTemplates`), checked by the engine at create (`applyNoticeTemplates`, `server/xollama_notices.go`) and set by `xollama tweak model` (`cmd/tweak/notices.go`); the planted `[notice]` line stays in the content, and `POST /api/xollama/notice` is `NoticeHandler` (`server/notice.go`) — see `docs/xollama/notices.mdx` and `.claude/rules/notices.md`.
+`tool_choice` none (`tool-choice` hook, `tool_choice_none_v1`): `api.ToolChoiceNone` (`api/xollama_tool_choice.go`) keeps the tools in the prompt; `noToolCallTag` (`server/xollama_tool_choice.go`) bans the parser's call tag through `banToolCall` (`llm/engine_tool_choice.go`), and `forbiddenToolCalls` drops a call written anyway — see `docs/xollama/tool-choice.mdx` and `.claude/rules/tool-choice.md`.
 **Decision scoring** (upstream v0.35.1, MLX scoring since v0.40.0): `/v1/systemone` (`SystemOneHandler` in
-`server/routes.go`) compiles typed questions with `decision/` (`systemone.go`, `clef.go`, `types.go`) and scores
-them through `llm.Scorer` (`llm/score.go`, `llm/llama_server_score.go`); a model whose GGUF carries
-`decision.type` gets the `decision` capability (`types/model/capability.go`), and the CLEF head in `llama/clef/`
-is compiled into `llama-server` by `llama/server/CMakeLists.txt` — see `docs/capabilities/decision.mdx`. A Clef
+`server/routes.go`) compiles typed questions with `decision/` (`systemone.go`,
+`clef.go`, `types.go`) and scores them through `llm.Scorer` (`llm/score.go`,
+`llm/llama_server_systemone.go`: since v0.40.4 one `POST /v1/systemone` to the engine, llama.cpp's native
+decision support); a model whose GGUF carries `decision.type` gets the
+`decision` capability (`types/model/capability.go`) —
+see `docs/capabilities/decision.mdx`. Every decision model whose config names no engine is served on stock
+`llama-server` until the pin declares `systemone_v1` (`decisionEngine`,
+`server/decision_engine.go`; `engine.HasSystemOne`). A Clef
 model (`decision.type = clef`) is served by stock `llama-server` while the pinned opencoti declares no
 `clef_score_v1` (`clefEngine`, `server/decision_engine.go`; `engine.HasClefHead`); `nimble` stays on opencoti.
-**Prompting**: `model/renderers/` (per-model `Render`) ↔ `model/parsers/` (streaming output), plus `template/`,
-`thinking/`, `harmony/`; a model's named thinking efforts are `types/model/thinking.go`.
-**API shims**: `api/types.go`, `openai/openai.go`, `anthropic/anthropic.go`, `middleware/`
-(`middleware/thinking.go` maps OpenAI/Anthropic efforts). **Config**: `envconfig/config.go` holds every
-`OLLAMA_*` var; the listen address is `envconfig.DefaultPort` (22434), read from `XOLLAMA_HOST` only — see
-`.claude/rules/default-port.md`. Where the CLI *connects* with no host set is `api/xollama_host.go`
-(`ResolveHost`), run once from `cmd/xollama_host.go`; it tells the fork apart via `/api/xollama`
-(`api/xollama_identity.go`, `server/identity.go`), then the fork's name in `/api/version`, and refuses a stock
-ollama found on the 11434 fallback rather than driving it.
-**Local API key** (`api-key` hook, off unless a key is configured): `XOLLAMA_API_KEY` or the key file
-(`envconfig/xollama_apikey.go`) is checked by `apiKeyMiddleware` in `server/xollama_apikey.go`; the
-loopback-only admin route `/api/xollama/api-key` is `server/xollama_apikey_admin.go`; the CLI sends it via
-`api/xollama_apikey_client.go` and sets it with `xollama tweak server --api-key` (`cmd/tweak/server.go`); the
-desktop UI via `app/ui/apikey.go` — see `.claude/rules/api-key.md` and `docs/xollama/api-key.mdx`.
-**Server settings** (`system-settings` hook, plan `plans/system-settings.md`): the server's
-`~/.ollama/xollama-settings.json` overrides the environment — `Var` reads its `envs` first
-(`envconfig/xollama_settings.go`), engines get it via `envconfig.Environ()`; written only by
-`/api/xollama/settings` (`server/xollama_settings.go`, loopback); CLI `xollama tweak envs` and `xollama tweak
-show server|envs|model` (`cmd/tweak/envs.go`, `cmd/tweak/show.go`). Its `defaults` section is the server's
-default for every `tweak model` setting in `xollama.DefaultSections()`, merged under the model's own by
-`WithDefaults` (`types/xollama/defaults.go`) in `launchXollama`; set with `xollama tweak server`
-(`serverFields`, `cmd/tweak/server.go`). Its `gpu` section (`types/xollama/gpu.go`) is `xollama tweak server
-gpu` (`cmd/tweak/gpu.go`): allowed GPUs, priority (fill order), backend per GPU, forced link
-(`OPENCOTI_LINK_GBPS=<pci>=<GB/s>,...`, one entry per forced GPU), split auto/spread/single and split mode,
-applied in `server/xollama_gpu.go` via `server/sched.go` hooks and `llm.DeviceEnvs`. Its menu shows each GPU's
-link as the engine measures it: `/api/xollama/link-probe` (`api/xollama_linkprobe.go`, `LinkProbeHandler` in
-`server/xollama_linkprobe.go`, loopback only) runs `engine.LinkProbeCommand` (`llm/engine/linkprobe.go`) once
-per backend, never on one with a model generating.
+**Prompting**: `model/renderers/` (per-model `Render`) ↔ `model/parsers/`
+(streaming output), plus `template/`, `thinking/`, `harmony/`; a model's named
+thinking efforts are `types/model/thinking.go`, a `think_budget` `types/model/think_budget.go`.
+**API shims**: `api/types.go`, `openai/openai.go`, `anthropic/anthropic.go`,
+`middleware/` (`middleware/thinking.go` maps OpenAI/Anthropic efforts). **Config**: `envconfig/config.go` holds every `OLLAMA_*` var;
+the listen address is `envconfig.DefaultPort` (22434), read from `XOLLAMA_HOST`
+only — see `.claude/rules/default-port.md`. Where the CLI *connects* with no host
+set is `api/xollama_host.go` (`ResolveHost`), run once from `cmd/xollama_host.go`;
+it tells the fork apart via `/api/xollama` (`api/xollama_identity.go`,
+`server/identity.go`), then the fork's name in `/api/version`, and refuses a
+stock ollama found on the 11434 fallback rather than driving it.
+**Local API key** (`api-key` hook, off unless a key is configured):
+`XOLLAMA_API_KEY` or the key file (`envconfig/xollama_apikey.go`) is checked by
+`apiKeyMiddleware` in `server/xollama_apikey.go`; the loopback-only admin route
+`/api/xollama/api-key` is `server/xollama_apikey_admin.go`; the CLI sends it via
+`api/xollama_apikey_client.go` and sets it with `xollama tweak server --api-key`
+(`cmd/tweak/server.go`); the desktop UI via `app/ui/apikey.go` — see
+`.claude/rules/api-key.md` and `docs/xollama/api-key.mdx`.
+**Server settings** (`system-settings` hook, plan `plans/system-settings.md`): the
+server's `~/.ollama/xollama-settings.json` overrides the environment — `Var`
+reads its `envs` first (`envconfig/xollama_settings.go`), engines get it via
+`envconfig.Environ()`; written only by `/api/xollama/settings`
+(`server/xollama_settings.go`, loopback); CLI `xollama tweak envs` and
+`xollama tweak show server|envs|model` (`cmd/tweak/envs.go`, `cmd/tweak/show.go`).
+Its `defaults` section is the server's default for every `tweak model` setting
+in `xollama.DefaultSections()`, merged under the model's own by
+`WithDefaults` (`types/xollama/defaults.go`) in `launchXollama`; set with
+`xollama tweak server` (`serverFields`, `cmd/tweak/server.go`).
+Its `gpu` section (`types/xollama/gpu.go`) is `xollama tweak server gpu`
+(`cmd/tweak/gpu.go`): allowed GPUs, priority (fill order), backend per GPU,
+forced link (`OPENCOTI_LINK_GBPS=<pci>=<GB/s>,...`, one entry per forced GPU), split
+auto/spread/single and split mode, applied in `server/xollama_gpu.go` via
+`server/sched.go` hooks and `llm.DeviceEnvs`. Its menu shows each GPU's link as
+the engine measures it: `/api/xollama/link-probe` (`api/xollama_linkprobe.go`,
+`LinkProbeHandler` in `server/xollama_linkprobe.go`, loopback only) runs
+`engine.LinkProbeCommand` (`llm/engine/linkprobe.go`) once per backend, never
+on one with a model generating.
 **Discovery** `discover/` · **Transfers** `transfer/` · **GGUF** `fs/gguf/`,
 `fs/safetensors/` · **Types** `types/model/`.
 **CLI support packages**: Modelfile parsing in `parser/` (`parser.go`,
@@ -185,7 +194,10 @@ per backend, never on one with a model generating.
 `format/` (`bytes.go`, `time.go`), line editing in `readline/`.
 **Registry and on-disk store**: `auth/auth.go` signs registry requests with the
 local SSH keypair; `manifest/` holds the manifest/blob model (`manifest.go`,
-`layer.go`, `paths.go`) that `server/images.go` reads and writes.
+`layer.go`, `paths.go`) that `server/images.go` reads and writes. Unless
+`XOLLAMA_ENGINE=llamacpp`, `runnerPreferences` picks a manifest list's GGUF
+children before `mlx` on every OS, for a pull and a model on disk
+(`opencotiFirst` in `manifest/opencoti_first.go`, `opencoti-first` hook).
 **Logging**: `logutil/logutil.go` — the shared `slog` handler and `LevelTrace`.
 Every GGUF load is named before the engine starts (`load-log` hook in
 `server/sched.go`, `server/load_log.go`): `loading model`, `model file` and
@@ -210,7 +222,7 @@ with the Bubble Tea menu in `cmd/tui/tui.go`.
 `fields.go`, `prompt.go`, `reconcile.go`, `devices.go`, `council.go`), registered
 from `cmd/cmd.go` under the `model-config` hook. It reads the model's config
 layer through `/api/show` (`api.ShowResponse.Xollama`), validates against
-`types/xollama/config.go` (schema v7, engine policies in `engine_policy.go`; the `council` block is
+`types/xollama/config.go` (schema v9, engine policies in `engine_policy.go`; the `council` block is
 `types/xollama/council.go`; the `media` block — image/stt/tts/video engines, components by digest as
 `application/vnd.xollama.media` layers written by `create/xollama_media.go`, template-owned `defaults`
 and `fixed` — is `types/xollama/media.go`, its tweak rows and uploads `cmd/tweak/media.go`; it is served by a media-only opencoti
@@ -280,7 +292,7 @@ applied by `selectModelDevices` in `server/device_select.go`, hooked from
 and unpinned models are kept off an integrated Vulkan GPU when a discrete GPU
 exists. `/api/xollama/devices` (`api/xollama_devices.go`, `XollamaDevicesHandler`
 in `server/identity.go`) feeds the `tweak` device menu (`cmd/tweak/devices.go`)
-with the server's view. Where opencoti serves a backend, discovery takes the
+with the server's view; `/api/xollama/system` (`api/xollama_system.go`, `SystemHandler` in `server/xollama_system.go`, `system-telemetry` hook) reads host, process tree and every GPU in process (`internal/systel/`) into one cached snapshot, never starting a discovery, engine or probe (`discover/known_devices.go`, `server/xollama_system_models.go`, `TryLock`) — see `docs/xollama/system.mdx`; a GPU CUDA/ROCm and Vulkan both reach (same PCI ID) keeps its Vulkan copy apart (`backend-copies` hook, `discover/backend_copies.go`): `GPUDevices` stays one entry per GPU, the device menus and link probe read `GPUDevicesAllBackends`, and `withBackendCopies` (`server/backend_copies.go`) adds the copies only to a load whose pin or `gpu` policy names a backend. Where opencoti serves a backend, discovery takes the
 engine's own device list (`discover/opencoti.go`, `llm/engine/enumerate.go`;
 CUDA is also asked of the CUDA 12 engine, `discover/opencoti_cuda12.go`),
 and refreshes free memory from it before a load (`discover/refresh_opencoti.go`); a listing that fails or a refresh that finds nothing is said at Warn with the engine's last output (`outputTail`), never Debug.
@@ -298,18 +310,14 @@ keeps its explicit `think:false`. The app names itself xOllama (`app-brand`
 hook): `AppName` in `app/wintray/brand_xollama.go` for the tray, notifications
 and window title, and the build-time Vite plugin `xollamaBrand()`
 (`app/ui/app/xollama-brand.ts`) for the UI's strings; its icons in `app/assets/`
-are made by `scripts/xollama-icon.py` — see
-`.claude/rules/app-brand.md`.
+are made by `scripts/xollama-icon.py` — see `.claude/rules/app-brand.md`.
 **Desktop updates**: `app/updater/fork.go` reads this fork's GitHub releases
 (`XOLLAMA_UPDATE_FEED`, `XOLLAMA_UPDATE_PRERELEASE`) instead of `ollama.com`,
 hooked from `app/updater/updater.go` / `app/updater/updater_windows.go`; on macOS the staged update, the backup and the upgrade marker live in
 `~/Library/Caches/xOllama`, never upstream's `Caches/ollama` (`app/updater/fork_stage.go`, which also removes our own leftovers from the old folder); its logs are in `~/Library/Logs/xOllama`, not `~/.ollama/logs`;
-`app/updater/fork_payload_windows.go` picks the small `xOllamaUpdate.exe`
-(no `lib\ollama`) over the full `xOllamaSetup.exe` when the installed
-`lib\ollama\PAYLOAD_ID` matches the release's `payload-id.txt` (`payloadId` in
-`scripts/build_windows.ps1`). The installer is `app/xollama.iss` (setup pages
+`app/updater/fork_payload_windows.go` picks the small `xOllamaUpdate.exe` (no `lib\ollama`) over the full `xOllamaSetup.exe` when the installed `lib\ollama\PAYLOAD_ID` matches the release's `payload-id.txt` (`payloadId` in `scripts/build_windows.ps1`). The installer is `app/xollama.iss` (setup pages
 for Ollama-found, port, API key and KV cache in `app/xollama-setup-pages.iss`,
-full installer only); before an install (`PrepareToInstall`) or uninstall
+full installer only); both installers download the MLX runtime pinned in `llama/runtime-pin-windows-mlx.txt`, sha256-checked and kept across installs by `MLX_ID` (`app/xollama-mlx.iss`, `windows-mlx` hook; NVIDIA only unless `/MLX=always`); before an install (`PrepareToInstall`) or uninstall
 (`[UninstallRun]`) it runs `app/xollama-stop.ps1`, which stops only xOllama's
 own processes and engines, never a stock Ollama's `llama-server.exe`; it always
 registers `xollama://` and registers `ollama://` only when nobody already owns
@@ -323,11 +331,9 @@ on `ubuntu-latest` from pinned artifacts — nothing native is compiled:
 tarballs (`llama/runtime-pin-linux.txt`, sha256 + a README-excluded inputs
 digest), the engine (`llm/engine/pin/`, with its CUDA 13, CUDA 12 and Vulkan
 libraries and media sidecars beside it) and a Go-only `xollama`, and
-`Dockerfile.xollama` sets `XOLLAMA_HOST=0.0.0.0:22434` and prebuilds the engine's
+`Dockerfile.xollama` sets `XOLLAMA_HOST=0.0.0.0:22434`, installs `mesa-vulkan-drivers` (an AMD or Intel GPU through `--device /dev/dri/renderD12x`) and prebuilds the engine's
 dlopen helper from `scripts/cosmo-dlopen-helper.c` (cosmo's own compile command,
-both files given an old mtime), since the runtime image has
-no compiler (upstream's `Dockerfile`
-now sets it too and `EXPOSE 22434`, `docker-release` hook, but the published
+both files given an old mtime), since the runtime image has no compiler (upstream's `Dockerfile` now sets it too and `EXPOSE 22434`, `docker-release` hook, but the published
 image still comes from `Dockerfile.xollama`). Publishes to Docker Hub and GHCR,
 per architecture (`ARCH=amd64|arm64`, `:<version>-<arch>` joined by the `manifest`
 job); the arm64 CPU runtime is the fork's too, pinned in `llama/runtime-pin-linux-arm64.txt`
@@ -339,10 +345,7 @@ Upstream's `.github/workflows/latest.yaml` job is guarded to `ollama/ollama`
 (`docker-release` hook), since `docker-release.yaml` already pushes `:latest`;
 `release.yaml`'s `darwin-build` job is guarded off on the fork and dropped from
 the `release` job's `needs`.
-Pinned natives: `LLAMA_CPP_VERSION`, `MLX_VERSION`, `MLX_C_VERSION`, orchestrated by `CMakeLists.txt` / `CMakePresets.json`; the opencoti engine artifact is pinned in `llm/engine/pin/`, opencoti's pin format 2: our own `index.txt` (channel, tag, one line per
-component with its pin's sha256) and the component pins it names, vendored byte-identical (`engine`, `cuda`, `cuda12`, `vulkan`, `macos`, `media`: `abi`, `engine-min`, `sass`, `feature` and `file <platform> <kind> <path> <sha256> <bytes>` rows). Every file is
-staged beside the engine under its published name: the GPU libraries (CUDA 13 and the legacy CUDA 12 one side by side; a load on cards only CUDA 12 serves starts the engine with `OPENCOTI_CUDA_LEGACY=1`, `engine.LegacyCUDA`), the media libraries oc-codec,
-oc-audiocpp and oc-espeak with their licence texts, and on Apple silicon (`macos-aarch64`) the loader the engine is started through (`ape`) and the Metal library, staged and signed by `scripts/build_darwin.sh` with `app/darwin/engine-loader.entitlements`
+Pinned natives: `LLAMA_CPP_VERSION`, `MLX_VERSION`, `MLX_C_VERSION`, orchestrated by `CMakeLists.txt` / `CMakePresets.json`; the opencoti engine artifact is pinned in `llm/engine/pin/`, opencoti's pin format 2: our own `index.txt` (channel, tag, one line per component with its pin's sha256) and the component pins it names, vendored byte-identical (`engine`, `cuda`, `cuda12`, `sbsa`, `vulkan`, `macos`, `media`: `abi`, `engine-min`, `sass`, `feature` and `file <platform> <kind> <path> <sha256> <bytes>` rows). Every file is staged beside the engine under its published name: the GPU libraries (CUDA 13 and the legacy CUDA 12 one side by side; a load on cards only CUDA 12 serves starts the engine with `OPENCOTI_CUDA_LEGACY=1`, `engine.LegacyCUDA`; on Linux aarch64 the `sbsa` CUDA library, with its own sass list, `Pin.CUDASASSOn`), the media libraries oc-codec, oc-audiocpp and oc-espeak with their licence texts, and on Apple silicon (`macos-aarch64`) the loader the engine is started through (`ape`) and the Metal library, staged and signed by `scripts/build_darwin.sh` with `app/darwin/engine-loader.entitlements`
 (`macos-engine` hook). It is read by both `llm/engine/pin.go` (`LoadPin`) and `cmake/opencoti-fetch.cmake`, which refuse a vendored pin that is not the one the index names and a component whose `abi` or `engine-min` the engine does not meet. Moving that pin
 retires only the rows in `llm/engine_defects.go` the new bytes are *measured* to fix — a changelog is not a measurement; the measurement is `scripts/phase2-engine-ab.py`, run as the `ollama` user (`.claude/rules/solidpc-testing.md`).
 

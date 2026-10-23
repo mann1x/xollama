@@ -5,6 +5,7 @@ paths:
   - create/xollama_media.go
   - docs/features/model-config.md
   - docs/xollama/tweak.mdx
+  - docs/xollama/tweak-reference.mdx
 ---
 
 # The model config layer (`xollama.json`)
@@ -16,13 +17,14 @@ paths:
   `Config.Validate` and `prune` in `cmd/tweak/fields.go` in the same commit.
   `devices` is pruned through `IsZero`; the council and `media` each have their own `Prune`.
   Missing one leaves an empty block on disk that reads as a stated setting.
-- **The version written is the lowest that is true.** `SchemaVersion` is 7 and
+- **The version written is the lowest that is true.** `SchemaVersion` is 9 and
   `requiredVersion` raises the floor only for a block an older build would
   misread silently: v2 for `kv.unified` / `kv.residency_mode`, v3 for a
   `devices` pin, v4 for a `council`, v5 for a role's own `num_ctx`
   (`council.<role>.num_ctx`, `setsRoleWindow`), v6 for an engine policy (`fit`,
   `kv.rolling_window`, `draft.auto_mtp_policy`; `setsEnginePolicies`), v7 for a
-  `media` block (`!c.Media.IsZero()`). Never stamp `SchemaVersion`
+  `media` block (`!c.Media.IsZero()`), v8 for `draft.tokens`, v9 for a
+  transcriber's detector (`media.stt.vad`). Never stamp `SchemaVersion`
   unconditionally — that makes every model this build touched unreadable to
   an older xollama.
 - **Launch config versus request config.** A setting that changes how the model
@@ -54,6 +56,13 @@ paths:
   feature is on is `quiet` — skipped silently in the full walk, skipped *with
   the reason* when a flag names it. `kindText` takes free text or `@path` to
   read a file; its usage string is `TEXT|@file|unset`.
+- **`docs/xollama/tweak-reference.mdx` is generated, never edited by hand.**
+  `Reference` in `cmd/tweak/reference.go` renders it from the `fields` table,
+  grouped by `referenceSections`. `TestTheFlagReferenceIsCurrent` fails when the
+  page is not that text and `TestEveryTweakFlagIsDocumented` when a flag is on
+  neither page (`cmd/tweak/reference_test.go`). After adding, renaming or
+  rewording a setting, regenerate:
+  `XOLLAMA_UPDATE_DOCS=1 go test ./cmd/tweak -run TestTheFlagReferenceIsCurrent`.
 - `xollama show` and the wizard name settings through one table
   (`tweak.SettingRows`); never spell a setting a second way in `cmd/cmd.go`.
 - Round-trip guard: `server/modelfile_roundtrip_test.go` holds that
