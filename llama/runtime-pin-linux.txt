@@ -28,6 +28,11 @@
 # This file is outside the digested paths on purpose, so committing it does not
 # invalidate itself.
 
+# v0.40.10 (2026-10-23): sync v0.40.9 -> v0.40.10 (one upstream commit, #19241
+# gemma renderers). LLAMA_CPP_VERSION b11803, llama/server and llama/compat
+# unchanged, so the runtime is reused from v0.40.9-1-thinkbudget (inputs
+# c3f7c881, built 0e85a55c, asset bytes unchanged); the gpu rows are upstream
+# v0.40.10's rebuilt archives.
 # v0.40.9-1 (2026-10-23): sync v0.40.6 -> v0.40.9 (LLAMA_CPP_VERSION b11669 ->
 # b11803, inputs 83f79eeb -> c3f7c881 = this tree), then the -1 bump adding
 # llama/compat/006 (generation_prompt) rebuilt the runtimes; `built` 0e85a55c.
@@ -41,12 +46,12 @@
 # for byte under the new tag (inputs unchanged, so `built` stays d0508358);
 # the gpu rows are upstream v0.40.2's rebuilt archives.
 repo      mann1x/ollama
-tag       v0.40.9-1-thinkbudget
+tag       v0.40.10-thinkbudget
 asset     ollama-linux-amd64-runtime.tgz
 sha256    9e5d7f6820f1e5a046377acd25e6cb0b9d81a97f1efbfd674bd0f6c8419a66ba
 inputs    c3f7c881eb5d825f3ad01439d9a55743150c9430683ca04921dbf4b0b2f59e2d
 built     0e85a55caba2a0696d08166d72615babe4c57040
 
-upstream  v0.40.9
-gpu       ollama-linux-amd64.tar.zst      01f0d0ae50cad3295a79a165033a65cf324f8ae5f7be64679464d29ecf28d67c
-gpu       ollama-linux-amd64-mlx.tar.zst  b37f10c2119cc80ec7f07572252a33e79a0e42005468f6681b91c07de11c8831
+upstream  v0.40.10
+gpu       ollama-linux-amd64.tar.zst      1e8ad2d2a394efdd235bee74deec237badd95142ffba77588140ab2a9ecec227
+gpu       ollama-linux-amd64-mlx.tar.zst  ce92ab56e0093ff8bd28df86b4e1f6c919461f419938ac1c0b30d02e9f68910e
