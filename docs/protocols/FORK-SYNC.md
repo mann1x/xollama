@@ -137,12 +137,18 @@ the fork delivers all of the following, in this order:
    - `ollama-linux-amd64-mlx.tar.zst` and `ollama-windows-amd64-mlx.zip`:
      upstream's assets as they are; their sha256 equals upstream's
      `sha256sum.txt`.
-   - `ollama-windows-amd64-mlx-reldir.zip` (from v0.40.0): the fork's own
-     build of the same MLX with `MLX_CUDA_BIN_DIR` and `MLX_CUDNN_BIN_DIR`
-     set to `.`, built by the fork's workflow (`only=mlx-windows`,
-     `asset_suffix=-reldir`). It is what `llama/runtime-pin-windows-mlx.txt`
-     pins: upstream's `mlx.dll` needs cuDNN installed in
-     `C:/Program Files/NVIDIA/CUDNN`. It never replaces an existing asset.
+     From v0.40.9 (upstream #17956) neither `-mlx` archive is self-contained:
+     the CUDA libraries MLX shares with GGML were deduplicated, so MLX's
+     libraries resolve them through `../cuda_v13` (Linux RPATH) or `..\cuda_v13`
+     (Windows), the GGML CUDA-13 payload, which must sit beside the MLX one.
+   - `ollama-windows-amd64-mlx.zip` is what `llama/runtime-pin-windows-mlx.txt`
+     pins directly from v0.40.9: upstream now CACHE-FORCEs `MLX_CUDA_BIN_DIR=..\cuda_v13`
+     and `MLX_CUDNN_BIN_DIR=.`, so its `mlx.dll` embeds `..\cuda_v13` and ships
+     the cuDNN DLLs beside itself -- no cuDNN need be installed. That is what the
+     fork's old `ollama-windows-amd64-mlx-reldir.zip` (the `only=mlx-windows`
+     job, `asset_suffix=-reldir`) existed to provide, so both are retired
+     (owner, 2026-10-23; verified no-cuDNN on eleven2go, no hardcoded
+     `C:\Program Files\NVIDIA\CUDNN` path in `mlx.dll`).
    - `ollama-darwin-mlx.tgz`: `mlx_metal_v3/` (universal, Intel and Apple
      silicon), `mlx_metal_v4/` (Apple silicon) and the MLX, MLX-C, xgrammar,
      dlpack, picojson and fmt licence texts, cut entry for entry from
