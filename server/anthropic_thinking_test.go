@@ -84,7 +84,10 @@ func TestAnthropicWebSearchThinking(t *testing.T) {
 				})
 				backend := httptest.NewServer(router)
 				defer backend.Close()
-				t.Setenv("OLLAMA_HOST", backend.URL)
+				// xollama: the web-search follow-up client resolves its host from
+				// XOLLAMA_HOST only (envconfig.Host), so OLLAMA_HOST does not steer
+				// it -- see .claude/rules/default-port.md.
+				t.Setenv("XOLLAMA_HOST", backend.URL)
 				originalEndpoint := anthropic.WebSearchEndpoint
 				anthropic.WebSearchEndpoint = backend.URL + "/web_search"
 				t.Cleanup(func() { anthropic.WebSearchEndpoint = originalEndpoint })

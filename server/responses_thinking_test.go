@@ -81,7 +81,10 @@ func TestResponsesNonthinkingEffortWebSearch(t *testing.T) {
 			})
 			backend := httptest.NewServer(router)
 			defer backend.Close()
-			t.Setenv("OLLAMA_HOST", backend.URL)
+			// xollama: the web-search follow-up client resolves its host from
+			// XOLLAMA_HOST only (envconfig.Host), so OLLAMA_HOST does not steer
+			// it -- see .claude/rules/default-port.md.
+			t.Setenv("XOLLAMA_HOST", backend.URL)
 
 			body := fmt.Sprintf(`{"model":"nonthinking","input":"search test","tools":[{"type":"web_search"}],"reasoning":{"effort":"high"},"stream":%t}`, streaming)
 			w := NewRecorder()
