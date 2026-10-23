@@ -57,6 +57,28 @@ it an update, stop. That is the procedure this replaces.**
    v0.40.4 two days after the fork reached v0.40.6: "if the ollama fork has
    synced to a new upstream version also xollama must sync to it with a new
    release unless I explicitely ask not to".
+8. **Every change gets an impact analysis, not only the regression gates.** The
+   [`VALIDATION.md`](VALIDATION.md) gate delta is a *regression net*: it proves
+   the compat set, the chat paths and the engine A/B did not break. It does not,
+   on its own, exercise what a change specifically touches. For every change in a
+   release, name its blast radius — the request fields and paths, the data
+   structures, and the downstream consumers (the scheduler's VRAM fit, `/api/ps`
+   `size_vram`, `/api/xollama` features, a response header, a client) — and run a
+   targeted check of each impacted feature end to end, against a **control** (the
+   released binary, or the `XOLLAMA_ENGINE=llamacpp` off-path) and the
+   **pathological input the change was made for**, not only its unit test. Record
+   the analysis and the targeted results in the release's `STATE_SUMMARY.md` entry
+   and the PR notes. **The impact analysis decides which gates run, every
+   release.** Beyond the always-gates (G1, G2, G12) and any gate that failed or
+   regressed since the last baseline, a gate runs only when a change's blast
+   radius reaches what it covers. This governs a re-release's "full check" too:
+   it is run in full only when the changes warrant it, and a gate skipped for
+   want of impact is named, with the reason, in `STATE_SUMMARY.md`. Do not repeat
+   a gate for form's sake — a Go-only, engine- and OS-agnostic change already
+   proven on one platform does not need the Windows or image gates re-run to
+   re-prove the host, only the always-gates and whatever its own blast radius
+   touches. The procedure is step 1; owner, 2026-10-22 ("always impact analysis,
+   no need to repeat gates unless there's a reason for it").
 
 ## Versions and tags
 
@@ -86,7 +108,8 @@ v0.35.0 is only ever released here as a `v0.35.0-…xollama…` version:
   same, and the release takes the **short check** (step 7).
 - **A re-release has no candidates.** It fixes a release that is already out.
   It is cut from `dev` as `v<upstream>-xollama.<n>`, published as a pre-release,
-  given the full check, and promoted as the same bytes. Once
+  given the checks its impact analysis calls for (rule 8; not the full check by
+  default), and promoted as the same bytes. Once
   `v<upstream>-xollama` is published, a candidate of that upstream sorts below
   it and is refused.
 - The binary reports the tag without the leading `v`
@@ -243,6 +266,40 @@ The usual rules apply (UPSTREAM-SYNC hooks, FORK-SYNC merges, tests). Push
 Before a candidate, run the gates [`VALIDATION.md`](VALIDATION.md) asks for:
 all of them for the first release, the delta after that. [The council
 gate](#the-council-gate) is one of them.
+
+**An impact analysis of every change, every release (rule 8).** The gate delta
+above is a regression net; it answers "did anything that worked break?". It does
+not answer "does what this change touches actually do the new thing, on real
+hardware?". So, separately, for each change going into the release:
+
+- **Name the blast radius.** What the change touches directly (files, request
+  fields, body maps) and every downstream consumer of it (the scheduler's VRAM
+  fit, `/api/ps` `size_vram`, `/api/xollama` features, a header, a client). A one
+  line in a request body map is narrow; a change to the memory parser, the
+  scheduler or placement is broad and reaches every load. The
+  [*Which gates a change needs*](VALIDATION.md) table maps the touched paths to
+  the regression gates; this step is the complement, the feature-specific proof.
+- **Run a targeted check of each impacted feature, end to end** — the server
+  actually started, the real path exercised — not only its unit test. Each such
+  check carries two things a unit test does not: a **control** (the released
+  binary, or `XOLLAMA_ENGINE=llamacpp` for an off-means-off change) that proves
+  the old behaviour and that the new code does not regress it, and the
+  **pathological input the change was made for** (the case from the bug report),
+  that proves the fix. Where that input cannot be staged live, its unit test
+  replays the real captured input (the exact engine log, the captured request),
+  and the live check then proves no regression on representative hardware.
+- **Record it** in the release's `STATE_SUMMARY.md` entry and the PR notes: per
+  change, what it touches, what was checked, the control against the new, and the
+  numbers.
+
+Example (`v0.40.6-xollama.1`, 2026-10-22): the memory-accounting change reaches
+every load through `/api/ps` and the scheduler's fit, so the targeted check
+loaded an MTP-draft model on the 3090 with the released binary and the new one
+and compared `size_vram` against `nvidia-smi` and the engine's own breakdown
+(new == old == 14107 MiB, no regression); the pathological under-report is the
+fork's unit test replaying the exact pandorum log at every chunk size.
+`tool_choice none` and `repeat_last_n` each got a live request against a started
+server on both engines, with the control value shown.
 
 **The security check, every release, candidates included.** Run
 `scripts/security-check.sh` on `dev`. It fetches the open Dependabot alerts
@@ -413,7 +470,10 @@ Remove the test container when the check is done (`docker rm -f xollama-test`).
 
 ### 7. Verify the install
 
-A candidate and a re-release take the **full check**. The release made from a
+A candidate and a re-release take the checks their **impact analysis** calls for
+(rule 8): the always-gates (G1, G2, G12) and any regression every time, the full
+check in full only when the changes' blast radius warrants it — a gate skipped
+for want of impact is named with its reason in `STATE_SUMMARY.md`. The release made from a
 candidate takes the **short check**, because the workflow has already proved it
 is that candidate's tree with the same pins: install it over the candidate
 through the updater's small installer, then check only that

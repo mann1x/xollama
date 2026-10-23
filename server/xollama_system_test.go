@@ -101,11 +101,12 @@ func TestUnifiedMemoryTakesTheServersWorkingSet(t *testing.T) {
 // it rather than wait, and names each runner process by its model.
 func TestTheSystemRouteNeverWaitsOnALoad(t *testing.T) {
 	ready := &runnerRef{
-		model: &Model{ShortName: "qwen3:8b"},
 		llama: pidLlm{&mockLlm{totalSize: 6 << 30, vramSize: 6 << 30, vramByGPU: map[ml.DeviceID]uint64{{ID: "0", Library: "CUDA"}: 6 << 30}}, 4242},
 		gpus:  []ml.DeviceID{{ID: "0", Library: "CUDA"}},
 	}
-	loading := &runnerRef{model: &Model{ShortName: "gemma4:e4b"}, llama: pidLlm{&mockLlm{}, 4343}}
+	ready.model.Store(&Model{ShortName: "qwen3:8b"})
+	loading := &runnerRef{llama: pidLlm{&mockLlm{}, 4343}}
+	loading.model.Store(&Model{ShortName: "gemma4:e4b"})
 	loading.refMu.Lock()
 	defer loading.refMu.Unlock()
 	s := &Server{sched: &Scheduler{loaded: map[string]*runnerRef{"a": ready, "b": loading}}}

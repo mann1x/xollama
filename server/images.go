@@ -384,6 +384,12 @@ func capabilityNames(capabilities []model.Capability) []string {
 	return names
 }
 
+// templateSource names which chat prompt source actually runs for the model,
+// reusing the same predicate the template-selection log line reports.
+func (m *Model) templateSource() string {
+	return selectedTemplateSource(m, m.Template != nil && shouldUseHarmony(m))
+}
+
 func selectedTemplateSource(m *Model, usesHarmony bool) string {
 	switch {
 	case m.Config.Renderer != "" && m.Config.Parser != "":
@@ -434,7 +440,7 @@ func logTemplateSelection(m *Model) {
 
 	slog.Info("template selection",
 		"model", m.Name,
-		"selected", selectedTemplateSource(m, usesHarmony),
+		"selected", m.templateSource(),
 		"renderer", m.Config.Renderer,
 		"parser", m.Config.Parser,
 		"go_template", capabilityLogValue(m.HasGoTemplate, goTemplateCapabilities),
@@ -592,6 +598,7 @@ func (m *Model) CheckCapabilities(want ...model.Capability) error {
 		model.CapabilityThinking:   errCapabilityThinking,
 		model.CapabilityImage:      errCapabilityImage,
 		model.CapabilityDecision:   errors.New("decision"),
+		model.CapabilitySpeech:     errors.New("speech"),
 	}
 
 	for _, cap := range want {

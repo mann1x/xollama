@@ -71,10 +71,9 @@ func engineTestServer(t *testing.T, runners map[string]*runnerRef) *gin.Engine {
 }
 
 func engineRunner(name string, llama llm.LlamaServer) *runnerRef {
-	return &runnerRef{
-		llama: llama,
-		model: &Model{Name: name, ShortName: name, ModelPath: "/tmp/" + name},
-	}
+	r := &runnerRef{llama: llama}
+	r.model.Store(&Model{Name: name, ShortName: name, ModelPath: "/tmp/" + name})
+	return r
 }
 
 func engineGet(t *testing.T, r *gin.Engine, query string) *httptest.ResponseRecorder {

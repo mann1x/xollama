@@ -5,10 +5,30 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
-> **2026-10-22 — `v0.40.6-xollama.1` started (owner 05:53: "make the release").**
-> - It is a re-release on v0.40.6. The fork is still on `v0.40.6-thinkbudget` (rule 7 checked), and the engine pin and runtimes are unchanged. It carries `555fe9076` (repeat_last_n), `ae60fdc03` (memory lines) and `31e5ef920` (tool_choice none).
-> - G1 passes on `31e5ef920`: gofmt and build clean, every package ok, lint 0, 56 hooks, compat-origin 0.
-> - Security check: 100 Dependabot alerts open (99 before). The new one is `github.com/klauspost/compress` <= 1.18.6, s2 integer overflow (high, fixed in 1.18.7). It sits on upstream's own `go.mod` line (v1.18.3, unchanged by the fork), and govulncheck lists it only at module level (GO-2026-5841), with 0 reachable. So it is upstream's and recorded, not bumped. govulncheck: 0 reachable.
+> **2026-10-23 — upstream sync v0.40.6 → v0.40.9 + the `-1` think-budget fix (`v0.40.9-rc.1.xollama` cut from `sync/upstream-20261023`, HEAD `50a9e095`).**
+> - Base merge of upstream tag v0.40.9 into dev, then the fork's 29 patches as `--no-ff` merges at the `v0.40.9-thinkbudget` manifest (think-budget `0db3a0c1`, fork mail #1807), then a **30th**: `up-completion-generation-prompt @ d2d1694d` (manifest `0aeb9fa1`, fork mail #1817) carrying `llama/compat/006`. 006 re-registers the `/completion` `generation_prompt` field llama.cpp dropped at b11669 — without it `think_budget` on qwen3/gemma4 was echoed but never enforced (model thought to the num_predict cap, no answer). The 006 merge touched only `llama/compat/` (README resolved 001/004/005/006), zero Go.
+> - Three bugs the merges surfaced, each fixed and verified: `routes_test.go` keep-both duplicate (`go vet` redeclare); `server/context_window.go` `windowWriter` not forwarding `SetThinking` (upstream #19098 web-search regression → 400); `llm/drafter.go` over-adopting upstream's `""` drafter default (restored `draft-mtp`). `bug-313/314/315`.
+> - Go gate green on HEAD: gofmt, `go build`, `go vet`, full non-app `go test ./...`, golangci-lint (touched pkgs), govulncheck 0 reachable. `LLAMA_CPP_VERSION b11803`; inputs digest of `llama/*` = `c3f7c881`, identical to the fork's built commit `0e85a55c` (so the runtime pin is valid for this tree).
+> - **Pins moved to `v0.40.9-1-thinkbudget`** (runtimes rebuilt for 006; fork mails #1817/#1820, every sha verified — fork runtime, upstream `gpu` rows vs upstream `sha256sum.txt`, the Windows MLX zip `c4474aaf` hashed here on eleven2go): `llama/runtime-pin-linux.txt`, `-linux-arm64.txt`, `-windows-mlx.txt`, `-darwin.txt`. `llm/engine/pin` stays at c13. `llama/runtime-pin.txt` (xollama's own Windows CPU runtime) moved to `runtime-windows-amd64-b11803-4f328855e2e0` (sha256 `2faa1c4b…`), built by `xollama-runtime.yaml` run 39954402515 from the pushed sync branch; its `inputs` digest `4f328855…` **includes** `llama/compat/README.md` (the Docker pins exclude it), computed the way `xollama-release.yaml` checks it.
+> - **#17956 (MLX CUDA dedup):** neither `-mlx` archive is self-contained from v0.40.9 — MLX's CUDA libs resolve to `../cuda_v13` (the GGML payload). Linux Docker needs no change (`docker-assemble.sh` already unpacks every `gpu` row into one `lib/ollama`, so `cuda_v13` sits beside `mlx_cuda_v13`; confirm with a Docker MLX G-gate at rc). Windows installer `app/xollama-mlx.iss` **rewritten** (draft, uncommitted until review): extracts `mlx_cuda_v13` + `cuda_v13`, merges the 3 MLX CUDA DLLs beside the GGML backend, stash/restore across `[InstallDelete]`. `-reldir` retired.
+> - **no-cuDNN check done** (eleven2go, cuDNN-free RTX 3090): upstream v0.40.9 `mlx.dll` has no hardcoded `NVIDIA\CUDNN` path (the v0.40.0 panic string is gone), embeds relative `../cuda_v13`, ships the 8 cuDNN DLLs inside `mlx_cuda_v13` → loads cuDNN from its own folder; the failure mode is structurally eliminated. The fork's `only=mlx-windows` reldir job is **retired** (owner, 2026-10-23). Full MLX-generation G9 still runs at rc once the v0.40.9 MLX binary exists.
+> - **compat-origin resolved (Path B).** The two `llama/compat/README.md` merges (`12ed96ef` gemma4-assistant-shape, `25873e97` completion-generation-prompt) were clean three-way README *unions* (HEAD side 004+005, fork patch branch 006 → the full list). `check-compat-origin.sh` forbids a union in one compat file: the full 001/004/005/006 list must arrive from **one** fork ref. The fork's static-README branch `up-compat-readme` was refreshed to `a306f873` (README blob `56c6eaf4`, byte-identical to `think-budget`; fork/ollama session, mail #1827). On this branch the two merges were re-resolved to their parent README (no union) via `filter-branch` **excluding** the fork/upstream refs (so their hashes and `from_a_source` are preserved), then one `--no-ff` merge of `a306f873` brings `56c6eaf4` from a fork parent. Result `50a9e095`: **content byte-identical** to the pre-rewrite tree `4b02b71e` (only provenance changed → **no runtime-pin repin**), `check-compat-origin origin/main..HEAD` = **0 bad**. Backup ref `backup/sync-pre-pathb`. `bug-317`.
+> - **Done:** the Go gate (above); gotypes (no drift); `-race` + proxy sweeps (the 4 proxy failures are upstream proxy-env artifacts, not regressions — `bug-316`); `runtime-pin.txt` built and moved; docs (`292bbd673`); the installer draft and the pin moves.
+> - **Left:** app build + `go test ./app/...` runs on the rc PR's Windows/macOS CI legs; the full MLX-generation G9 at rc once the v0.40.9 MLX binary exists; a Docker MLX G-gate for #17956. Then owner approval → `v0.40.9-xollama`. `plans/MASTER_PLAN.md` needs no row change — the sync is tracked here, in CARRIED-PATCHES and xo-35, not as a plan.
+
+> **2026-10-22 — `v0.40.6-xollama.1` released and promoted (Latest): a re-release on v0.40.6, same runtimes and engine (c13 r6).**
+> - PR #40 merged (`148a2390`), release run 39723086159 green; pre-release published with 9 assets, then promoted to Latest (`gh release edit --prerelease=false --latest`). Discord announced (run 39727056369). Image workflow on the tag (39727055973) moves `:latest`.
+> - Carries `555fe9076` (repeat_last_n -1 → num_ctx on stock), `ae60fdc03` (fork memory-lines patch), `31e5ef920` (`tool_choice_none_v1`). All three are Go-only, engine- and OS-agnostic; the runtimes, the engine pin and `app/` are unchanged from `v0.40.6-xollama`, so on Windows the small updater is offered.
+> - **Impact analysis (rule 8) drove gate selection.** The blast radius is engine- and OS-agnostic request/parse logic: repeat_last_n (a stock request-body value), the llama-server memory-line parser (log-line parsing), tool_choice none (request handling + logit_bias/stop/tool_choice). None touch the installer, the runtimes or the engine.
+> - **Gates run:** G1 (gofmt/build/tests/lint 0/56 hooks/compat-origin 0, `31e5ef920`); G2 (PR #40: 13 pass, 7 skipping); G3 (3090, c13 r6: opencoti 8/8, llama3 77.9, 4-slot 314, overflow 4.2; stock 8/8, 78.5, 587, 3.0); G4 (decision on opencoti; chat paths + OpenAI stream + tool call + result PASS, 0 refusals); G11 (Mac: signing/notarize/staple/codesign ok, version right, qwen2.5 125.5 / llama3 31.5 / qwen3.5 63.2, speech 7/7, 0 crashes; self-update 0.40.6-xollama → .1 verified); G10 (dietpi5, **published** arm64 image: version `0.40.6-xollama.1`, PAYLOAD = runtime v0.40.6-thinkbudget + engine 2610182159001 + sbsa, opencoti generates); G12/step5 (checksums all OK, amd64 + arm64 client version `0.40.6-xollama.1`, payload-id `6787225d…`, image on Hub + GHCR both arches, `:latest` was `255dc231…` before the tag re-run).
+> - **Targeted impact checks beyond regression:** memory accounting — live MTP-draft load on the 3090, old binary vs new → `/api/ps` size_vram 14107 MiB both, no regression (the 373 MiB pandorum case is the ported unit test's exact-log replay, 10167.88 MiB at every chunk size); tool_choice none — live on opencoti and stock, 0 calls under `none`/`{"type":"none"}` where the control called; repeat_last_n — live 200 with the mapped value.
+> - **G8/G9 (eleven2go Windows) not run, by rule 8:** the changes have no Windows-GPU-launch or installer surface — `app/` is unchanged and CI runs both installers on the Windows runner every release; the changed code is already proven on Linux (G3/G4), macOS (G11) and arm64 (G10). Owner, 2026-10-22, questioned gating on eleven2go; the impact analysis agreed, and RELEASE.md rule 8 / step 7 were amended to make the impact analysis decide which gates run.
+> - Security check: 100 Dependabot (99 before); the new `klauspost/compress` s2 alert sits on upstream's own `go.mod` line, module-level, 0 reachable — upstream's, recorded. govulncheck 0 reachable.
+> - Cleanup: dietpi5 test container + image removed (owner's 4 containers and 11434 untouched); solidPC side servers down; ollama store 0 foreign files (12 old `root:ollama` manifests chowned back). Locks: none held via resource-lock; 3090 + Mac AFTER-mailed; eleven2go request withdrawn.
+
+> **2026-10-22 — RELEASE.md rule 8: an impact analysis at every change, not only the regression gates (owner: "this is what should be done at every change").**
+> - New rule 8 in `docs/protocols/RELEASE.md` and the procedure in step 1: for each change, name its blast radius and the downstream consumers, run a targeted end-to-end check of each impacted feature against a control (the released binary or the `llamacpp` off-path) and the pathological input the change was made for, and record it in STATE_SUMMARY and the PR notes. The VALIDATION.md gate table is the regression complement.
+> - Rides the next release; the running `v0.40.6-xollama.1` build is unaffected.
 
 > **2026-10-22 — `tool_choice: "none"` on `/api/chat` (`tool-choice` hook, `tool_choice_none_v1`; for the next release).**
 > - Asked by cerebriline (mail #1733). A pandorum side call on eleven2go (`0.40.6-xollama`, gemma-4 v9-agentic) sent `tool_choice: "none"` with its 21 tools, and the model wrote an editor call to its 4000-token cap: 36 s, empty answer. `api.ChatRequest` had no such field, so the value was dropped. Owner 05:42: "add 2 to this new release, it should not need an engine change".
@@ -2722,7 +2742,7 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
 ## Where we are
 
-`v0.40.6-xollama` is the latest release (2026-10-19): upstream v0.40.6 (fork
+`v0.40.6-xollama.1` is the latest release (2026-10-22): upstream v0.40.6 (fork
 manifest `33e6af53`, 27 carried patches, llama.cpp b11669, MLX `bebd6422`),
 opencoti c13 r6 (`2610182159001`, Vulkan and Metal native KVarN, the CPU spin
 fix), and `GET /api/xollama/system`. `dev` is the release's tree and pins the
@@ -2802,11 +2822,11 @@ Council Chat is in Phase 11.
 1. opencoti's bug-4143 build (elastic slots admitted at once; #1720): when it
    is published, measure G3's four slots on the 3090 (expected about 675
    against 303) and move the pin on that measurement. opencoti c14 is the next
-   engine, under the same rule (owner, 2026-10-16: "c14 is next"). The next
-   release name is `v0.40.6-xollama.1`, unless the fork moves to a newer
-   upstream first (RELEASE.md rule 7). Its notes carry `repeat_last_n` -1 on
-   stock (`555fe9076`), the memory-lines fork patch (`ae60fdc03`) and
-   `tool_choice_none_v1` (owner 2026-10-22: "add 2 to this new release").
+   engine, under the same rule (owner, 2026-10-16: "c14 is next"). `v0.40.6-xollama.1`
+   shipped repeat_last_n (`555fe9076`), the memory-lines fork patch (`ae60fdc03`)
+   and `tool_choice_none_v1` (2026-10-22); the next release name is
+   `v0.40.6-xollama.2` unless the fork moves to a newer upstream first
+   (RELEASE.md rule 7).
 2. Why the free-memory refresh fails through a model swap on Windows
    (pandorum 2026-10-16), when it is seen again with the engine's listing
    output.

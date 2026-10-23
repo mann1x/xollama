@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/llm"
 )
 
@@ -59,4 +60,17 @@ func (w *windowWriter) Write(b []byte) (int, error) {
 func (w *windowWriter) WriteString(s string) (int, error) {
 	w.apply()
 	return w.ResponseWriter.WriteString(s)
+}
+
+// SetThinking forwards to the wrapped writer. ChatHandler hands the resolved
+// thinking to a response writer that implements this, so a server-side tool
+// follow-up reuses it (upstream #19098: the anthropic and OpenAI web-search
+// writers). Embedding gin.ResponseWriter does not promote this method, so
+// without this pass-through the wrapper would hide it and the follow-up would
+// carry the request's unresolved thinking -- a thinking value kept across a
+// model switch then 400s a model with no thinking support.
+func (w *windowWriter) SetThinking(think *api.ThinkValue) {
+	if sw, ok := w.ResponseWriter.(interface{ SetThinking(*api.ThinkValue) }); ok {
+		sw.SetThinking(think)
+	}
 }

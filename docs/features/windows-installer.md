@@ -299,17 +299,22 @@ a GGUF variant run on opencoti regardless (`opencoti-first`).
 
 `app/xollama-mlx.iss`, included by both installers (`windows-mlx` hook):
 
-- **What:** the archive `llama/runtime-pin-windows-mlx.txt` pins: the fork's
-  build of upstream's MLX at the tag, `ollama-windows-amd64-mlx-reldir.zip`,
-  the same files as upstream's zip but with CUDA and cuDNN loaded from
-  `mlx.dll`'s own folder. Upstream's `mlx.dll` looks for cuDNN in
-  `C:/Program Files/NVIDIA/CUDNN/bin/x64`; without cuDNN installed there, the
-  first MLX operation that needs it panics and the request hangs (measured on
-  eleven2go, 2026-10-08, `qwen3.5:0.8b` on MLX; with the fork's build it runs,
-  as do `embeddinggemma-2` and a create from safetensors). `v0.40.0-xollama`
-  shipped upstream's zip; an update to the next release downloads the new one
-  (its `MLX_ID` differs). The release workflow's `plan` checks the pin
-  and passes its URL and sha256 to the installer build (`PKG_MLX_URL`,
+- **What:** the archive `llama/runtime-pin-windows-mlx.txt` pins. From v0.40.9
+  (upstream #17956) it is upstream's own `ollama-windows-amd64-mlx.zip`: its
+  `mlx.dll` embeds `..\cuda_v13` and ships the cuDNN 9 DLLs beside itself
+  (`MLX_CUDNN_BIN_DIR=.`), so no cuDNN need be installed -- the fork's old
+  `-reldir` build, which existed because upstream's older `mlx.dll` looked for
+  cuDNN in `C:/Program Files/NVIDIA/CUDNN/bin/x64` and panicked without it, is
+  retired (verified on eleven2go, 2026-10-23: no hardcoded CUDNN path in the
+  v0.40.9 `mlx.dll`). The zip carries two directories: `mlx_cuda_v13\` (mlx,
+  mlxc, xgrammar, openblas, the 8 cuDNN DLLs) and `cuda_v13\` (cufft64_12,
+  cusolver64_12, cusparse64_12 -- the CUDA libraries MLX needs that GGML does
+  not). `InstallMLX` unpacks both and MERGES the `cuda_v13` DLLs beside the
+  GGML CUDA-13 backend the full installer lays in `lib\ollama\cuda_v13` (where
+  `mlx.dll` finds cublas/cudart/nvrtc); it stashes and restores them across the
+  full installer's `[InstallDelete]`. An update to a new release downloads the
+  new archive (its `MLX_ID` differs). The release workflow's `plan` checks the
+  pin and passes its URL and sha256 to the installer build (`PKG_MLX_URL`,
   `PKG_MLX_SHA256`); `DownloadTemporaryFile` refuses any other bytes.
 - **When:** after the files are installed (`InstallMLX`, from
   `CurStepChanged`), by the full and the update installer alike. `/MLX=auto`

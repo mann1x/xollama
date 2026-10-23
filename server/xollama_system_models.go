@@ -24,13 +24,14 @@ func (s *Scheduler) systemModels(view []api.XollamaDevice) []api.SystemModel {
 		if !r.refMu.TryLock() {
 			continue
 		}
-		if r.model == nil || r.llama == nil {
+		rm := r.model.Load()
+		if rm == nil || r.llama == nil {
 			r.refMu.Unlock()
 			continue
 		}
 		total, vram := r.llama.MemorySize()
 		m := api.SystemModel{
-			Name:     model.ParseName(r.model.ShortName).DisplayShortest(),
+			Name:     model.ParseName(rm.ShortName).DisplayShortest(),
 			PID:      r.llama.Pid(),
 			Size:     int64(total),
 			SizeVRAM: int64(vram),

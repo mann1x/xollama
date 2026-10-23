@@ -54,6 +54,13 @@ func DraftTypeFor(draftArch, requiresTargetArch, targetArch string) (string, err
 		}
 		return draftTypeAssistant, nil
 	}
+	// draft-eagle3 is upstream v0.40.9's own driver, selected by the drafter's
+	// architecture. Every other attached drafter is draft-mtp: that is xollama's
+	// long-standing default for an attached DRAFT layer, and upstream's leave-it-
+	// to-the-engine empty string would start a plain drafter with no --spec-type.
+	if draftArch == "eagle3" {
+		return draftTypeEagle3, nil
+	}
 	return draftTypeMTP, nil
 }
 

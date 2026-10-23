@@ -2613,15 +2613,20 @@ func TestAppendDraftArgs(t *testing.T) {
 			want:      []string{"base", "--spec-type", "draft-mtp", "--spec-draft-n-max", "8", "--spec-draft-backend-sampling", "--spec-draft-model", "draft.gguf"},
 		},
 		{
-			name:      "DFlash draft omits MTP backend sampling",
-			draftType: draftTypeDFlash,
+			name:      "Eagle3 draft passes its type without MTP backend sampling",
+			draftType: draftTypeEagle3,
 			draftPath: "draft.gguf",
 			opts:      api.Options{Runner: api.Runner{DraftNumPredict: 4}},
-			want:      []string{"base", "--spec-type", "draft-dflash", "--spec-draft-n-max", "4", "--spec-draft-model", "draft.gguf"},
+			want:      []string{"base", "--spec-type", "draft-eagle3", "--spec-draft-n-max", "4", "--spec-draft-model", "draft.gguf"},
+		},
+		{
+			name:      "untyped draft leaves the type to llama-server",
+			draftPath: "draft.gguf",
+			opts:      api.Options{Runner: api.Runner{DraftNumPredict: 4}},
+			want:      []string{"base", "--spec-draft-n-max", "4", "--spec-draft-model", "draft.gguf"},
 		},
 		{
 			name:      "zero draft depth disables speculative decoding",
-			draftType: draftTypeDFlash,
 			draftPath: "draft.gguf",
 			opts:      api.Options{Runner: api.Runner{DraftNumPredict: 0}},
 			want:      []string{"base"},
@@ -2643,13 +2648,15 @@ func TestExternalDraftType(t *testing.T) {
 		name         string
 		architecture string
 		kv           gguftest.KV
+		tensors      []*gguftest.Tensor
 		targetArch   string
 		want         string
 		wantErr      string
 	}{
+		// dflash and the assistant head are xollama's, eagle3 is upstream's new
+		// driver at v0.40.9, and every other attached drafter is draft-mtp --
+		// xollama's default, where upstream would leave --spec-type unset.
 		{name: "dflash", architecture: "dflash", want: draftTypeDFlash},
-		{name: "qwen35", architecture: "qwen35", want: draftTypeMTP},
-		{name: "unknown", architecture: "unknown", want: draftTypeMTP},
 		{
 			// A gemma-4 assistant drafter carries no context of its own. It has
 			// to be built against the target's, which only draft-assistant does.
@@ -2672,13 +2679,42 @@ func TestExternalDraftType(t *testing.T) {
 			targetArch:   "qwen35",
 			wantErr:      `requires a "gemma4" target`,
 		},
+		{
+			name:         "eagle3",
+			architecture: "eagle3",
+			want:         draftTypeEagle3,
+		},
+		{
+			name:         "MTP sidecar by nextn key",
+			architecture: "gemma4-assistant",
+			kv:           gguftest.KV{"gemma4-assistant.nextn_predict_layers": uint32(4)},
+			want:         draftTypeMTP,
+		},
+		{
+			name:         "legacy qwen35 MTP sidecar",
+			architecture: "qwen35",
+			tensors: []*gguftest.Tensor{
+				testGGUFTensor("mtp.fc.weight", gguf.TensorTypeF32, []uint64{1}),
+			},
+			want: draftTypeMTP,
+		},
+		{
+			name:         "qwen35 without MTP markers defaults to draft-mtp",
+			architecture: "qwen35",
+			want:         draftTypeMTP,
+		},
+		{
+			name:         "unknown",
+			architecture: "unknown",
+			want:         draftTypeMTP,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			kv := gguftest.KV{"general.architecture": tt.architecture}
 			maps.Copy(kv, tt.kv)
-			path, _ := writeTestGGUF(t, kv, nil)
+			path, _ := writeTestGGUF(t, kv, tt.tensors)
 			got, err := externalDraftType(path, tt.targetArch)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
@@ -2694,6 +2730,20 @@ func TestExternalDraftType(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("MTP marker in a later shard", func(t *testing.T) {
+		path, _ := writeTestGGUF(t, gguftest.KV{"general.architecture": "qwen35"}, nil)
+		shard, _ := writeTestGGUF(t, gguftest.KV{"general.architecture": "unknown"}, []*gguftest.Tensor{
+			testGGUFTensor("mtp.fc.weight", gguf.TensorTypeF32, []uint64{1}),
+		})
+		got, err := externalDraftType(path, "", shard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != draftTypeMTP {
+			t.Fatalf("externalDraftType = %q, want %q", got, draftTypeMTP)
+		}
+	})
 }
 
 // Params are built before the engine is known, so an assistant drafter has to
@@ -4538,6 +4588,18 @@ func TestLlamaServerChatMessageCarriesThinking(t *testing.T) {
 	}
 	if _, ok := plain["reasoning_content"]; ok {
 		t.Fatalf("reasoning_content present on a message with no thinking: %#v", plain)
+	}
+
+	// Reasoning belongs to the assistant: thinking left on any other message
+	// must not reach the template.
+	for _, role := range []string{"user", "tool", "system"} {
+		other, err := llamaServerChatMessage(Message{Role: role, Content: "OK", Thinking: "not mine"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := other["reasoning_content"]; ok {
+			t.Fatalf("reasoning_content present on a %s message: %#v", role, other)
+		}
 	}
 }
 
