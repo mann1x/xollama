@@ -2347,7 +2347,6 @@ func TestSchedNeedsReloadWhenTagsShareABlobButNotTheirFlags(t *testing.T) {
 
 	opts := api.DefaultOptions()
 	runner := &runnerRef{
-		model:       rendered,
 		Options:     &opts,
 		llama:       &mockLlm{vramByGPU: map[ml.DeviceID]uint64{}},
 		numParallel: 1,
@@ -2355,6 +2354,7 @@ func TestSchedNeedsReloadWhenTagsShareABlobButNotTheirFlags(t *testing.T) {
 		contextShift: resolveContextShift(nil, rendered),
 		llamaConfig:  llamaServerConfigForModel(rendered),
 	}
+	runner.model.Store(rendered)
 
 	require.False(t, runner.needsReload(ctx, &LlmRequest{model: rendered, opts: api.DefaultOptions()}),
 		"the same tag must not force a reload")
@@ -2377,8 +2377,7 @@ func TestSchedNeedsReloadOnXollamaConfig(t *testing.T) {
 	do := api.DefaultOptions()
 	newRunner := func(cfg *xollama.Config) *runnerRef {
 		m := &Model{Xollama: cfg}
-		return &runnerRef{
-			model:       m,
+		r := &runnerRef{
 			Options:     &do,
 			llama:       &mockLlm{vramByGPU: map[ml.DeviceID]uint64{}},
 			numParallel: 1,
@@ -2388,6 +2387,8 @@ func TestSchedNeedsReloadOnXollamaConfig(t *testing.T) {
 			// every time. #18289 hit the same thing in two upstream fixtures.
 			llamaConfig: llamaServerConfigForModel(m),
 		}
+		r.model.Store(m)
+		return r
 	}
 	newReq := func(cfg *xollama.Config) *LlmRequest {
 		return &LlmRequest{model: &Model{Xollama: cfg}, opts: api.DefaultOptions()}
