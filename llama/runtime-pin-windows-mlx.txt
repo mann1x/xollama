@@ -1,20 +1,32 @@
 # llama/runtime-pin-windows-mlx.txt
 #
 # The MLX runtime a Windows install takes, pinned as a published artifact and
-# never built here. It is the fork's own build of upstream's MLX at the tag
-# (run 38561513795, commit eda37d24, MLX 97029597), the same 2,642 files as
-# upstream's ollama-windows-amd64-mlx.zip, with MLX_CUDA_BIN_DIR and
-# MLX_CUDNN_BIN_DIR set to "." so mlx.dll loads CUDA and cuDNN from its own
-# folder. Upstream's zip bakes "C:/Program Files/NVIDIA/CUDNN/bin/x64" into
-# mlx.dll: on a machine without cuDNN installed there, the first MLX operation
-# that needs cuDNN panics and the request hangs (measured on eleven2go at
-# v0.40.0). Measured on eleven2go (no cuDNN installed), 2026-10-14, on a v0.40.4
-# xollama (dev 46eba39a3, side server, scratch store): this one generates
-# qwen3.5:0.8b on MLX (300 tokens, 67.7 tok/s warm) and creates from
-# safetensors (Qwen3-0.6B, 316 layers, 111.7 tok/s), no panic (v0.40.1's
-# check, 2026-10-08: 68 tok/s, plus an embed with embeddinggemma-2). mlx.dll,
-# mlxc.dll, ollama_xgrammar.dll and libopenblas.dll are unsigned (upstream
-# signs them).
+# never built here. From v0.40.9 it is upstream's own ollama-windows-amd64-mlx.zip,
+# republished byte for byte by the fork; the fork's old -reldir build is retired
+# (see LAYOUT). It carries two directories under lib/ollama:
+#   mlx_cuda_v13\  mlx, mlxc, ollama_xgrammar, libopenblas and the 8 cuDNN 9
+#                  DLLs. mlx.dll loads cuDNN from its own folder, so no cuDNN
+#                  need be installed on the machine.
+#   cuda_v13\      cufft64_12, cusolver64_12, cusparse64_12 -- the CUDA
+#                  libraries MLX needs that GGML does not. The rest (cublas64_13,
+#                  cublasLt64_13, cudart64_13, nvrtc64_130_0, nvrtc-builtins64_130,
+#                  nvJitLink_130_0) mlx.dll loads from ..\cuda_v13, the GGML
+#                  CUDA-13 backend the full installer lays in lib\ollama\cuda_v13.
+# app/xollama-mlx.iss unpacks BOTH and merges the cuda_v13 DLLs beside the GGML
+# backend (never replacing it).
+#
+# LAYOUT (upstream #17956, from v0.40.9): upstream deduplicated the CUDA
+# libraries MLX shares with GGML and, on Windows, CACHE FORCEs
+# MLX_CUDA_BIN_DIR=..\cuda_v13 and MLX_CUDNN_BIN_DIR=. Upstream's own v0.40.9
+# mlx.dll embeds "..\cuda_v13" and ships the cuDNN DLLs beside itself, which is
+# exactly what the fork's -reldir build existed to provide -- so -reldir is
+# retired and the plain zip is pinned. The fork's only=mlx-windows job (which
+# built -reldir) is retired with it (owner, 2026-10-23).
+# Verified on eleven2go (no cuDNN installed), 2026-10-23, against this sha256:
+# mlx.dll has NO hardcoded NVIDIA\CUDNN path (the v0.40.0 panic string, gone),
+# embeds the relative ..\cuda_v13, and the 8 cuDNN DLLs ship in mlx_cuda_v13 --
+# so the no-cuDNN failure mode is structurally eliminated. The end-to-end MLX
+# generation check (G9) runs at rc once the v0.40.9 MLX xollama binary exists.
 #
 # It is NOT inside xOllamaSetup.exe: the installer plus this archive would be
 # about 2.5 GiB, over GitHub's 2 GiB release-asset cap (upstream's own
@@ -25,8 +37,7 @@
 #
 #   repo          GitHub repository that publishes the archive (the fork)
 #   tag           its release carrying the asset
-#   asset         archive name: lib/ollama/mlx_cuda_v13/ (MLX, CUDA 13, cuDNN
-#                 9 and the CUDA headers MLX compiles kernels against)
+#   asset         archive name (lib/ollama/mlx_cuda_v13 + lib/ollama/cuda_v13)
 #   sha256        of the asset, checked by the installer before unpacking
 #   upstream      ollama/ollama release the bytes were cut from
 #   mlx, mlx_c    upstream's MLX_VERSION and MLX_C_VERSION at that release;
@@ -35,6 +46,9 @@
 # Moves with llama/runtime-pin-darwin.txt and the two Linux runtime pins on
 # every fork sync.
 
+# v0.40.9-1 (2026-10-23): upstream's plain ollama-windows-amd64-mlx.zip
+# (c4474aaf…, MLX bebd6422), republished by the fork. #17956 retired -reldir;
+# no-cuDNN behaviour verified on eleven2go (see LAYOUT).
 # v0.40.6 (2026-10-19): the fork's reldir build of MLX bebd6422 (run 39013406859
 # from 83e2e0cd, fork mails #1586/#1588), cuDNN 9 beside mlx.dll as before.
 # Its own eleven2go MLX check is G9 of v0.40.6-rc.1.xollama.
@@ -43,9 +57,9 @@
 # fork's v0.40.2-thinkbudget (MLX_VERSION, MLX_C_VERSION and mlx/ did not move;
 # fork mail #926). Only the tag below changed.
 repo      mann1x/ollama
-tag       v0.40.6-thinkbudget
-asset     ollama-windows-amd64-mlx-reldir.zip
-sha256    f9bde5de83e65aafd3fc69967f7890441cd15c3b6e9f35b34f6d6ddb241af65e
-upstream  v0.40.6
+tag       v0.40.9-1-thinkbudget
+asset     ollama-windows-amd64-mlx.zip
+sha256    c4474aaf6575b947402c798e7e6ffedd1b6041303e61375f5ca74ff56f83e3e9
+upstream  v0.40.9
 mlx       bebd6422f8db88d56e6220520a35bcd146f823f8
 mlx_c     a341b4925024b88b2c593468f16e12f5e17315da

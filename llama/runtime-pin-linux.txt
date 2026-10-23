@@ -28,18 +28,25 @@
 # This file is outside the digested paths on purpose, so committing it does not
 # invalidate itself.
 
+# v0.40.9-1 (2026-10-23): sync v0.40.6 -> v0.40.9 (LLAMA_CPP_VERSION b11669 ->
+# b11803, inputs 83f79eeb -> c3f7c881 = this tree), then the -1 bump adding
+# llama/compat/006 (generation_prompt) rebuilt the runtimes; `built` 0e85a55c.
+# The gpu rows are upstream v0.40.9's. #17956: the -mlx gpu row is no longer
+# self-contained -- its CUDA libraries resolve through RPATH $ORIGIN/../cuda_v13,
+# the GGML CUDA payload the amd64 gpu row unpacks into the same lib/ollama, so
+# the link holds with no assemble change.
 # v0.40.3 (2026-10-11): unchanged again under the new tag (inputs d0cc3cdd…);
 # the gpu rows are upstream v0.40.3's rebuilt archives.
 # v0.40.2 (2026-10-10): the runtime is v0.40.1-thinkbudget's file, reused byte
 # for byte under the new tag (inputs unchanged, so `built` stays d0508358);
 # the gpu rows are upstream v0.40.2's rebuilt archives.
 repo      mann1x/ollama
-tag       v0.40.6-thinkbudget
+tag       v0.40.9-1-thinkbudget
 asset     ollama-linux-amd64-runtime.tgz
-sha256    13291334e2ae7b79221290e0bcb9eb369c5edd68a49b0dc132982fcf5a4ac32b
-inputs    83f79eeb4fc4d7e3582375adac7327aaf15d79b57cdfa1b32250e95db7291bfa
-built     83e2e0cdea8a3ecf2d7513cdaaac008272036036
+sha256    9e5d7f6820f1e5a046377acd25e6cb0b9d81a97f1efbfd674bd0f6c8419a66ba
+inputs    c3f7c881eb5d825f3ad01439d9a55743150c9430683ca04921dbf4b0b2f59e2d
+built     0e85a55caba2a0696d08166d72615babe4c57040
 
-upstream  v0.40.6
-gpu       ollama-linux-amd64.tar.zst      c164ab8b1b28e2a247c29719b8e404c423c5b83ae64c3ab4e59d50c7ff7fc5e0
-gpu       ollama-linux-amd64-mlx.tar.zst  ad0956e72961d476bcff4a5a39296b94a5f1112d38830f2c0f0b4ab380b3d27d
+upstream  v0.40.9
+gpu       ollama-linux-amd64.tar.zst      01f0d0ae50cad3295a79a165033a65cf324f8ae5f7be64679464d29ecf28d67c
+gpu       ollama-linux-amd64-mlx.tar.zst  b37f10c2119cc80ec7f07572252a33e79a0e42005468f6681b91c07de11c8831
