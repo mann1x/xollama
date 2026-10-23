@@ -1158,8 +1158,8 @@ func externalDraftType(path, targetArch string, shards ...string) (string, error
 	//
 	// The rule itself lives in DraftTypeFor so that `xollama show` reaches the
 	// same answer as the launch without restating it; it knows dflash and the
-	// assistant head (xollama's) and upstream's mtp-tensor and eagle3 cases.
-	draftType, err := DraftTypeFor(f.KV().Architecture(), f.KV().String("requires_target_arch"), targetArch, hasMTPDraft(f))
+	// assistant head (xollama's), upstream's eagle3, and the draft-mtp default.
+	draftType, err := DraftTypeFor(f.KV().Architecture(), f.KV().String("requires_target_arch"), targetArch)
 	if err != nil {
 		return "", fmt.Errorf("draft model %s: %w", path, err)
 	}

@@ -99,7 +99,9 @@ func TestFallbackLaunchModelUsesServerMetadata(t *testing.T) {
 		fmt.Fprint(w, `{"capabilities":["vision","thinking","completion","tools"],"thinking":{"values":[false,"low","high"],"default":"high"},"model_info":{"deepseek4.context_length":1048576}}`)
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	// xollama: the CLI resolves its host from XOLLAMA_HOST only -- see
+	// .claude/rules/default-port.md.
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	t.Run("cloud model missing from limits", func(t *testing.T) {
 		shown = nil
@@ -167,7 +169,9 @@ func TestServerModelMetadataStopsAfterUnreachableServer(t *testing.T) {
 		time.Sleep(300 * time.Millisecond)
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	// xollama: the CLI resolves its host from XOLLAMA_HOST only -- see
+	// .claude/rules/default-port.md.
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	oldTimeout := modelShowTimeout
 	modelShowTimeout = 50 * time.Millisecond

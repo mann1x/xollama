@@ -2653,8 +2653,9 @@ func TestExternalDraftType(t *testing.T) {
 		want         string
 		wantErr      string
 	}{
-		// dflash and the assistant head are xollama's; the mtp-tensor, eagle3
-		// and empty cases are upstream's own detection, inherited at v0.40.9.
+		// dflash and the assistant head are xollama's, eagle3 is upstream's new
+		// driver at v0.40.9, and every other attached drafter is draft-mtp --
+		// xollama's default, where upstream would leave --spec-type unset.
 		{name: "dflash", architecture: "dflash", want: draftTypeDFlash},
 		{
 			// A gemma-4 assistant drafter carries no context of its own. It has
@@ -2698,12 +2699,14 @@ func TestExternalDraftType(t *testing.T) {
 			want: draftTypeMTP,
 		},
 		{
-			name:         "qwen35 without MTP markers is inferred by llama-server",
+			name:         "qwen35 without MTP markers defaults to draft-mtp",
 			architecture: "qwen35",
+			want:         draftTypeMTP,
 		},
 		{
 			name:         "unknown",
 			architecture: "unknown",
+			want:         draftTypeMTP,
 		},
 	}
 
