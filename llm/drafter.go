@@ -44,7 +44,7 @@ func BuiltInDrafter(arch string, nextnPredictLayers uint64, mtpTensors []gguf.Te
 // Launching one as draft-mtp does not degrade, it fails the load, so the
 // metadata decides this and not the caller. A head built for another
 // architecture is refused by name here rather than deep in the engine.
-func DraftTypeFor(draftArch, requiresTargetArch, targetArch string) (string, error) {
+func DraftTypeFor(draftArch, requiresTargetArch, targetArch string, hasMTP bool) (string, error) {
 	if draftArch == "dflash" {
 		return draftTypeDFlash, nil
 	}
@@ -54,7 +54,17 @@ func DraftTypeFor(draftArch, requiresTargetArch, targetArch string) (string, err
 		}
 		return draftTypeAssistant, nil
 	}
-	return draftTypeMTP, nil
+	// Below is upstream v0.40.9's own detection, inherited unchanged: a drafter
+	// with mtp.* tensors is draft-mtp, an eagle3 one is draft-eagle3, and
+	// anything else carries no implied --spec-type. dflash and the assistant
+	// head above are xollama's additions on top of it.
+	if hasMTP {
+		return draftTypeMTP, nil
+	}
+	if draftArch == "eagle3" {
+		return draftTypeEagle3, nil
+	}
+	return "", nil
 }
 
 // SpecTypeForShow reports the --spec-type a load of this model would use, in
@@ -68,7 +78,7 @@ func SpecTypeForShow(attached *DrafterMetadata, targetArch string, builtIn bool,
 	switch {
 	case attached != nil:
 		var err error
-		inferred, err = DraftTypeFor(attached.Architecture, attached.RequiresTargetArch, targetArch)
+		inferred, err = DraftTypeFor(attached.Architecture, attached.RequiresTargetArch, targetArch, attached.HasMTPDraft)
 		if err != nil {
 			return "", err
 		}
@@ -83,4 +93,5 @@ func SpecTypeForShow(attached *DrafterMetadata, targetArch string, builtIn bool,
 type DrafterMetadata struct {
 	Architecture       string
 	RequiresTargetArch string
+	HasMTPDraft        bool
 }

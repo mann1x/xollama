@@ -554,13 +554,25 @@ func imageReply(asURL bool) func([]byte) ([]byte, error) {
 	}
 }
 
-// SpeechHandler serves POST /v1/audio/speech.
+// SpeechHandler serves POST /v1/audio/speech. A model with a TTS media engine
+// is served by it; any other speech model falls through to upstream's native
+// Phonon handler (nativeSpeechHandler), mirroring mediaTranscriptionMiddleware.
 func (s *Server) SpeechHandler(c *gin.Context) {
 	body, ok := readJSONBody(c)
 	if !ok {
 		return
 	}
 	name := mediaName(body.get("model"), CapabilitySpeech)
+	if m, err := GetModel(name); err != nil || !slices.Contains(mediaCapabilities(m), CapabilitySpeech) {
+		// Not a media TTS model: restore the body this handler consumed and
+		// hand it to upstream's native speech path.
+		if raw, err := json.Marshal(body); err == nil {
+			c.Request.Body = io.NopCloser(bytes.NewReader(raw))
+			c.Request.ContentLength = int64(len(raw))
+		}
+		s.nativeSpeechHandler(c)
+		return
+	}
 	body.set("model", name)
 	media, ok := mediaModel(c, name)
 	if !ok {

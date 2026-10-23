@@ -1067,6 +1067,7 @@ func appendContextShiftArgs(params []string, opts api.Options, enabled bool) []s
 const (
 	draftTypeMTP    = "draft-mtp"
 	draftTypeDFlash = "draft-dflash"
+	draftTypeEagle3 = "draft-eagle3"
 	// draftTypeAssistant marks a draft head that has no context of its own and
 	// runs against the target's. The two engines name the same driver
 	// differently: upstream llama.cpp reaches it through draft-mtp, which
@@ -1102,14 +1103,16 @@ func retargetSpecType(args []string, draftType string, opencoti bool) []string {
 }
 
 func appendDraftArgs(params []string, draftType, draftModelPath string, opts api.Options) []string {
-	if draftType == "" {
+	if draftType == "" && draftModelPath == "" {
 		return params
 	}
 	if opts.DraftNumPredict <= 0 {
 		return params
 	}
 
-	params = append(params, "--spec-type", specTypeArg(draftType, false))
+	if draftType != "" {
+		params = append(params, "--spec-type", specTypeArg(draftType, false))
+	}
 	params = append(params, "--spec-draft-n-max", strconv.Itoa(opts.DraftNumPredict))
 	if draftType == draftTypeMTP {
 		params = append(params, "--spec-draft-backend-sampling")
@@ -1144,17 +1147,19 @@ func resolveDraftType(inferred, override string) string {
 // A drafter that declares <arch>.requires_target_arch is a head rather than a
 // standalone model: it carries no context and has to be built against the
 // target's. Launching one as draft-mtp does not degrade, it fails the load, so
-// the metadata has to decide this and not the caller.
-func externalDraftType(path, targetArch string) (string, error) {
-	f, err := LoadModel(path, 1)
+// the metadata has to decide this and not the caller. shards carries upstream
+// v0.40.9's sharded-drafter paths so a split draft model loads whole.
+func externalDraftType(path, targetArch string, shards ...string) (string, error) {
+	f, err := LoadModel(path, 1, shards...)
 	if err != nil {
 		return "", fmt.Errorf("load draft model metadata: %w", err)
 	}
 	// xollama-hook: draft-assistant — see docs/features/gemma4-drafter.md
 	//
 	// The rule itself lives in DraftTypeFor so that `xollama show` reaches the
-	// same answer as the launch without restating it.
-	draftType, err := DraftTypeFor(f.KV().Architecture(), f.KV().String("requires_target_arch"), targetArch)
+	// same answer as the launch without restating it; it knows dflash and the
+	// assistant head (xollama's) and upstream's mtp-tensor and eagle3 cases.
+	draftType, err := DraftTypeFor(f.KV().Architecture(), f.KV().String("requires_target_arch"), targetArch, hasMTPDraft(f))
 	if err != nil {
 		return "", fmt.Errorf("draft model %s: %w", path, err)
 	}
@@ -1234,7 +1239,7 @@ func NewLlamaServerRunner(
 		draftType = draftTypeMTP
 	}
 	if config.DraftModelPath != "" {
-		draftType, err = externalDraftType(config.DraftModelPath, arch)
+		draftType, err = externalDraftType(config.DraftModelPath, arch, config.DraftModelShardPaths...)
 		if err != nil {
 			return nil, err
 		}

@@ -464,7 +464,7 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 		}
 
 		client := api.NewClient(remoteURL, http.DefaultClient)
-		err = client.Generate(c, &req, fn)
+		err = client.Generate(c.Request.Context(), &req, fn)
 		if err != nil {
 			var authError api.AuthorizationError
 			if errors.As(err, &authError) {
@@ -1054,13 +1054,21 @@ func (s *Server) SystemOneHandler(c *gin.Context) {
 		return
 	}
 	var encoding string
-	if m.Config.Renderer == "tev1" || m.Config.Renderer == "clef" || m.Config.Renderer == "strands" || m.Config.Renderer == "kev" {
+	switch m.Config.Renderer {
+	case "tev1", "clef", "strands", "kev", "pplx", "d3":
 		encoding = m.Config.Renderer
 	}
 	compiled, err := decision.Compile(req, encoding)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+	if encoding == "pplx" {
+		if m.System == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Perplexity decision models require their publisher system prompt in the Modelfile"})
+			return
+		}
+		compiled.Request.System = m.System
 	}
 	caps := []model.Capability{model.CapabilityDecision}
 	if len(req.Images) > 0 {
@@ -2030,8 +2038,8 @@ func GetModelInfo(req api.ShowRequest) (*api.ShowResponse, error) {
 		Runner:            m.Runner,
 	}
 
-	// For safetensors completion and decision models, populate details from config.json.
-	isSafetensorsLLM := m.IsMLX() && (slices.Contains(m.Config.Capabilities, "completion") || slices.Contains(m.Config.Capabilities, "decision"))
+	// For safetensors completion, decision and speech models, populate details from config.json.
+	isSafetensorsLLM := m.IsMLX() && (slices.Contains(m.Config.Capabilities, "completion") || slices.Contains(m.Config.Capabilities, "decision") || slices.Contains(m.Config.Capabilities, "speech"))
 	if isSafetensorsLLM {
 		if info, err := getSafetensorsLLMInfoForRunner(name, req.Runner); err == nil {
 			if arch, ok := info["general.architecture"].(string); ok && arch != "" {
@@ -2078,6 +2086,9 @@ func GetModelInfo(req api.ShowRequest) (*api.ShowResponse, error) {
 		// xollama-hook: model-config
 		Xollama: m.Xollama,
 	}
+	resp.Renderer = resolveRendererName(m)
+	resp.Parser = m.Config.Parser
+	resp.TemplateSource = m.templateSource()
 	if !slices.Contains(resp.Capabilities, model.CapabilityDecision) {
 		resp.Thinking = m.Thinking()
 	}
@@ -3013,6 +3024,12 @@ func (s *Server) PsHandler(c *gin.Context) {
 			QuantizationLevel: m.Config.FileType,
 		}
 
+		contextLength := v.contextLength
+		if slices.Contains(m.Config.Capabilities, "speech") {
+			// Speech models have no text context.
+			contextLength = 0
+		}
+
 		mr := api.ProcessModelResponse{
 			Model:         displayName,
 			Name:          displayName,
@@ -3021,7 +3038,7 @@ func (s *Server) PsHandler(c *gin.Context) {
 			Digest:        digest,
 			Details:       modelDetails,
 			ExpiresAt:     v.expiresAt,
-			ContextLength: v.contextLength,
+			ContextLength: contextLength,
 			Runner:        runner,
 		}
 		// xollama-hook: drafter — see server/drafter_state.go
@@ -3535,7 +3552,7 @@ func (s *Server) ChatHandler(c *gin.Context) {
 		}
 
 		client := api.NewClient(remoteURL, http.DefaultClient)
-		err = client.Chat(c, &req, fn)
+		err = client.Chat(c.Request.Context(), &req, fn)
 		if err != nil {
 			var authError api.AuthorizationError
 			if errors.As(err, &authError) {
@@ -3594,9 +3611,9 @@ func (s *Server) ChatHandler(c *gin.Context) {
 		}
 	} else {
 		if req.Think != nil && req.Think.Bool() {
-			// Set think to nil when being used with Anthropic API to connect to tools like claude code
+			// Clients may retain thinking settings when switching models.
 			if _, ok := c.Get("relax_thinking"); ok {
-				slog.Warn("model does not support thinking, relaxing thinking to nil", "model", req.Model)
+				slog.Debug("model does not support thinking, relaxing thinking to nil", "model", req.Model)
 				req.Think = nil
 			} else {
 				c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%q does not support thinking", req.Model)})
@@ -3637,6 +3654,11 @@ func (s *Server) ChatHandler(c *gin.Context) {
 				req.Think.Value = "high"
 			}
 		}
+	}
+
+	// Reuse resolved thinking for server-side tool follow-ups.
+	if w, ok := c.Writer.(interface{ SetThinking(*api.ThinkValue) }); ok {
+		w.SetThinking(req.Think)
 	}
 
 	if chatModeForModel(m) == chatExecutionModeNative {
@@ -4121,21 +4143,26 @@ func countChatImages(msgs []api.Message) int {
 }
 
 func handleScheduleError(c *gin.Context, name string, err error) {
+	status, message := scheduleError(name, err)
+	c.JSON(status, gin.H{"error": message})
+}
+
+// scheduleError keeps native and OpenAI-compatible endpoints consistent while
+// allowing each to use its own error response format.
+func scheduleError(name string, err error) (int, string) {
 	switch {
-	case errors.Is(err, errCapabilities), errors.Is(err, errRequired), errors.Is(err, model.ErrInvalidThinkBudget):
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-	case errors.Is(err, manifest.ErrNoCompatibleManifest):
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	case errors.Is(err, errCapabilities), errors.Is(err, errRequired), errors.Is(err, manifest.ErrNoCompatibleManifest), errors.Is(err, model.ErrInvalidThinkBudget):
+		return http.StatusBadRequest, err.Error()
 	case errors.Is(err, errRequires): // xollama-hook: requires
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return http.StatusBadRequest, err.Error()
 	case errors.Is(err, context.Canceled):
-		c.JSON(499, gin.H{"error": "request canceled"})
+		return 499, "request canceled"
 	case errors.Is(err, ErrMaxQueue):
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error()})
+		return http.StatusServiceUnavailable, err.Error()
 	case errors.Is(err, os.ErrNotExist):
-		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("model %q not found, try pulling it first", name)})
+		return http.StatusNotFound, fmt.Sprintf("model %q not found, try pulling it first", name)
 	default:
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return http.StatusInternalServerError, err.Error()
 	}
 }
 
