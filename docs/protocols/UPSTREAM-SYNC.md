@@ -48,7 +48,12 @@ additive way to get the effect. A surgical hook MUST:
    `// xollama-hook: <feature-id> — see docs/features/<plan>.md`
 3. Be inert when the feature is off. With `XOLLAMA_ENGINE=llamacpp` and no
    xollama flags set, behaviour must be byte-identical to upstream.
-4. Be listed in the Registry below, in the same commit that adds it.
+4. Be listed in the Registry below, in the same commit that adds it —
+   together with its `.claude/rules/<feature-id>.md` doc, when it has one, so a
+   hook's code, its Registry row and its rule doc never land in different
+   commits or different worktrees (`xo-37`: ten rule docs were authored in the
+   main worktree and never committed, because the hook code landed via a
+   `sync/*` worktree).
 
 ### What is NOT a surgical hook
 
@@ -123,6 +128,17 @@ Then, in order, and do not skip one because the previous passed:
    diff — the diff against our own trunk, which is what actually changed for us.
 
 Merge with `--no-ff` so the sync is one identifiable commit range.
+
+**After the sync lands on `dev` and is pushed, fast-forward every long-lived
+worktree.** The sync runs in a `sync/*` worktree and pushes to `origin/dev`;
+the other checkouts — the main `dev` worktree above all, and `pin/*`,
+`macos/*` — stay on the old tip and silently accumulate uncommitted drift
+there. Left unchecked this regressed CLAUDE.md once (`xo-37`): a caliber refresh
+in the `sync/*` worktree dropped ten documented hook sections while the complete
+file sat uncommitted in a stale main worktree 248 commits behind — see
+[`.claude/rules/caliber.md`](../../.claude/rules/caliber.md). In each long-lived
+worktree run `git -C <wt> merge --ff-only origin/dev`, or delete the ones a
+cycle no longer needs with `git worktree remove`.
 
 ## Take gladly / read line by line
 

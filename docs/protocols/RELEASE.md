@@ -577,6 +577,13 @@ rollback needs:
 - **Staged gate engines** under `/srv/ml/gates/` beyond the shared
   `opencoti-cache`: large per-engine `engine-<arch>-<version>` trees from old
   pins can go.
+- **Stale worktree checkouts**: once the release (and the sync it rode) has
+  landed on `origin/dev`, fast-forward every long-lived worktree's `dev` to it
+  (`git -C <wt> merge --ff-only origin/dev`), and remove any build artifacts
+  left in the main worktree (`build-*/`, smoke binaries). A worktree left behind
+  drifts and can regress a shared doc — on 2026-10-23 a stale main `dev`
+  (248 commits behind) held the only complete CLAUDE.md while `origin/dev`
+  carried a caliber-dropped one (`xo-37`, `.claude/rules/caliber.md`).
 
 Check `df -h /` on solidPC at the end; a release that grew the root disk is not
 finished.
