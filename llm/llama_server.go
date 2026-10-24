@@ -612,6 +612,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	slots := resolveSlotPlan(launch.config, live, launch.config.singleSequence(usedOpencoti))
 	// xollama-hook: council -- the council's pool seats ride on the same flag.
 	args = appendSlotArgs(args, slots, enginePoolSeats(launch.config, len(launch.projectors) > 0), kvTypes.Unified, usedOpencoti)
+	args = withPoolCells(args, launch.config, launch.opts.NumCtx, launch.numParallel, usedOpencoti) // xollama-hook: pool-cells
 	args = appendSWABudgetArgs(args, slots, usedOpencoti)
 
 	// xollama-hook: launch-config — dual chunk attention. See docs/xollama/dca.mdx.

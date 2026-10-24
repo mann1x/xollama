@@ -38,6 +38,10 @@ paths:
   one row per sequence, times `1 + draftDepth` with a built-in drafter), and a
   1 GiB reserve. The reserve is a
   constant fitted to two loads, not derived.
+- **A stated `kv.pool_cells` is priced as launched** (`pool-cells` hook):
+  `predictVRAM` passes its context through `llm.PoolCellsFor`
+  (`llm/engine_pool_cells.go`), the same `-c` the opencoti launch gets; a load
+  stock llama.cpp may serve keeps upstream's `num_ctx x num_parallel`.
 - **A load evicts only when its weights do not fit; the KV cache never
   evicts.** `needsEviction` evicts when more than `maxWeightsOffCardPercent`
   (20; owner, 2026-10-11) of the weights would not fit the card. Below that it
@@ -73,7 +77,8 @@ paths:
   `TestARunnerIsOnBothBackendsOfItsCard`, `TestTheEvictedRunnerIsOnTheLoadsGPUs`,
   `TestSchedLoadsBesideALoadedModelWhenOnlyTheCacheIsShort`,
   `TestALoadThatDoesNotFitEvictsWhereTheGPUSharesHostMemory`,
-  `TestAnUnloadOnSharedMemoryWaitsForTheHostsMemory`; the engine's
+  `TestAnUnloadOnSharedMemoryWaitsForTheHostsMemory`,
+  `TestAStatedPoolIsWhatThePredictionPricesTheCacheAt`; the engine's
   figures to the MiB in `llm/engine_vram_estimate_test.go`
   (`TestTheEstimateIsTheEnginesRecurrentState`). Prose:
   `docs/features/device-selection.md`.

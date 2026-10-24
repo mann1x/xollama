@@ -11,6 +11,7 @@ import (
 	"github.com/ollama/ollama/fs/gguf"
 	"github.com/ollama/ollama/llm"
 	"github.com/ollama/ollama/ml"
+	"github.com/ollama/ollama/types/xollama"
 )
 
 // eleven2go's two cards as the scheduler sees them, the 3090 with a model on it.
@@ -90,6 +91,37 @@ func TestALoadEvictsOnlyWhenItsWeightsDoNotFit(t *testing.T) {
 	want := llm.PredictServerVRAM(req.model.ModelPath, f, 4096) + slotCeilingVRAM(req, f, gpus, 1)
 	if got := predictVRAM(req, f, gpus, 4096, 1); got != want {
 		t.Errorf("with XOLLAMA_ENGINE=llamacpp the prediction is %d, upstream's is %d", got, want)
+	}
+}
+
+// A model stating kv.pool_cells is predicted at that pool, the -c its launch
+// gets, and stock llama.cpp keeps upstream's figure.
+func TestAStatedPoolIsWhatThePredictionPricesTheCacheAt(t *testing.T) {
+	cuda, vulkan := elevenCards()
+	skipUnlessOpencotiServesBoth(t, cuda, vulkan)
+	ctx, done := context.WithTimeout(t.Context(), 5*time.Second)
+	defer done()
+	req := newScenarioRequest(t, ctx, "pooled-model", 10, nil, nil).req
+	f, err := llm.LoadModel(req.model.ModelPath, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gpus := []ml.DeviceInfo{cuda}
+	req.opts.NumCtx = 4096
+	unstated := predictVRAM(req, f, gpus, 8192, 2)
+
+	req.model.Xollama = &xollama.Config{Version: 1, KV: &xollama.KV{PoolCells: 65536}}
+	cfg := llamaServerConfigForModel(req.model)
+	numCtxSeq := effectiveModelContext(req.opts.NumCtx, f, false)
+	want := llm.PredictOpencotiVRAM(req.model.ModelPath, f, cfg, 65536, numCtxSeq, llamaServerGenerationBatchDefault, 2, req.opts.DraftNumPredict).Total()
+	if got := predictVRAM(req, f, gpus, 8192, 2); got != want || got <= unstated {
+		t.Fatalf("predicted %d with the pool stated (want %d, unstated %d)", got, want, unstated)
+	}
+
+	t.Setenv("XOLLAMA_ENGINE", "llamacpp")
+	upstream := llm.PredictServerVRAM(req.model.ModelPath, f, 8192) + slotCeilingVRAM(req, f, gpus, 2)
+	if got := predictVRAM(req, f, gpus, 8192, 2); got != upstream {
+		t.Fatalf("with XOLLAMA_ENGINE=llamacpp the prediction is %d, upstream's is %d", got, upstream)
 	}
 }
 
