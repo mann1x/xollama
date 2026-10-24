@@ -31,6 +31,12 @@ paths:
   `nvml_windows.go`), `/sys/class/drm` (`drm_linux.go`), D3DKMT plus the GPU
   performance counters (`d3dkmt_windows.go`), or IOKit (`iokit_darwin.go`).
   Platform files are split by build tag, with `platform_other.go` for the rest.
+- **An integrated GPU's memory is its shared pool.** `isIntegratedUMA`
+  (`internal/systel/integrated.go`) uses `discover/amd.go`'s thresholds, so
+  `/api/xollama/system` and `/api/xollama/devices` agree. An iGPU is marked
+  `Integrated`, and its total is dedicated plus GTT (`drm_linux.go`) or plus
+  SharedSystem (`d3dkmt_windows.go`) (bug-320). Guards: `TestIsIntegratedUMA`,
+  `TestAMDReadingsIntegratedMemory`, `TestAMDReadingsDiscreteMemoryUnchanged`.
 - **A build without cgo still compiles.** The cgo readers (`nvml_linux.go`,
   `host_darwin.go`, `iokit_darwin.go`, `platform_darwin.go`) carry
   `//go:build cgo`. On Linux `nvml_linux_nocgo.go` returns no NVML, so NVIDIA

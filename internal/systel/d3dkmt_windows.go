@@ -40,12 +40,14 @@ const (
 )
 
 type kmtAdapter struct {
-	handle uint32
-	luid   string // as the counters name it: 0x%08X_0x%08X, high then low
-	vendor uint32
-	name   string
-	pci    string
-	vram   uint64
+	handle     uint32
+	luid       string // as the counters name it: 0x%08X_0x%08X, high then low
+	vendor     uint32
+	name       string
+	pci        string
+	vram       uint64 // dedicated video memory (DedicatedVideoMemorySize)
+	shared     uint64 // shared system memory the GPU may address (SharedSystem)
+	integrated bool   // an iGPU whose real memory is the shared pool
 }
 
 type d3dkmtReader struct {
@@ -78,14 +80,23 @@ func (r *d3dkmtReader) read(s *Snapshot) {
 	}
 	util, used := r.counters()
 	for _, a := range mine {
-		d := api.SystemDevice{Vendor: vendorName(a.vendor), Name: a.name, PCIID: a.pci, Source: "d3dkmt"}
-		if a.vram > 0 {
-			d.TotalMemory = ptr(a.vram)
+		d := api.SystemDevice{Vendor: vendorName(a.vendor), Name: a.name, PCIID: a.pci, Source: "d3dkmt", Integrated: a.integrated}
+		// An integrated GPU's dedicated segment is only its UMA carve-out; the
+		// memory it can actually use is the shared system pool, which is what
+		// /api/xollama/devices reports. Report dedicated + shared for an iGPU so
+		// the two endpoints agree (bug-320: a Radeon iGPU showed 509 MB here and
+		// 33.4 GB on /devices).
+		total := a.vram
+		if a.integrated {
+			total = a.vram + a.shared
+		}
+		if total > 0 {
+			d.TotalMemory = ptr(total)
 		}
 		if u, ok := used[a.luid]; ok {
 			d.UsedMemory = ptr(u)
-			if a.vram >= u && a.vram > 0 {
-				d.FreeMemory = ptr(a.vram - u)
+			if total >= u && total > 0 {
+				d.FreeMemory = ptr(total - u)
 			}
 		}
 		// No engine counter for an adapter means no process has work on it:
@@ -148,6 +159,8 @@ func enumAdapters() []kmtAdapter {
 		var seg [3]uint64 // DedicatedVideoMemorySize, DedicatedSystem, SharedSystem
 		if queryAdapter(a.handle, kmtqaiGetSegmentSize, unsafe.Pointer(&seg), unsafe.Sizeof(seg)) {
 			a.vram = seg[0]
+			a.shared = seg[2]
+			a.integrated = isIntegratedUMA(a.vram, a.shared)
 		}
 		var reg [4 * 260]uint16 // AdapterString, BiosString, DacType, ChipType
 		if queryAdapter(a.handle, kmtqaiAdapterRegistry, unsafe.Pointer(&reg), unsafe.Sizeof(reg)) {
