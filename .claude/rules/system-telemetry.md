@@ -8,6 +8,7 @@ paths:
   - discover/known_devices.go
   - api/xollama_system.go
   - docs/xollama/system.mdx
+  - docs/features/gpu-metrics-sidecar.md
 ---
 
 # Host, process and GPU telemetry (`system-telemetry` hook)
@@ -31,6 +32,14 @@ paths:
   `nvml_windows.go`), `/sys/class/drm` (`drm_linux.go`), D3DKMT plus the GPU
   performance counters (`d3dkmt_windows.go`), or IOKit (`iokit_darwin.go`).
   Platform files are split by build tag, with `platform_other.go` for the rest.
+- **The Windows metrics sidecar only fills nils** (`xo-38`,
+  `internal/systel/sidecar.go`, `docs/features/gpu-metrics-sidecar.md`).
+  `sidecarReader` runs last in `platformReaders` (`platform_windows.go`) and
+  reads `%LOCALAPPDATA%\xOllama\gpu-metrics.json` (version 1, matched by PCI ID
+  or `integrated`). It never adds a device or overrides a reading. A missing file
+  is silent. A stale file (`sidecarMaxAge`, 10 s), a malformed one or one with the
+  wrong version is warned once. Guards: `TestSidecarEnrichesByPCIID`,
+  `TestSidecarIgnoresStale`, `TestSidecarMissingFileIsSilent`.
 - **An integrated GPU's memory is its shared pool.** `isIntegratedUMA`
   (`internal/systel/integrated.go`) uses `discover/amd.go`'s thresholds, so
   `/api/xollama/system` and `/api/xollama/devices` agree. An iGPU is marked
