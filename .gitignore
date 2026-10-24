@@ -24,6 +24,8 @@ integration/testdata/models/
 # agent tooling (local state, not part of the fork)
 .caliber/
 .wolf/
+# claude-hooks generated graph output (regenerated on demand)
+graphify-out/
 
 # LSP engine server registry: machine-resolved absolute binary paths.
 # Regenerate with claude-hooks/scripts/sync_cclsp.py --write --mcp
