@@ -67,23 +67,77 @@ Tests: `TestSidecarEnrichesByPCIID`, `…IntegratedWithoutPCI`, `…IgnoresStale
 - The sidecar must write **atomically** (write a temp file, rename over) so the
   server never reads a half-written file.
 
-## The sidecar (to build on the host — not in this repo)
+## The sidecar (`tools/gpu-sidecar`)
 
-A single lightweight process that writes the file every 1–2 s:
+A small C#/.NET console process (source in this repo), published self-contained
+so it runs with no SDK or runtime on the target, writing the file every 1–2 s.
+One dependency does nearly everything:
 
-- **Discrete AMD board** (temp/power/clocks/fan + PCIe link): **AMD ADLX** (modern)
-  or **ADL** (legacy) SDK. PCIe link gen/width also come from ADLX.
-- **APU integrated graphics** (GFX clock, GFX/edge temp, SoC power): the **Ryzen
-  SMU power-management table**. ADLX does not cover an APU's GFX well; the SMU
-  does. **ZenStates-Core** (irusanov) reads the PM table and now uses **PawnIO**
-  — a signed kernel driver with sandboxed Pawn modules, the path
-  LibreHardwareMonitor migrated to, which avoids the unsigned-WinRing0 problem.
-  The owner already runs ZenStates + PawnIO, so the sidecar wraps that.
-- **Intel** (optional): LibreHardwareMonitorLib covers Intel GPUs too.
+- **temp / power / clocks / fan / utilization** — LibreHardwareMonitorLib (AMD
+  through ADL, NVIDIA through NVAPI/NVML, Intel). The AMD readings, an APU's
+  integrated graphics included, come through ADL with **no admin and no kernel
+  driver**.
+- **PCIe link (negotiated + max) and the PCI bus id** — the Windows device
+  property store via SetupAPI (below).
 
-Keep it off by default: no file, no effect. Package it with the app so a user
-who installs xOllama gets the metrics; a user without it sees exactly today's
-behaviour.
+Running it elevated (the default unless `--no-cpu`) also opens the Ryzen SMU
+through LibreHardwareMonitor's PawnIO driver, for finer APU detail (per-core/SoC
+rails); nothing above needs it. Off by default: no file, no effect. Packaged
+with the app, a user who installs xOllama gets the metrics; without it the
+server behaves exactly as before.
+
+## PCIe link
+
+The negotiated link is already exposed to user code: the PCI bus driver
+publishes the PCIe Link Status register as device properties, and SetupAPI reads
+them in **user context** — no admin, no driver, no PawnIO. The sidecar reads,
+per display adapter (`tools/gpu-sidecar/SetupApi.cs`):
+
+- `DEVPKEY_PciDevice_CurrentLinkSpeed` / `CurrentLinkWidth` (pids 9/10) →
+  negotiated `link.gen` / `link.width`
+- `DEVPKEY_PciDevice_MaxLinkSpeed` / `MaxLinkWidth` (pids 11/12) → the card's
+  `link.max_gen` / `link.max_width`
+
+Both are reported, as osync already shows for NVIDIA. It is the *negotiated*
+link, not a card maximum: the 3090 on eleven2go, in an x16 slot routed x4 through
+the chipset, reads `gen4 x4` with `max gen4 x16`. The idle-downgraded transient
+(a card parks to gen1 at idle) is **not** reported — that is what the wrong
+property pids (7/8) returned. The same SetupAPI walk yields each GPU's PCI bus
+id, set as `pci_id` so the server matches on the bus address, not the name.
+
+The measured *bandwidth* (GB/s) is separate and still comes from opencoti's link
+probe via `withMeasuredLink` (`server/xollama_system.go`).
+
+## Status
+
+Server side done and tested (above). The sidecar (C#/.NET 8,
+LibreHardwareMonitorLib 0.9.4) is developed on pandorum at
+`C:\Users\manni\source\repos\xollama-gpu-sidecar`, published self-contained
+(single `win-x64` exe, no SDK/runtime needed on the target).
+
+**Validated on eleven2go** (RTX 3090 + 9070 XT + Radeon iGPU), GPU-only, no admin:
+all three GPUs read, names and the `Integrated` flag matching the server's own
+`d3dkmt` names, so the merge connects once the build is deployed. The ADL path
+gives the AMD readings **without** the SMU/PawnIO ring0 driver. Confirmed sensor
+mapping from a `--dump`:
+
+| field | AMD iGPU sensor | AMD 9070 XT sensor |
+|---|---|---|
+| temp_c | `Temperature GPU VR SoC` (no die edge) | `Temperature GPU Core` |
+| power_w | `Power GPU Core` (GFX; `GPU SoC` is separate) | `Power GPU Package` |
+| clock_mhz | `Clock GPU Core` (600) | `Clock GPU Core` — **0 when idle-gated** (reads under load) |
+| fan_pct | — (fanless) | `Control GPU Fan` |
+| util_pct | `Load GPU Core` | `Load GPU Core` |
+
+No `power_limit` sensor on either AMD GPU, and no PCIe-link *sensor* in LHM (only
+a "GPU Bus" load % on NVIDIA) — so the link comes from SetupAPI instead (above),
+which read correctly on eleven2go: iGPU `gen4 x16` / max `gen4 x16`, 9070 XT
+`gen5 x16` / max `gen5 x16`, 3090 `gen4 x4` / max `gen4 x16`. Each GPU's `pci_id`
+is set from the same walk.
+
+Still to do: run the sidecar as a loop writing the file; deploy the new xollama
+build on eleven2go for the live end-to-end `/api/xollama/system` merge; optional
+SMU extras (admin); and packaging with the app.
 
 ## Linux
 
