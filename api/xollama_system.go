@@ -17,6 +17,10 @@ const XollamaSystemPath = "/api/xollama/system"
 // FeatureSystemTelemetry: XollamaSystemPath is served.
 const FeatureSystemTelemetry = "system_telemetry_v1"
 
+// FeatureKVHostTelemetry: each model in XollamaSystemPath carries KV, the
+// engine's own report of where its KV cache lives.
+const FeatureKVHostTelemetry = "kv_host_telemetry_v1"
+
 // A nil pointer field below is a value this platform cannot read cheaply, or
 // a rate that needs a second snapshot: never an estimate, and never 0 in its
 // place.
@@ -123,6 +127,32 @@ type SystemModel struct {
 	// Devices are the GPUs the model was placed on, with its share of each.
 	Devices []SystemModelDevice `json:"devices"`
 	Context int                 `json:"context_length,omitempty"`
+	// KV is null for a model whose engine does not report it (stock
+	// llama.cpp, an engine asleep) and until its first reading arrives.
+	KV *SystemModelKV `json:"kv"`
+}
+
+// SystemModelKV is opencoti's report of a model's KV cache: how much of it is
+// resident on the GPU and how much is the rolling window's tail in pinned host
+// memory (kv.rolling_window, --kv-rolling-window). It is read from the engine's
+// GET /kv in the background and is as old as AsOf says.
+type SystemModelKV struct {
+	AsOf time.Time `json:"as_of"`
+	// ResidencyMode is the configured tactic: "auto", "head" or "window".
+	ResidencyMode string `json:"residency_mode"`
+	// Engaged is true while part of the cache streams from the host.
+	Engaged bool `json:"engaged"`
+	// KVarN caches report cells but no byte sizes.
+	KVarN       bool   `json:"kvarn"`
+	Cells       uint64 `json:"cells"`
+	WindowCells uint64 `json:"window_cells"`
+	TailCells   uint64 `json:"tail_cells"`
+	// DeviceBytes is the resident window on the GPU; null when the engine
+	// reports no size for it.
+	DeviceBytes *uint64 `json:"device_bytes"`
+	// HostBytes is the tail held in pinned host memory, allocated at load: 0
+	// when no window is engaged, null when the engine reports no size (KVarN).
+	HostBytes *uint64 `json:"host_bytes"`
 }
 
 // SystemModelDevice is a model's share of one GPU.

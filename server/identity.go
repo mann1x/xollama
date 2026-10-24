@@ -36,7 +36,7 @@ func XollamaIdentityHandler(c *gin.Context) {
 
 // xollamaFeatures is what this build serves, in the order the features shipped.
 func xollamaFeatures() []string {
-	return []string{api.FeatureCouncil, api.FeatureCouncilCompaction, api.FeatureCouncilTags, api.FeatureClientPlacement, api.FeatureChatRender, api.FeatureCouncilChatState, api.FeatureCouncilTools, api.FeatureAPIKey, api.FeatureContextWindow, api.FeatureCouncilUsage, api.FeatureCouncilDirective, api.FeatureCouncilCheckCall, api.FeatureToolCallProgress, api.FeatureSystemTelemetry, api.FeatureToolChoiceNone}
+	return []string{api.FeatureCouncil, api.FeatureCouncilCompaction, api.FeatureCouncilTags, api.FeatureClientPlacement, api.FeatureChatRender, api.FeatureCouncilChatState, api.FeatureCouncilTools, api.FeatureAPIKey, api.FeatureContextWindow, api.FeatureCouncilUsage, api.FeatureCouncilDirective, api.FeatureCouncilCheckCall, api.FeatureToolCallProgress, api.FeatureSystemTelemetry, api.FeatureToolChoiceNone, api.FeatureKVHostTelemetry}
 }
 
 // servedFeatures is xollamaFeatures plus those that depend on the engine this

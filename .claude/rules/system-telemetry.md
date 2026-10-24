@@ -3,6 +3,8 @@ paths:
   - internal/systel/**
   - server/xollama_system.go
   - server/xollama_system_models.go
+  - server/xollama_system_kv.go
+  - server/xollama_system_kv_test.go
   - server/xollama_system_test.go
   - server/xollama_linkprobe.go
   - discover/known_devices.go
@@ -46,6 +48,20 @@ paths:
   `Integrated`, and its total is dedicated plus GTT (`drm_linux.go`) or plus
   SharedSystem (`d3dkmt_windows.go`) (bug-320). Guards: `TestIsIntegratedUMA`,
   `TestAMDReadingsIntegratedMemory`, `TestAMDReadingsDiscreteMemoryUnchanged`.
+- **A model's KV report is cached apart from the snapshot** (`kv_host_telemetry_v1`,
+  `server/xollama_system_kv.go`). The models are listed per request, so the
+  engine's `GET /kv` (`rolling_kv`, opencoti patch 0481) is read in the
+  background: `systemKV` returns what is cached and starts `refreshKV` at most
+  once per `systemInterval`, bounded by `kvFetchTimeout`. Only a runner whose
+  `EngineName()` is `opencoti` is asked; stock llama.cpp reports null and is
+  never called. A failed read is null, never the last reading, and is warned
+  once per runner. `forgetKV` drops unloaded runners. `kvFromEngine` keeps null
+  apart from 0: the engine writes a 0 size and every KVarN size as null, so
+  `host_bytes` is 0 from the counts (`!engaged || tail_cells == 0`) and null only
+  for a tail with no size. Guards: `TestTheSystemRouteReportsTheEnginesKVWithoutWaitingOnIt`
+  (both the stock skip and the background read verified by mutation),
+  `TestTheEngineIsAskedOncePerInterval`, `TestAFailedReadIsNullNotTheLastReading`,
+  `TestTheKVReportKeepsNullApartFromZero`.
 - **A build without cgo still compiles.** The cgo readers (`nvml_linux.go`,
   `host_darwin.go`, `iokit_darwin.go`, `platform_darwin.go`) carry
   `//go:build cgo`. On Linux `nvml_linux_nocgo.go` returns no NVML, so NVIDIA

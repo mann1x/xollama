@@ -19,6 +19,12 @@ func (s *Scheduler) systemModels(view []api.XollamaDevice) []api.SystemModel {
 	}
 	s.loadedMu.Unlock()
 
+	loaded := make(map[*runnerRef]bool, len(runners))
+	for _, r := range runners {
+		loaded[r] = true
+	}
+	forgetKV(loaded)
+
 	out := []api.SystemModel{}
 	for _, r := range runners {
 		if !r.refMu.TryLock() {
@@ -48,6 +54,7 @@ func (s *Scheduler) systemModels(view []api.XollamaDevice) []api.SystemModel {
 			}
 			m.Devices = append(m.Devices, d)
 		}
+		m.KV = systemKV(r)
 		r.refMu.Unlock()
 		out = append(out, m)
 	}
