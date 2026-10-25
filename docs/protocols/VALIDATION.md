@@ -802,6 +802,15 @@ Wrapper: `scripts/gates/council.sh <tag>...`, which runs
   GPU 5.3 tok/s, 37/37 layers; speech 4 of 4; the Vulkan library says "abi
   ggml 41ba479c24d7 matches this engine"; ten `POST /shutdown` and reopen
   cycles clean.
+- **Last run (`v0.40.11-rc.1.xollama` draft, 2026-10-25, the installed rc on
+  eleven2go, engine c13 r6 `2610182159001`):** `windows-side.ps1` run through
+  `windows-gate-run.ps1`. A: stable ids. B: 3090 124.9 to 125.3. C: 9070 XT
+  103.0 to 103.4, props/kv 200, 103.7 after the idle, card OK, 0 dumps. E:
+  engine gone 642 ms after the kill. D: integrated 5.2, 37/37. Speech 4 of 4 on
+  the staged pin (`engine-c13`). 22434 and 11434 untouched. Every part pins its
+  GPU: an unpinned model follows the host's `gpu` policy, and eleven2go's fills
+  the 9070 XT first, so an unpinned B measured the 9070 XT (103 tok/s) on the
+  first try.
 
 ### G9. Windows, the installer
 
