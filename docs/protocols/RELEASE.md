@@ -71,7 +71,9 @@ it an update, stop. That is the procedure this replaces.**
    and the PR notes. **The impact analysis decides which gates run, every
    release.** Beyond the always-gates (G1, G2, G12) and any gate that failed or
    regressed since the last baseline, a gate runs only when a change's blast
-   radius reaches what it covers. This governs a re-release's "full check" too:
+   radius reaches what it covers, read off the paths with the VALIDATION.md
+   table as the source; no kind of release (a sync included) has a gate set of
+   its own (owner, 2026-10-25). This governs a re-release's "full check" too:
    it is run in full only when the changes warrant it, and a gate skipped for
    want of impact is named, with the reason, in `STATE_SUMMARY.md`. Do not repeat
    a gate for form's sake — a Go-only, engine- and OS-agnostic change already
@@ -263,9 +265,18 @@ source to this table in the same commit.
 The usual rules apply (UPSTREAM-SYNC hooks, FORK-SYNC merges, tests). Push
 `origin/dev`.
 
-Before a candidate, run the gates [`VALIDATION.md`](VALIDATION.md) asks for:
-all of them for the first release, the delta after that. [The council
-gate](#the-council-gate) is one of them.
+Before a candidate, **write the impact analysis first, then run the gates it
+names** — every release, candidates, syncs and re-releases alike. List the
+release's diff (`git diff --name-only origin/main origin/dev`), match every
+path to its row in [`VALIDATION.md`, *Which gates a change needs*](VALIDATION.md#which-gates-a-change-needs)
+(the table is the source), and write per change: the paths, the row, the gates,
+the targeted check, and every gate skipped with its reason. That goes into the
+release's `STATE_SUMMARY.md` entry before any gate runs. Never pick a gate set
+by the kind of release: on 2026-10-25 the v0.40.11 sync was gated by an
+"upstream sync" row instead of its paths, and the owner refused it ("the impact
+analysis for every release is part of the protocol, you need to run it ALWAYS
+and decide which gates are needed. the gates table are the source"). [The
+council gate](#the-council-gate) is one of the gates.
 
 **An impact analysis of every change, every release (rule 8).** The gate delta
 above is a regression net; it answers "did anything that worked break?". It does

@@ -9,9 +9,14 @@ was run.
 
 - **The first release (`v0.35.1-xollama`) passes every gate below.** That run
   is the baseline: the numbers in the *Baseline* column.
-- **Every later release passes the delta.** Run the gates the change touches
-  (the table in *Which gates a change needs*), plus every gate that failed or
-  regressed since the last baseline, plus the gates that always run. A gate
+- **Every later release passes the delta, and the impact analysis decides it,
+  every release** (`RELEASE.md` rule 8 and step 1). Take the release's whole
+  diff (`git diff --name-only origin/main origin/dev`), match every path to its
+  row in *Which gates a change needs*, and run those gates, plus every gate
+  that failed or regressed since the last baseline, plus the gates that always
+  run. The table is the source: a gate set is never chosen by the kind of
+  release (an upstream sync, a fork sync, a candidate, a re-release), only by
+  the paths, and the analysis is written down before any gate runs. A gate
   that was not run keeps its previous baseline and its date; never copy a
   number forward as if it were new.
 - **A gate that is run updates its row** here, in the same commit as the
@@ -39,8 +44,12 @@ was run.
 | the Windows app, installer or updater (`app/`) | G9 |
 | the image (`Dockerfile.xollama`, `scripts/docker-assemble.sh`, its workflow) | G10 |
 | the macOS app or its build (`scripts/build_darwin.sh`, `app/darwin/`) | G11 |
-| an upstream sync | G1 to G5, G9, G10 |
+| an upstream or fork sync | no set of its own: the rows of the paths the merge moved, read off the release's diff like any other change (owner, 2026-10-25; this row read "G1 to G5, G9, G10" until then, and was followed for v0.40.11 instead of the analysis) |
 | docs, plans, `.claude/`, `.wolf/` only | G1 |
+
+A path that matches no row is named in the analysis with what reaches it (for
+example `model/parsers/` and `decision/` are served through `llm/` and the chat
+paths, so G4), never dropped silently.
 
 ## The gates
 
