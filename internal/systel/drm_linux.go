@@ -85,6 +85,16 @@ func amdReadings(dev string, d *api.SystemDevice) {
 	}
 	total := readUint(filepath.Join(dev, "mem_info_vram_total"))
 	used := readUint(filepath.Join(dev, "mem_info_vram_used"))
+	// An APU's dedicated VRAM (mem_info_vram_total) is only a small UMA
+	// carve-out; the memory it can actually use is the shared GTT pool, which is
+	// what /api/xollama/devices reports. Report dedicated + GTT for an iGPU, with
+	// the same thresholds as discover/amd.go, so the two endpoints agree
+	// (bug-320: a Cezanne iGPU showed 512 MB here and its full pool on /devices).
+	if gtt := readUint(filepath.Join(dev, "mem_info_gtt_total")); total != nil && gtt != nil && isIntegratedUMA(*total, *gtt) {
+		d.Integrated = true
+		sum := *total + *gtt
+		total = &sum
+	}
 	if total != nil {
 		d.TotalMemory = total
 		if used != nil && *used <= *total {

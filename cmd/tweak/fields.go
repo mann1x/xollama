@@ -477,6 +477,32 @@ var fields = []field{
 		set: func(c *xollama.Config, v string) error { return setTri(v, &kv(c).Unified) },
 	},
 	{
+		name:  "kv-pool-cells",
+		path:  "kv.pool_cells",
+		title: "KV pool size — the cells every slot and session share, apart from num_ctx",
+		help: "Upstream sizes the cache as num_ctx x the live slots, so the pool can only be a\n" +
+			"multiple of num_ctx. This states it on its own: num_ctx stays the most one\n" +
+			"conversation may hold, and the shared pool is this many cells (never less than\n" +
+			"one num_ctx). The scheduler predicts memory from the same number. It needs the\n" +
+			"opencoti engine and the shared pool (kv.unified not off). Unset keeps\n" +
+			"num_ctx x the live slots.",
+		kind: kindInt,
+		unit: "cells",
+		blocked: func(c *xollama.Config) string {
+			if why := opencotiOnly("a KV pool sized apart from num_ctx")(c); why != "" {
+				return why
+			}
+			if c.KV != nil && c.KV.Unified != nil && !*c.KV.Unified {
+				return "kv.unified off splits the cells between the slots; there is no shared pool to size"
+			}
+			return ""
+		},
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.KV != nil, func() string { return showInt(c.KV.PoolCells) })
+		},
+		set: func(c *xollama.Config, v string) error { return setInt(v, &kv(c).PoolCells) },
+	},
+	{
 		name:  "kv-residency",
 		path:  "kv.residency_mode",
 		title: "Rolling-KV residency tactic — for a cache that does not fit in VRAM",

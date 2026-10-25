@@ -27,12 +27,15 @@ paths:
   the codec sidecar (`needsCodec`: anything but wav/pcm speech and avi/webm
   video; a template that states no format needs nothing),
   `audio_speech_voice_files_v1` for extra voices (`tts.voices`, one layer per
-  voice, `--tts-voice NAME=<blob>`; never a tar or a directory) (`MediaFeatures`,
+  voice, `--tts-voice NAME=<blob>`; never a tar or a directory),
+  `audio_vad_v1` for a transcriber's detector (`stt.vad`, its own layer,
+  `--stt-vad-model <blob>`; opencoti c12) (`MediaFeatures`,
   `llm/engine_media.go`; opencoti bug-3880). A missing blob is refused by name
   before launch (`newMediaRunner`). Guards:
   `TestAudioCppSpeechNeedsAnEngineThatReadsBlobsAsTheyAre`,
   `TestAMissingMediaBlobIsRefusedByName`,
-  `TestAnUnreadableHealthIsNotReadAsMissingFeatures`.
+  `TestAnUnreadableHealthIsNotReadAsMissingFeatures`,
+  `TestTheSTTDetectorIsAComponentAndRaisesTheFloor`.
 - **A voice the engine refuses at boot is refused by `Validate` first**
   (`TTSMedia.validate`, `types/xollama/media.go`; opencoti #679): a name in
   `reservedVoiceNames` (OuteTTS's `default` and the OpenAI names it maps to
@@ -43,7 +46,10 @@ paths:
   `tts.device` is never read. Placed on a GPU it books memory it never uses and
   is launched with a `--gpu` backend the engine may not have (solidPC, b117,
   2026-10-03). Another engine beside it still decides for itself. Guard:
-  `TestAudioCppSpeechIsNeverPlacedOnAGPU`.
+  `TestAudioCppSpeechIsNeverPlacedOnAGPU`. So is a Whistle transcriber off
+  macOS (`whistleOnCPU` reads the GGUF's `general.architecture`; opencoti c12
+  keeps it on the CPU, Metal excepted; an unreadable model keeps its stated
+  device). Guard: `TestAWhistleModelIsPlacedOnTheCPUOffMacOS`.
 - **A media model's device pin travels on its twin** (`mediaTwin`,
   `server/media.go`): the scheduler runs `selectModelDevices` on the twin, and
   a twin without `Devices` is an unpinned model, so `tweak model
@@ -72,7 +78,7 @@ paths:
   `TestAFailedLoadReportsTheCauseNotOnlyTheLastLine`.
 - **The catalog** (`internal/mediahub/catalog.go`) feeds `xollama media list`
   and `media create`. Entries of one family share a builder (`supertonic(file)`,
-  `wan21(model, encoder)`, `wan22(model)`) so a quant tag differs from its
+  `wan21(model, encoder)`, `wan22(model)`, `whistle(vad)`) so a quant tag differs from its
   sibling only in the file. `Published: true` is set only for a template that
   is on ollama.com, and the table in `docs/xollama/media.mdx` lists the same set.
 - A video template's clip (`wanDefaults`) and `ReserveMiB` (`wan21Reserve`,

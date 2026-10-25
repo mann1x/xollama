@@ -7,18 +7,21 @@
 # with the pinned stock runtime): a bare binary finds no llama-server. The tree
 # is built into ROOTFS/bin/xollama and that binary is used throughout; the
 # engine is the one this tree pins, staged apart. Run as root.
+# GATES picks the gates the release's impact analysis names (VALIDATION.md,
+# "Which gates a change needs"), e.g. GATES="G3 G4"; unset runs all four.
 set -u
 here=$(cd "$(dirname "$0")" && pwd); repo=$(git -C "$here" rev-parse --show-toplevel)
 : "${ROOTFS:?}" "${STORE:?}" "${CSTORE:?}" "${MSTORE:?}"
 [ -d "$ROOTFS/lib/ollama" ] || { echo "$ROOTFS has no lib/ollama"; exit 1; }
+GATES=${GATES:-G3 G4 G6 G5}; want() { case " $GATES " in *" $1 "*) return 0;; esac; return 1; }
 export W=${W:-/srv/ml/gates/run}; mkdir -p "$W"; export X=$ROOTFS/bin/xollama OUT=$W
 (cd "$repo" && go build -o "$X" .) || { echo BUILD-FAILED; exit 1; }
 echo "built $(date +%T) from $(git -C "$repo" rev-parse --short HEAD), engine $(awk '$1=="engine"{print $NF}' "$repo/llm/engine/pin/index.txt")"
-echo "=== G3 $(date +%T)"; STORE=$STORE "$here/engine-ab.sh" > "$W/g3.log" 2>&1; tail -2 "$W/g3.log"
-echo "=== G4 decision $(date +%T)"; STORE=$STORE "$here/decision.sh"
-echo "=== G4 chat paths $(date +%T)"; STORE=$STORE "$here/chat-paths.sh"
-echo "=== G6 speech $(date +%T)"; MEDIA=$MSTORE W=$W/speech "$here/speech-linux.sh"
-echo "=== G6 video $(date +%T)"; MEDIA=$MSTORE "$here/video-linux.sh"
-echo "=== G5 council $(date +%T)"; STORE=$CSTORE "$here/council.sh" ${COUNCIL_TAGS:-gate/council-kv3-384k gate/council-kv3-384k gate/council-kv3-384k gate/council-kv3-384k gate/council-kv3-nopolykv omni-council-idle}
+want G3 && { echo "=== G3 $(date +%T)"; STORE=$STORE "$here/engine-ab.sh" > "$W/g3.log" 2>&1; tail -2 "$W/g3.log"; }
+want G4 && { echo "=== G4 decision $(date +%T)"; STORE=$STORE "$here/decision.sh"; }
+want G4 && { echo "=== G4 chat paths $(date +%T)"; STORE=$STORE "$here/chat-paths.sh"; }
+want G6 && { echo "=== G6 speech $(date +%T)"; MEDIA=$MSTORE W=$W/speech "$here/speech-linux.sh"; }
+want G6 && { echo "=== G6 video $(date +%T)"; MEDIA=$MSTORE "$here/video-linux.sh"; }
+want G5 && { echo "=== G5 council $(date +%T)"; STORE=$CSTORE "$here/council.sh" ${COUNCIL_TAGS:-gate/council-kv3-384k gate/council-kv3-384k gate/council-kv3-384k gate/council-kv3-384k gate/council-kv3-nopolykv omni-council-idle}; }
 echo "foreign files in the stores: $(find "$STORE" "$CSTORE" "$MSTORE" ! -user ollama | wc -l)"
 echo LINUX-ALL-DONE

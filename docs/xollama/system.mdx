@@ -65,7 +65,11 @@ are opened. A cached poll takes microseconds.
   "models": [
     {
       "name": "qwen3:4b", "pid": 1194900, "size": 4300000000, "size_vram": 4300000000, "context_length": 8192,
-      "devices": [ { "backend": "CUDA", "id": "0", "pci_id": "0000:01:00.0", "vram": 4300000000 } ]
+      "devices": [ { "backend": "CUDA", "id": "0", "pci_id": "0000:01:00.0", "vram": 4300000000 } ],
+      "kv": {
+        "as_of": "2026-10-18T19:02:10.9+02:00", "residency_mode": "auto", "engaged": false, "kvarn": false,
+        "cells": 8192, "window_cells": 8192, "tail_cells": 0, "device_bytes": null, "host_bytes": 0
+      }
     }
   ]
 }
@@ -83,7 +87,45 @@ are opened. A cached poll takes microseconds.
   they are absent for a GPU the server does not use. Join the two by `pci_id`.
 - **`models`** are the loaded models as the server placed them, with each
   one's share of every GPU. A model still loading is not listed until it is
-  ready.
+  ready. `kv` is described below.
+
+## KV cache: GPU and host
+
+Servers that list `kv_host_telemetry_v1` in `/api/xollama`'s features give
+each model a `kv` block: the opencoti engine's own report of where the model's
+KV cache lives. With the [KV rolling window](/xollama/opencoti-tuning#rolling-kv-the-window-that-spills) on, the cache
+past what fits on the GPU is held in pinned host memory, and `host_bytes` is
+how much host RAM that takes.
+
+```json
+"kv": {
+  "as_of": "2026-10-24T11:12:04.2+02:00", "residency_mode": "auto", "engaged": true, "kvarn": false,
+  "cells": 131072, "window_cells": 87040, "tail_cells": 44032,
+  "device_bytes": 3221225472, "host_bytes": 1610612736
+}
+```
+
+- **`engaged`** is true while part of the cache streams from the host.
+  `residency_mode` is the configured tactic (`auto`, `head` or `window`).
+- **`cells`** is the whole cache; `window_cells` stays on the GPU and
+  `tail_cells` is in host memory. Without a window, `window_cells` equals
+  `cells` and `tail_cells` is 0.
+- **`device_bytes`** is the window on the GPU; **`host_bytes`** is the tail in
+  host memory. The tail is allocated when the model loads, so `host_bytes`
+  does not grow as a conversation gets longer.
+- **`host_bytes` is 0** when no window is engaged, and **null** when the
+  engine gives no size: a KVarN cache (`kvarn: true`) reports cells but not
+  bytes. Never draw a null as 0.
+- **`kv` itself is null** for a model on stock llama.cpp (it keeps no such
+  report and is never asked), while the engine sleeps, when a reading failed,
+  and on the first poll after a load.
+
+The engine is not asked on every poll. Each model's report is read from the
+engine's `GET /kv` in the background, at most once per refresh interval and
+only while someone polls, and `as_of` says when. A poll never waits for the
+engine. The same report, with every field the engine has, is
+`GET /api/engine?model=<name>&endpoint=kv` → `rolling_kv`
+([introspection](/xollama/introspection)).
 
 ## What each platform can read
 
@@ -96,7 +138,17 @@ is estimated, and `null` never stands in for 0.
 | AMD, Linux (`/sys`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Intel, Linux (`/sys`) | — | — | — | discrete Arc | ✓ | — | ✓ |
 | AMD and Intel, Windows (D3DKMT) | ✓ dedicated | ✓ | — | — | — | — | — |
+| AMD and Intel, Windows, with the GPU metrics sidecar | ✓ dedicated | ✓ | ✓ | ✓ (no limit) | ✓ | ✓ | ✓ |
 | Apple silicon (IOKit) | in use, of the server's working set | ✓ | — | — | — | — | — |
+
+- **On Windows, AMD and Intel GPUs get their temperature, power, clocks, fan
+  and PCIe link from the GPU metrics sidecar** the installer ships beside
+  `xollama.exe`. The server runs it only while this route is polled, with no
+  admin rights and no driver, and stops it a minute after the last poll. The
+  first response after an idle minute has these fields `null`; the next one has
+  them. A server without the sidecar (a build from source, Windows on Arm)
+  reports the D3DKMT row above. An AMD card that is idle reports its clock as
+  `null`, because the driver gates it.
 
 - **Rates need two readings.** `cpu_pct` on the host and on every process,
   Windows GPU utilization and Intel power are rates. The first response after

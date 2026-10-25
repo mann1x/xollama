@@ -47,8 +47,13 @@ const maxWeightsOffCardPercent = 20
 // predictVRAM is the memory this load is placed on: opencoti's own figure
 // when opencoti serves it on whichever backend the placement picks, else
 // upstream's with the slot ceiling.
+//
+// A model stating kv.pool_cells is predicted at that pool, the -c its opencoti
+// launch gets (llm/engine_pool_cells.go), never at num_ctx x num_parallel.
 func predictVRAM(req *LlmRequest, f *gguf.Model, gpus []ml.DeviceInfo, predictedCtx, numParallel int) uint64 {
 	cfg := llamaServerConfigForModel(req.model)
+	numCtxSeq := effectiveModelContext(req.opts.NumCtx, f, req.contextUnlocked(f, gpus))
+	predictedCtx = llm.PoolCellsFor(cfg, gpus, numCtxSeq, predictedCtx)
 	if !llm.EveryGroupOnOpencoti(cfg, gpus) {
 		return llm.PredictServerVRAM(req.model.ModelPath, f, predictedCtx) + slotCeilingVRAM(req, f, gpus, numParallel)
 	}
@@ -57,7 +62,7 @@ func predictVRAM(req *LlmRequest, f *gguf.Model, gpus []ml.DeviceInfo, predicted
 		numBatch = llamaServerGenerationBatchDefault
 	}
 	return llm.PredictOpencotiVRAM(req.model.ModelPath, f, cfg, predictedCtx,
-		effectiveModelContext(req.opts.NumCtx, f, req.contextUnlocked(f, gpus)), numBatch, numParallel, req.opts.DraftNumPredict).Total()
+		numCtxSeq, numBatch, numParallel, req.opts.DraftNumPredict).Total()
 }
 
 // needsEviction decides whether a load that has to share its GPUs evicts.

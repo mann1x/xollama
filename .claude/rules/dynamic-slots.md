@@ -43,6 +43,18 @@ paths:
   cost 4x the KV of `-c 32768`); grow-on-demand is opencoti c9 stage 8. Do not
   widen `-c` or inject a per-request `num_ctx` before that ships. Prose:
   `docs/xollama/slots.mdx` "How the context is shared".
+- **A stated pool unties the two** (`pool-cells` hook, owner 2026-10-24):
+  `kv.pool_cells` replaces `-c` on opencoti (`withPoolCells`,
+  `llm/engine_pool_cells.go`, after `appendSlotArgs`; never below one
+  `num_ctx`, `--kv-unified` added). `num_ctx` stays the per-conversation cap.
+  It is the operator's explicit size, not xollama widening `-c` on its own.
+  The scheduler prices the same pool (`llm.PoolCellsFor` in `predictVRAM`).
+  Refused with engine `llamacpp` or `kv.unified` off; no schema floor (like
+  `slots.live`). Measured on solidPC's 3090, 2026-10-24: omnimerge-v4 IQ2_M
+  kvarn3, `num_ctx 262144`, live 2, pool 655360 → `-c 655360`, 23.5 GB,
+  rolling window not engaged. Guards: `llm/engine_pool_cells_test.go`,
+  `TestAStatedPoolIsWhatThePredictionPricesTheCacheAt`,
+  `types/xollama/pool_cells_test.go`. Tweak: `--kv-pool-cells`.
 - **A prediction is not the launch.** `servedSequences` in `startLlamaServer`
   (`llm/llama_server.go`) drops back to one and relaunches when stock served
   after all: the artifact was missing, or the opt-in fallback retried. Fewer

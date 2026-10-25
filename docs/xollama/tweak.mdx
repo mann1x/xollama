@@ -402,6 +402,7 @@ be found from the command's page.
 | `--engine`, `--flash-attn` | The engine this model needs, and flash attention for it | [Choosing an engine](/xollama/engines) |
 | `--kv-k`, `--kv-v`, `--kv-swa-k`, `--kv-swa-v`, `--kv-unified` | Cache types for keys and values, for a sliding-window model's short cache, and one shared pool instead of a split per slot | [KV cache types](/xollama/kv-cache) |
 | `--slots`, `--slots-max`, `--slots-live`, `--slots-tps-floor`, `--slots-vram-reserve`, `--slots-swa-budget` | Concurrency that grows with demand, its ceiling, how many slots start live, and the brakes on admitting another | [Concurrent requests](/xollama/slots) |
+| `--kv-pool-cells` | The shared KV pool's size in cells, apart from `num_ctx` | [Sizing the pool](/xollama/slots#sizing-the-pool-apart-from-the-context) |
 | `--session-affinity`, `--session-pool`, `--session-max-pools`, `--session-client-pools` | Returning a conversation to its slot, sharing a common prefix, and how many pools a model may hold | [Sessions](/xollama/sessions) |
 | `--dca`, `--dca-chunk` | Serving a model past its trained context | [Long context](/xollama/dca) |
 

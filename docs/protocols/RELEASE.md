@@ -71,7 +71,9 @@ it an update, stop. That is the procedure this replaces.**
    and the PR notes. **The impact analysis decides which gates run, every
    release.** Beyond the always-gates (G1, G2, G12) and any gate that failed or
    regressed since the last baseline, a gate runs only when a change's blast
-   radius reaches what it covers. This governs a re-release's "full check" too:
+   radius reaches what it covers, read off the paths with the VALIDATION.md
+   table as the source; no kind of release (a sync included) has a gate set of
+   its own (owner, 2026-10-25). This governs a re-release's "full check" too:
    it is run in full only when the changes warrant it, and a gate skipped for
    want of impact is named, with the reason, in `STATE_SUMMARY.md`. Do not repeat
    a gate for form's sake — a Go-only, engine- and OS-agnostic change already
@@ -263,9 +265,18 @@ source to this table in the same commit.
 The usual rules apply (UPSTREAM-SYNC hooks, FORK-SYNC merges, tests). Push
 `origin/dev`.
 
-Before a candidate, run the gates [`VALIDATION.md`](VALIDATION.md) asks for:
-all of them for the first release, the delta after that. [The council
-gate](#the-council-gate) is one of them.
+Before a candidate, **write the impact analysis first, then run the gates it
+names** — every release, candidates, syncs and re-releases alike. List the
+release's diff (`git diff --name-only origin/main origin/dev`), match every
+path to its row in [`VALIDATION.md`, *Which gates a change needs*](VALIDATION.md#which-gates-a-change-needs)
+(the table is the source), and write per change: the paths, the row, the gates,
+the targeted check, and every gate skipped with its reason. That goes into the
+release's `STATE_SUMMARY.md` entry before any gate runs. Never pick a gate set
+by the kind of release: on 2026-10-25 the v0.40.11 sync was gated by an
+"upstream sync" row instead of its paths, and the owner refused it ("the impact
+analysis for every release is part of the protocol, you need to run it ALWAYS
+and decide which gates are needed. the gates table are the source"). [The
+council gate](#the-council-gate) is one of the gates.
 
 **An impact analysis of every change, every release (rule 8).** The gate delta
 above is a regression net; it answers "did anything that worked break?". It does
@@ -577,6 +588,13 @@ rollback needs:
 - **Staged gate engines** under `/srv/ml/gates/` beyond the shared
   `opencoti-cache`: large per-engine `engine-<arch>-<version>` trees from old
   pins can go.
+- **Stale worktree checkouts**: once the release (and the sync it rode) has
+  landed on `origin/dev`, fast-forward every long-lived worktree's `dev` to it
+  (`git -C <wt> merge --ff-only origin/dev`), and remove any build artifacts
+  left in the main worktree (`build-*/`, smoke binaries). A worktree left behind
+  drifts and can regress a shared doc — on 2026-10-23 a stale main `dev`
+  (248 commits behind) held the only complete CLAUDE.md while `origin/dev`
+  carried a caliber-dropped one (`xo-37`, `.claude/rules/caliber.md`).
 
 Check `df -h /` on solidPC at the end; a release that grew the root disk is not
 finished.

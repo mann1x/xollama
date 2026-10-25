@@ -63,6 +63,37 @@ all from the same load, without reloading the model between them. Ollama fixes
 that split at load (`OLLAMA_NUM_PARALLEL` copies of `num_ctx`), so the same
 memory there is either one long conversation or several short ones, never both.
 
+### Sizing the pool apart from the context
+
+By default the pool is `num_ctx` × the slots at load, so it can only be a
+multiple of `num_ctx`. When the card holds a pool in between, state it:
+`kv.pool_cells` is the pool in cells, and `num_ctx` stays the most one
+conversation may hold.
+
+```sh
+xollama tweak model mymodel --kv-pool-cells 655360
+```
+
+or in a Modelfile:
+
+```
+PARAMETER num_ctx 262144
+XOLLAMA {"version":1,"kv":{"k":"kvarn3","v":"kvarn3","pool_cells":655360},"slots":{"max":6}}
+```
+
+On a 24 GB RTX 3090, omnimerge-v4 IQ2_M with a kvarn3 cache holds 655,360
+cells on the card. With `num_ctx 262144` and no pool of its own it could only
+get 524,288 (two slots), or 786,432 (three) with 146k cells in host memory.
+
+- The pool is shared (`--kv-unified`) and never smaller than one `num_ctx`.
+- The scheduler plans the model's memory for the pool you state, so it is
+  placed on a real number.
+- It needs the opencoti engine and the shared pool: a model pinned to
+  `llamacpp`, or one with `kv.unified` off, is refused. On stock llama.cpp the
+  pool is always `num_ctx` × the slots.
+- An xOllama that does not know the setting ignores it and loads the model
+  in the pool `num_ctx` × the slots gives.
+
 <Note>
   The OpenAI (`/v1/chat/completions`, `/v1/completions`) and Anthropic
   (`/v1/messages`) routes carry no `placement`, so their requests state no

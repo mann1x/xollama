@@ -292,6 +292,25 @@ type KV struct {
 	// "on" (the window sized by the engine), "off", or a size in MiB. See
 	// engine_policy.go.
 	RollingWindow string `json:"rolling_window,omitempty"`
+
+	// PoolCells is the size of the shared KV pool in cells (opencoti's -c),
+	// stated apart from num_ctx.
+	//
+	// Upstream sizes the cache as num_ctx x num_parallel, because stock
+	// llama.cpp splits -c evenly between its slots. Under one shared pool
+	// (--kv-unified) the two numbers are different things: num_ctx is the
+	// most one conversation may hold, and the pool is what every slot and
+	// PolyKV session draws on together. Tied, the pool can only be a multiple
+	// of num_ctx -- 262144 or 524288 on a card that holds 655360 -- so this
+	// field unties them. num_ctx keeps its meaning; the load gets the shared
+	// pool, never smaller than one num_ctx.
+	//
+	// It needs the opencoti engine and the shared pool. Zero means unstated:
+	// num_ctx x num_parallel, upstream's.
+	//
+	// It raises no schema floor, like slots.live: an older build ignores it
+	// and serves the same model in the pool num_ctx x num_parallel gives.
+	PoolCells int `json:"pool_cells,omitempty"`
 }
 
 // Draft holds speculative-decoding settings for this model.
@@ -411,6 +430,17 @@ func (c *Config) Validate() error {
 		// rather than serve it silently without the tactic it named.
 		if c.KV.ResidencyMode != "" && c.Engine == EngineLlamaCpp {
 			return fmt.Errorf("xollama config: kv.residency_mode needs the opencoti engine; this config pins engine %q", c.Engine)
+		}
+		if c.KV.PoolCells < 0 {
+			return fmt.Errorf("xollama config: kv.pool_cells %d must not be negative", c.KV.PoolCells)
+		}
+		// Stock llama.cpp splits -c between its slots, so a pool stated apart
+		// from num_ctx would hand each slot a share no request was sized for.
+		if c.KV.PoolCells > 0 && c.Engine == EngineLlamaCpp {
+			return fmt.Errorf("xollama config: kv.pool_cells needs the opencoti engine; this config pins engine %q", c.Engine)
+		}
+		if c.KV.PoolCells > 0 && c.KV.Unified != nil && !*c.KV.Unified {
+			return fmt.Errorf("xollama config: kv.pool_cells needs kv.unified; a fixed per-slot split divides the cells between the slots, so there is no shared pool to size")
 		}
 		// A fixed per-slot split has nothing for a parked slot to be admitted
 		// into, and a shared prefix pool's reserved sequence is a share of the
@@ -590,7 +620,7 @@ func (c *Config) IsZero() bool {
 		(c.KV == nil || c.KV.RollingWindow == "") &&
 		c.Fit.IsZero() &&
 		(c.KV == nil || (c.KV.K == "" && c.KV.V == "" && c.KV.KSWA == "" && c.KV.VSWA == "" &&
-			c.KV.Unified == nil && c.KV.ResidencyMode == "")) &&
+			c.KV.Unified == nil && c.KV.ResidencyMode == "" && c.KV.PoolCells == 0)) &&
 		(c.Slots == nil || (c.Slots.Dynamic == nil && c.Slots.Max == 0 && c.Slots.Live == 0 && c.Slots.TPSFloor == 0 &&
 			c.Slots.VRAMReserveMiB == 0 && c.Slots.SWASeqBudget == 0)) &&
 		(c.DCA == nil || (c.DCA.Enabled == nil && c.DCA.ChunkSize == 0)) &&

@@ -9,9 +9,14 @@ was run.
 
 - **The first release (`v0.35.1-xollama`) passes every gate below.** That run
   is the baseline: the numbers in the *Baseline* column.
-- **Every later release passes the delta.** Run the gates the change touches
-  (the table in *Which gates a change needs*), plus every gate that failed or
-  regressed since the last baseline, plus the gates that always run. A gate
+- **Every later release passes the delta, and the impact analysis decides it,
+  every release** (`RELEASE.md` rule 8 and step 1). Take the release's whole
+  diff (`git diff --name-only origin/main origin/dev`), match every path to its
+  row in *Which gates a change needs*, and run those gates, plus every gate
+  that failed or regressed since the last baseline, plus the gates that always
+  run. The table is the source: a gate set is never chosen by the kind of
+  release (an upstream sync, a fork sync, a candidate, a re-release), only by
+  the paths, and the analysis is written down before any gate runs. A gate
   that was not run keeps its previous baseline and its date; never copy a
   number forward as if it were new.
 - **A gate that is run updates its row** here, in the same commit as the
@@ -39,8 +44,12 @@ was run.
 | the Windows app, installer or updater (`app/`) | G9 |
 | the image (`Dockerfile.xollama`, `scripts/docker-assemble.sh`, its workflow) | G10 |
 | the macOS app or its build (`scripts/build_darwin.sh`, `app/darwin/`) | G11 |
-| an upstream sync | G1 to G5, G9, G10 |
+| an upstream or fork sync | no set of its own: the rows of the paths the merge moved, read off the release's diff like any other change (owner, 2026-10-25; this row read "G1 to G5, G9, G10" until then, and was followed for v0.40.11 instead of the analysis) |
 | docs, plans, `.claude/`, `.wolf/` only | G1 |
+
+A path that matches no row is named in the analysis with what reaches it (for
+example `model/parsers/` and `decision/` are served through `llm/` and the chat
+paths, so G4), never dropped silently.
 
 ## The gates
 
@@ -674,7 +683,7 @@ registries, `:dev` moved. Promoted 2026-10-08, Discord announced.
   prompt; it is a comparison between engines on one script, not a tok/s to
   quote.
 
-- **Last run (`v0.40.6-xollama.1`, 2026-10-22, 3090, c13 r6):** opencoti 8/8, llama3 77.9, 4-slot 314, overflow 4.2; stock 8/8, 78.5, 587, 3.0. Within noise.
+- **Last run (`v0.40.11-rc.1.xollama` tree `58875e3c9`, 2026-10-25, 3090, c13 r6, stock runtime b11845 `v0.40.11-thinkbudget`):** opencoti 8/8, llama3 77.6, 4-slot 306, overflow 4.0; stock 8/8, 78.8, 616, overflow 2.61. The stock overflow is 13% under the last run, and it was explained by a control rather than the runtime. Two runs each, alternating, under the same host load (load average 7.6 to 13, from a container's python): new 2.80 and 2.42, the released `v0.40.10-xollama` runtime 2.64 and 2.57, both averaging 2.61. The overflow axis is CPU-bound and reads the host, not the runtime, when solidPC is busy. `engine-ab.sh` now runs both legs (`ENGINES`); before, it ran only opencoti.
 
 ### G4. Chat paths
 
@@ -705,7 +714,7 @@ registries, `:dev` moved. Promoted 2026-10-08, Discord announced.
   expected 549, got 427", and every call is a 500: that shipped in
   `v0.35.1-xollama.2`.
 
-- **Last run (`v0.40.6-xollama.1`, 2026-10-22, side server):** decision on opencoti; chat paths + OpenAI stream + tool call + result PASS; 0 refusals.
+- **Last run (`v0.40.11-rc.1.xollama` tree `58875e3c9`, 2026-10-25, side server, c13 r6):** decision on opencoti (`WANT=opencoti`): `nimble` "bug" 0.9718, noul 0.9991, score 0.8805; `clef-flash` "bug" 0.8447, noul 0.9302, score 1.0598, red 0.9854. Chat: 6 turns, the OpenAI stream (129 chunks), the tool call and its result PASS; 0 refusals; 0 foreign files. Targeted check for the KV report (06cb8676d): `/api/xollama/system` polled every 2 s through the run. Every model showed `kv` null until its first reading, then a report (llama3 12, qwen2.5 8, nimble 6 polls), with no generation affected.
 
 ### G5. Council
 
@@ -793,6 +802,15 @@ Wrapper: `scripts/gates/council.sh <tag>...`, which runs
   GPU 5.3 tok/s, 37/37 layers; speech 4 of 4; the Vulkan library says "abi
   ggml 41ba479c24d7 matches this engine"; ten `POST /shutdown` and reopen
   cycles clean.
+- **Last run (`v0.40.11-rc.1.xollama` draft, 2026-10-25, the installed rc on
+  eleven2go, engine c13 r6 `2610182159001`):** `windows-side.ps1` run through
+  `windows-gate-run.ps1`. A: stable ids. B: 3090 124.9 to 125.3. C: 9070 XT
+  103.0 to 103.4, props/kv 200, 103.7 after the idle, card OK, 0 dumps. E:
+  engine gone 642 ms after the kill. D: integrated 5.2, 37/37. Speech 4 of 4 on
+  the staged pin (`engine-c13`). 22434 and 11434 untouched. Every part pins its
+  GPU: an unpinned model follows the host's `gpu` policy, and eleven2go's fills
+  the 9070 XT first, so an unpinned B measured the 9070 XT (103 tok/s) on the
+  first try.
 
 ### G9. Windows, the installer
 

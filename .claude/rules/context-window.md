@@ -3,12 +3,15 @@ paths:
   - llm/engine_context_window.go
   - llm/engine_admission.go
   - llm/engine_council.go
+  - llm/engine_ctx_hold.go
   - llm/llama_server.go
   - server/context_window.go
   - server/context_window_test.go
+  - server/xollama_ctx_hold.go
   - server/council.go
   - server/council_polykv.go
   - server/routes.go
+  - api/xollama_placement.go
   - docs/xollama/sessions.mdx
 ---
 
@@ -37,6 +40,15 @@ paths:
   pandorum, 2026-10-11). Guards: `TestARefusalWithNothingFreeSaysZero`,
   `TestARefusalWithoutALargestWindowSaysNone`. Everything else keeps ollama's queue:
   `postWaitingForAdmission` waits.
+- **An unbooked window** (`context-window-unbooked` hook, owner 2026-10-15):
+  `Placement.NumCtxHold` (`api/xollama_placement.go`) goes to the engine as
+  `num_ctx_hold` only beside a placed window, on opencoti declaring
+  `elastic_window_unheld_v1` (`ctxHoldFor`, `llm/engine_ctx_hold.go`); nil
+  otherwise, so every other body is unchanged. `/api/xollama` lists
+  `context_window_unbooked_v1` only when `unbookedServed()`
+  (`server/xollama_ctx_hold.go`). Guards
+  `TestNumCtxHoldGoesOnlyBesideAWindowToAnEngineThatTakesIt`,
+  `TestUnbookedWindowsAreAdvertisedOnlyWhenTheEngineTakesThem`.
 - **A queued engine request gives up.** `engineRequestQueued`
   (`llm/engine_council.go`) waits out the engine's 429s for at most
   `engineQueueBudget` (`admissionRetryBudget`), then fails with `errNoAdmission`
@@ -48,5 +60,6 @@ paths:
 - **`options.num_ctx` reloads the model.** It is part of the load; the window
   is `placement.num_ctx`. Measured on b137: the "continuation ignores num_ctx"
   looked broken until the runner restarts were counted.
-- Registry row `context-window`; feature `context_window_v1`; docs
+- Registry rows `context-window` and `context-window-unbooked`; features
+  `context_window_v1`, `context_window_unbooked_v1`; docs
   `docs/xollama/sessions.mdx`.
