@@ -683,7 +683,7 @@ registries, `:dev` moved. Promoted 2026-10-08, Discord announced.
   prompt; it is a comparison between engines on one script, not a tok/s to
   quote.
 
-- **Last run (`v0.40.6-xollama.1`, 2026-10-22, 3090, c13 r6):** opencoti 8/8, llama3 77.9, 4-slot 314, overflow 4.2; stock 8/8, 78.5, 587, 3.0. Within noise.
+- **Last run (`v0.40.11-rc.1.xollama` tree `58875e3c9`, 2026-10-25, 3090, c13 r6, stock runtime b11845 `v0.40.11-thinkbudget`):** opencoti 8/8, llama3 77.6, 4-slot 306, overflow 4.0; stock 8/8, 78.8, 616, overflow 2.61. The stock overflow is 13% under the last run, and it was explained by a control rather than the runtime. Two runs each, alternating, under the same host load (load average 7.6 to 13, from a container's python): new 2.80 and 2.42, the released `v0.40.10-xollama` runtime 2.64 and 2.57, both averaging 2.61. The overflow axis is CPU-bound and reads the host, not the runtime, when solidPC is busy. `engine-ab.sh` now runs both legs (`ENGINES`); before, it ran only opencoti.
 
 ### G4. Chat paths
 
@@ -714,7 +714,7 @@ registries, `:dev` moved. Promoted 2026-10-08, Discord announced.
   expected 549, got 427", and every call is a 500: that shipped in
   `v0.35.1-xollama.2`.
 
-- **Last run (`v0.40.6-xollama.1`, 2026-10-22, side server):** decision on opencoti; chat paths + OpenAI stream + tool call + result PASS; 0 refusals.
+- **Last run (`v0.40.11-rc.1.xollama` tree `58875e3c9`, 2026-10-25, side server, c13 r6):** decision on opencoti (`WANT=opencoti`): `nimble` "bug" 0.9718, noul 0.9991, score 0.8805; `clef-flash` "bug" 0.8447, noul 0.9302, score 1.0598, red 0.9854. Chat: 6 turns, the OpenAI stream (129 chunks), the tool call and its result PASS; 0 refusals; 0 foreign files. Targeted check for the KV report (06cb8676d): `/api/xollama/system` polled every 2 s through the run. Every model showed `kv` null until its first reading, then a report (llama3 12, qwen2.5 8, nimble 6 polls), with no generation affected.
 
 ### G5. Council
 

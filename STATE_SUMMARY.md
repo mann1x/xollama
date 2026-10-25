@@ -16,6 +16,14 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 > - **`create/phonon.go`, `mlxrunner/model/phonon/`, `server/speech.go`, `api/types.go` `Voices`** (upstream's MLX Phonon speech). No row. MLX only, and `show` lists voices. solidPC has no MLX runtime, so this is unit tests only; G6 (opencoti media) is not reached.
 > - **`cmd/launch/`, `cmd/cmd.go`, `integration/`, `go.mod` (`x/ansi` direct), docs, `.claude/`, `scripts/gates/`** → **G1**.
 > **Gates:** G1, G2 and G12 always. **G3** with both legs (`llm/` asks for the full gate, and the runtime asks for the llama.cpp leg). **G4**, plus the targeted KV-report poll. **G8**, because the `llm/` row asks for it. **G9**: done 2026-10-25, PASS. **G10**. **Skipped:** **G5**, since no council path moved and the council's use of `kv.pool_cells` is the targeted check above. **G6**, since no media path moved and Phonon is MLX. **G7**, since the engine pin and the image's Vulkan did not move. **G11**, since no macOS app or build path moved; the darwin MLX pin falls under the runtime row (G3/G9/G10), and the release workflow's macOS job checks the app's signing and notarization.
+> **Gate results (2026-10-25).**
+> - **G9:** eleven2go PASS (see the xo-41 notes and VALIDATION G9).
+> - **G8:** eleven2go PASS, including 4 of 4 speech on the staged pin. The first run of B followed eleven2go's `gpu` policy to the 9070 XT, so every part now pins its GPU.
+> - **G3** on the 3090, both legs: opencoti 8/8, 77.6 tok/s, 306 on 4 slots; stock 8/8, 78.8 tok/s, 616 on 4 slots. The stock overflow figure of 2.61 tok/s (against 3.0) was host load, not the runtime: an alternating control with the released v0.40.10-xollama runtime averaged the same 2.61.
+> - **G4:** decision on opencoti, chat 6 turns, the stream, the tool call and its result PASS, 0 refusals. The KV report was polled live: every opencoti model showed null until its first reading, then a report. The stock half (null, never asked) was not exercised live, since no G4 model ran on stock; it rests on its unit test, which was verified by mutation.
+> - **G1** after the gate-script commits: build, check-hooks 57, compat-origin 0 bad.
+> - **Security:** `govulncheck.txt` changed its header only. Dependabot shows 110, unchanged.
+> - **Still to run:** G2 on PR #45, then the merge, then G10 (the image) and G12.
 
 > **2026-10-25 — upstream sync v0.40.10 → v0.40.11 (`sync/upstream-v0.40.11`), on the fork's move (owner's call; fork mail #1941, standing go per FORK-SYNC step 6).** Upstream v0.40.11 is 6 commits and 33 files: the llama.cpp bump to b11845 (#19250), qwen3coder literal `</function>` (#19228), Phonon voices and text normalization, an OpenCode launch context, and a decision empty state.
 > - **The upstream merge** is `e4c6aa8a1`. It conflicted in `cmd/cmd_test.go` (kept both tests) and `model/parsers/qwen3coder.go` (upstream's file plus our `tool-path-backslash` hook, so the fork's rebased branch merged onto it cleanly).

@@ -1,4 +1,4 @@
-# govulncheck go1.26.10, tree edd2293b0, 2026-10-23
+# govulncheck go1.26.10, tree 977fc23ef, 2026-10-25
 === Symbol Results ===
 === Package Results ===
 === Module Results ===
