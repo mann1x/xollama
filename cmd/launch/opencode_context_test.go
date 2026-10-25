@@ -447,7 +447,7 @@ func TestOpenCodeLaunchRecommendationOutputCeiling(t *testing.T) {
 				}
 			}))
 			defer server.Close()
-			t.Setenv("OLLAMA_HOST", server.URL)
+			t.Setenv("XOLLAMA_HOST", server.URL)
 			client, err := newLauncherClient(defaultLaunchPolicy(false, false))
 			if err != nil {
 				t.Fatal(err)

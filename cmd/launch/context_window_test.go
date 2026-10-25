@@ -65,7 +65,7 @@ func TestLoadedContextLength(t *testing.T) {
 				}
 			}))
 			defer srv.Close()
-			t.Setenv("OLLAMA_HOST", srv.URL)
+			t.Setenv("XOLLAMA_HOST", srv.URL)
 			length, err := loadedContextLength("local")
 			if length != tt.wantLength || (err != nil) != tt.loadError {
 				t.Fatalf("loadedContextLength = %d, %v; want %d, loadError=%v", length, err, tt.wantLength, tt.loadError)
@@ -90,7 +90,7 @@ func TestLoadedContextLengthBoundsMetadataWait(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 	started := time.Now()
 	length, err := loadedContextLength("local")
 	if length != 0 || err != nil {
