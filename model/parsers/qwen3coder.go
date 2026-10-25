@@ -494,8 +494,10 @@ func repairToolCallXML(xmlString string) (string, bool) {
 			end = opens[i+1][0]
 		}
 		value := body[open[1]:end]
+		terminated := false
 		for _, terminator := range []string{"</parameter>", "</function>"} {
 			if idx := strings.Index(value, terminator); idx >= 0 {
+				terminated = true
 				value = value[:idx]
 				end = open[1] + idx
 				// The model's own `</parameter>` is consumed here and re-emitted
@@ -506,6 +508,15 @@ func repairToolCallXML(xmlString string) (string, bool) {
 				}
 				break
 			}
+		}
+		// A parameter with nothing in it but whitespace before the next one opens
+		// is not one the model forgot to close: it is a parameter holding
+		// parameters, an array of objects in a format with no way to say so
+		// (upstream's #18563 follow-up, an `edits` list of oldText/newText).
+		// Reading it as two siblings sent `edit{edits:"", oldText, newText}`, a
+		// call with the right name and the wrong arguments, so it is not repaired.
+		if !terminated && i+1 < len(opens) && strings.TrimSpace(value) == "" {
+			return "", false
 		}
 		repaired.WriteString(value)
 		repaired.WriteString("</parameter>")
@@ -538,6 +549,8 @@ func transformToXML(raw string) string {
 	var out strings.Builder
 
 	lastIdx := 0
+	// Whether a parameter is open, for the one tag whose meaning depends on it.
+	inParameter := false
 	for _, loc := range qwenTagRegex.FindAllStringSubmatchIndex(raw, -1) {
 		match := raw[loc[0]:loc[1]]
 		closing := strings.HasPrefix(match, "</")
@@ -546,6 +559,15 @@ func transformToXML(raw string) string {
 		// An opening tag without a value (`<function>`) is not this format and
 		// never was, so it stays character data.
 		if !closing && loc[4] < 0 {
+			continue
+		}
+
+		// A `</function>` inside an open parameter is the value's text when the
+		// parameter is still closed after it (upstream #19228: `text =
+		// "</function>"`). With no `</parameter>` before the next parameter or
+		// the end, the model dropped the closing tag instead, and this is the
+		// call's end, which repairToolCallXML needs to see to recover it.
+		if closing && name == "function" && inParameter && parameterClosedLater(raw[loc[1]:]) {
 			continue
 		}
 
@@ -561,6 +583,13 @@ func transformToXML(raw string) string {
 			_ = xml.EscapeText(&escapedValue, []byte(raw[loc[4]+1:loc[5]])) // error is always nil for strings.Builder
 			fmt.Fprintf(&out, `<%s name="%s">`, name, escapedValue.String())
 		}
+		// A new parameter while one is open implicitly closes it (see above), so
+		// this is a flag, not a depth.
+		if name == "parameter" {
+			inParameter = !closing
+		} else if closing {
+			inParameter = false
+		}
 		lastIdx = loc[1]
 	}
 	if lastIdx < len(raw) {
@@ -568,6 +597,17 @@ func transformToXML(raw string) string {
 	}
 
 	return out.String()
+}
+
+// parameterClosedLater reports whether the open parameter's `</parameter>`
+// comes in rest before the next `<parameter=` does.
+func parameterClosedLater(rest string) bool {
+	closeIdx := strings.Index(rest, "</parameter>")
+	if closeIdx < 0 {
+		return false
+	}
+	next := qwenParameterOpenRegex.FindStringIndex(rest)
+	return next == nil || closeIdx < next[0]
 }
 
 // escapeTextNode escapes XML character data without altering other characters

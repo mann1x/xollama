@@ -80,8 +80,9 @@ func runMaxQueue(t *testing.T) {
 				Prompt:  req.Prompt,
 				Options: req.Options,
 			}
-			// Fresh client for every request
-			client, _ = GetTestEndpoint()
+			// Fresh client for every request, this goroutine's own: assigning the
+			// outer one raced with the generate goroutines still using it.
+			client, _ := GetTestEndpoint()
 
 			resp, genErr := client.Embeddings(embedCtx, &embedReq)
 			counterMu.Lock()
@@ -90,7 +91,8 @@ func runMaxQueue(t *testing.T) {
 			case genErr == nil:
 				successCount++
 				if len(resp.Embedding) < 5 { // somewhat arbitrary, but sufficient to be reasonable
-					t.Fatalf("embeddings shorter than expected: %d", len(resp.Embedding))
+					// Errorf, not Fatalf: this is not the test's goroutine.
+					t.Errorf("embeddings shorter than expected: %d", len(resp.Embedding))
 				}
 			case errors.Is(genErr, context.Canceled):
 				canceledCount++
@@ -100,7 +102,7 @@ func runMaxQueue(t *testing.T) {
 				resetByPeerCount++
 			default:
 				if genErr != nil {
-					t.Fatalf("%d request failed", i)
+					t.Errorf("%d request failed: %v", i, genErr)
 				}
 			}
 
