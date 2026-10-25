@@ -32,26 +32,38 @@ that needs admin. None of the readings above require it.
 
 ## Usage
 
+The installer puts it beside `xollama.exe`, and the server runs it while
+`/api/xollama/system` is polled, with `--no-cpu --parent <pid>`, and stops it
+when the polling stops (`internal/systel/sidecar_run_windows.go`). Run by hand,
+it is the same program:
+
 ```
-xollama-gpu-sidecar [--out PATH] [--interval SECONDS] [--once] [--no-cpu] [--dump]
+xollama-gpu-sidecar [--out PATH] [--interval SECONDS] [--once] [--no-cpu] [--parent PID] [--dump]
 ```
 
 - `--out`       output file (default `%LOCALAPPDATA%\xOllama\gpu-metrics.json`)
 - `--interval`  seconds between writes (default 2)
 - `--once`      write one snapshot and exit (smoke test)
 - `--no-cpu`    do not open the CPU (skips the Ryzen SMU; no admin needed)
+- `--parent`    exit when that process does
 - `--dump`      print every GPU hardware + sensor name/value and exit (debugging)
 
-The file is written atomically (temp + rename). Each write advances
-`updated_unix`; the server treats a file older than 10 s as stale.
+The file is written atomically (temp + rename; the rename is tried again while
+the server holds the file open, and a write that still cannot land is skipped
+until the next interval). Each write advances `updated_unix`; the server treats
+a file older than 10 s as stale.
 
 ## Build
 
-Needs the .NET SDK (8.0+). Self-contained single exe (runs with no SDK/runtime
-on the target):
+Needs the .NET SDK (8.0+). The project's `win-x64` settings make one
+self-contained, partially trimmed exe (no SDK or runtime on the target, 15.9
+MiB), with every package version taken from `packages.lock.json`:
 
 ```
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+dotnet publish -c Release -r win-x64 -p:RestoreLockedMode=true -o out
 ```
 
-The exe lands in `bin/Release/net8.0/win-x64/publish/xollama-gpu-sidecar.exe`.
+`scripts/build_windows.ps1 gpuSidecar` runs exactly that and copies the exe to
+`dist\windows-amd64\`. After changing a package version, restore once without
+`RestoreLockedMode` and commit the new lock file. `THIRD-PARTY-NOTICES.txt`
+ships beside the exe as `xollama-gpu-sidecar-NOTICES.txt`.

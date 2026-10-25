@@ -50,6 +50,32 @@ type sidecarReader struct {
 	path   string           // empty disables the reader
 	now    func() time.Time // time source, for tests
 	warned bool             // a present-but-unusable file is reported once
+	// proc runs the sidecar the installer ships while the snapshot is polled;
+	// nil where the server starts none (a sidecar run by hand still works).
+	proc sidecarProcess
+}
+
+// sidecarProcess is the sidecar the server runs. ensure starts it when it is
+// not running (fresh: at once; else after a back-off, so a sidecar that keeps
+// dying is not restarted every interval) and never waits for it; stop ends it
+// and removes its file, so a stopped sidecar's numbers are never read as
+// stale ones.
+type sidecarProcess interface {
+	ensure(fresh bool)
+	stop()
+}
+
+func (r *sidecarReader) reset() {
+	r.warned = false
+	if r.proc != nil {
+		r.proc.ensure(true)
+	}
+}
+
+func (r *sidecarReader) stop() {
+	if r.proc != nil {
+		r.proc.stop()
+	}
 }
 
 type sidecarFile struct {
@@ -72,11 +98,12 @@ type sidecarGPU struct {
 	Link        *api.SystemLink `json:"link,omitempty"`
 }
 
-func (r *sidecarReader) reset() { r.warned = false }
-
 func (r *sidecarReader) read(s *Snapshot) {
 	if r.path == "" {
 		return
+	}
+	if r.proc != nil {
+		r.proc.ensure(false)
 	}
 	b, err := os.ReadFile(r.path)
 	if err != nil {

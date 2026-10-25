@@ -907,6 +907,24 @@ function ollama {
     buildOllamaCLI $script:DIST_DIR
 }
 
+# xollama: the GPU metrics sidecar (tools/gpu-sidecar), beside xollama.exe and
+# outside lib\ollama, so it is in both installers and no part of the payload id.
+# x64 only. Locked restore: every package version comes from its
+# packages.lock.json. Without the .NET SDK the installer is built without it.
+function gpuSidecar {
+    if (!(Get-Command dotnet -ErrorAction SilentlyContinue)) {
+        Write-Output "WARNING: skipping the GPU metrics sidecar; the .NET 8 SDK (dotnet) is not installed"
+        return
+    }
+    Write-Output "Building the GPU metrics sidecar"
+    $out = "${script:SRC_DIR}\dist\gpu-sidecar"
+    Remove-Item -ea 0 -recurse -force -path $out
+    & dotnet publish "${script:SRC_DIR}\tools\gpu-sidecar\xollama-gpu-sidecar.csproj" -c Release -r win-x64 -p:RestoreLockedMode=true -o $out
+    if ($LASTEXITCODE -ne 0) { exit($LASTEXITCODE)}
+    mkdir -Force -path "${script:SRC_DIR}\dist\windows-amd64\" | Out-Null
+    Copy-Item -Force "${out}\xollama-gpu-sidecar.exe" "${script:SRC_DIR}\dist\windows-amd64\"
+}
+
 function ollamaArm64 {
     if (-not $script:WINDOWS_ARM64_CROSS_COMPILE) {
         Write-Output "WARNING: skipping ollamaArm64; Windows ARM64 cross-compiling is disabled due to missing tools"
@@ -1404,6 +1422,7 @@ try {
         vulkan
         mlxCuda13
         ollama
+        gpuSidecar
         ollamaArm64
         app
         appArm64

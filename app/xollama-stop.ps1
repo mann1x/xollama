@@ -7,7 +7,9 @@
 # What is xOllama's:
 #   - any process whose executable is under the install directory (-App);
 #   - any engine or runner (llama-server, opencoti-*, xollama) started by one of
-#     those, wherever it runs from: XOLLAMA_ENGINE_PATH can point anywhere;
+#     those, wherever it runs from: XOLLAMA_ENGINE_PATH can point anywhere
+#     (the GPU metrics sidecar runs from the install directory, so the first
+#     rule already stops it);
 #   - an opencoti engine whose parent is gone. Only xOllama launches opencoti,
 #     so an orphan is one a crashed or killed server left behind, still holding
 #     its executable and the GPU. One started from a shell has a live parent

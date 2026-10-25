@@ -3,14 +3,16 @@
 // file /api/xollama/system merges in (see docs/features/gpu-metrics-sidecar.md).
 //
 // Usage:
-//   xollama-gpu-sidecar [--out PATH] [--interval SECONDS] [--once] [--no-cpu]
+//   xollama-gpu-sidecar [--out PATH] [--interval SECONDS] [--once] [--no-cpu] [--parent PID]
 //
 // --out       where to write the JSON (default %LOCALAPPDATA%\xOllama\gpu-metrics.json)
 // --interval  seconds between writes (default 2)
 // --once      write one snapshot and exit (smoke test)
 // --no-cpu    do not open the CPU (skips the Ryzen SMU; an APU's iGPU GFX
 //             readings may then be missing)
+// --parent    exit when this process does (the xollama server that started it)
 
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -22,6 +24,7 @@ var outPath = Path.Combine(
     "xOllama", "gpu-metrics.json");
 int interval = 2;
 bool once = false, cpu = true, dump = false;
+Process? parent = null;
 
 for (int i = 0; i < args.Length; i++)
 {
@@ -32,8 +35,18 @@ for (int i = 0; i < args.Length; i++)
         case "--once": once = true; break;
         case "--no-cpu": cpu = false; break;
         case "--dump": dump = true; break;
+        case "--parent":
+            try
+            {
+                parent = Process.GetProcessById(int.Parse(args[++i], CultureInfo.InvariantCulture));
+            }
+            catch (ArgumentException)
+            {
+                return 0; // already gone: nobody to write for
+            }
+            break;
         case "-h" or "--help":
-            Console.WriteLine("xollama-gpu-sidecar [--out PATH] [--interval SECONDS] [--once] [--no-cpu] [--dump]");
+            Console.WriteLine("xollama-gpu-sidecar [--out PATH] [--interval SECONDS] [--once] [--no-cpu] [--parent PID] [--dump]");
             return 0;
         default:
             Console.Error.WriteLine($"unknown argument: {args[i]}");
@@ -98,11 +111,11 @@ do
     if (once)
     {
         Console.WriteLine($"wrote {gpus.Count} GPU(s) to {outPath}:");
-        Console.WriteLine(JsonSerializer.Serialize(doc, SidecarJson.Pretty));
+        Console.WriteLine(JsonSerializer.Serialize(doc, PrettyJson.Default.SidecarFile));
         break;
     }
 }
-while (!cancel.Token.WaitHandle.WaitOne(TimeSpan.FromSeconds(interval)));
+while (!cancel.Token.WaitHandle.WaitOne(TimeSpan.FromSeconds(interval)) && !ParentGone(parent));
 
 computer.Close();
 return 0;
@@ -188,11 +201,54 @@ static float? SensorMax(IHardware hw, SensorType type, string? nameContains)
 
 static ulong? ToUint(float? v) => v is float f && f > 0 ? (ulong)Math.Round(f) : null;
 
+// The server binds the sidecar to itself with a kill-on-close job; --parent is
+// the second guard, for a server that could not make one.
+static bool ParentGone(Process? parent)
+{
+    if (parent == null)
+        return false;
+    try
+    {
+        return parent.HasExited;
+    }
+    catch (InvalidOperationException)
+    {
+        return true;
+    }
+}
+
+// The rename fails while the server has the file open for its read (Go opens
+// without FILE_SHARE_DELETE), so it is tried a few times and otherwise skipped:
+// the next interval writes again, and the server reads a file up to 10 s old.
 static void WriteAtomic(string path, SidecarFile doc)
 {
     string tmp = path + ".tmp";
-    File.WriteAllText(tmp, JsonSerializer.Serialize(doc, SidecarJson.Compact));
-    File.Move(tmp, path, overwrite: true);
+    try
+    {
+        File.WriteAllText(tmp, JsonSerializer.Serialize(doc, CompactJson.Default.SidecarFile));
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        Console.Error.WriteLine($"cannot write {tmp}: {ex.Message}");
+        return;
+    }
+    for (int attempt = 0; ; attempt++)
+    {
+        try
+        {
+            File.Move(tmp, path, overwrite: true);
+            return;
+        }
+        catch (Exception ex) when ((ex is IOException or UnauthorizedAccessException) && attempt < 5)
+        {
+            Thread.Sleep(50);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine($"cannot replace {path}: {ex.Message}");
+            return;
+        }
+    }
 }
 
 sealed class UpdateVisitor : IVisitor
@@ -237,15 +293,12 @@ sealed class SidecarLink
     [JsonPropertyName("max_width")] public int? MaxWidth { get; set; }
 }
 
-static class SidecarJson
-{
-    public static readonly JsonSerializerOptions Compact = new()
-    {
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-    public static readonly JsonSerializerOptions Pretty = new()
-    {
-        WriteIndented = true,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
-}
+// Source-generated, not reflection: the shipped exe is trimmed, and a trimmed
+// .NET 8 app has reflection-based System.Text.Json switched off.
+[JsonSourceGenerationOptions(DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+[JsonSerializable(typeof(SidecarFile))]
+partial class CompactJson : JsonSerializerContext { }
+
+[JsonSourceGenerationOptions(WriteIndented = true, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
+[JsonSerializable(typeof(SidecarFile))]
+partial class PrettyJson : JsonSerializerContext { }

@@ -138,7 +138,17 @@ is estimated, and `null` never stands in for 0.
 | AMD, Linux (`/sys`) | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Intel, Linux (`/sys`) | — | — | — | discrete Arc | ✓ | — | ✓ |
 | AMD and Intel, Windows (D3DKMT) | ✓ dedicated | ✓ | — | — | — | — | — |
+| AMD and Intel, Windows, with the GPU metrics sidecar | ✓ dedicated | ✓ | ✓ | ✓ (no limit) | ✓ | ✓ | ✓ |
 | Apple silicon (IOKit) | in use, of the server's working set | ✓ | — | — | — | — | — |
+
+- **On Windows, AMD and Intel GPUs get their temperature, power, clocks, fan
+  and PCIe link from the GPU metrics sidecar** the installer ships beside
+  `xollama.exe`. The server runs it only while this route is polled, with no
+  admin rights and no driver, and stops it a minute after the last poll. The
+  first response after an idle minute has these fields `null`; the next one has
+  them. A server without the sidecar (a build from source, Windows on Arm)
+  reports the D3DKMT row above. An AMD card that is idle reports its clock as
+  `null`, because the driver gates it.
 
 - **Rates need two readings.** `cpu_pct` on the host and on every process,
   Windows GPU utilization and Intel power are rates. The first response after

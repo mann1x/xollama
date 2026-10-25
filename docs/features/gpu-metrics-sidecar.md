@@ -42,6 +42,42 @@ only enriches devices the platform already enumerated:
 Tests: `TestSidecarEnrichesByPCIID`, `…IntegratedWithoutPCI`, `…IgnoresStale`,
 `…MissingFileIsSilent`, `…MalformedIsReported`.
 
+### The server runs it, only while polled (`internal/systel/sidecar_run_windows.go`)
+
+The installer lays `xollama-gpu-sidecar.exe` down beside `xollama.exe`, and the
+server runs it. It is the **one process `internal/systel` starts**, the
+exception to "read in process, never by running a tool", and it keeps the
+endpoint's cost promise: an idle server runs nothing.
+
+- **Started by the first poll after an idle gap** (`sidecarReader.reset`), in a
+  goroutine, so the poll never waits on it. The poll that starts it reads no
+  file (an earlier run's is removed first, so it is never read as stale); the
+  next refresh, 2 s later, has the readings.
+- **Stopped when the polling stops**: the sampler's loop ends after its idle
+  minute and calls `stop` on every reader that keeps something running (the
+  `stopper` interface in `systel.go`); `Close` does the same. Stopping kills the
+  process and removes its file.
+- **Started with** `--out <the path the reader reads> --interval 2 --no-cpu
+  --parent <server pid>`: no admin, no driver (`--no-cpu` keeps it off the Ryzen
+  SMU and PawnIO), no console window (`CREATE_NO_WINDOW`).
+- **Bound to the server twice**: a kill-on-close job of its own (the server's
+  handle closes however the server exits) and `--parent`, which the sidecar
+  watches between writes.
+- **A sidecar that exits by itself** is logged at Warn with the tail of its
+  stderr, and started again after `sidecarRestartAfter` (30 s), not every
+  refresh.
+- **Not installed** (a build run from a source tree, arm64) is silent: no
+  process, no file, the server as before. A sidecar started by hand still works
+  as it always did, as long as no server runs its own.
+
+Tests: `TestTheSidecarRunsOnlyWhilePolled` (verified by removing the idle stop),
+`TestClosingStopsTheSidecar`, `TestAReaderWithoutAProcessOnlyReads`. Live on
+eleven2go (2026-10-25, a throwaway server on a spare port): no sidecar before
+the first poll; one, with the arguments above, a second after it; the 9070 XT
+and the iGPU filled (temperature, power, clock, link); after 75 s without a
+poll, no process and no file; the next poll started it again; killing the
+server ended it.
+
 ## The file contract (version 1)
 
 ```json
@@ -80,11 +116,37 @@ One dependency does nearly everything:
 - **PCIe link (negotiated + max) and the PCI bus id** — the Windows device
   property store via SetupAPI (below).
 
-Running it elevated (the default unless `--no-cpu`) also opens the Ryzen SMU
-through LibreHardwareMonitor's PawnIO driver, for finer APU detail (per-core/SoC
-rails); nothing above needs it. Off by default: no file, no effect. Packaged
-with the app, a user who installs xOllama gets the metrics; without it the
-server behaves exactly as before.
+Run by hand and elevated (the default unless `--no-cpu`), it also opens the
+Ryzen SMU through LibreHardwareMonitor's PawnIO driver, for finer APU detail
+(per-core/SoC rails); nothing above needs it, and the server always passes
+`--no-cpu`.
+
+### Packaging
+
+- **Built** by `scripts/build_windows.ps1 gpuSidecar` (in its default step
+  list after `ollama`): `dotnet publish -c Release -r win-x64
+  -p:RestoreLockedMode=true` into `dist\windows-amd64\`. Every package version,
+  transitive ones included, is pinned in `tools/gpu-sidecar/packages.lock.json`.
+  Without the .NET SDK the step is skipped with a warning and the installer is
+  built without the sidecar.
+- **One self-contained exe, partially trimmed** (`TrimMode=partial`, the
+  `win-x64` property group of the `.csproj`): only the unused framework is
+  removed, LibreHardwareMonitor and its dependencies stay whole (reflection,
+  WMI). 15.9 MiB on disk instead of 71, about 5 MB in the installer, which
+  compresses it better than the single-file bundle would. The JSON is
+  source-generated (`CompactJson`, `PrettyJson`), because a trimmed .NET 8 app
+  has reflection-based `System.Text.Json` switched off.
+- **Installed** by both installers (`app/xollama.iss`, x64 only) beside
+  `xollama.exe`, with `xollama-gpu-sidecar-NOTICES.txt` (MPL-2.0
+  LibreHardwareMonitorLib with its source location, Apache-2.0 HidSharp, MIT
+  .NET packages). It is outside `lib\ollama`, so the update-only installer
+  carries it too and it is no part of the engine payload id.
+  `app/xollama-stop.ps1` stops it with everything else under the install
+  directory.
+- **Checked by the release workflow**: the `build the GPU metrics sidecar` step
+  needs the runner's .NET 8+ SDK and the exe, and after each installer
+  `checkSidecar` runs the installed one with `--once` and reads the file it
+  wrote (version 1, a timestamp).
 
 ## PCIe link
 
@@ -135,9 +197,9 @@ which read correctly on eleven2go: iGPU `gen4 x16` / max `gen4 x16`, 9070 XT
 `gen5 x16` / max `gen5 x16`, 3090 `gen4 x4` / max `gen4 x16`. Each GPU's `pci_id`
 is set from the same walk.
 
-Still to do: run the sidecar as a loop writing the file; deploy the new xollama
-build on eleven2go for the live end-to-end `/api/xollama/system` merge; optional
-SMU extras (admin); and packaging with the app.
+Done since: the end-to-end merge on eleven2go (2026-10-24), and the packaging
+with the installers plus the server-run lifecycle (2026-10-25, above). Left:
+the optional SMU extras, which need admin.
 
 ## Linux
 

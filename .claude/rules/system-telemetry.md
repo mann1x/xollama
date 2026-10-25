@@ -42,6 +42,18 @@ paths:
   is silent. A stale file (`sidecarMaxAge`, 10 s), a malformed one or one with the
   wrong version is warned once. Guards: `TestSidecarEnrichesByPCIID`,
   `TestSidecarIgnoresStale`, `TestSidecarMissingFileIsSilent`.
+- **The sidecar is the one process the package runs, and only while polled**
+  (`sidecar_run_windows.go`, the exception to "never by running a tool"). The
+  installer lays `xollama-gpu-sidecar.exe` beside `xollama.exe`. The first poll
+  after an idle gap starts it in a goroutine (`reset` → `ensure(true)`), so the
+  poll never waits. The sampler's idle stop and `Close` call `stop` on every
+  `stopper` reader, which kills it and removes its file. It runs with `--no-cpu`
+  (no admin, no PawnIO), no window, a kill-on-close job and `--parent`. A
+  sidecar that exits on its own is warned with its stderr tail and restarted
+  after 30 s. Not installed is silent. Guards: `TestTheSidecarRunsOnlyWhilePolled`
+  (fails without the idle stop), `TestClosingStopsTheSidecar`. Packaging (locked
+  restore, partial trim, source-generated JSON, notices, release check) is in
+  `docs/features/gpu-metrics-sidecar.md`.
 - **An integrated GPU's memory is its shared pool.** `isIntegratedUMA`
   (`internal/systel/integrated.go`) uses `discover/amd.go`'s thresholds, so
   `/api/xollama/system` and `/api/xollama/devices` agree. An iGPU is marked

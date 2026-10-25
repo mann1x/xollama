@@ -184,6 +184,12 @@ digest for every file, sorted, over **the set the installer actually ships** —
 `cuda_v12` and `mlx_*` are excluded there, so they must be excluded here too or
 every release would look like a payload change and the split would buy nothing.
 
+The GPU metrics sidecar (`xollama-gpu-sidecar.exe` and its notices) sits beside
+`xollama.exe`, **outside** `lib\ollama`, so both installers carry it and it is
+no part of the payload id: a new sidecar travels in the small update. Built by
+the `gpuSidecar` step, checked after each installer by the release workflow;
+see [gpu-metrics-sidecar.md](gpu-metrics-sidecar.md#packaging).
+
 That digest goes three places:
 
 1. into the full installer, written to `{app}\lib\ollama\PAYLOAD_ID` — inside

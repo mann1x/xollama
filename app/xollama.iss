@@ -131,6 +131,16 @@ Source: ".\xollama-stop.ps1"; DestDir: "{app}"; Flags: ignoreversion
 #if FileExists("..\dist\windows-xollama-app-amd64.exe")
 Source: "..\dist\windows-xollama-app-amd64.exe"; DestDir: "{app}"; DestName: "{#MyAppExeName}" ;Check: not IsArm64();  Flags: ignoreversion 64bit; BeforeInstall: TaskKill('{#MyAppExeName}')
 Source: "..\dist\windows-amd64\xollama.exe"; DestDir: "{app}"; Check: not IsArm64(); Flags: ignoreversion 64bit; BeforeInstall: TaskKill('xollama.exe')
+; The GPU metrics sidecar (tools/gpu-sidecar): temperature, power, clocks, fan
+; and PCIe link for AMD/Intel GPUs, which D3DKMT does not give. The server runs
+; it while /api/xollama/system is polled (internal/systel). Beside xollama.exe,
+; not under lib\ollama: the update-only installer carries it too, and it is no
+; part of the engine payload id. A local build without the .NET SDK has none;
+; the release workflow checks the installed one is there.
+#if FileExists("..\dist\windows-amd64\xollama-gpu-sidecar.exe")
+Source: "..\dist\windows-amd64\xollama-gpu-sidecar.exe"; DestDir: "{app}"; Check: not IsArm64(); Flags: ignoreversion 64bit
+Source: "..\tools\gpu-sidecar\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}"; DestName: "xollama-gpu-sidecar-NOTICES.txt"; Check: not IsArm64(); Flags: ignoreversion
+#endif
 ; cuda_v12 is excluded and shipped as the separate legacy add-on zip. It is ~1.1 GB
 ; and only serves compute 5.x/6.x/7.0 cards (Maxwell, Pascal, Volta); cuda_v13 and
 ; opencoti-llamafile both floor at 7.5. Keeping it out is what holds this installer

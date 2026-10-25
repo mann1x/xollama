@@ -5,7 +5,9 @@
 // Everything is read in process: /proc and /sys, Win32 and D3DKMT, sysctl and
 // IOKit, and the vendor's management library (NVML) loaded at run time. No
 // tool is ever run, and nothing here starts an engine, a discovery or a probe.
-// A value a platform cannot read cheaply stays nil; nothing is estimated.
+// The one exception is the Windows GPU metrics sidecar xollama ships, run only
+// while the snapshot is polled (sidecar_run_windows.go). A value a platform
+// cannot read cheaply stays nil; nothing is estimated.
 //
 // Readings are cached. A Sampler refreshes its snapshot on its own timer only
 // while it is being polled, so any number of pollers cost one refresh per
@@ -34,6 +36,13 @@ type Snapshot struct {
 type reader interface {
 	read(s *Snapshot)
 	reset()
+}
+
+// stopper is a reader that keeps something running while the snapshot is
+// polled (the Windows GPU metrics sidecar) and lets it go when the polling
+// stops, so a server nobody watches runs nothing for it.
+type stopper interface {
+	stop()
 }
 
 // Sampler holds the cached snapshot.
@@ -104,6 +113,7 @@ func (s *Sampler) loop(stop chan struct{}) {
 		if s.now().Sub(s.lastPoll) > s.Idle {
 			s.running = false
 			s.mu.Unlock()
+			s.stopReaders()
 			return
 		}
 		s.mu.Unlock()
@@ -124,10 +134,24 @@ func (s *Sampler) loop(stop chan struct{}) {
 // Close stops the refreshing.
 func (s *Sampler) Close() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	wasRunning := s.running
 	if s.running {
 		close(s.stop)
 		s.running = false
+	}
+	s.mu.Unlock()
+	if wasRunning {
+		s.stopReaders()
+	}
+}
+
+// stopReaders lets go of what the readers keep running. It is called without
+// the lock: stopping a process waits for it to exit, and a poll must not.
+func (s *Sampler) stopReaders() {
+	for _, r := range s.readers {
+		if st, ok := r.(stopper); ok {
+			st.stop()
+		}
 	}
 }
 

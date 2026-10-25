@@ -430,6 +430,21 @@ jobs:
             -ldflags "-s -w -H windowsgui -extldflags=-static -X=github.com/ollama/ollama/app/version.Version=$VERSION" \
             -o dist/windows-xollama-app-amd64.exe ./app/cmd/app/
 
+      # tools/gpu-sidecar: AMD/Intel temperature, power, clocks, fan and PCIe
+      # link for /api/xollama/system. The runner's own .NET SDK; every package
+      # version comes from packages.lock.json (locked restore).
+      - name: build the GPU metrics sidecar
+        shell: pwsh
+        working-directory: repo
+        run: |
+          & dotnet --list-sdks
+          if (-not (& dotnet --list-sdks | Select-String '^(8|9|10)\.')) { throw "no .NET 8+ SDK on the runner" }
+          $env:ARCH = 'amd64'
+          & .\scripts\build_windows.ps1 gpuSidecar
+          $exe = 'dist\windows-amd64\xollama-gpu-sidecar.exe'
+          if (-not (Test-Path $exe)) { throw "the gpuSidecar step did not produce $exe" }
+          "{0}  {1:N1} MB" -f $exe, ((Get-Item $exe).Length/1MB)
+
       - name: built with the planned Go toolchain
         working-directory: repo
         env:
@@ -513,8 +528,23 @@ jobs:
           if ($got -cne $want) { throw "installed PAYLOAD_ID [$got] is not payload-id.txt [$want]" }
           $v = (& "$inst\xollama.exe" --version 2>&1 | Out-String)
           if ($v -notmatch [regex]::Escape($env:VERSION)) { throw "installed xollama says [$v], not $env:VERSION" }
+          # The sidecar is installed and runs: the trimmed exe starts and writes
+          # its file (no GPU on the runner, so an empty list).
+          function checkSidecar($when) {
+            $exe = "$inst\xollama-gpu-sidecar.exe"
+            if (-not (Test-Path $exe)) { throw "${when}: no $exe" }
+            if (-not (Test-Path "$inst\xollama-gpu-sidecar-NOTICES.txt")) { throw "${when}: the sidecar's notices are not installed" }
+            $out = "$env:RUNNER_TEMP\gpu-metrics-$($when -replace ' ','-').json"
+            & $exe --once --no-cpu --out $out | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "${when}: the sidecar exited $LASTEXITCODE" }
+            $m = Get-Content $out -Raw | ConvertFrom-Json
+            if ($m.version -ne 1 -or -not $m.updated_unix) { throw "${when}: the sidecar wrote [$(Get-Content $out -Raw)]" }
+            "${when}: sidecar wrote version $($m.version), $(@($m.gpus).Count) GPU(s)"
+          }
+          checkSidecar 'full installer'
           runInstaller (Resolve-Path dist\xOllamaUpdate.exe).Path 'xOllamaUpdate'
           checkMLX 'update installer'
+          checkSidecar 'update installer'
           $v = (& "$inst\xollama.exe" --version 2>&1 | Out-String)
           if ($v -notmatch [regex]::Escape($env:VERSION)) { throw "after the update xollama says [$v], not $env:VERSION" }
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$inst\xollama-stop.ps1" -App $inst

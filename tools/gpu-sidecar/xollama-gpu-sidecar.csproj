@@ -9,6 +9,25 @@
     <RootNamespace>Xollama.GpuSidecar</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
     <Version>0.1.0</Version>
+    <!-- Every package version, transitive ones included, is pinned in
+         packages.lock.json; the release restores with locked mode. -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <!-- What the installer ships (`dotnet publish -c Release -r win-x64`): one
+       self-contained exe, no .NET on the target. Partial trimming removes only
+       the unused parts of the framework and keeps LibreHardwareMonitor and its
+       dependencies whole (they load through reflection and WMI): 15.5 MB
+       instead of 71. Left uncompressed, because the installer compresses it
+       better (~5 MB) than the single-file bundle does. -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <DebugType>none</DebugType>
   </PropertyGroup>
 
   <ItemGroup>
