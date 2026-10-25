@@ -937,7 +937,7 @@ GPU, the stock ollama on 11434 untouched).
   2026-10-07; it now takes `LLM=` and `MEDIA=`, scratch stores of hard links
   mounted writable (0 files of another owner afterwards).
 
-- **Last run (`v0.40.6-xollama.1`, 2026-10-22, dietpi5, published arm64 image):** version `0.40.6-xollama.1`; PAYLOAD = runtime v0.40.6-thinkbudget + engine 2610182159001 + sbsa; opencoti generates; container + image removed after, owner's containers and 11434 untouched.
+- **Last run (`v0.40.11-rc.1.xollama` image, `:dev` `d5fe5a16`, 2026-10-25):** amd64 on solidPC with the 3090, `llama3` at 512 tokens: opencoti 84.9 to 85.7, llama.cpp 85.3 to 86.2, speech 4 of 4, 0 crash lines. PAYLOAD lists runtime `v0.40.11-thinkbudget` `8167b4b0`, engine `2610182159001`, and cuda, cuda12, vulkan and media. 0 foreign files; the image was removed. arm64 on dietpi5, `qwen2.5:1.5b` interleaved: opencoti 10.0 to 11.0, llama.cpp 10.9 to 11.0, speech 3 of 3, 0 crash lines. PAYLOAD lists `8791cb5e`, the engine and sbsa. The owner's 4 containers and 11434 were untouched, and the image was removed.
 
 ### G11. macOS
 
@@ -1029,3 +1029,5 @@ Said here so nobody takes silence for a pass:
 - **Long agentic council runs** (the benchmark tasks through a harness): a
   measurement series of their own in `plans/agentic-council-chat.md`, not a
   release gate. G5 is the gate.
+
+- **Last run (2026-10-25):** `v0.40.11-rc.1.xollama` (release run 40180132537, merge `aa4420771b`): 8 files pass `sha256sum -c`, payload id `9336c79f…` (the draft's), the binary names the version; image `:0.40.11-rc.1.xollama` = `:dev` `d5fe5a16`, `:latest` unmoved. `v0.40.11-xollama` (run 40185196037, merge `ca85af29a3`, `tree matches v0.40.11-rc.1.xollama`): 8 files OK, the same payload id, the binary names `0.40.11-xollama`.
