@@ -46,6 +46,9 @@
 # Moves with llama/runtime-pin-darwin.txt and the two Linux runtime pins on
 # every fork sync.
 
+# v0.40.11 (2026-10-25): upstream rebuilt its MLX archives for v0.40.11
+# (b238066f…, MLX_VERSION bebd6422 unchanged), republished by the fork. Moves
+# with the Linux and darwin pins on the v0.40.10 -> v0.40.11 sync.
 # v0.40.10 (2026-10-23): upstream rebuilt its MLX archives for v0.40.10
 # (bf50056e…, MLX_VERSION bebd6422 unchanged), republished by the fork. Moves
 # with the Linux and darwin pins on the v0.40.9 -> v0.40.10 sync.
@@ -60,9 +63,9 @@
 # fork's v0.40.2-thinkbudget (MLX_VERSION, MLX_C_VERSION and mlx/ did not move;
 # fork mail #926). Only the tag below changed.
 repo      mann1x/ollama
-tag       v0.40.10-thinkbudget
+tag       v0.40.11-thinkbudget
 asset     ollama-windows-amd64-mlx.zip
-sha256    bf50056e6ee0b3177d05d1b519b2439ccc019014836883aae089b1eb5166f284
-upstream  v0.40.10
+sha256    b238066fe8366e5dfd4169007db352f951c4da44f702790dff7eef88179d32df
+upstream  v0.40.11
 mlx       bebd6422f8db88d56e6220520a35bcd146f823f8
 mlx_c     a341b4925024b88b2c593468f16e12f5e17315da
