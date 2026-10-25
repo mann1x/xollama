@@ -55,15 +55,19 @@ a file older than 10 s as stale.
 
 ## Build
 
-Needs the .NET SDK (8.0+). The project's `win-x64` settings make one
-self-contained, partially trimmed exe (no SDK or runtime on the target, 15.9
-MiB), with every package version taken from `packages.lock.json`:
+Needs the .NET SDK (8.0+) and, on the build machine, a .NET runtime at least
+as new as the pinned one (8.0.32, or any 9 or 10), because the pinned trimmer
+runs on it. The project builds one self-contained, partially trimmed Windows
+exe (no SDK or runtime on the target, 15.9 MiB). Every package version comes
+from `packages.lock.json`, and the runtime it carries and the trimmer are
+pinned in the `.csproj` (`RuntimeFrameworkVersion`, `SidecarILLinkVersion`),
+so any SDK builds the same bytes:
 
 ```
-dotnet publish -c Release -r win-x64 -p:RestoreLockedMode=true -o out
+dotnet publish -c Release -p:RestoreLockedMode=true -o out
 ```
 
 `scripts/build_windows.ps1 gpuSidecar` runs exactly that and copies the exe to
-`dist\windows-amd64\`. After changing a package version, restore once without
-`RestoreLockedMode` and commit the new lock file. `THIRD-PARTY-NOTICES.txt`
+`dist\windows-amd64\`. After changing a package version or the two pins, run
+`dotnet restore --force-evaluate` and commit the new lock file. `THIRD-PARTY-NOTICES.txt`
 ships beside the exe as `xollama-gpu-sidecar-NOTICES.txt`.

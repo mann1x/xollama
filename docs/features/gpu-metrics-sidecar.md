@@ -129,8 +129,18 @@ Ryzen SMU through LibreHardwareMonitor's PawnIO driver, for finer APU detail
   transitive ones included, is pinned in `tools/gpu-sidecar/packages.lock.json`.
   Without the .NET SDK the step is skipped with a warning and the installer is
   built without the sidecar.
-- **One self-contained exe, partially trimmed** (`TrimMode=partial`, the
-  `win-x64` property group of the `.csproj`): only the unused framework is
+- **Independent of the SDK that builds it.** Left to the SDK, the .NET runtime
+  inside the exe and the trimmer package are the SDK's own versions. The first
+  dry run of `v0.40.11-rc.1` failed its locked restore with `NU1004` (8.0.23
+  here, 8.0.32 on the runner). Both are pinned in the `.csproj`:
+  `RuntimeFrameworkVersion` and a `KnownILLinkPack` update to
+  `SidecarILLinkVersion`, 8.0.32. The trimmer runs on the build machine and
+  needs a .NET runtime at least that new there (8.0.32, or any 9 or 10).
+  Two clean builds on solidPC gave the same bytes. Raising the pins for a .NET
+  security patch means `dotnet restore --force-evaluate` and committing the
+  new lock file.
+- **One self-contained exe, partially trimmed** (`TrimMode=partial`; the
+  project's runtime identifier is `win-x64`): only the unused framework is
   removed, LibreHardwareMonitor and its dependencies stay whole (reflection,
   WMI). 15.9 MiB on disk instead of 71, about 5 MB in the installer, which
   compresses it better than the single-file bundle would. The JSON is

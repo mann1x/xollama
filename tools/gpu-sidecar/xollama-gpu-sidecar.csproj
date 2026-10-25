@@ -12,23 +12,39 @@
     <!-- Every package version, transitive ones included, is pinned in
          packages.lock.json; the release restores with locked mode. -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
   </PropertyGroup>
 
-  <!-- What the installer ships (`dotnet publish -c Release -r win-x64`): one
-       self-contained exe, no .NET on the target. Partial trimming removes only
-       the unused parts of the framework and keeps LibreHardwareMonitor and its
-       dependencies whole (they load through reflection and WMI): 15.5 MB
-       instead of 71. Left uncompressed, because the installer compresses it
-       better (~5 MB) than the single-file bundle does. -->
-  <PropertyGroup Condition="'$(RuntimeIdentifier)' == 'win-x64'">
+  <!-- What the installer ships (`dotnet publish -c Release`): one
+       self-contained Windows exe, no .NET on the target. The sidecar only
+       runs on Windows, so the runtime identifier is the project's own, and a
+       restore and a publish see the same packages. Partial trimming removes
+       only the unused parts of the framework and keeps LibreHardwareMonitor
+       and its dependencies whole (they load through reflection and WMI):
+       15.9 MiB instead of 71. Left uncompressed, because the installer
+       compresses it better (~5 MB) than the single-file bundle does. -->
+  <PropertyGroup>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <PublishTrimmed>true</PublishTrimmed>
     <TrimMode>partial</TrimMode>
     <DebugType>none</DebugType>
+    <!-- The .NET runtime the exe carries, pinned: left to the SDK, it is the
+         SDK's own (8.0.23 on one machine, 8.0.32 on the release runner), so
+         two builds ship different runtimes. Raise it for a .NET 8 security
+         patch, with SidecarILLinkVersion, and restore once with
+         force-evaluate to rewrite packages.lock.json. -->
+    <RuntimeFrameworkVersion>8.0.32</RuntimeFrameworkVersion>
+    <SidecarILLinkVersion>8.0.32</SidecarILLinkVersion>
   </PropertyGroup>
+
+  <!-- The trimmer is an implicit package reference at the SDK's version, which
+       the lock file then pins, so any other SDK failed the locked restore
+       (NU1004, the v0.40.11-rc.1 dry run). It is pinned like the runtime. -->
+  <ItemGroup>
+    <KnownILLinkPack Update="Microsoft.NET.ILLink.Tasks" ILLinkPackVersion="$(SidecarILLinkVersion)" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="LibreHardwareMonitorLib" Version="0.9.4" />
