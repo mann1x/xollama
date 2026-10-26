@@ -5,6 +5,8 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-26 — solidPC spool ran out of space; xollama's stale scratch removed, and step 9 now covers spool.** Owner-approved. Freed 61 GB on spool (219 → 280 GB free). Removed: `ml/c13dev` CPU store, image, assets and win stage; `ml/xc9/sync40` hardlinked store copies and downloads; `xollama-phase2` probe binaries and `models-ab`; `gates/` engine and cache builds older than the c13 pin, the old arm64 runtime tarball, the MLX zip and `tmp-ollama`; and every file over 1 MB in the cycle run dirs (`c13`, `c13r6`, `xb*`, `xollama-b*`, `xo*`, `x0406`, `xv409`, `systel`, `v100*`, `e2g-9070-dumps`, …). Results of 1 MB or less stay where the docs cite them. The gate chat store (153 GB, every model one a G3/G4 axis loads) moved from `ml/c13dev/store` to the standing `/srv/ml/gates/store`. Not touched: the ollama session's `sync-*` and `council-baseline-*`, opencoti's dirs, `side-3090-c14` (c14), `opencoti-b203`/`b208` (xo-1). eleven2go: `xollama-gate` removed entirely. RELEASE.md step 9 now names the standing gate stores, keeps only the pin's engines in `gates/`, cuts run dirs to their ≤ 1 MB results, and checks `df -h /srv/ml`.
+
 > **2026-10-25 — `v0.40.11-xollama` released and promoted (Latest), upstream v0.40.11, engine c13 r6.**
 > - **Candidate:** `v0.40.11-rc.1.xollama`, PR #45, merge `aa4420771b`, release run 40180132537, image run 40181033806.
 > - **Release:** from the rc's tree. Empty cut commit `994fd15f0`, PR #46, merge `ca85af29a3`, run 40185196037, `tree matches v0.40.11-rc.1.xollama`.

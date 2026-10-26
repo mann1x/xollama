@@ -2,7 +2,7 @@
 
 @.wolf/OPENWOLF.md
 
-Soft fork of ollama. `dev` = upstream release v0.40.10 + fork changes (`main` is v0.40.10 since `v0.40.10-xollama`), carrying the full upstream history so every `git merge upstream/main` has a real merge-base.
+Soft fork of ollama. `dev` = upstream release v0.40.11 + fork changes (`main` is v0.40.11 since `v0.40.11-xollama`), carrying the full upstream history so every `git merge upstream/main` has a real merge-base.
 Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING.md
 
 ## Standing rules
@@ -55,8 +55,8 @@ Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING
   the notes to Discord via `.github/workflows/discord-announce.yaml`.
   Never push a `v*` tag, never copy exes onto a host as an "update". A release
   leaves nothing on disk (step 9): artifact-check downloads, host assemble
-  trees, older `.bak-<ts>` service backups and gate images go, and `df -h /` on
-  solidPC ends it.
+  trees, older `.bak-<ts>` service backups, gate images and large run-dir files
+  go, and `df -h /` plus `df -h /srv/ml` on solidPC end it.
 - `docs/protocols/VALIDATION.md` — the gates of a release (G1 to G12): host,
   steps, expected result and the last measured baseline of each; the first
   release passes all, a later one the delta its changes touch, and a gate that
