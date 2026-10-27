@@ -12,6 +12,14 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 > - **Always:** G1, G2, G12.
 > - **Skipped:** G5 (the engine binary did not move; council paths untouched). G6 and G7 (media and Vulkan components and Linux bytes unchanged). G10 (the image's inputs are byte-identical: the cuda12 `.so` unchanged, and arm64 has no cuda12). G11 (no macOS row in cuda12, darwin build untouched).
 > - **Targeted check, on the case the fix was made for:** zns (owner's PC, Windows 10, GTX 1070 cc 6.1, driver 582.66). Control: the installed v0.40.11-xollama loading `llama3.2:1b` (expected: the 0xc0000409 crash). New: the installed `.1`, the same load on the CUDA 12 DLL, 512 tokens with tok/s. Plus the 3090 on eleven2go still on CUDA 13 (G8 B and step 7).
+> - **Results (tree `457f7d627`):**
+>   - **G1** pass: gofmt clean, every package ok, lint 0, 57 hooks registered, compat-origin 0 foreign.
+>   - **Security:** Dependabot 109 open (110 before; one development-scope `postcss-selector-parser` alert gone), govulncheck 0 reachable, no alert on a line the fork changed.
+>   - **G3** pass: opencoti 8/8, 77.5, 4-slot 311, overflow 3.65; stock 8/8, 79.3, 607, 2.96. The overflow axis moves with host load.
+>   - **G4** pass: decision scores identical to 2026-10-25; chat all PASS, 0 refusals.
+>   - **G8** pass: 3090 123.7 to 125.1 on CUDA 13, 9070 XT 102.9 to 103.1, kill 651 ms, iGPU 5.4. The first attempt with a bare `xollama.exe` found no stock runtime: a setup error, rerun in an install-shaped side directory. `windows-side.ps1`'s placement line no longer throws on a short line.
+>   - **Targeted** pass. Control: the installed v0.40.11-xollama on zns crashed on `llama3.2:1b` (CUDA 12 "not here", CUDA 13, "no kernel image", 0xc0000409). New: the tree's build in the same layout loaded `ggml-cuda-cu12-x86_64.dll`, 17/17 layers, kvarn3, 512 tokens at 89.8 / 89.9 / 89.7 tok/s.
+>   - Left: G2 on the PR, G9 (step 7 on eleven2go, plus the install on zns), G12.
 
 > **2026-10-27 — cuda12 pin moved to 2610270912001: the Windows CUDA 12 DLL (`xo-42`).** opencoti published it as an emergency c13 component (mail #1980, bug-4246; release index `be28e33a`). It adds `ggml-cuda-cu12-x86_64.dll` (sass 52 61 70, CUTLASS sm_70, 244,886,528 bytes; the published sha256 `3a770097…` matches the pin); the Linux `.so` is the same bytes. opencoti gated it on the owner's GTX 1070 (zns, driver 582.66) with our install's engine and staging: taken with no override, 68 tok/s plain, 63 with FA + q8_0 K/V. Vulkan on the same card does 83, so Vulkan may be the better default on that card. Not measured here (no such card; CUDA 12 legacy ships untested). The full installer grows by about 245 MB, still under the 2 GiB asset cap. Reaching zns needs the routing fix plus this pin in a release (v0.40.11-xollama.1, on the owner's word). Engine side, c14 row 65.1 (owner-approved): a legacy miss on cards below 7.5 never loads CUDA 13.
 

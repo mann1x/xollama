@@ -683,7 +683,7 @@ registries, `:dev` moved. Promoted 2026-10-08, Discord announced.
   prompt; it is a comparison between engines on one script, not a tok/s to
   quote.
 
-- **Last run (`v0.40.11-rc.1.xollama` tree `58875e3c9`, 2026-10-25, 3090, c13 r6, stock runtime b11845 `v0.40.11-thinkbudget`):** opencoti 8/8, llama3 77.6, 4-slot 306, overflow 4.0; stock 8/8, 78.8, 616, overflow 2.61. The stock overflow is 13% under the last run, and it was explained by a control rather than the runtime. Two runs each, alternating, under the same host load (load average 7.6 to 13, from a container's python): new 2.80 and 2.42, the released `v0.40.10-xollama` runtime 2.64 and 2.57, both averaging 2.61. The overflow axis is CPU-bound and reads the host, not the runtime, when solidPC is busy. `engine-ab.sh` now runs both legs (`ENGINES`); before, it ran only opencoti.
+- **Last run (`v0.40.11-xollama.1` tree `457f7d627`, 2026-10-27, 3090, c13 r6 + cuda12 `2610270912001`, stock runtime b11845):** opencoti 8/8, llama3 77.5, 4-slot 311, overflow 3.65; stock 8/8, 79.3, 607, overflow 2.96. Within noise of the last run except the overflow axis, which is CPU-bound and moves with host load (4.0 and 2.61 on 2026-10-25). The Linux cuda12 `.so` is the same bytes and was not loaded (the 3090 takes CUDA 13).
 
 ### G4. Chat paths
 
@@ -714,7 +714,7 @@ registries, `:dev` moved. Promoted 2026-10-08, Discord announced.
   expected 549, got 427", and every call is a 500: that shipped in
   `v0.35.1-xollama.2`.
 
-- **Last run (`v0.40.11-rc.1.xollama` tree `58875e3c9`, 2026-10-25, side server, c13 r6):** decision on opencoti (`WANT=opencoti`): `nimble` "bug" 0.9718, noul 0.9991, score 0.8805; `clef-flash` "bug" 0.8447, noul 0.9302, score 1.0598, red 0.9854. Chat: 6 turns, the OpenAI stream (129 chunks), the tool call and its result PASS; 0 refusals; 0 foreign files. Targeted check for the KV report (06cb8676d): `/api/xollama/system` polled every 2 s through the run. Every model showed `kv` null until its first reading, then a report (llama3 12, qwen2.5 8, nimble 6 polls), with no generation affected.
+- **Last run (`v0.40.11-xollama.1` tree `457f7d627`, 2026-10-27, side server, c13 r6):** decision on opencoti: `nimble` "bug" 0.9718, noul 0.9991, score 0.8805; `clef-flash` "bug" 0.8447, noul 0.9302, score 1.0598, red 0.9854 (identical to 2026-10-25). Chat: 6 turns, the OpenAI stream (129 chunks), the tool call and its result PASS; 0 refusals; 0 foreign files in the chat store.
 
 ### G5. Council
 
@@ -802,15 +802,7 @@ Wrapper: `scripts/gates/council.sh <tag>...`, which runs
   GPU 5.3 tok/s, 37/37 layers; speech 4 of 4; the Vulkan library says "abi
   ggml 41ba479c24d7 matches this engine"; ten `POST /shutdown` and reopen
   cycles clean.
-- **Last run (`v0.40.11-rc.1.xollama` draft, 2026-10-25, the installed rc on
-  eleven2go, engine c13 r6 `2610182159001`):** `windows-side.ps1` run through
-  `windows-gate-run.ps1`. A: stable ids. B: 3090 124.9 to 125.3. C: 9070 XT
-  103.0 to 103.4, props/kv 200, 103.7 after the idle, card OK, 0 dumps. E:
-  engine gone 642 ms after the kill. D: integrated 5.2, 37/37. Speech 4 of 4 on
-  the staged pin (`engine-c13`). 22434 and 11434 untouched. Every part pins its
-  GPU: an unpinned model follows the host's `gpu` policy, and eleven2go's fills
-  the 9070 XT first, so an unpinned B measured the 9070 XT (103 tok/s) on the
-  first try.
+- **Last run (`v0.40.11-xollama.1` tree `457f7d627`, 2026-10-27, eleven2go, engine c13 r6 + cuda12 `2610270912001`):** the cross-built `xollama.exe` in a side directory shaped like the install (the installed `lib\ollama` plus the staged `engines`); a bare `xollama.exe` finds no stock runtime and every load fails "llama-server binary not found". A: stable ids. B: 3090 123.7 to 125.1 on `ggml-cuda-win-x86_64.dll` (CUDA 13; the new CUDA 12 DLL beside it is not taken). C: 9070 XT 100.4 cold, 102.9 to 103.1, props/kv 200, 103.7 after the idle, card OK, 0 dumps. E: engine gone 651 ms after the kill. D: integrated 5.4, 37/37. Speech not run (media untouched). 22434 and 11434 untouched. Targeted (zns, GTX 1070 cc 6.1, the same side layout, owner's kvarn3 KV): `ggml-cuda-cu12-x86_64.dll` loaded, 17/17 layers, `llama3.2:1b` 512 tokens 89.8 / 89.9 / 89.7 tok/s; the released build crashed on the same load (0xc0000409). Every part pins its GPU: an unpinned model follows the host's `gpu` policy, and eleven2go's fills the 9070 XT first (an unpinned B measured the 9070 XT on 2026-10-25).
 
 ### G9. Windows, the installer
 

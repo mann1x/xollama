@@ -39,7 +39,8 @@ $pol = "$env:USERPROFILE\.ollama\xollama-settings.json"; if (Test-Path $pol) { "
 function Gen($tag, $n, $seed) { $b = @{ model = $tag; prompt = 'Write a detailed 1500-word essay on the history of the steam engine, from Newcomen to the end of the age of steam. Do not stop early.'; stream = $false; think = $false; options = @{ num_predict = $n; seed = $seed } } | ConvertTo-Json -Depth 5
   try { $g = Invoke-RestMethod "$u/api/generate" -Method Post -ContentType 'application/json' -Body $b -TimeoutSec 900; '{0} tok {1:N1} tok/s ({2}) load {3:N1}s' -f $g.eval_count, ($g.eval_count / ($g.eval_duration / 1e9)), $g.done_reason, ($g.load_duration / 1e9) } catch { "FAILED: $($_.ErrorDetails.Message) $($_.Exception.Message)" } }
 function Unload($tag) { try { Invoke-RestMethod "$u/api/generate" -Method Post -ContentType 'application/json' -Body (@{ model = $tag; keep_alive = 0 } | ConvertTo-Json) -TimeoutSec 60 | Out-Null } catch {}; for ($n = 0; $n -lt 40; $n++) { if ((Engines).Count -eq 0) { break }; Start-Sleep -Milliseconds 500 } }
-function Place { $l = (Get-Content "$log.err" | Select-String 'model placement' | Select-Object -Last 1).Line; ($l -replace '^.*devices=', 'devices=').Substring(0, 60) }
+function Cut([string]$s, [int]$n = 60) { if ($s.Length -gt $n) { $s.Substring(0, $n) } else { $s } }
+function Place { $l = (Get-Content "$log.err" | Select-String 'model placement' | Select-Object -Last 1).Line; Cut ($l -replace '^.*devices=', 'devices=') }
 "== B. RTX 3090 CUDA, qwen3:8b, 512 tokens"
 0..3 | ForEach-Object { "  run $_ : $(Gen 'rc1/qwen3-cuda3090' 512 (7 + $_))" }; "  placement $(Place)"; Unload 'rc1/qwen3-cuda3090'
 "== C. RX 9070 XT Vulkan (pin by name), 512 tokens"
@@ -58,7 +59,7 @@ Start-Sleep 40; "  40 s later: card $(Card) dumps +$((Dumps) - $d0)"
 $p = Start-Process -FilePath $x -ArgumentList 'serve' -WindowStyle Hidden -RedirectStandardOutput "$log.2" -RedirectStandardError "$log.2.err" -PassThru
 $ok = $false; for ($n = 0; $n -lt 60 -and -not $ok; $n++) { Start-Sleep 1; try { [void](Invoke-RestMethod "$u/api/version" -TimeoutSec 2); $ok = $true } catch {} }
 0..1 | ForEach-Object { "  run $_ : $(Gen 'rc1/qwen3-igpu' 256 (7 + $_))" }
-$l = (Get-Content "$log.2.err" | Select-String 'model placement' | Select-Object -Last 1).Line; "  placement " + ($l -replace '^.*devices=', 'devices=').Substring(0, 60)
+$l = (Get-Content "$log.2.err" | Select-String 'model placement' | Select-Object -Last 1).Line; "  placement " + (Cut ($l -replace '^.*devices=', 'devices='))
 Get-Content "$log.2.err" | Select-String 'offloaded \d+/\d+' | Select-Object -Last 1 | ForEach-Object { "  $($_.Line.Trim())" }
 Unload 'rc1/qwen3-igpu'; & $x rm rc1/qwen3-igpu rc1/qwen3-vk9070 rc1/qwen3-cuda3090 2>&1 | Out-Null; "  rc1/ tags removed"; Stop-Process -Id $p.Id -Force
 "== engine and library lines"
