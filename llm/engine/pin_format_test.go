@@ -283,6 +283,17 @@ func TestTheSBSAComponentServesAarch64WithItsOwnSASS(t *testing.T) {
 	if needsCUDA12(committed, arm, volta) || !needsCUDA12(committed, x86, volta) {
 		t.Error("needsCUDA12 does not follow the platform it is asked about")
 	}
+	// Windows has a CUDA 12 payload only when the pin carries its own file;
+	// the Linux .so must never answer for it.
+	win := Platform{OS: "windows", Arch: "amd64"}
+	pascal := Device{Backend: BackendCUDA, ComputeMajor: 6, ComputeMinor: 1}
+	_, winFile := committed.CUDA12DSO("win-x86_64")
+	if needsCUDA12(committed, win, pascal) != winFile || legacyCUDAOn(win, []Device{pascal}) != winFile {
+		t.Errorf("windows CUDA 12: needsCUDA12/legacyCUDAOn disagree with the pin's win-x86_64 file (%v)", winFile)
+	}
+	if !winFile && deviceUnsupported(win, pascal) == "" {
+		t.Error("a 6.1 card on Windows with no CUDA 12 file is routed to opencoti's CUDA")
+	}
 	if p.CoversCUDA12On("aarch64", 7, 0) {
 		t.Error("an aarch64 host is offered a CUDA 12 payload it has no file for")
 	}

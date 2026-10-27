@@ -62,8 +62,12 @@ paths:
 - `sass` on the `cuda` component is `Pin.CUDASASS` (major*10+minor;
   `Pin.CoversCUDA` matches the same major at that minor or later, no line
   means no narrowing); on `cuda12` it is `Pin.CUDA12SASS` (no component
-  covers nothing; `Pin.CoversCUDA12On` asks by arch label, and only x86_64
-  has that payload). `deviceUnsupported` refuses an uncovered device by name.
+  covers nothing; `Pin.CoversCUDA12On` asks by the platform's **package
+  label** (`PackageArch`: `x86_64`, `win-x86_64`), never `cudaArch`: the sass
+  lists are shared by Linux and Windows, the files are not. With `cudaArch` a
+  Windows host found the Linux `.so`, launched with `OPENCOTI_CUDA_LEGACY=1`,
+  and the engine fell back to CUDA 13 on a GTX 1070 (2026-10-27, `xo-42`).
+  Guard: the Windows lines of `TestTheSBSAComponentServesAarch64WithItsOwnSASS`). `deviceUnsupported` refuses an uncovered device by name.
 - **`sbsa` is the CUDA library of Linux aarch64** (DGX Spark, Jetson Thor),
   taken since c11 with its own list, `Pin.SBSASASS`. `Pin.CUDASASSOn(arch)` is
   the list `Pin.CoversCUDAOn` and `deviceUnsupported` read: `sbsa`'s on
