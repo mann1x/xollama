@@ -2,6 +2,7 @@ package llm
 
 import (
 	"os"
+	"runtime"
 	"testing"
 
 	"github.com/ollama/ollama/api"
@@ -51,8 +52,12 @@ func TestALoadOnACUDA12CardTellsTheEngine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !pin.CoversCUDA12(7, 0) {
-		t.Skip("the committed pin carries no CUDA 12 library for a 7.0 card")
+	// LegacyCUDA asks about the host it runs on, so the pin must carry a CUDA
+	// 12 library for THIS platform: a macOS runner has none, and found the
+	// Linux one only while the lookup ignored the platform (xo-42).
+	label, err := engine.PackageArch(runtime.GOOS, runtime.GOARCH)
+	if _, ok := pin.CUDA12DSO(label); err != nil || !ok || !pin.CoversCUDA12(7, 0) {
+		t.Skipf("the committed pin carries no CUDA 12 library for a 7.0 card on %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
 	card := func(major, minor int) []ml.DeviceInfo {
 		return []ml.DeviceInfo{{DeviceID: ml.DeviceID{Library: "CUDA"}, ComputeMajor: major, ComputeMinor: minor}}
