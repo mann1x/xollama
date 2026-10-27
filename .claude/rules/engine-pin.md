@@ -34,8 +34,8 @@ paths:
   Extra trailing fields on a fixed KEY are ignored.
 - **Published names only, nothing renamed.** A file is staged beside the
   engine under the name in its row (`ggml-cuda-x86_64.so`,
-  `ggml-cuda-cu12-x86_64.so`, `ggml-cuda-sbsa-aarch64.so`,
-  `ggml-vulkan-win-x86_64.dll`,
+  `ggml-cuda-cu12-x86_64.so`, `ggml-cuda-cu12-x86_64.dll`,
+  `ggml-cuda-sbsa-aarch64.so`, `ggml-vulkan-win-x86_64.dll`,
   `oc-codec-linux-x86_64.so`), which is the name the engine looks for. The
   engine is `file any bin` for every platform plus `file win-x86_64 bin
   ....exe` for Windows; a platform takes its own row when there is one. A
@@ -86,6 +86,9 @@ paths:
   to llama.cpp, and `LegacyCUDA` makes the launch set
   `OPENCOTI_CUDA_LEGACY=1` (`opencotiEnvsForStart`, `llm/engine_media.go`);
   discovery lists CUDA a second time with it (`discover/opencoti_cuda12.go`).
+  Windows has a CUDA 12 library since `cuda12` `2610270912001`
+  (`ggml-cuda-cu12-x86_64.dll`, sass 52 61 70); `2610141455002` had
+  `absent win-x86_64`.
   An explicit `XOLLAMA_ENGINE_PATH` is used as given. CUDA 12 is legacy: it
   ships without waiting for a card to test on. Guards:
   `llm/engine/pin_cuda_test.go`, `discover/opencoti_cuda12_test.go`.
