@@ -34,8 +34,8 @@ paths:
   Extra trailing fields on a fixed KEY are ignored.
 - **Published names only, nothing renamed.** A file is staged beside the
   engine under the name in its row (`ggml-cuda-x86_64.so`,
-  `ggml-cuda-cu12-x86_64.so`, `ggml-cuda-sbsa-aarch64.so`,
-  `ggml-vulkan-win-x86_64.dll`,
+  `ggml-cuda-cu12-x86_64.so`, `ggml-cuda-cu12-x86_64.dll`,
+  `ggml-cuda-sbsa-aarch64.so`, `ggml-vulkan-win-x86_64.dll`,
   `oc-codec-linux-x86_64.so`), which is the name the engine looks for. The
   engine is `file any bin` for every platform plus `file win-x86_64 bin
   ....exe` for Windows; a platform takes its own row when there is one. A
@@ -62,8 +62,12 @@ paths:
 - `sass` on the `cuda` component is `Pin.CUDASASS` (major*10+minor;
   `Pin.CoversCUDA` matches the same major at that minor or later, no line
   means no narrowing); on `cuda12` it is `Pin.CUDA12SASS` (no component
-  covers nothing; `Pin.CoversCUDA12On` asks by arch label, and only x86_64
-  has that payload). `deviceUnsupported` refuses an uncovered device by name.
+  covers nothing; `Pin.CoversCUDA12On` asks by the platform's **package
+  label** (`PackageArch`: `x86_64`, `win-x86_64`), never `cudaArch`: the sass
+  lists are shared by Linux and Windows, the files are not. With `cudaArch` a
+  Windows host found the Linux `.so`, launched with `OPENCOTI_CUDA_LEGACY=1`,
+  and the engine fell back to CUDA 13 on a GTX 1070 (2026-10-27, `xo-42`).
+  Guard: the Windows lines of `TestTheSBSAComponentServesAarch64WithItsOwnSASS`). `deviceUnsupported` refuses an uncovered device by name.
 - **`sbsa` is the CUDA library of Linux aarch64** (DGX Spark, Jetson Thor),
   taken since c11 with its own list, `Pin.SBSASASS`. `Pin.CUDASASSOn(arch)` is
   the list `Pin.CoversCUDAOn` and `deviceUnsupported` read: `sbsa`'s on
@@ -82,6 +86,9 @@ paths:
   to llama.cpp, and `LegacyCUDA` makes the launch set
   `OPENCOTI_CUDA_LEGACY=1` (`opencotiEnvsForStart`, `llm/engine_media.go`);
   discovery lists CUDA a second time with it (`discover/opencoti_cuda12.go`).
+  Windows has a CUDA 12 library since `cuda12` `2610270912001`
+  (`ggml-cuda-cu12-x86_64.dll`, sass 52 61 70); `2610141455002` had
+  `absent win-x86_64`.
   An explicit `XOLLAMA_ENGINE_PATH` is used as given. CUDA 12 is legacy: it
   ships without waiting for a card to test on. Guards:
   `llm/engine/pin_cuda_test.go`, `discover/opencoti_cuda12_test.go`.

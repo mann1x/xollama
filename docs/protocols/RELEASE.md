@@ -585,9 +585,19 @@ rollback needs:
 - **Gate Docker images**: the image gate removes its own (`KEEP=1` only when
   another gate follows). Finish with `docker images | grep xollama` empty and
   `df -h /` checked, on every host an image was pulled to (solidPC, dietpi5).
-- **Staged gate engines** under `/srv/ml/gates/` beyond the shared
-  `opencoti-cache`: large per-engine `engine-<arch>-<version>` trees from old
-  pins can go.
+- **Staged gate engines** under `/srv/ml/gates/`: keep only the pin's
+  `engine-<arch>-<version>` trees, and in `opencoti-cache` only the components
+  `llm/engine/pin/index.txt` names; older builds go, with any runtime tarball or
+  MLX zip a gate downloaded.
+- **Gate stores are standing, never per release.** Reuse them; never copy or
+  hardlink one into a new run dir: chat `/srv/ml/gates/store` (G3, G4),
+  council `spool/xollama-council-store` (G5), media `/srv/ml/media-store`
+  (G6), Vulkan `/srv/ml/gates/vkstore`. A model goes in only for a gate that
+  loads it.
+- **Run dirs** (`/srv/ml/<cycle>/`, `xollama-phase2/<probe>/`): keep the
+  measurements, files of 1 MB or less; delete everything larger (stores,
+  rootfs, staged binaries, dumps) once the results are recorded. spool filled
+  on 2026-10-26 with 61 GB of these from earlier cycles.
 - **Stale worktree checkouts**: once the release (and the sync it rode) has
   landed on `origin/dev`, fast-forward every long-lived worktree's `dev` to it
   (`git -C <wt> merge --ff-only origin/dev`), and remove any build artifacts
@@ -596,8 +606,8 @@ rollback needs:
   (248 commits behind) held the only complete CLAUDE.md while `origin/dev`
   carried a caliber-dropped one (`xo-37`, `.claude/rules/caliber.md`).
 
-Check `df -h /` on solidPC at the end; a release that grew the root disk is not
-finished.
+Check `df -h /` and `df -h /srv/ml` on solidPC at the end; a release that grew
+either disk is not finished.
 
 ## The council gate
 

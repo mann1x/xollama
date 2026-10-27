@@ -174,9 +174,19 @@ func coveredByCUDA13(pin Pin, p Platform, d Device) bool {
 
 // needsCUDA12 reports whether this device is served only by the pin's CUDA 12
 // payload: the main payload has no code for it and the CUDA 12 one does.
+//
+// The CUDA 12 library is looked up by the platform's own package label, not
+// cudaArch: the sass lists are shared by Linux and Windows, the files are not.
+// With cudaArch a Windows host found the Linux .so, started the engine with
+// OPENCOTI_CUDA_LEGACY=1 and the engine fell back to its CUDA 13 library,
+// which has no code for the card (GTX 1070, 2026-10-27).
 func needsCUDA12(pin Pin, p Platform, d Device) bool {
+	label, err := PackageArch(p.OS, p.Arch)
+	if err != nil {
+		return false
+	}
 	return d.Backend == BackendCUDA && d.ComputeMajor > 0 &&
-		!coveredByCUDA13(pin, p, d) && pin.CoversCUDA12On(cudaArch(p), d.ComputeMajor, d.ComputeMinor)
+		!coveredByCUDA13(pin, p, d) && pin.CoversCUDA12On(label, d.ComputeMajor, d.ComputeMinor)
 }
 
 // cudaPayload decides which CUDA payload one load runs on. One engine process

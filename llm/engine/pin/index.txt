@@ -15,6 +15,16 @@
 # Moving a component is one line here plus its pin file, on a MEASUREMENT
 # (scripts/phase2-engine-ab.py, as the `ollama` user), never on a changelog.
 #
+# cuda12 MOVED (2026-10-27, opencoti mail #1980, bug-4246; release index
+# be28e33a, payload 91ee7394): cuda12 2610270912001 adds the Windows CUDA 12
+# library, ggml-cuda-cu12-x86_64.dll (sass 52 61 70, CUTLASS sm_70), so a
+# Maxwell/Pascal/Volta card on Windows has CUDA at all; 2610141455002 had
+# `absent win-x86_64` and a GTX 1070 crashed on CUDA 13 (xo-42). The Linux .so
+# is the same bytes. Gated by opencoti on the owner's GTX 1070 (zns, driver
+# 582.66) with this install's engine and staging: taken with no override, 68
+# tok/s plain, 63 with FA + q8_0 K/V (Vulkan on that card: 83). Not measured
+# here: no such card in our fleet (CUDA 12 legacy ships untested).
+#
 # THIS PIN (2026-10-18, opencoti mail #1683; index b6334984, pins 86c2309e,
 # payload 6710a92b): opencoti's c13 RELEASE re-cut r6 (same tag c13, git tag
 # llamafile-v0.10.5+opencoti.c13-r6). Engine 2610182159001 (bare 90c343ff),
@@ -189,7 +199,7 @@ channel  release
 tag      c13
 engine   pin/engine.txt  rev 86c2309e2985ef49f18a83b2db05f7de22ea0c6d  sha256 409027d27c4c103ba59488a5aca6ecf18832d0c77ecaa393e553b40e69abedad  version 2610182159001
 cuda     pin/cuda.txt  rev 86c2309e2985ef49f18a83b2db05f7de22ea0c6d  sha256 d947cd45f2ad28056546b8169a03a4c1565f72291a047aa6c2fce755b9b30da7  version 2610160820001
-cuda12   pin/cuda12.txt  rev 86c2309e2985ef49f18a83b2db05f7de22ea0c6d  sha256 727156af8d9b1930092e37d5b34cfe6fa0b97f359afb3ce28232a7547642e528  version 2610141455002
+cuda12   pin/cuda12.txt  rev be28e33a4d85a5e1ddaec4b08bb97f9428d992ae  sha256 fbbf3e5f75e06e5f5b210f0d19241a2e3beb8a731ff9e20f37d1d9e217f6a70a  version 2610270912001
 sbsa     pin/sbsa.txt  rev 86c2309e2985ef49f18a83b2db05f7de22ea0c6d  sha256 c7ce1ba07ee353868487ae5413c5edc2e04961294aaca52e971311ec017fdcea  version 2610141455003
 vulkan   pin/vulkan.txt  rev 86c2309e2985ef49f18a83b2db05f7de22ea0c6d  sha256 4d36a46ff627253e3eb0b7a6e8c8993962375c9cdd3b5148a82d86f924bf8375  version 2610182214001
 macos    pin/macos.txt  rev 86c2309e2985ef49f18a83b2db05f7de22ea0c6d  sha256 d5d54ff95f0a23a9db4f3e7d9823b508152df11be7bdec09a8c8f3f907feebfa  version 2610182214002

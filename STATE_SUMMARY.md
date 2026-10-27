@@ -5,6 +5,51 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-27 — impact analysis of `v0.40.11-xollama.1` (re-release, owner's go 09:27: "go, test it and ship the new version").** Diff `origin/main..origin/dev`: 10 paths. Per change:
+> - **Routing fix** (`llm/engine/policy.go`, `llm/engine/pin_format_test.go`), row `llm/`: **G3, G4, G8**. It reaches every opencoti CUDA routing decision (`needsCUDA12` → `deviceUnsupported`, `cudaPayload`, `LegacyCUDA`). On Linux the label is `x86_64` either way, so no Linux change is expected; G3 and G4 prove that. On Windows it decides CUDA 12 vs 13 vs refusal; G8 covers the 3090.
+> - **cuda12 2610270912001** (`llm/engine/pin/cuda12.txt`, `index.txt`), row engine pin, for the platforms that moved. win-x86_64 (new DLL): **G8**, plus **G9** because the installer's payload, and so its payload id, changes. x86_64: same `.so` bytes (sha `6e9f87bb…`), covered by G3 and G4 anyway.
+> - **Docs** (`CLAUDE.md`, `README.md`, `STATE_SUMMARY.md`, `docs/protocols/RELEASE.md`, `VALIDATION.md`, `.claude/rules/engine-pin.md`): G1.
+> - **Always:** G1, G2, G12.
+> - **Skipped:** G5 (the engine binary did not move; council paths untouched). G6 and G7 (media and Vulkan components and Linux bytes unchanged). G10 (the image's inputs are byte-identical: the cuda12 `.so` unchanged, and arm64 has no cuda12). G11 (no macOS row in cuda12, darwin build untouched).
+> - **Targeted check, on the case the fix was made for:** zns (owner's PC, Windows 10, GTX 1070 cc 6.1, driver 582.66). Control: the installed v0.40.11-xollama loading `llama3.2:1b` (expected: the 0xc0000409 crash). New: the installed `.1`, the same load on the CUDA 12 DLL, 512 tokens with tok/s. Plus the 3090 on eleven2go still on CUDA 13 (G8 B and step 7).
+> - **Results (tree `457f7d627`):**
+>   - **G1** pass: gofmt clean, every package ok, lint 0, 57 hooks registered, compat-origin 0 foreign.
+>   - **Security:** Dependabot 109 open (110 before; one development-scope `postcss-selector-parser` alert gone), govulncheck 0 reachable, no alert on a line the fork changed.
+>   - **G3** pass: opencoti 8/8, 77.5, 4-slot 311, overflow 3.65; stock 8/8, 79.3, 607, 2.96. The overflow axis moves with host load.
+>   - **G4** pass: decision scores identical to 2026-10-25; chat all PASS, 0 refusals.
+>   - **G8** pass: 3090 123.7 to 125.1 on CUDA 13, 9070 XT 102.9 to 103.1, kill 651 ms, iGPU 5.4. The first attempt with a bare `xollama.exe` found no stock runtime: a setup error, rerun in an install-shaped side directory. `windows-side.ps1`'s placement line no longer throws on a short line.
+>   - **Targeted** pass. Control: the installed v0.40.11-xollama on zns crashed on `llama3.2:1b` (CUDA 12 "not here", CUDA 13, "no kernel image", 0xc0000409). New: the tree's build in the same layout loaded `ggml-cuda-cu12-x86_64.dll`, 17/17 layers, kvarn3, 512 tokens at 89.8 / 89.9 / 89.7 tok/s.
+>   - Left: G2 on the PR, G9 (step 7 on eleven2go, plus the install on zns), G12.
+
+> **2026-10-27 — cuda12 pin moved to 2610270912001: the Windows CUDA 12 DLL (`xo-42`).** opencoti published it as an emergency c13 component (mail #1980, bug-4246; release index `be28e33a`). It adds `ggml-cuda-cu12-x86_64.dll` (sass 52 61 70, CUTLASS sm_70, 244,886,528 bytes; the published sha256 `3a770097…` matches the pin); the Linux `.so` is the same bytes. opencoti gated it on the owner's GTX 1070 (zns, driver 582.66) with our install's engine and staging: taken with no override, 68 tok/s plain, 63 with FA + q8_0 K/V. Vulkan on the same card does 83, so Vulkan may be the better default on that card. Not measured here (no such card; CUDA 12 legacy ships untested). The full installer grows by about 245 MB, still under the 2 GiB asset cap. Reaching zns needs the routing fix plus this pin in a release (v0.40.11-xollama.1, on the owner's word). Engine side, c14 row 65.1 (owner-approved): a legacy miss on cards below 7.5 never loads CUDA 13.
+
+> **2026-10-27 — Windows routed a GTX 1070 (6.1) to opencoti's CUDA 13 and the load crashed; fixed (`xo-42`).** The owner's PC zns ran v0.40.11-xollama: "no kernel image is available", exit 0xc0000409. Cause: `needsCUDA12` asked the pin for the CUDA 12 library by `cudaArch`, which is `x86_64` on Windows too, so the Linux `.so` answered for Windows. xollama launched with `OPENCOTI_CUDA_LEGACY=1`; the engine found no CUDA 12 DLL and fell back to CUDA 13. Fix in `llm/engine/policy.go`: the CUDA 12 file is looked up by the package label (`win-x86_64`). With no Windows CUDA 12 file in the pin, a sub-7.5 card is refused on opencoti's CUDA and routed elsewhere (Vulkan here, where the KVarN KV keeps it on opencoti). The guard fails without the fix. opencoti's cuda12 components were all Linux-only. Mail #1976 asked for a Windows DLL, and the owner ordered it as an emergency c13 component (opencoti #1977, building `ggml-cuda-cu12-x86_64.dll` with sass 52 61 70). Pin it when published and gate it on zns's 1070, the first card it can run on.
+
+> **2026-10-26 — solidPC spool ran out of space; xollama's stale scratch removed, and step 9 now covers spool.** Owner-approved. Freed 61 GB on spool (219 → 280 GB free). Removed: `ml/c13dev` CPU store, image, assets and win stage; `ml/xc9/sync40` hardlinked store copies and downloads; `xollama-phase2` probe binaries and `models-ab`; `gates/` engine and cache builds older than the c13 pin, the old arm64 runtime tarball, the MLX zip and `tmp-ollama`; and every file over 1 MB in the cycle run dirs (`c13`, `c13r6`, `xb*`, `xollama-b*`, `xo*`, `x0406`, `xv409`, `systel`, `v100*`, `e2g-9070-dumps`, …). Results of 1 MB or less stay where the docs cite them. The gate chat store (153 GB, every model one a G3/G4 axis loads) moved from `ml/c13dev/store` to the standing `/srv/ml/gates/store`. Not touched: the ollama session's `sync-*` and `council-baseline-*`, opencoti's dirs, `side-3090-c14` (c14), `opencoti-b203`/`b208` (xo-1). eleven2go: `xollama-gate` removed entirely. RELEASE.md step 9 now names the standing gate stores, keeps only the pin's engines in `gates/`, cuts run dirs to their ≤ 1 MB results, and checks `df -h /srv/ml`.
+
+> **2026-10-25 — `v0.40.11-xollama` released and promoted (Latest), upstream v0.40.11, engine c13 r6.**
+> - **Candidate:** `v0.40.11-rc.1.xollama`, PR #45, merge `aa4420771b`, release run 40180132537, image run 40181033806.
+> - **Release:** from the rc's tree. Empty cut commit `994fd15f0`, PR #46, merge `ca85af29a3`, run 40185196037, `tree matches v0.40.11-rc.1.xollama`.
+> - **Payload:** id `9336c79f…` on both.
+> - **Gates, as the impact analysis below named them:**
+>   - G1: clean.
+>   - G2: #45 24 pass / 12 skip; #46 4 pass / 4 skip.
+>   - G3: both legs.
+>   - G4: plus the KV poll.
+>   - G8 and G9: eleven2go.
+>   - G10:
+>     - amd64: opencoti 84.9 to 85.7, llama.cpp 85.3 to 86.2, speech 4 of 4.
+>     - arm64: 10.0 to 11.0 and 10.9 to 11.0, speech 3 of 3.
+>     - Both images removed; the owner's containers untouched.
+>   - G12: both releases' 8 files OK.
+>   - Skipped, as the analysis said: G5, G6, G7, G11.
+> - **Short check on eleven2go:** `xOllamaUpdate.exe` over the rc exited 0 in 4 s; it reports `0.40.11-xollama`; `PAYLOAD_ID` equals the release's; `/api/xollama` answers on 22434 from a new server; 512 tokens at 103.0 and 103.4 tok/s, on the 9070 XT the host's `gpu` policy picks; 11434 untouched.
+> - **Promoted,** and Discord announced (run 40186516184). `:latest` moved by rerunning the image workflow on the tag (step 8, run 40187106926), to Docker Hub `7a3711be…` and GHCR `de90502d…`, each equal to `:0.40.11-xollama`.
+> - **Gate records:** G10 and G12 were held off `dev` until after the cut (tree match).
+> - **Step 9:** removed the release-check downloads (5.7 GB), `/srv/ml/xv4011` (11 GB), the merged `sync/upstream-v0.40.11` worktree and a scratch worktree, and eleven2go's installers and its `engine-c13` staging. Not this cycle's, and left for the owner:
+>   - solidPC: five `/usr/local/bin/xollama.bak-*`, and `release-check/upstream-v0.34.2` (2.6 GB).
+>   - eleven2go, 2026-10-07: `xollama-gate\engine` (c9), `engine-old`, `engines`, and `Downloads\xollama-dev.exe` and `xOllamaUpdate-final.exe`. Its C: has 10.3 GB free.
+
 > **2026-10-25 — impact analysis of `v0.40.11-rc.1.xollama`, and the protocols now say the analysis always decides the gates.** The owner refused this cycle's gate choice: I had taken VALIDATION.md's "an upstream sync → G1 to G5, G9, G10" row instead of analysing the paths ("the impact analysis for every release is part of the protocol, you need to run it ALWAYS and decide which gates are needed. the gates table are the source"). **Protocol change:** that row now has no gate set of its own (a sync takes the rows of the paths it moved). VALIDATION.md "The rule" and RELEASE.md rule 8 and step 1 now say: match every path of `git diff --name-only origin/main origin/dev` to its row, write the analysis before any gate runs, and never choose a set by the kind of release. A path with no row is named with what reaches it.
 > **The analysis** (`origin/main..origin/dev`, 112 files; the fork's think-budget patches are already on `main` since v0.40.10-xollama, so they are not in this delta):
 > - **`llm/llama_server.go` + `llm/engine_pool_cells.go`, `server/evict_last.go`, `cmd/tweak`, `types/xollama`** (`kv.pool_cells`, e6b3b4fc0). This is the `pool-cells` hook: on opencoti, with `kv.pool_cells` set, the launch's `-c` and the scheduler's prediction are the pool size; otherwise `withPoolCells`/`PoolCellsFor` return their input. Row `llm/` → **G3, G4, G8**. Targeted check: done 2026-10-24 on eleven2go (the council template's resident maximum: 589824 cells loads, 647168 starves the runtime, which is the engine's op-296). Control: every G3/G4 model runs without it.
@@ -2805,14 +2850,16 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
 ## Where we are
 
-`v0.40.9-xollama` is the latest release (promoted Latest 2026-10-23): upstream
-v0.40.9 (fork manifest `0aeb9fa1`, 30 carried patches, llama.cpp b11803, MLX
-`bebd6422`), opencoti c13 r6 (`2610182159001`, Vulkan and Metal native KVarN,
-the CPU spin fix), and `GET /api/xollama/system`. **`v0.40.10-xollama` is being
-cut now** (fork-follow, RELEASE.md rule 7): upstream v0.40.10 is one commit over
-v0.40.9 (#19241 gemma renderers), the runtimes and engine are unchanged, and
-`dev` carries the sync. xollama follows the fork to every new upstream with a
-release. The engine's four-slot admission bug (bug-4143) is fixed
+`v0.40.11-xollama` is the latest release (promoted Latest 2026-10-25).
+It is built on upstream v0.40.11, with the fork's `v0.40.11-thinkbudget` (31
+carried patches), llama.cpp b11845, MLX `bebd6422`, and opencoti c13 r6
+(`2610182159001`). New in it: `kv.pool_cells`, the per-model KV report in
+`GET /api/xollama/system`, and the Windows GPU metrics sidecar in both
+installers. Its gates were picked by the impact analysis, now the rule for every
+release (RELEASE.md rule 8). xollama follows the fork to every new upstream with
+a release; the next re-release on this base is `v0.40.11-xollama.1`, on the
+owner's word. opencoti's op-296 (KV pools refused at runtime instead of
+spilled to host) is planned for c14. The engine's four-slot admission bug (bug-4143) is fixed
 in an opencoti dev build, not pinned yet. It carries generation notices v2 and
 v3 with per-model templates, `num_ctx_hold`, the gemma4 re-opened channel fix
 (`up-gemma4-channel-in-thinking`), the batch kept at 512 on unread memory, the
