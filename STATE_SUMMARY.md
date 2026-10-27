@@ -5,6 +5,15 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-27 — `v0.40.11-xollama.1` released and promoted (Latest): Windows Maxwell/Pascal/Volta cards on CUDA 12 (`xo-42`).** PR #47, merged as a re-release from `dev` `d589d1f19`; release run 40481143421 (plan, windows, linux amd64/arm64, macos, publish all success); payload id `a9d068ca…`.
+> - **G2:** the first run failed `race (macos-latest)`: `TestALoadOnACUDA12CardTellsTheEngine` asked `LegacyCUDA` about the running host but skipped on the Linux-only check. It passed on macOS only through the lookup bug this release fixes. Fixed the skip (test-only, `d589d1f19`); rerun 14 pass, 8 skipping, 0 fail.
+> - **G12:** every sha256 OK; both Linux binaries report `0.40.11-xollama.1` (arm64 on dietpi5); image linux/amd64 + linux/arm64; full installer 1,512,336,194 bytes (under the 2 GiB cap); the installed tray app names the fork's releases feed.
+> - **G9 / step 7 on eleven2go:** full installer exit 0; version, PAYLOAD_ID, 22434 `/api/xollama` and devices OK; `ggml-cuda-cu12-x86_64.dll` installed. 512 tokens ×5: 3090 124.8 to 125.0 (CUDA 13 library), 9070 XT 102.7 to 103.2, iGPU 5.4. The update installer over it: exit 0, version unchanged, back on 22434. Displays OK; think-budget ollama on 11434 untouched.
+> - **Targeted, released bytes on zns (GTX 1070):** full installer exit 0, the owner's `XOLLAMA_HOST=127.0.0.1:11434` kept. `llama3.2:1b` loaded on `ggml-cuda-cu12-x86_64.dll`, 17/17 layers, kvarn3: 512 tokens at 87.9 and 87.8 tok/s, where `v0.40.11-xollama` crashed (0xc0000409) on the same load.
+> - **Promoted** 11:12. The image workflow reran on the tag: `:latest` = `:0.40.11-xollama.1` (Docker Hub `ccd55226…`, GHCR `8cb13892…`). Discord announced.
+> - **Step 9:** release-check and assemble cache removed; run dir cut to its ≤1 MB results (93 MB); eleven2go and zns gate folders and installers gone; nothing on dietpi5; no xollama images. `df -h /` 98G free, spool 341G. Claims released.
+> - **Next:** opencoti's engine-side backstop (0792, dev 2610270942001, c14 row 65.1) comes with c14.
+
 > **2026-10-27 — impact analysis of `v0.40.11-xollama.1` (re-release, owner's go 09:27: "go, test it and ship the new version").** Diff `origin/main..origin/dev`: 10 paths. Per change:
 > - **Routing fix** (`llm/engine/policy.go`, `llm/engine/pin_format_test.go`), row `llm/`: **G3, G4, G8**. It reaches every opencoti CUDA routing decision (`needsCUDA12` → `deviceUnsupported`, `cudaPayload`, `LegacyCUDA`). On Linux the label is `x86_64` either way, so no Linux change is expected; G3 and G4 prove that. On Windows it decides CUDA 12 vs 13 vs refusal; G8 covers the 3090.
 > - **cuda12 2610270912001** (`llm/engine/pin/cuda12.txt`, `index.txt`), row engine pin, for the platforms that moved. win-x86_64 (new DLL): **G8**, plus **G9** because the installer's payload, and so its payload id, changes. x86_64: same `.so` bytes (sha `6e9f87bb…`), covered by G3 and G4 anyway.
@@ -2850,14 +2859,18 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
 ## Where we are
 
-`v0.40.11-xollama` is the latest release (promoted Latest 2026-10-25).
-It is built on upstream v0.40.11, with the fork's `v0.40.11-thinkbudget` (31
+`v0.40.11-xollama.1` is the latest release (promoted Latest 2026-10-27).
+It is `v0.40.11-xollama` plus Windows CUDA 12: cuda12 `2610270912001` carries
+`ggml-cuda-cu12-x86_64.dll`, and routing looks the CUDA 12 library up per
+platform, so a Maxwell/Pascal/Volta card on Windows loads on CUDA 12 instead of
+crashing on CUDA 13 (GTX 1070 on zns: 87.9 tok/s). The base is unchanged:
+upstream v0.40.11, the fork's `v0.40.11-thinkbudget` (31
 carried patches), llama.cpp b11845, MLX `bebd6422`, and opencoti c13 r6
-(`2610182159001`). New in it: `kv.pool_cells`, the per-model KV report in
+(`2610182159001`). New in `v0.40.11-xollama`: `kv.pool_cells`, the per-model KV report in
 `GET /api/xollama/system`, and the Windows GPU metrics sidecar in both
 installers. Its gates were picked by the impact analysis, now the rule for every
 release (RELEASE.md rule 8). xollama follows the fork to every new upstream with
-a release; the next re-release on this base is `v0.40.11-xollama.1`, on the
+a release; the next re-release on this base is `v0.40.11-xollama.2`, on the
 owner's word. opencoti's op-296 (KV pools refused at runtime instead of
 spilled to host) is planned for c14. The engine's four-slot admission bug (bug-4143) is fixed
 in an opencoti dev build, not pinned yet. It carries generation notices v2 and
