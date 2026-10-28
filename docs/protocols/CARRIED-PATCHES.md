@@ -27,6 +27,42 @@ first if a patch looks missing or out of date.
    other row in this file keys on the PR number, and these cannot. They are
    listed apart, below.
 
+**Status as of 2026-10-28: the set moved to upstream v0.40.12 (31 patches, same set and `patches[]` order).** Manifest at think-budget `2e2505d5` (`base: v0.40.12`, `integration.sha 4f153b60`, release `v0.40.12-thinkbudget` @ `c04e011a`; fork mail #1999, notice #1996). Upstream v0.40.12 is seven commits over v0.40.11 (138 files): llama.cpp b11845 -> b11901 (#19311), MLX `bebd6422` -> `065ec468` and MLX-C `a341b492` -> `57731b00` (#19291), LFM3 parsers and models (#19333; `LFM3Parser` embeds `Qwen35Parser`, so it inherits the thinking and tool-call tags), and upstream's own `TranscriptionHandler` and `TranslationHandler`. Consumed on branch `sync/upstream-v0.40.12`: the upstream tag merge `3cc386706`, then the 31 patches at the shas below, each its own `--no-ff` merge in `patches[]` order. The upstream merge conflicted only in `server/routes.go`. Upstream's two audio routes now take the `media` hook's `mediaTranscriptionMiddleware(translate)` in front of upstream's handlers, and our `TranslationsHandler` is retired. Every patch conflict kept HEAD. Proof: for each of the 90 files the integration changes, xollama's diff from `4f153b60` equals its diff from `1169d741` before the sync. The exceptions are the fork-only `PATCHES.json` and `scripts/thinkbudget-mlx-assets.sh` (fork release commits `495ded8b` and `6b0b5a253`, no patch carries them), and `server/routes.go` (the media resolution above). The bug-319 artifact recurred: two duplicated tests in `server/routes_test.go`, restored to dev's file plus upstream's 44 lines (`b4c4dc710`). LLAMA_CPP_VERSION b11845 -> b11901, so the inputs digest moves `f689a3d9` -> `08b13822`, equal to the fork's.
+
+| PR | branch | manifest sha | v0.40.12 merge |
+|---|---|---|---|
+| #17563 | `up-repeat-guard` | `0f9367e6` | `714947d3b` |
+| #17564 | `up-truncated-tool-calls` | `a10ecc94` | `13fce58c9` |
+| #17565 | `up-gemma4-object-close` | `fa054a28` | `6ad7d95d7` |
+| #17566 | `up-think-budget` | `f5f7d379` | `7c8a23c16` |
+| #17567 | `up-mlx-libdl` | `36f9102b` | `667e1986a` |
+| #17626 | `up-gemma4-stray-channel-name` | `ec60c540` | `ace832be5` |
+| #17914 | `qwen3coder-tolerate-malformed-tool-calls` | `ce2655e3` | `8c8e13c39` |
+| #18212 | `up-reasoning-budget-line-boundary` | `9d63e54f` | `f7fcfbcf4` |
+| #18281 | `up-native-thinking-replay` | `1f18d9c2` | `c23b4daf8` |
+| #18288 | `up-gemma4-stray-closer` | `5137cd69` | `1b99b48b6` |
+| #18289 | `up-jinja-runner-reuse` | `d0b0eac6` | `c2642221c` |
+| fork-only | `gemma4-toolcall-in-thinking` | `c2d6f8fa` | `4cb29c4f5` |
+| #18624 | `qwen35-toolcall-in-thinking` | `abeb9821` | `1a6198a5c` |
+| fork-only | `up-gemma4-unparsed-tool-call-content` | `b74d7e5b` | `af0b06d48` |
+| fork-only | `up-toolcall-tags` | `99446f1b` | `4359fa36f` |
+| fork-only | `up-codex-request-count-mtime` | `79ddc783` | `b50ca02fc` |
+| fork-only | `up-fileutil-root-permission-tests` | `375c5a40` | `0933d9de8` |
+| fork-only | `up-gofmt-vision-test-data` | `b48aff8b` | `f6a9b9b3d` |
+| fork-only | `up-integration-goroutine-fatal` | `17a6c94f` | `b1023f246` |
+| fork-only | `up-lfm2-think-off-discard` | `3d091470` | `16bcf905f` |
+| fork-only | `up-gemma4-assistant-shape` | `773dfb12` | `63d205b28` |
+| fork-only | `up-gemma4-swallowed-key` | `4c754d7f` | `608fe157d` |
+| fork-only | `up-response-scope-think-budget` | `7474986b` | `2d8169312` |
+| fork-only | `up-modelfile-roundtrip` | `ffe144ac` | `850983163` |
+| fork-only | `up-qwen35-empty-think-history` | `cd11f44c` | `f2cf4184a` |
+| fork-only | `up-mlxrunner-manifest-list` | `b4ad242a` | `867e30ac1` |
+| fork-only | `up-gemma4-channel-in-thinking` | `ffcdf46f` | `ffaff5cb4` |
+| fork-only | `up-llama-server-memory-lines` | `4ab64041` | `1f2e6b432` |
+| fork-only | `up-qwen-unclosed-tool-call` | `f7335c13` | `7c533ef5d` |
+| fork-only | `up-completion-generation-prompt` | `9feeedf3` | `fec55035d` |
+| fork-only | `up-compat-readme` | `d90cc619` | `e863c4e7f` |
+
 **Status as of 2026-10-25: the set moved to upstream v0.40.11 (31 patches; one new, `up-integration-goroutine-fatal`, fork-only, test-only).** Manifest at think-budget `495ded8b` (`base: v0.40.11`, `integration.sha 1169d741`, release `v0.40.11-thinkbudget` @ `b8fb8997`; fork mail #1941). Upstream v0.40.11 is six commits over v0.40.10 (33 files), among them #19228, which changed `qwen3coder`'s `transformToXML`. The fork ported its literal-`</function>` fix into the tolerant walk and kept the tolerance, on the owner's call (`fbcfc06f`). Consumed on branch `sync/upstream-v0.40.11`: the upstream tag merge `e4c6aa8a1`, then the 31 patches at the shas below, each its own `--no-ff` merge in `patches[]` order. The upstream merge conflicted in `cmd/cmd_test.go` (kept both tests) and `model/parsers/qwen3coder.go` (upstream's file plus the `tool-path-backslash` hook, so the fork's rebased branch merged onto it cleanly). Every patch conflict kept HEAD, because dev carried each patch's earlier version and the fork reports an unchanged delta outside the qwen3coder files. Proof: for each of the 90 files the integration changes, xollama's diff from `1169d741` equals its diff from `9a03aea7` before the sync. The only exceptions are the fork-only `PATCHES.json` and release notes, which xollama does not carry. One merge artifact, the same as bug-319: the `up-think-budget` re-merge duplicated two tests in `server/routes_test.go`, restored to dev's file. LLAMA_CPP_VERSION b11803 -> b11845, so the inputs digest moves `c3f7c881` -> `f689a3d9`, equal to the fork's; `check-compat-origin` 0 bad.
 
 | PR | branch | manifest sha | v0.40.11 merge |
