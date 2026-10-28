@@ -937,6 +937,13 @@ GPU, the stock ollama on 11434 untouched).
   ends "NOT installed"; a server that always cuts gives exactly three attempts
   in 31 s, then "failed 3 times", exit 0. A cut-off body reaches Inno as a hash
   mismatch, not WinINet 12030; both are the same exception path.
+- **Short check (`v0.40.12-xollama`, 2026-10-28, zns, GTX 1070; eleven2go was held):**
+  over `0.40.11-xollama.1` (another payload, so the full installer first,
+  downloaded on zns, sha256 the release's): exit 0 in 112 s, version and
+  `PAYLOAD_ID` right, MLX attempt 1 (881 MB in 52 s), the owner's
+  `XOLLAMA_HOST=127.0.0.1:11434` kept and answered there; `llama3.2:1b` 512
+  tokens 87.5 cold, 88.8 to 89.3 warm on `ggml-cuda-cu12-x86_64.dll`, 17/17.
+  The small installer over it: exit 0 in 7 s, MLX kept, 88.1 to 88.5.
 
 ### G10. The image
 
