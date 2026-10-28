@@ -5,6 +5,20 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-28 — impact analysis of `v0.40.12-rc.2.xollama` (owner 16:00: "yes it should retry"; `xo-43`).** rc.1 is published (PR #48, merge `7139b0c96`, release run 40712963630, payload id `63c8df03…`). Its G9 lost the MLX runtime in the full install to a dropped download; rc.2 is rc.1 plus the retry. Diff `origin/main..origin/dev` beyond the rc.1 records: `99101a6ca`, three paths.
+> - **`app/xollama-mlx.iss`** (`InstallMLX` downloads up to three times, 10 s then 20 s apart, each sha256-checked), row Windows installer: **G9**, both installers, plus the targeted check below. The release workflow's Windows job runs both installers on the runner first.
+> - **`app/updater/installer_script_test.go`** (the guard, which fails on the old script): **G1**.
+> - **`docs/features/windows-installer.md`:** docs.
+> - **Always:** G1, G2, G12.
+> - **Not triggered:** G3 to G8, G10, G11. No server, engine, runtime, image or macOS input moved; the `.iss` is in neither the image nor the macOS app. rc.1's G10 stands for rc.2.
+> - **Targeted check:** the real `xollama-mlx.iss` in a test installer on eleven2go, its download served by a solidPC server that cuts the first connection halfway. The fixed script must install on the second attempt; the old one (control) must end without MLX; a server that always cuts must give three attempts and a clean finish.
+> - **Order:** a dry run on the rc.2 PR, G9 and the targeted check on its draft, the records committed before the merge, so the release is cut from rc.2's tree.
+> - **rc.1 published and checked:** G12 PASS (8/8 checksums equal GitHub's digests, both binaries name the version, image amd64 + arm64 on Docker Hub and GHCR, `:dev` moved, `:latest` not). G10 PASS on its `:dev` image: amd64 `llama3` opencoti 85.9 to 86.0, llama.cpp 86.7 to 87.1, speech 4/4, 0 foreign files; arm64 `qwen2.5:1.5b` opencoti 10.0 to 10.6, llama.cpp 10.8 to 11.0, speech 3/3, the owner's containers untouched.
+> - **rc.2 dry run** 40717027891: every job succeeded, draft published, payload id unchanged.
+> - **Targeted check PASS** (eleven2go, the real script in a test installer): cut first download → installed on attempt 2 after 10 s; old script on the same server → one attempt, no MLX; always cut → three attempts in 31 s, then the failure said, exit 0.
+> - **G9 PASS** on the rc.2 draft, with the installed `MLX_ID` deleted so the new download code ran: full installer exit 0 in 123 s, MLX on attempt 1 (881 MB in 83 s); 3090 125.2 to 125.5, 9070 XT 103.1 to 103.4, iGPU 4.9; update installer exit 0 in 4 s, MLX kept; 11434 untouched. eleven2go cleaned, claim released.
+> - **Next:** merge PR #49, then `v0.40.12-xollama` from rc.2's tree.
+
 > **2026-10-28 — impact analysis of `v0.40.12-rc.1.xollama` (standing fork-follow go; `xo-43`).** Diff `origin/main..origin/dev` (`9b636064f`): 150 paths, all from the v0.40.12 sync. Per row of VALIDATION "Which gates a change needs":
 > - **Always:** G1 (green on the branch), G2, G12.
 > - **`llm/`** (`llm/score.go`, upstream's d1 scoring): **G3, G4, G8**.

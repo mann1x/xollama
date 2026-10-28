@@ -918,6 +918,25 @@ GPU, the stock ollama on 11434 untouched).
   MB in 11.5 minutes, about 1.3 MB/s) and installed it: `MLX_ID` = the pin. So
   a slow or broken link leaves a fresh install without MLX until the next
   update; the installer says so in its log and nothing else is affected.
+  Fixed in rc.2 (below).
+- **Last run (`v0.40.12-rc.2.xollama` dry-run draft, run 40717027891, 2026-10-28, eleven2go):**
+  rc.1 plus the MLX download retry (`99101a6ca`: three attempts, 10 s then
+  20 s apart). The installed `MLX_ID` was deleted first, so the full installer
+  had to download MLX through the new code. Over the installed rc.1 the full
+  installer exits 0 in 123 s, version `0.40.12-rc.2.xollama`, `PAYLOAD_ID`
+  `63c8df03…` (unchanged: the installer script is not in the payload), MLX
+  "attempt 1 of 3", 881 MB in 83 s, installed. Five 512-token runs of
+  `qwen3:8b`: RTX 3090 124.9 cold, 125.2 to 125.5; RX 9070 XT 102.8, 103.1 to
+  103.4; integrated GPU 4.9; 37/37 on each. The small installer over it exits 0
+  in 4 s, "MLX: runtime 2d1ec3d8… already installed", a new server pid.
+  Displays `OK`; 11434 untouched. **Targeted check of the retry**, the real
+  `xollama-mlx.iss` in a test installer (scratch folder) compiled on eleven2go
+  (Inno Setup 6), its download from a solidPC server: a server that cuts the
+  first download halfway gives "attempt 1 failed", then attempt 2 installs
+  after 10 s; the old script (control) on the same server makes one attempt and
+  ends "NOT installed"; a server that always cuts gives exactly three attempts
+  in 31 s, then "failed 3 times", exit 0. A cut-off body reaches Inno as a hash
+  mismatch, not WinINet 12030; both are the same exception path.
 
 ### G10. The image
 
@@ -950,7 +969,8 @@ GPU, the stock ollama on 11434 untouched).
   2026-10-07; it now takes `LLM=` and `MEDIA=`, scratch stores of hard links
   mounted writable (0 files of another owner afterwards).
 
-- **Last run (`v0.40.11-rc.1.xollama` image, `:dev` `d5fe5a16`, 2026-10-25):** amd64 on solidPC with the 3090, `llama3` at 512 tokens: opencoti 84.9 to 85.7, llama.cpp 85.3 to 86.2, speech 4 of 4, 0 crash lines. PAYLOAD lists runtime `v0.40.11-thinkbudget` `8167b4b0`, engine `2610182159001`, and cuda, cuda12, vulkan and media. 0 foreign files; the image was removed. arm64 on dietpi5, `qwen2.5:1.5b` interleaved: opencoti 10.0 to 11.0, llama.cpp 10.9 to 11.0, speech 3 of 3, 0 crash lines. PAYLOAD lists `8791cb5e`, the engine and sbsa. The owner's 4 containers and 11434 were untouched, and the image was removed.
+- **Last run (`v0.40.12-rc.1.xollama` image, `:dev` Docker Hub `48b5c17f`, 2026-10-28):** amd64 on solidPC with the 3090, `llama3` at 512 tokens: opencoti 85.9 to 86.0, llama.cpp 86.7 to 87.1, speech 4 of 4, 0 crash lines. PAYLOAD lists runtime `v0.40.12-thinkbudget` `abaf234d`, upstream v0.40.12's GPU and MLX tarballs, engine `2610182159001` with cuda, cuda12, vulkan and media. 0 foreign files in either store; the image was removed. arm64 on dietpi5 (`624ca29e`), `qwen2.5:1.5b` interleaved: opencoti 10.0 to 10.6, llama.cpp 10.8 to 11.0, speech 3 of 3, 0 crash lines; PAYLOAD lists `ffe493eb`, the engine and sbsa. The owner's 4 containers and 11434 untouched, the image removed. Stands for rc.2, whose only change is the Windows installer script.
+- **Before (`v0.40.11-rc.1.xollama` image, `:dev` `d5fe5a16`, 2026-10-25):** amd64 on solidPC with the 3090, `llama3` at 512 tokens: opencoti 84.9 to 85.7, llama.cpp 85.3 to 86.2, speech 4 of 4, 0 crash lines. PAYLOAD lists runtime `v0.40.11-thinkbudget` `8167b4b0`, engine `2610182159001`, and cuda, cuda12, vulkan and media. 0 foreign files; the image was removed. arm64 on dietpi5, `qwen2.5:1.5b` interleaved: opencoti 10.0 to 11.0, llama.cpp 10.9 to 11.0, speech 3 of 3, 0 crash lines. PAYLOAD lists `8791cb5e`, the engine and sbsa. The owner's 4 containers and 11434 were untouched, and the image was removed.
 
 ### G11. macOS
 
@@ -990,6 +1010,14 @@ releases endpoint.
   provenance block names engine `2610041714001`. `strings` finds no releases
   endpoint in the compressed installer (expected; the installed app is checked
   in G9).
+- **Last run (`v0.40.12-rc.1.xollama`, merge `7139b0c96`, release run 40712963630, 2026-10-28):**
+  the five jobs succeeded; nine assets; the eight `sha256sum.txt` lines equal
+  GitHub's digests of the published files, the Linux two downloaded and
+  `sha256sum -c` OK; payload id `63c8df03…` (the dry run's); the amd64 binary
+  on solidPC and the arm64 one on dietpi5 name `0.40.12-rc.1.xollama`; the
+  image (docker-release 40716011841) is `linux/amd64` and `linux/arm64` on
+  Docker Hub (`48b5c17f`) and GHCR (`6f6b8497`), `:dev` is it, `:latest` still
+  `ccd55226` (`0.40.11-xollama.1`).
 
 ## The first release
 

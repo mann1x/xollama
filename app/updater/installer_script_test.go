@@ -58,6 +58,15 @@ func TestBothInstallersFetchThePinnedMLX(t *testing.T) {
 	if !regexp.MustCompile(`DownloadTemporaryFile\('\{#PKG_MLX_URL\}', '[^']+', '\{#PKG_MLX_SHA256\}'`).MatchString(mlx) {
 		t.Error("xollama-mlx.iss: the download must be checked against PKG_MLX_SHA256")
 	}
+	// A dropped connection must not cost the install its MLX (G9, v0.40.12-rc.1):
+	// the download sits in a loop bounded by MLXAttempts, more than one.
+	install := regexp.MustCompile(`(?ms)^procedure InstallMLX\b.*?^end;\s*\z`).FindString(mlx)
+	if !regexp.MustCompile(`(?s)while not Done and \(Attempt < MLXAttempts\) do begin.*DownloadTemporaryFile\(`).MatchString(install) {
+		t.Error("xollama-mlx.iss: InstallMLX must retry the download in its MLXAttempts loop")
+	}
+	if m := regexp.MustCompile(`MLXAttempts = (\d+);`).FindStringSubmatch(mlx); m == nil || m[1] == "1" || m[1] == "0" {
+		t.Error("xollama-mlx.iss: MLXAttempts must allow at least one retry")
+	}
 	if !strings.Contains(main, `#include "xollama-mlx.iss"`) {
 		t.Error("xollama.iss does not include xollama-mlx.iss")
 	}
