@@ -61,8 +61,8 @@ func (v *VSCode) IsRunning() bool {
 		return err == nil && len(out) > 0
 	case "windows":
 		// Match VS Code by executable path to avoid matching Cursor or other forks.
-		out, err := exec.Command("powershell", "-NoProfile", "-Command",
-			`Get-Process Code -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*Microsoft VS Code*' } | Select-Object -First 1`).Output()
+		out, err := noConsole(exec.Command("powershell", "-NoProfile", "-Command", // xollama-hook: no-console
+			`Get-Process Code -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*Microsoft VS Code*' } | Select-Object -First 1`)).Output()
 		return err == nil && len(strings.TrimSpace(string(out))) > 0
 	default:
 		// Match VS Code specifically by its install path to avoid matching
@@ -88,8 +88,8 @@ func (v *VSCode) Quit() {
 		_ = exec.Command("osascript", "-e", `quit app "Visual Studio Code"`).Run()
 	case "windows":
 		// Kill VS Code by executable path to avoid killing Cursor or other forks.
-		_ = exec.Command("powershell", "-NoProfile", "-Command",
-			`Get-Process Code -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*Microsoft VS Code*' } | Stop-Process -Force`).Run()
+		_ = noConsole(exec.Command("powershell", "-NoProfile", "-Command", // xollama-hook: no-console
+			`Get-Process Code -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*Microsoft VS Code*' } | Stop-Process -Force`)).Run()
 	default:
 		for _, pattern := range []string{"/usr/share/code/", "/snap/code/"} {
 			_ = exec.Command("pkill", "-f", pattern).Run()
