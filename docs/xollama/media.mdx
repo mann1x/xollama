@@ -302,7 +302,7 @@ compares size and time.
 | `POST /v1/images/edits` | `image_edit` | Multipart, `image[]` (one or more) and an optional `mask`. Without a `size` (or with `auto`) the edit comes back at its first image's size, scaled down to the template's pixel count when larger, in multiples of 16. |
 | `POST /v1/audio/speech` | `speech` | JSON `input`, `voice`, `response_format`, `speed`. The audio comes back as the engine encodes it. |
 | `POST /v1/audio/transcriptions` | `transcription` | Multipart `file`. A model without a speech-to-text engine is served as upstream serves it, through an audio-capable LLM. |
-| `POST /v1/audio/translations` | `transcription` | Multipart `file`, translated to English. |
+| `POST /v1/audio/translations` | `transcription` | Multipart `file`, translated to English. A model without a speech-to-text engine is served as upstream serves it, through an audio-capable LLM. |
 | `GET /api/xollama/media/voices?model=` | `speech` | The model's voices for a picker: the engine's own, the OpenAI names the template maps to each (`aliases`), the `default`, and the engine's `response_formats` and `sample_rate`. POST with `{"model": …}` works too. It starts the speech engine if it isn't running. `xollama media voices MODEL` prints the same. |
 | `POST /v1/videos` | `video` | JSON or multipart: `prompt`, `size` (`832x480`), `seconds` or `frames`, `fps`, `seed`, `steps`, `negative_prompt`, `output_format`, and `input_reference` (a starting image, for a model that takes one). The reply is a job: `{id, object: "video", status, progress}`. |
 | `GET /v1/videos/{id}` | | The job: `queued`, `in_progress`, `completed`, `failed` or `cancelled`, with `progress`. |

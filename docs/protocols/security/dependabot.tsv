@@ -98,7 +98,7 @@ GHSA-587h-7wmj-h5pm	high	development	app/ui/app/package-lock.json	vite	<= 6.4.3	
 GHSA-698v-4r3x-3vcv	medium	development	app/ui/app/package-lock.json	vite	<= 6.4.3	6.4.4	2026-10-23	launch-editor: escapeCmdArgs() omits % escaping on Windows
 GHSA-93m4-6634-74q7	medium	development	app/ui/app/package-lock.json	vite	>= 6.0.0, <= 6.4.0	6.4.1	2026-09-18	vite allows server.fs.deny bypass via backslash on Windows
 GHSA-9jrq-w75r-8gcw	low	development	app/ui/app/package-lock.json	vite	<= 6.4.3	6.4.4	2026-10-23	Vite: Cross origin script execution through Vite custom middleware
-GHSA-fx2h-pf6j-xcff	high	development	app/ui/app/package-lock.json	vite	<= 6.4.2	6.4.3	2026-09-18	vite: `server.fs.deny` bypass on Windows alternate paths
+GHSA-fx2h-pf6j-xcff	medium	development	app/ui/app/package-lock.json	vite	<= 6.4.2	6.4.3	2026-09-18	vite: `server.fs.deny` bypass on Windows alternate paths
 GHSA-g4jq-h2w9-997c	low	development	app/ui/app/package-lock.json	vite	>= 6.0.0, <= 6.3.5	6.3.6	2026-09-18	Vite middleware may serve files starting with the same name with the public directory
 GHSA-jqfw-vq24-v9c3	low	development	app/ui/app/package-lock.json	vite	>= 6.0.0, <= 6.3.5	6.3.6	2026-09-18	Vite's `server.fs` settings were not applied to HTML files
 GHSA-p9ff-h696-f583	high	development	app/ui/app/package-lock.json	vite	>= 6.0.0, <= 6.4.1	6.4.2	2026-09-18	Vite Vulnerable to Arbitrary File Read via Vite Dev Server WebSocket

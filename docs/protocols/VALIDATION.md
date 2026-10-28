@@ -683,7 +683,7 @@ registries, `:dev` moved. Promoted 2026-10-08, Discord announced.
   prompt; it is a comparison between engines on one script, not a tok/s to
   quote.
 
-- **Last run (`v0.40.11-xollama.1` tree `457f7d627`, 2026-10-27, 3090, c13 r6 + cuda12 `2610270912001`, stock runtime b11845):** opencoti 8/8, llama3 77.5, 4-slot 311, overflow 3.65; stock 8/8, 79.3, 607, overflow 2.96. Within noise of the last run except the overflow axis, which is CPU-bound and moves with host load (4.0 and 2.61 on 2026-10-25). The Linux cuda12 `.so` is the same bytes and was not loaded (the 3090 takes CUDA 13).
+- **Last run (`v0.40.12-rc.1.xollama` tree `873ecef72`, 2026-10-28, 3090, c13 r6, stock runtime b11901 `v0.40.12-thinkbudget`):** opencoti 8/8, llama3 77.7, 4-slot 309.5, overflow 3.85; stock 8/8, 79.6, 619.8, overflow 3.05. Within noise of the last run (overflow is CPU-bound and moves with host load).
 
 ### G4. Chat paths
 
@@ -714,7 +714,7 @@ registries, `:dev` moved. Promoted 2026-10-08, Discord announced.
   expected 549, got 427", and every call is a 500: that shipped in
   `v0.35.1-xollama.2`.
 
-- **Last run (`v0.40.11-xollama.1` tree `457f7d627`, 2026-10-27, side server, c13 r6):** decision on opencoti: `nimble` "bug" 0.9718, noul 0.9991, score 0.8805; `clef-flash` "bug" 0.8447, noul 0.9302, score 1.0598, red 0.9854 (identical to 2026-10-25). Chat: 6 turns, the OpenAI stream (129 chunks), the tool call and its result PASS; 0 refusals; 0 foreign files in the chat store.
+- **Last run (`v0.40.12-rc.1.xollama` tree `873ecef72`, 2026-10-28, side server, c13 r6, stock runtime b11901):** decision on opencoti: `nimble` "bug" 0.9718, noul 0.9991, score 0.8805; `clef-flash` "bug" 0.8447, noul 0.9302, score 1.0598, red 0.9854 (identical to 2026-10-27). Chat: 6 turns, the OpenAI stream (129 chunks), the tool call and its result PASS; 0 refusals; 0 foreign files in the chat store.
 
 ### G5. Council
 
@@ -753,6 +753,8 @@ Wrapper: `scripts/gates/council.sh <tag>...`, which runs
   sentence back ("The first ship came in at dawn."); each video `completed`
   with every frame the template asks for.
 - **Baseline:** speech 8 of 8; video 33 of 33 frames on both models.
+
+- **Last run (`v0.40.12-rc.1.xollama` tree `2a7c49b88`, 2026-10-28, 3090, c13 r6):** speech 8 of 8, each read back as "The first ship came in at dawn" (transcription through the v0.40.12 `mediaTranscriptionMiddleware`); Wan2.1 33 frames in 71 s, Wan2.2 33 frames in 49 s; 0 crash lines; 0 foreign files. It first failed: the store root `/srv/ml/media-store/models` was `root:root 755` and still in the pre-v0.40 layout, so the server, running as `ollama`, could not create `manifests-v2/` (speech 500, video 404; bug-338). The store root is now `ollama:ollama 2775`. Pass `MSTORE=/srv/ml/media-store/models`, not its parent.
 
 ### G7. Vulkan on Linux, through the image
 
@@ -802,7 +804,8 @@ Wrapper: `scripts/gates/council.sh <tag>...`, which runs
   GPU 5.3 tok/s, 37/37 layers; speech 4 of 4; the Vulkan library says "abi
   ggml 41ba479c24d7 matches this engine"; ten `POST /shutdown` and reopen
   cycles clean.
-- **Last run (`v0.40.11-xollama.1` tree `457f7d627`, 2026-10-27, eleven2go, engine c13 r6 + cuda12 `2610270912001`):** the cross-built `xollama.exe` in a side directory shaped like the install (the installed `lib\ollama` plus the staged `engines`); a bare `xollama.exe` finds no stock runtime and every load fails "llama-server binary not found". A: stable ids. B: 3090 123.7 to 125.1 on `ggml-cuda-win-x86_64.dll` (CUDA 13; the new CUDA 12 DLL beside it is not taken). C: 9070 XT 100.4 cold, 102.9 to 103.1, props/kv 200, 103.7 after the idle, card OK, 0 dumps. E: engine gone 651 ms after the kill. D: integrated 5.4, 37/37. Speech not run (media untouched). 22434 and 11434 untouched. Targeted (zns, GTX 1070 cc 6.1, the same side layout, owner's kvarn3 KV): `ggml-cuda-cu12-x86_64.dll` loaded, 17/17 layers, `llama3.2:1b` 512 tokens 89.8 / 89.9 / 89.7 tok/s; the released build crashed on the same load (0xc0000409). Every part pins its GPU: an unpinned model follows the host's `gpu` policy, and eleven2go's fills the 9070 XT first (an unpinned B measured the 9070 XT on 2026-10-25).
+- **Last run (`v0.40.12-rc.1.xollama` dry-run draft, run 40689847133, 2026-10-28, eleven2go, AMD Software 32.0.32015.2008, engine c13 r6 `2610182159001`):** beside the INSTALLED draft (`windows-side.ps1` defaults to the installed `xollama.exe` and the engine in its `lib\ollama\engines`), run in the logged-in session through `windows-gate-run.ps1`; no cross-build. A: stable ids (CUDA0 and Vulkan1 both `0000:11:00.0`, the AMD GPUs `uuid:` with their PCI). B: 3090 123.8 cold, 125.1 warm. C: 9070 XT 102.8 cold, 103.2 to 103.3, props/kv 200, 103.6 after the idle, card OK, 0 dumps. E: engine gone 653 ms after the kill, card OK 40 s later. D: integrated 5.0, 37/37. CUDA and Vulkan "abi ggml bac5050ddc8c matches this engine". Speech (`windows-speech.ps1`, the engine staged from the pin, sha256 checked): kokoro, kittentts, supertonic:3 and outetts 4 of 4 transcribed back, "abi media b099409b3029 matches". 22434 and 11434 untouched.
+- **Before (`v0.40.11-xollama.1` tree `457f7d627`, 2026-10-27, eleven2go, engine c13 r6 + cuda12 `2610270912001`):** the cross-built `xollama.exe` in a side directory shaped like the install (the installed `lib\ollama` plus the staged `engines`); a bare `xollama.exe` finds no stock runtime and every load fails "llama-server binary not found". A: stable ids. B: 3090 123.7 to 125.1 on `ggml-cuda-win-x86_64.dll` (CUDA 13; the new CUDA 12 DLL beside it is not taken). C: 9070 XT 100.4 cold, 102.9 to 103.1, props/kv 200, 103.7 after the idle, card OK, 0 dumps. E: engine gone 651 ms after the kill. D: integrated 5.4, 37/37. Speech not run (media untouched). 22434 and 11434 untouched. Targeted (zns, GTX 1070 cc 6.1, the same side layout, owner's kvarn3 KV): `ggml-cuda-cu12-x86_64.dll` loaded, 17/17 layers, `llama3.2:1b` 512 tokens 89.8 / 89.9 / 89.7 tok/s; the released build crashed on the same load (0xc0000409). Every part pins its GPU: an unpinned model follows the host's `gpu` policy, and eleven2go's fills the 9070 XT first (an unpinned B measured the 9070 XT on 2026-10-25).
 
 ### G9. Windows, the installer
 
@@ -897,6 +900,24 @@ GPU, the stock ollama on 11434 untouched).
   Seen, open: at the load on the integrated GPU, right after the RX 9070 XT
   unload, the free-memory refresh warned "context deadline exceeded" after
   504 µs and the load went on with the old values.
+- **Last run (`v0.40.12-rc.1.xollama` dry-run draft, run 40689847133, 2026-10-28, eleven2go, AMD Software 32.0.32015.2008):**
+  installers sha256-checked against `sha256sum.txt`; over the installed
+  `0.40.11-xollama.1` the full installer exits 0 in 351 s, version
+  `0.40.12-rc.1.xollama`, `PAYLOAD_ID` `63c8df03…` (the draft's), a new server
+  on 22434, `/api/xollama` and devices served. Five 512-token runs of
+  `qwen3:8b`: RTX 3090 123.8 cold, 125.0 to 125.2 warm; RX 9070 XT 101.1 cold,
+  102.2 to 102.5; integrated GPU 4.8 (5.0 in G8 D the same hour); 37/37 on each;
+  the refresh warning above seen again on the integrated GPU load. The small
+  installer over it exits 0 in 696 s, version unchanged, a new server pid.
+  Displays `OK`; ollama on 11434 untouched (same pid since 2026-10-23).
+  **MLX:** the full installer's download of the pinned runtime (924 MB from the
+  fork's `v0.40.12-thinkbudget`) broke after 5 minutes, "Error reading data:
+  (12030) The connection with the server was terminated abnormally", and the
+  install finished without MLX, as designed ("MLX: NOT installed"); the asset's
+  size and sha256 are the pin's. The small installer downloaded it again (881
+  MB in 11.5 minutes, about 1.3 MB/s) and installed it: `MLX_ID` = the pin. So
+  a slow or broken link leaves a fresh install without MLX until the next
+  update; the installer says so in its log and nothing else is affected.
 
 ### G10. The image
 
@@ -953,7 +974,8 @@ GPU, the stock ollama on 11434 untouched).
   size.
 - **Baseline:** bundle built, signed and notarized from `4db0bcedb` (7 minutes); the engine through `ape` on Metal ("metal: abi ggml 41ba479c24d7 matches this engine"); `qwen2.5:1.5b` 125.9 to 127.4 tok/s, 29/29 layers; `llama3` 31.3 to 31.7 tok/s, 33/33 layers (four 512-token runs each); speech 7 of 7 answered, 6 transcribed back exactly and the OuteTTS `narrator` voice as "The first shoot came in at dawn."; no crash line in the server log.
 
-- **Last run (`v0.40.6-xollama.1`, 2026-10-22, Mac mini):** signing/notarize/staple/codesign ok; version right; qwen2.5 125.5 / llama3 31.5 / qwen3.5 63.2 tok/s; speech 7/7; 0 crashes; self-update 0.40.6-xollama → .1 verified.
+- **Last run (`v0.40.12-rc.1.xollama` dry-run draft, run 40689847133, 2026-10-28, Mac mini, `mac-ci.sh`):** Gatekeeper `Notarized Developer ID` on app and DMG, staples validate, codesign ok; MLX `mlx_metal_v3`/`v4` from the v0.40.12 pin; version right; engine c13 through Metal ("abi ggml bac5050ddc8c matches"); qwen2.5 125.4 to 125.8 / llama3 31.4 to 31.7 / qwen3.5 63.0 to 63.2 tok/s (512 tokens, 26/26, 29/29 and 33/33 layers); speech 7/7 (narrator "shoot", as in the baseline; `supertonic:3-q8_0` is asked for `wav` and answered WAVE); 0 crashes. Self-update not run (no change to `app/updater`).
+- **Before (`v0.40.6-xollama.1`, 2026-10-22, Mac mini):** signing/notarize/staple/codesign ok; version right; qwen2.5 125.5 / llama3 31.5 / qwen3.5 63.2 tok/s; speech 7/7; 0 crashes; self-update 0.40.6-xollama → .1 verified.
 
 ### G12. The published artifact
 

@@ -366,7 +366,7 @@ func TestTranscriptionGoesToTheEngineOnlyForAModelWithSpeechToText(t *testing.T)
 	})
 	upstream := 0
 	r := gin.New()
-	r.POST("/v1/audio/transcriptions", s.mediaTranscriptionMiddleware(), func(c *gin.Context) {
+	r.POST("/v1/audio/transcriptions", s.mediaTranscriptionMiddleware(false), func(c *gin.Context) {
 		upstream++
 		if c.Request.FormValue("model") != "gemma3n" {
 			t.Errorf("upstream's shim saw model %q", c.Request.FormValue("model"))
@@ -398,6 +398,43 @@ func TestTranscriptionGoesToTheEngineOnlyForAModelWithSpeechToText(t *testing.T)
 	}
 
 	// A model without speech-to-text is upstream's, untouched.
+	if w := post("gemma3n"); w.Code != http.StatusTeapot || upstream != 1 {
+		t.Fatalf("gemma3n = %d (upstream %d)", w.Code, upstream)
+	}
+}
+
+// Since upstream v0.40.12 /v1/audio/translations is upstream's too
+// (TranslationHandler): a model with a speech-to-text engine is still served
+// by it, at the engine's translations path, and every other goes on.
+func TestTranslationGoesToTheEngineOnlyForAModelWithSpeechToText(t *testing.T) {
+	mediaStore(t)
+	s, e := mediaServer(t, map[string]*xollama.Media{
+		"whisper": {STT: &xollama.STTMedia{Model: mediaDigest(t, []byte("whisper"))}},
+	})
+	upstream := 0
+	r := gin.New()
+	r.POST("/v1/audio/translations", s.mediaTranscriptionMiddleware(true), func(c *gin.Context) {
+		upstream++
+		if c.Request.FormValue("model") != "gemma3n" {
+			t.Errorf("upstream's handler saw model %q", c.Request.FormValue("model"))
+		}
+		c.Status(http.StatusTeapot)
+	})
+	post := func(model string) *httptest.ResponseRecorder {
+		body, ct := multipartBody(t, map[string]string{"model": model}, map[string][]string{"file": {"RIFF"}})
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/v1/audio/translations", body)
+		req.Header.Set("Content-Type", ct)
+		r.ServeHTTP(w, req)
+		return w
+	}
+
+	if w := post("whisper"); w.Code != http.StatusOK || upstream != 0 {
+		t.Fatalf("whisper = %d %s (upstream %d)", w.Code, w.Body.String(), upstream)
+	}
+	if p := e.last(t).path; p != "/v1/audio/translations" {
+		t.Fatalf("a translation was served at %s", p)
+	}
 	if w := post("gemma3n"); w.Code != http.StatusTeapot || upstream != 1 {
 		t.Fatalf("gemma3n = %d (upstream %d)", w.Code, upstream)
 	}

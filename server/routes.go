@@ -1040,9 +1040,9 @@ func (s *Server) SystemOneHandler(c *gin.Context) {
 		return
 	}
 	textLimit := 64 << 10
-	if m.Config.Renderer == "kev" {
-		// Kev shares the state across question rows and admits up to 65,536
-		// state tokens, which can exceed the generic decision prompt cap.
+	if m.Config.Renderer == "kev" || m.Config.Renderer == "d1" {
+		// Kev and d1 share the state across question rows and admit long
+		// states, which can exceed the generic decision prompt cap.
 		textLimit = 1 << 20
 	}
 	if textSize > textLimit {
@@ -1055,7 +1055,7 @@ func (s *Server) SystemOneHandler(c *gin.Context) {
 	}
 	var encoding string
 	switch m.Config.Renderer {
-	case "tev1", "clef", "strands", "kev", "pplx", "d3":
+	case "tev1", "clef", "strands", "kev", "pplx", "d3", "d1":
 		encoding = m.Config.Renderer
 	}
 	compiled, err := decision.Compile(req, encoding)
@@ -1071,8 +1071,14 @@ func (s *Server) SystemOneHandler(c *gin.Context) {
 		compiled.Request.System = m.System
 	}
 	caps := []model.Capability{model.CapabilityDecision}
-	if len(req.Images) > 0 {
-		caps = append(caps, model.CapabilityVision)
+	for _, data := range req.Images {
+		media := model.CapabilityVision
+		if llm.DetectMediaKind(data) == llm.MediaKindAudio {
+			media = model.CapabilityAudio
+		}
+		if !slices.Contains(caps, media) {
+			caps = append(caps, media)
+		}
 	}
 	r, _, _, err := s.scheduleRunnerForModel(c.Request.Context(), m, caps, nil, req.KeepAlive, nil)
 	if err != nil {
@@ -2093,7 +2099,7 @@ func GetModelInfo(req api.ShowRequest) (*api.ShowResponse, error) {
 		resp.Thinking = m.Thinking()
 	}
 	if slices.Contains(resp.Capabilities, model.CapabilitySpeech) {
-		resp.Voices = speechVoices(mf)
+		resp.Voices = append(speechVoices(mf), m.Config.Voices...)
 	}
 
 	if summaries, err := manifestSummariesForShow(name, mf.SelectedDigest()); err != nil {
@@ -2176,6 +2182,16 @@ func GetModelInfo(req api.ShowRequest) (*api.ShowResponse, error) {
 	// For safetensors completion and decision models, populate ModelInfo from config.json.
 	if isSafetensorsLLM {
 		if info, err := getSafetensorsLLMInfoForRunner(name, req.Runner); err == nil {
+			// Lengths create recorded in the manifest take precedence over what
+			// the shared config.json reading finds.
+			if arch, ok := info["general.architecture"].(string); ok && arch != "" {
+				if m.Config.ContextLen > 0 {
+					info[arch+".context_length"] = m.Config.ContextLen
+				}
+				if m.Config.EmbedLen > 0 {
+					info[arch+".embedding_length"] = m.Config.EmbedLen
+				}
+			}
 			resp.ModelInfo = info
 		}
 		// Populate tensor info if verbose
@@ -2604,11 +2620,11 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.GET("/v1/models/:model", cloudModelPathPassthroughMiddleware(cloudErrRemoteModelDetailsUnavailable), middleware.RetrieveMiddleware(), s.ShowHandler)
 	r.POST("/v1/responses", s.withInferenceRequestLogging("/v1/responses", s.responsesCompactionMiddleware(), cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.ResponsesMiddleware(lookupThinking), s.ChatHandler)...)
 	r.POST("/v1/responses/compact", s.ResponsesCompactHandler)
-	// OpenAI-compatible audio endpoint
-	r.POST("/v1/audio/transcriptions", s.mediaTranscriptionMiddleware(), middleware.TranscriptionMiddleware(), s.ChatHandler) // xollama-hook: media
-	// xollama-hook: media — the OpenAI media routes, served by a model's media
-	// engines (server/media_routes.go).
-	r.POST("/v1/audio/translations", s.TranslationsHandler)
+	// OpenAI-compatible audio endpoints
+	// xollama-hook: media — a model with a speech-to-text engine is served by it
+	// (server/media_routes.go); every other goes on to upstream's handler.
+	r.POST("/v1/audio/transcriptions", s.mediaTranscriptionMiddleware(false), s.TranscriptionHandler) // xollama-hook: media
+	r.POST("/v1/audio/translations", s.mediaTranscriptionMiddleware(true), s.TranslationHandler)      // xollama-hook: media
 	r.POST("/v1/audio/speech", s.SpeechHandler)
 	r.POST("/v1/images/generations", s.ImageGenerationsHandler)
 	r.POST("/v1/images/edits", s.ImageEditsHandler)
@@ -3028,8 +3044,8 @@ func (s *Server) PsHandler(c *gin.Context) {
 		}
 
 		contextLength := v.contextLength
-		if slices.Contains(m.Config.Capabilities, "speech") {
-			// Speech models have no text context.
+		if slices.Contains(m.Config.Capabilities, "speech") && !slices.Contains(m.Config.Capabilities, "completion") {
+			// Speech-only models have no text context.
 			contextLength = 0
 		}
 

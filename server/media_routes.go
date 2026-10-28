@@ -589,26 +589,23 @@ func (s *Server) SpeechHandler(c *gin.Context) {
 	s.serveMedia(c, name, CapabilitySpeech, "tts", "/v1/audio/speech", data, "application/json", nil)
 }
 
-// TranslationsHandler serves POST /v1/audio/translations, which upstream
-// does not have: only a model with a speech-to-text engine answers it.
-func (s *Server) TranslationsHandler(c *gin.Context) {
-	form, ok := readForm(c)
-	if !ok {
-		return
-	}
-	s.serveTranscription(c, form, true)
-}
-
-// mediaTranscriptionMiddleware sends /v1/audio/transcriptions to the model's
+// mediaTranscriptionMiddleware sends /v1/audio/transcriptions (translate
+// false) and /v1/audio/translations (translate true) to the model's
 // speech-to-text engine when it has one. Every other model goes on to
-// upstream's audio-LLM shim, which finds the form already parsed exactly as
-// it would have parsed it (same call, same limit).
+// upstream's handler (TranscriptionHandler, TranslationHandler since
+// v0.40.12), which finds the form already parsed exactly as it would have
+// parsed it: the same upload cap, the same call and limit, the same errors.
 //
-// xollama-hook: media (in front of middleware.TranscriptionMiddleware)
-func (s *Server) mediaTranscriptionMiddleware() gin.HandlerFunc {
+// xollama-hook: media (in front of upstream's TranscriptionHandler and TranslationHandler)
+func (s *Server) mediaTranscriptionMiddleware(translate bool) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if err := c.Request.ParseMultipartForm(25 << 20); err != nil {
-			c.AbortWithStatusJSON(http.StatusBadRequest, openai.NewError(http.StatusBadRequest, "failed to parse multipart form: "+err.Error()))
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxAudioUploadBytes)
+		if err := c.Request.ParseMultipartForm(32 << 20); err != nil {
+			if tooLarge := new(http.MaxBytesError); errors.As(err, &tooLarge) {
+				openAIError(c, http.StatusRequestEntityTooLarge, fmt.Sprintf("audio uploads are limited to %d MB", maxAudioUploadBytes>>20))
+				return
+			}
+			openAIError(c, http.StatusBadRequest, "failed to parse multipart form: "+err.Error())
 			return
 		}
 		m, err := GetModel(mediaName(c.Request.FormValue("model"), CapabilityTranscription))
@@ -616,7 +613,7 @@ func (s *Server) mediaTranscriptionMiddleware() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		s.serveTranscription(c, c.Request.MultipartForm, false)
+		s.serveTranscription(c, c.Request.MultipartForm, translate)
 		c.Abort()
 	}
 }
