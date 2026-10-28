@@ -597,7 +597,7 @@ func TestRunPipedOutputIsPlain(t *testing.T) {
 			http.NotFound(w, r)
 		}
 	}))
-	t.Setenv("OLLAMA_HOST", mockServer.URL)
+	t.Setenv("XOLLAMA_HOST", mockServer.URL)
 	t.Cleanup(mockServer.Close)
 
 	cmd := &cobra.Command{}
@@ -655,7 +655,7 @@ func TestRunChatSpeechModelVoice(t *testing.T) {
 					http.NotFound(w, r)
 				}
 			}))
-			t.Setenv("OLLAMA_HOST", mockServer.URL)
+			t.Setenv("XOLLAMA_HOST", mockServer.URL)
 			t.Cleanup(mockServer.Close)
 
 			cmd := &cobra.Command{}
