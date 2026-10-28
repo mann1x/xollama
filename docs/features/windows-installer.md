@@ -334,8 +334,12 @@ a GGUF variant run on opencoti regardless (`opencoti-first`).
   1803+), else `Expand-Archive`, into a staging directory under `lib\ollama`,
   then renamed into place. 2.06 GB unpacked: the MLX and CUDA 13/cuDNN 9 DLLs
   and the CUDA headers MLX compiles kernels against.
-- **Failure:** said, never hidden: a message box (the setup log when silent),
-  and the install finishes without MLX; running it again retries.
+- **Failure:** a failed download is tried again, three attempts in all, 10 s
+  and then 20 s apart, each one from the start and sha256-checked (the 924 MB
+  archive broke off after 5 minutes on eleven2go in G9 of v0.40.12-rc.1, WinINet
+  12030, and the next download went through). One that fails three times is
+  said, never hidden: a message box (the setup log when silent), and the install
+  finishes without MLX; running it again retries.
 - **Checked:** the release job's "the installers install" step runs the full
   installer with `/MLX=always` and refuses a missing or wrong `MLX_ID`, then
   the update installer over it. Guard `TestBothInstallersFetchThePinnedMLX`.

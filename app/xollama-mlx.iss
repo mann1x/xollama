@@ -40,9 +40,10 @@
 // KeepMLX moves a current mlx_cuda_v13 AND its cuda_v13 DLLs out of the way
 // first and InstallMLX puts both back.
 //
-// A failed download is said, never hidden: a message box (the setup log when
-// silent), and the install finishes without MLX -- every GGUF model still
-// runs. Running the installer again retries.
+// A failed download is tried again, up to MLXAttempts in all. One that still
+// fails is said, never hidden: a message box (the setup log when silent), and
+// the install finishes without MLX -- every GGUF model still runs. Running the
+// installer again retries.
 
 #if GetEnv("PKG_MLX_URL") != ""
   #define PKG_MLX_URL GetEnv("PKG_MLX_URL")
@@ -54,6 +55,10 @@
 
 const
   MLXDir = 'mlx_cuda_v13';
+  // Downloads of the archive before the install gives up on MLX, and the wait
+  // before the second (then twice that before the third), in milliseconds.
+  MLXAttempts = 3;
+  MLXRetryWait = 10000;
   // The GGML CUDA-13 backend's directory, which the MLX archive's own
   // cuda_v13 DLLs are merged into (see LAYOUT above).
   CudaDir = 'cuda_v13';
@@ -257,9 +262,10 @@ end;
 // After the files are installed, by both installers.
 procedure InstallMLX();
 var
-  Zip, Staging, Names: string;
+  Zip, Staging, Names, Why: string;
   Kept: TArrayOfString;
-  I: Integer;
+  I, Attempt: Integer;
+  Done: Boolean;
 begin
   if not MLXWanted() then begin
     DelTree(MLXKeepDir(), True, True, True);
@@ -286,11 +292,29 @@ begin
     Log('MLX: runtime {#PKG_MLX_SHA256} already installed');
     exit;
   end;
-  Log('MLX: downloading {#PKG_MLX_URL}');
-  try
-    DownloadTemporaryFile('{#PKG_MLX_URL}', 'xollama-mlx.zip', '{#PKG_MLX_SHA256}', @MLXProgress);
-  except
-    MLXFailed('the download failed or its sha256 is not the pinned one: ' + GetExceptionMessage);
+  // A dropped connection is retried: the 924 MB archive broke off after 5
+  // minutes on eleven2go (WinINet 12030, G9 of v0.40.12-rc.1) and the next try
+  // went through. Each attempt starts over; the sha256 check is the same.
+  Attempt := 0;
+  Done := False;
+  while not Done and (Attempt < MLXAttempts) do begin
+    Attempt := Attempt + 1;
+    Log(Format('MLX: downloading {#PKG_MLX_URL} (attempt %d of %d)', [Attempt, MLXAttempts]));
+    try
+      DownloadTemporaryFile('{#PKG_MLX_URL}', 'xollama-mlx.zip', '{#PKG_MLX_SHA256}', @MLXProgress);
+      Done := True;
+    except
+      Why := GetExceptionMessage;
+      Log(Format('MLX: attempt %d failed: %s', [Attempt, Why]));
+    end;
+    if not Done and (Attempt < MLXAttempts) then begin
+      if not WizardSilent then
+        WizardForm.StatusLabel.Caption := Format('The MLX download failed; retrying (%d of %d)...', [Attempt + 1, MLXAttempts]);
+      Sleep(MLXRetryWait * Attempt);
+    end;
+  end;
+  if not Done then begin
+    MLXFailed(Format('the download failed %d times or its sha256 is not the pinned one: ', [MLXAttempts]) + Why);
     exit;
   end;
   if not WizardSilent then
