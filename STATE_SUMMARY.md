@@ -5,6 +5,15 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-28 — impact analysis of `v0.40.12-rc.2.xollama` (owner 16:00: "yes it should retry"; `xo-43`).** rc.1 is published (PR #48, merge `7139b0c96`, release run 40712963630, payload id `63c8df03…`). Its G9 lost the MLX runtime in the full install to a dropped download; rc.2 is rc.1 plus the retry. Diff `origin/main..origin/dev` beyond the rc.1 records: `99101a6ca`, three paths.
+> - **`app/xollama-mlx.iss`** (`InstallMLX` downloads up to three times, 10 s then 20 s apart, each sha256-checked), row Windows installer: **G9**, both installers, plus the targeted check below. The release workflow's Windows job runs both installers on the runner first.
+> - **`app/updater/installer_script_test.go`** (the guard, which fails on the old script): **G1**.
+> - **`docs/features/windows-installer.md`:** docs.
+> - **Always:** G1, G2, G12.
+> - **Not triggered:** G3 to G8, G10, G11. No server, engine, runtime, image or macOS input moved; the `.iss` is in neither the image nor the macOS app. rc.1's G10 stands for rc.2.
+> - **Targeted check:** the real `xollama-mlx.iss` in a test installer on eleven2go, its download served by a solidPC server that cuts the first connection halfway. The fixed script must install on the second attempt; the old one (control) must end without MLX; a server that always cuts must give three attempts and a clean finish.
+> - **Order:** a dry run on the rc.2 PR, G9 and the targeted check on its draft, the records committed before the merge, so the release is cut from rc.2's tree.
+
 > **2026-10-28 — impact analysis of `v0.40.12-rc.1.xollama` (standing fork-follow go; `xo-43`).** Diff `origin/main..origin/dev` (`9b636064f`): 150 paths, all from the v0.40.12 sync. Per row of VALIDATION "Which gates a change needs":
 > - **Always:** G1 (green on the branch), G2, G12.
 > - **`llm/`** (`llm/score.go`, upstream's d1 scoring): **G3, G4, G8**.
