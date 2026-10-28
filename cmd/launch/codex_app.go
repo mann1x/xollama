@@ -2124,7 +2124,7 @@ func codexAppDarwinOpenArgs(path string) []string {
 func defaultCodexAppOpenAppPath(path string) error {
 	switch codexAppGOOS {
 	case "windows":
-		return exec.Command("powershell.exe", "-NoProfile", "-Command", "Start-Process -FilePath "+quotePowerShellString(path)).Run()
+		return noConsole(exec.Command("powershell.exe", "-NoProfile", "-Command", "Start-Process -FilePath "+quotePowerShellString(path))).Run() // xollama-hook: no-console
 	case "darwin":
 		cmd := exec.Command("open", codexAppDarwinOpenArgs(path)...)
 		cmd.Stdout = os.Stdout
@@ -2136,13 +2136,13 @@ func defaultCodexAppOpenAppPath(path string) error {
 }
 
 func defaultCodexAppOpenStartAppID(appID string) error {
-	return exec.Command("powershell.exe", "-NoProfile", "-Command", "Start-Process "+quotePowerShellString(`shell:AppsFolder\`+appID)).Run()
+	return noConsole(exec.Command("powershell.exe", "-NoProfile", "-Command", "Start-Process "+quotePowerShellString(`shell:AppsFolder\`+appID))).Run() // xollama-hook: no-console
 }
 
 func defaultCodexAppQuitApp() error {
 	if codexAppGOOS == "windows" {
 		script := `Get-Process ChatGPT,Codex -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object { [void]$_.CloseMainWindow() }`
-		return exec.Command("powershell.exe", "-NoProfile", "-Command", script).Run()
+		return noConsole(exec.Command("powershell.exe", "-NoProfile", "-Command", script)).Run() // xollama-hook: no-console
 	}
 
 	scriptErr := exec.Command("osascript", "-e", `tell application "ChatGPT" to quit`).Run()
@@ -2202,7 +2202,7 @@ func codexAppMatchingProcessIDs() []int {
 
 func codexAppWindowsMatchingProcessIDs() []int {
 	script := fmt.Sprintf(`$current = %d; Get-CimInstance Win32_Process -Filter "Name = 'Codex.exe' OR Name = 'codex.exe' OR Name = 'ChatGPT.exe' OR Name = 'chatgpt.exe'" | Where-Object { $_.ProcessId -ne $current -and ((($_.Name -ieq 'Codex.exe' -or $_.Name -ieq 'ChatGPT.exe') -and (($null -eq $_.CommandLine) -or ($_.CommandLine -notlike '* --type=*'))) -or ((($_.Name -ieq 'codex.exe') -or ($_.Name -ieq 'chatgpt.exe')) -and ($_.CommandLine -like '*app-server*'))) } | Select-Object -ExpandProperty ProcessId`, os.Getpid())
-	out, err := exec.Command("powershell.exe", "-NoProfile", "-Command", script).Output()
+	out, err := noConsole(exec.Command("powershell.exe", "-NoProfile", "-Command", script)).Output() // xollama-hook: no-console
 	if err != nil {
 		return nil
 	}
@@ -2222,7 +2222,7 @@ func defaultCodexAppRunningAppPath() string {
 		return ""
 	}
 	script := `(Get-Process ChatGPT,Codex -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 -and $_.Path } | Select-Object -First 1 -ExpandProperty Path)`
-	out, err := exec.Command("powershell.exe", "-NoProfile", "-Command", script).Output()
+	out, err := noConsole(exec.Command("powershell.exe", "-NoProfile", "-Command", script)).Output() // xollama-hook: no-console
 	if err != nil {
 		return ""
 	}
@@ -2234,7 +2234,7 @@ func defaultCodexAppStartAppID() string {
 		return ""
 	}
 	script := `(Get-StartApps | Where-Object { $_.Name -eq 'ChatGPT' -or $_.Name -like 'ChatGPT*' -or $_.Name -eq 'Codex' -or $_.Name -like 'Codex*' } | Select-Object -First 1 -ExpandProperty AppID)`
-	out, err := exec.Command("powershell.exe", "-NoProfile", "-Command", script).Output()
+	out, err := noConsole(exec.Command("powershell.exe", "-NoProfile", "-Command", script)).Output() // xollama-hook: no-console
 	if err != nil {
 		return ""
 	}

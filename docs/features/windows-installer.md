@@ -388,3 +388,21 @@ executables), and the uninstaller runs it from `[UninstallRun]`. It stops:
 It replaces `taskkill /im llama-server.exe`, which also stopped a stock
 Ollama's runners beside it and never reached the opencoti engine.
 `-List` prints what it would stop without stopping anything.
+
+## No console windows from the desktop app
+
+The desktop app (`xOllama app.exe`) is a GUI process with no console. When its
+UI lists the integrations, it asks each one whether it is installed or running,
+and on Windows the Codex, Claude Desktop and VS Code checks do that with
+PowerShell. Started bare, each of those PowerShell processes got a console
+window of its own: the blue window seen at every start (owner, 2026-10-28;
+traced on zns: `xOllama app.exe` started `powershell.exe` and its `conhost.exe`
+2.4 s after the app). The code is upstream's (`cmd/launch`), unfixed there at
+v0.40.13-rc0.
+
+Every PowerShell command in `cmd/launch` now goes through `noConsole`
+(`no-console` hook), which sets `HideWindow` and `CREATE_NO_WINDOW` on Windows.
+The interactive installers the launchers run in a terminal (`claude`, `qwen`,
+`kimi`, `hermes`) keep their console. `TestEveryLauncherPowerShellRunsWithoutAConsole`
+fails on any PowerShell command in the package that is not wrapped, so a new
+upstream call is caught at the first sync.
