@@ -955,7 +955,8 @@ GPU, the stock ollama on 11434 untouched).
   size.
 - **Baseline:** bundle built, signed and notarized from `4db0bcedb` (7 minutes); the engine through `ape` on Metal ("metal: abi ggml 41ba479c24d7 matches this engine"); `qwen2.5:1.5b` 125.9 to 127.4 tok/s, 29/29 layers; `llama3` 31.3 to 31.7 tok/s, 33/33 layers (four 512-token runs each); speech 7 of 7 answered, 6 transcribed back exactly and the OuteTTS `narrator` voice as "The first shoot came in at dawn."; no crash line in the server log.
 
-- **Last run (`v0.40.6-xollama.1`, 2026-10-22, Mac mini):** signing/notarize/staple/codesign ok; version right; qwen2.5 125.5 / llama3 31.5 / qwen3.5 63.2 tok/s; speech 7/7; 0 crashes; self-update 0.40.6-xollama → .1 verified.
+- **Last run (`v0.40.12-rc.1.xollama` dry-run draft, run 40689847133, 2026-10-28, Mac mini, `mac-ci.sh`):** Gatekeeper `Notarized Developer ID` on app and DMG, staples validate, codesign ok; MLX `mlx_metal_v3`/`v4` from the v0.40.12 pin; version right; engine c13 through Metal ("abi ggml bac5050ddc8c matches"); qwen2.5 125.4 to 125.8 / llama3 31.4 to 31.7 / qwen3.5 63.0 to 63.2 tok/s (512 tokens, 26/26, 29/29 and 33/33 layers); speech 7/7 (narrator "shoot", as in the baseline; `supertonic:3-q8_0` is asked for `wav` and answered WAVE); 0 crashes. Self-update not run (no change to `app/updater`).
+- **Before (`v0.40.6-xollama.1`, 2026-10-22, Mac mini):** signing/notarize/staple/codesign ok; version right; qwen2.5 125.5 / llama3 31.5 / qwen3.5 63.2 tok/s; speech 7/7; 0 crashes; self-update 0.40.6-xollama → .1 verified.
 
 ### G12. The published artifact
 
