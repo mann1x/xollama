@@ -5,6 +5,18 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-28 — impact analysis of `v0.40.12-rc.1.xollama` (standing fork-follow go; `xo-43`).** Diff `origin/main..origin/dev` (`9b636064f`): 150 paths, all from the v0.40.12 sync. Per row of VALIDATION "Which gates a change needs":
+> - **Always:** G1 (green on the branch), G2, G12.
+> - **`llm/`** (`llm/score.go`, upstream's d1 scoring): **G3, G4, G8**.
+> - **Media** (`server/media_routes.go`, the transcription/translation middleware): **G6**, **the speech parts of G8**, **G10**, **G11**.
+> - **The llama.cpp runtime** (`LLAMA_CPP_VERSION` b11901, the Linux amd64/arm64, darwin and Windows CPU runtime pins): **G3 on llama.cpp, G9, G10**.
+> - **No row, named with what reaches them:**
+>   - `model/renderers/`, `model/parsers/`, `decision/` (d1, strands), `openai/`, `middleware/openai.go`, `types/model/config.go`, and `server/` routes, prompt, images, transcription and speech are reached through the chat and decision paths: **G4**, including `decision.sh`.
+>   - `mlx/`, `mlxrunner/` (DFlash2, LFM3, sdpa, rotating cache), `MLX_VERSION`, `MLX_C_VERSION` and the darwin and Windows MLX pins are reached by MLX on macOS (**G11**), the Windows MLX download at install (**G9**), and the image's mlx gpu row (**G10**).
+>   - `create/` (LFM3 import) and `cmd/launch/opencode.go` are covered by G1's unit tests. The `integration/` tests are build-tagged and not a gate.
+> - **Not triggered:** G5 (no council path moved) and G7 (the engine pin is unchanged, c13 r6). No gate failed or regressed at `v0.40.11-xollama.1`.
+> - **Set:** G1, G2, G3 (both engines), G4 (chat + decision), G6, G8 (with speech), G9, G10, G11, G12.
+
 > **2026-10-28 — upstream sync v0.40.11 → v0.40.12 (`sync/upstream-v0.40.12`), on the fork's move (fork mail #1999, standing go per FORK-SYNC step 6; `xo-43`).** Upstream v0.40.12 is 7 commits and 138 files: the llama.cpp bump to b11901 (#19311), MLX/MLX-C bumped (gemma/flint/laguna prompt speed, #19291), the DFlash2 draft model (#19149), MLX LFM3 and d1 models (#19333), compact Gemma 4 vision detail (#19247), OpenCode v2 launch parsing (#19310) and Kimi CLI tool-only turns (#19312).
 > - **The upstream merge** is `3cc386706`. One conflict: upstream now serves `/v1/audio/transcriptions` and `/v1/audio/translations` itself (`TranscriptionHandler`, `TranslationHandler`). Our `media` hook is now `mediaTranscriptionMiddleware(translate)` in front of both: a model with a speech-to-text engine goes to opencoti, any other falls through to upstream's handler. Our own `TranslationsHandler` is gone. New test `TestTranslationGoesToTheEngineOnlyForAModelWithSpeechToText`; the Registry row and `docs/xollama/media.mdx` are updated.
 > - **The fork's 31 patches** went in at the manifest shas (manifest `2e2505d5`), each its own `--no-ff` merge in `patches[]` order, ending at `e863c4e7f`. The merge shas are in `docs/protocols/CARRIED-PATCHES.md` and were sent to the fork (#2000).
