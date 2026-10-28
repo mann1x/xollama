@@ -804,7 +804,8 @@ Wrapper: `scripts/gates/council.sh <tag>...`, which runs
   GPU 5.3 tok/s, 37/37 layers; speech 4 of 4; the Vulkan library says "abi
   ggml 41ba479c24d7 matches this engine"; ten `POST /shutdown` and reopen
   cycles clean.
-- **Last run (`v0.40.11-xollama.1` tree `457f7d627`, 2026-10-27, eleven2go, engine c13 r6 + cuda12 `2610270912001`):** the cross-built `xollama.exe` in a side directory shaped like the install (the installed `lib\ollama` plus the staged `engines`); a bare `xollama.exe` finds no stock runtime and every load fails "llama-server binary not found". A: stable ids. B: 3090 123.7 to 125.1 on `ggml-cuda-win-x86_64.dll` (CUDA 13; the new CUDA 12 DLL beside it is not taken). C: 9070 XT 100.4 cold, 102.9 to 103.1, props/kv 200, 103.7 after the idle, card OK, 0 dumps. E: engine gone 651 ms after the kill. D: integrated 5.4, 37/37. Speech not run (media untouched). 22434 and 11434 untouched. Targeted (zns, GTX 1070 cc 6.1, the same side layout, owner's kvarn3 KV): `ggml-cuda-cu12-x86_64.dll` loaded, 17/17 layers, `llama3.2:1b` 512 tokens 89.8 / 89.9 / 89.7 tok/s; the released build crashed on the same load (0xc0000409). Every part pins its GPU: an unpinned model follows the host's `gpu` policy, and eleven2go's fills the 9070 XT first (an unpinned B measured the 9070 XT on 2026-10-25).
+- **Last run (`v0.40.12-rc.1.xollama` dry-run draft, run 40689847133, 2026-10-28, eleven2go, AMD Software 32.0.32015.2008, engine c13 r6 `2610182159001`):** beside the INSTALLED draft (`windows-side.ps1` defaults to the installed `xollama.exe` and the engine in its `lib\ollama\engines`), run in the logged-in session through `windows-gate-run.ps1`; no cross-build. A: stable ids (CUDA0 and Vulkan1 both `0000:11:00.0`, the AMD GPUs `uuid:` with their PCI). B: 3090 123.8 cold, 125.1 warm. C: 9070 XT 102.8 cold, 103.2 to 103.3, props/kv 200, 103.6 after the idle, card OK, 0 dumps. E: engine gone 653 ms after the kill, card OK 40 s later. D: integrated 5.0, 37/37. CUDA and Vulkan "abi ggml bac5050ddc8c matches this engine". Speech (`windows-speech.ps1`, the engine staged from the pin, sha256 checked): kokoro, kittentts, supertonic:3 and outetts 4 of 4 transcribed back, "abi media b099409b3029 matches". 22434 and 11434 untouched.
+- **Before (`v0.40.11-xollama.1` tree `457f7d627`, 2026-10-27, eleven2go, engine c13 r6 + cuda12 `2610270912001`):** the cross-built `xollama.exe` in a side directory shaped like the install (the installed `lib\ollama` plus the staged `engines`); a bare `xollama.exe` finds no stock runtime and every load fails "llama-server binary not found". A: stable ids. B: 3090 123.7 to 125.1 on `ggml-cuda-win-x86_64.dll` (CUDA 13; the new CUDA 12 DLL beside it is not taken). C: 9070 XT 100.4 cold, 102.9 to 103.1, props/kv 200, 103.7 after the idle, card OK, 0 dumps. E: engine gone 651 ms after the kill. D: integrated 5.4, 37/37. Speech not run (media untouched). 22434 and 11434 untouched. Targeted (zns, GTX 1070 cc 6.1, the same side layout, owner's kvarn3 KV): `ggml-cuda-cu12-x86_64.dll` loaded, 17/17 layers, `llama3.2:1b` 512 tokens 89.8 / 89.9 / 89.7 tok/s; the released build crashed on the same load (0xc0000409). Every part pins its GPU: an unpinned model follows the host's `gpu` policy, and eleven2go's fills the 9070 XT first (an unpinned B measured the 9070 XT on 2026-10-25).
 
 ### G9. Windows, the installer
 
@@ -899,6 +900,24 @@ GPU, the stock ollama on 11434 untouched).
   Seen, open: at the load on the integrated GPU, right after the RX 9070 XT
   unload, the free-memory refresh warned "context deadline exceeded" after
   504 µs and the load went on with the old values.
+- **Last run (`v0.40.12-rc.1.xollama` dry-run draft, run 40689847133, 2026-10-28, eleven2go, AMD Software 32.0.32015.2008):**
+  installers sha256-checked against `sha256sum.txt`; over the installed
+  `0.40.11-xollama.1` the full installer exits 0 in 351 s, version
+  `0.40.12-rc.1.xollama`, `PAYLOAD_ID` `63c8df03…` (the draft's), a new server
+  on 22434, `/api/xollama` and devices served. Five 512-token runs of
+  `qwen3:8b`: RTX 3090 123.8 cold, 125.0 to 125.2 warm; RX 9070 XT 101.1 cold,
+  102.2 to 102.5; integrated GPU 4.8 (5.0 in G8 D the same hour); 37/37 on each;
+  the refresh warning above seen again on the integrated GPU load. The small
+  installer over it exits 0 in 696 s, version unchanged, a new server pid.
+  Displays `OK`; ollama on 11434 untouched (same pid since 2026-10-23).
+  **MLX:** the full installer's download of the pinned runtime (924 MB from the
+  fork's `v0.40.12-thinkbudget`) broke after 5 minutes, "Error reading data:
+  (12030) The connection with the server was terminated abnormally", and the
+  install finished without MLX, as designed ("MLX: NOT installed"); the asset's
+  size and sha256 are the pin's. The small installer downloaded it again (881
+  MB in 11.5 minutes, about 1.3 MB/s) and installed it: `MLX_ID` = the pin. So
+  a slow or broken link leaves a fresh install without MLX until the next
+  update; the installer says so in its log and nothing else is affected.
 
 ### G10. The image
 
