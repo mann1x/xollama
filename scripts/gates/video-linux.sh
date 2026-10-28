@@ -6,6 +6,8 @@ up "${MEDIA:?a writable scratch store of the video models}" serve-video.log
 for m in mannix/wan2.1:t2v-1.3b mannix/wan2.2:ti2v-5b; do
   n=$(echo $m | tr '/:.' '___'); s=$(date +%s)
   id=$(curl -s http://$H/v1/videos -d "{\"model\":\"$m\",\"prompt\":\"a red fox running through fresh snow at sunrise\",\"seed\":42}" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("id") or d)')
+  # A refused create (no id) is the result: polling it only waits out the timeout.
+  case "$id" in video_*) ;; *) echo "$m FAIL create: $id"; continue;; esac
   while :; do
     st=$(curl -s http://$H/v1/videos/$id | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("status"), d.get("error") or "")')
     case "$st" in completed*|failed*|cancel*) break;; esac

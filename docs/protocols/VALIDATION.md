@@ -683,7 +683,7 @@ registries, `:dev` moved. Promoted 2026-10-08, Discord announced.
   prompt; it is a comparison between engines on one script, not a tok/s to
   quote.
 
-- **Last run (`v0.40.11-xollama.1` tree `457f7d627`, 2026-10-27, 3090, c13 r6 + cuda12 `2610270912001`, stock runtime b11845):** opencoti 8/8, llama3 77.5, 4-slot 311, overflow 3.65; stock 8/8, 79.3, 607, overflow 2.96. Within noise of the last run except the overflow axis, which is CPU-bound and moves with host load (4.0 and 2.61 on 2026-10-25). The Linux cuda12 `.so` is the same bytes and was not loaded (the 3090 takes CUDA 13).
+- **Last run (`v0.40.12-rc.1.xollama` tree `873ecef72`, 2026-10-28, 3090, c13 r6, stock runtime b11901 `v0.40.12-thinkbudget`):** opencoti 8/8, llama3 77.7, 4-slot 309.5, overflow 3.85; stock 8/8, 79.6, 619.8, overflow 3.05. Within noise of the last run (overflow is CPU-bound and moves with host load).
 
 ### G4. Chat paths
 
@@ -714,7 +714,7 @@ registries, `:dev` moved. Promoted 2026-10-08, Discord announced.
   expected 549, got 427", and every call is a 500: that shipped in
   `v0.35.1-xollama.2`.
 
-- **Last run (`v0.40.11-xollama.1` tree `457f7d627`, 2026-10-27, side server, c13 r6):** decision on opencoti: `nimble` "bug" 0.9718, noul 0.9991, score 0.8805; `clef-flash` "bug" 0.8447, noul 0.9302, score 1.0598, red 0.9854 (identical to 2026-10-25). Chat: 6 turns, the OpenAI stream (129 chunks), the tool call and its result PASS; 0 refusals; 0 foreign files in the chat store.
+- **Last run (`v0.40.12-rc.1.xollama` tree `873ecef72`, 2026-10-28, side server, c13 r6, stock runtime b11901):** decision on opencoti: `nimble` "bug" 0.9718, noul 0.9991, score 0.8805; `clef-flash` "bug" 0.8447, noul 0.9302, score 1.0598, red 0.9854 (identical to 2026-10-27). Chat: 6 turns, the OpenAI stream (129 chunks), the tool call and its result PASS; 0 refusals; 0 foreign files in the chat store.
 
 ### G5. Council
 
@@ -753,6 +753,8 @@ Wrapper: `scripts/gates/council.sh <tag>...`, which runs
   sentence back ("The first ship came in at dawn."); each video `completed`
   with every frame the template asks for.
 - **Baseline:** speech 8 of 8; video 33 of 33 frames on both models.
+
+- **Last run (`v0.40.12-rc.1.xollama` tree `2a7c49b88`, 2026-10-28, 3090, c13 r6):** speech 8 of 8, each read back as "The first ship came in at dawn" (transcription through the v0.40.12 `mediaTranscriptionMiddleware`); Wan2.1 33 frames in 71 s, Wan2.2 33 frames in 49 s; 0 crash lines; 0 foreign files. It first failed: the store root `/srv/ml/media-store/models` was `root:root 755` and still in the pre-v0.40 layout, so the server, running as `ollama`, could not create `manifests-v2/` (speech 500, video 404; bug-338). The store root is now `ollama:ollama 2775`. Pass `MSTORE=/srv/ml/media-store/models`, not its parent.
 
 ### G7. Vulkan on Linux, through the image
 
