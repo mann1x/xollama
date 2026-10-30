@@ -683,7 +683,7 @@ registries, `:dev` moved. Promoted 2026-10-08, Discord announced.
   prompt; it is a comparison between engines on one script, not a tok/s to
   quote.
 
-- **Last run (`v0.40.12-rc.1.xollama` tree `873ecef72`, 2026-10-28, 3090, c13 r6, stock runtime b11901 `v0.40.12-thinkbudget`):** opencoti 8/8, llama3 77.7, 4-slot 309.5, overflow 3.85; stock 8/8, 79.6, 619.8, overflow 3.05. Within noise of the last run (overflow is CPU-bound and moves with host load).
+- **Last run (`v0.40.13-rc.1.xollama` dry-run draft binary, run 41034691512, 2026-10-30, 3090, c13 r6, stock runtime b11963 `v0.40.13-thinkbudget`):** opencoti 8/8, llama3 77.7, 4-slot 311.8, overflow 3.63; stock 8/8, 79.4, 601.9, overflow 3.01. Within noise of the last run (v0.40.12-rc.1: 77.7 / 309.5 / 3.85 and 79.6 / 619.8 / 3.05). Payload `/srv/ml/x4013/img`, assembled around the draft's `xollama-linux-amd64` (sha256 checked).
 
 ### G4. Chat paths
 
@@ -714,7 +714,7 @@ registries, `:dev` moved. Promoted 2026-10-08, Discord announced.
   expected 549, got 427", and every call is a 500: that shipped in
   `v0.35.1-xollama.2`.
 
-- **Last run (`v0.40.12-rc.1.xollama` tree `873ecef72`, 2026-10-28, side server, c13 r6, stock runtime b11901):** decision on opencoti: `nimble` "bug" 0.9718, noul 0.9991, score 0.8805; `clef-flash` "bug" 0.8447, noul 0.9302, score 1.0598, red 0.9854 (identical to 2026-10-27). Chat: 6 turns, the OpenAI stream (129 chunks), the tool call and its result PASS; 0 refusals; 0 foreign files in the chat store.
+- **Last run (`v0.40.13-rc.1.xollama` dry-run draft binary, 2026-10-30, side server, c13 r6, stock runtime b11963):** decision on opencoti: `nimble` "bug" 0.9718, noul 0.9991, score 0.8805; `clef-flash` "bug" 0.8447, noul 0.9302, score 1.0598, red 0.9854 (identical to 2026-10-28). Chat: 6 turns, the OpenAI stream (129 chunks), the tool call and its result PASS; 0 refusals; 0 foreign files. Targeted for the arch-engine rule (`scripts/gates/arch-stock.sh`, default engine, scratch store): `hf.co/LiquidAI/LFM3-1.7B-GGUF:Q4_K_M` on stock llama-server, the Warn line once, 256 tokens at 214 tok/s, coherent (`think:false`; with thinking on, the tokens go to `thinking`); the control pinned `engine=opencoti` refused by c13, `unknown model architecture: 'lfm3'`; `LFM2.5-1.2B-Instruct` Q4_K_M on opencoti, Paris, 376 tok/s; `repeat_last_n -1` answers on both engines; library `lfm3-audio` (GGUF, capabilities include `speech`) on stock: `/v1/audio/speech` 200, 24 kHz WAV, transcribed back as the sentence ("Hello from Exalama…"). A raw `hf.co` LFM3-Audio GGUF has no `speech` (granted by the model config only, upstream's rule).
 
 ### G5. Council
 
@@ -1001,7 +1001,7 @@ GPU, the stock ollama on 11434 untouched).
   size.
 - **Baseline:** bundle built, signed and notarized from `4db0bcedb` (7 minutes); the engine through `ape` on Metal ("metal: abi ggml 41ba479c24d7 matches this engine"); `qwen2.5:1.5b` 125.9 to 127.4 tok/s, 29/29 layers; `llama3` 31.3 to 31.7 tok/s, 33/33 layers (four 512-token runs each); speech 7 of 7 answered, 6 transcribed back exactly and the OuteTTS `narrator` voice as "The first shoot came in at dawn."; no crash line in the server log.
 
-- **Last run (`v0.40.12-rc.1.xollama` dry-run draft, run 40689847133, 2026-10-28, Mac mini, `mac-ci.sh`):** Gatekeeper `Notarized Developer ID` on app and DMG, staples validate, codesign ok; MLX `mlx_metal_v3`/`v4` from the v0.40.12 pin; version right; engine c13 through Metal ("abi ggml bac5050ddc8c matches"); qwen2.5 125.4 to 125.8 / llama3 31.4 to 31.7 / qwen3.5 63.0 to 63.2 tok/s (512 tokens, 26/26, 29/29 and 33/33 layers); speech 7/7 (narrator "shoot", as in the baseline; `supertonic:3-q8_0` is asked for `wav` and answered WAVE); 0 crashes. Self-update not run (no change to `app/updater`).
+- **Last run (`v0.40.13-rc.1.xollama` dry-run draft, run 41034691512, 2026-10-30, Mac mini, `mac-ci.sh`):** Gatekeeper `Notarized Developer ID` on app and DMG, staples validate, codesign ok; MLX `mlx_metal_v3`/`v4` from the v0.40.13 pin; version right; engine c13 through Metal ("abi ggml bac5050ddc8c matches"); qwen2.5 124.4 to 125.7 / llama3 31.2 to 31.6 / qwen3.5 60.5 to 63.6 tok/s (512 tokens, 26/26, 29/29 and 33/33 layers; qwen3.5's first run 60.5 cold); speech 7/7 (narrator "shoot", as in the baseline); 0 crashes. LFM3 on macOS: the load stays on opencoti and c13 refuses it by name, `unknown model architecture: 'lfm3'` (no routing on a platform without stock llama-server). Self-update not run (no change to `app/updater`).
 - **Before (`v0.40.6-xollama.1`, 2026-10-22, Mac mini):** signing/notarize/staple/codesign ok; version right; qwen2.5 125.5 / llama3 31.5 / qwen3.5 63.2 tok/s; speech 7/7; 0 crashes; self-update 0.40.6-xollama → .1 verified.
 
 ### G12. The published artifact

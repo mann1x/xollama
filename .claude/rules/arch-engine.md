@@ -28,6 +28,8 @@
 - Additive only (`server/arch_engine.go`, `llm/engine/arch.go`, the call in our
   own `server/xollama_settings.go`): no upstream file, no Registry row.
   Guards: `server/arch_engine_test.go` (the launch test fails with the call
-  removed), `llm/engine/arch_test.go`. Prose:
+  removed), `llm/engine/arch_test.go`. Live check:
+  `scripts/gates/arch-stock.sh` (G4), which sets no `XOLLAMA_ENGINE` because
+  `scripts/gates/serve-side.sh` forces opencoti. Prose:
   `docs/features/engine-opencoti-llamafile.md`, "Architectures opencoti does
   not have yet".

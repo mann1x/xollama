@@ -24,6 +24,7 @@ paths.
 | `linux-all.sh` (`ROOTFS=` an assembled payload, `STORE=`, `CSTORE=`, `MSTORE=` scratch stores): builds the tree and runs G3, G4, G6 and G5 in order | G3 to G6 | solidPC, as root |
 | `engine-ab.sh` (`STORE=`) | G3 | solidPC, as `ollama` |
 | `chat-paths.sh` (`STORE=`), `chat-paths.py` | G4 | solidPC |
+| `arch-stock.sh` (`STORE=` a scratch store, `X=`): an architecture the pinned opencoti lacks (`lfm3`) on stock with the default engine, the `engine=opencoti` control refused, LFM2.5 on opencoti, `repeat_last_n -1` on both, `lfm3-audio` speech through `/tts` transcribed back. Sets no `XOLLAMA_ENGINE` (`serve-side.sh` forces opencoti) | G4, the arch-engine rule | solidPC |
 | `decision.sh` (`STORE=`): `/v1/systemone` with `nimble` and `clef-flash`; its requests are `decision/req*.json` | G4 | solidPC |
 | `council.sh <tag>...` (`STORE=`; runs `scripts/council-gate.py`) | G5 | solidPC |
 | `serve-side.sh`, `side.sh` (sourced: `up <store> <log>`, `down`), `speech-linux.sh`, `video-linux.sh` (`MEDIA=`) | G6 | solidPC |
