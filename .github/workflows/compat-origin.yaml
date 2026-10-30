@@ -37,3 +37,15 @@ jobs:
           # A new branch pushes with an all-zero `before`; measure it from main.
           if [ -z "${BASE//0/}" ]; then BASE=$(git merge-base origin/main "$HEAD"); fi
           scripts/check-compat-origin.sh "$BASE..$HEAD"
+
+      # A llama.cpp move that adds a model architecture needs its routing row
+      # (llm/engine/arch.go): stock llama.cpp gains architectures before the
+      # pinned opencoti does. Reads llama.cpp's architecture table at both
+      # versions; nothing to do when LLAMA_CPP_VERSION did not move.
+      - name: check new llama.cpp architectures are routed
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [ -z "${BASE//0/}" ]; then BASE=$(git merge-base origin/main "$HEAD"); fi
+          scripts/check-engine-archs.sh "$BASE"

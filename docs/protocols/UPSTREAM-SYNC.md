@@ -122,9 +122,15 @@ Then, in order, and do not skip one because the previous passed:
    `ollama-linux-amd64-runtime.tgz`, named in the fork's mail with its sha256
    and inputs digest. Move `llama/runtime-pin-linux.txt` to it. A sync whose
    Linux pin still names the previous tag cannot build the Docker image.
-6. Boot both engines against one model and compare:
+6. `scripts/check-engine-archs.sh` — when `LLAMA_CPP_VERSION` moves, every
+   architecture llama.cpp added needs a row in `llm/engine/arch.go`: a pin
+   feature while the pinned opencoti lacks it (its models go to stock
+   llama-server until the engine declares it), or `""` once the engine is
+   checked to serve it. The `compat-origin` workflow runs the same check.
+   See [the feature doc](../features/engine-opencoti-llamafile.md#architectures-opencoti-does-not-have-yet).
+7. Boot both engines against one model and compare:
    `XOLLAMA_ENGINE=llamacpp` vs `XOLLAMA_ENGINE=opencoti`.
-7. Read `git diff main...HEAD` over the parser/thinking paths. Not the merge
+8. Read `git diff main...HEAD` over the parser/thinking paths. Not the merge
    diff — the diff against our own trunk, which is what actually changed for us.
 
 Merge with `--no-ff` so the sync is one identifiable commit range.
