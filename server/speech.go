@@ -18,16 +18,16 @@ import (
 	"github.com/ollama/ollama/llm"
 	"github.com/ollama/ollama/manifest"
 	"github.com/ollama/ollama/mlxrunner/model/audio"
+	"github.com/ollama/ollama/model/renderers"
 	"github.com/ollama/ollama/openai"
 	"github.com/ollama/ollama/types/model"
 )
 
-const speechSampleRate = 24000
-
 // nativeSpeechHandler serves the OpenAI-compatible POST /v1/audio/speech for a
-// model whose runner implements llm.Speaker (upstream's native Phonon TTS),
-// streaming audio as the model generates it. It is reached as the fall-through
-// from the media SpeechHandler for any speech model without a TTS media engine
+// model whose runner implements llm.Speaker (upstream's native TTS: the MLX
+// runner, and since v0.40.13 a GGUF through llama-server's /tts), streaming
+// audio as the model generates it. It is reached as the fall-through from the
+// media SpeechHandler for any speech model without a TTS media engine
 // (xollama-hook: media).
 func (s *Server) nativeSpeechHandler(c *gin.Context) {
 	var req struct {
@@ -69,7 +69,7 @@ func (s *Server) nativeSpeechHandler(c *gin.Context) {
 		return
 	}
 
-	r, _, _, err := s.scheduleRunner(c.Request.Context(), req.Model, "", []model.Capability{model.CapabilitySpeech}, nil, nil, nil)
+	r, m, _, err := s.scheduleRunner(c.Request.Context(), req.Model, "", []model.Capability{model.CapabilitySpeech}, nil, nil, nil)
 	speaker, ok := r.(llm.Speaker)
 	switch {
 	case errors.Is(err, errCapabilities), err == nil && !ok:
@@ -81,7 +81,8 @@ func (s *Server) nativeSpeechHandler(c *gin.Context) {
 		return
 	}
 
-	streamSpeech(c, speaker, llm.SpeechRequest{Input: req.Input, Voice: req.Voice}, format)
+	prompter, _ := renderers.SpeechPrompterForRenderer(resolveRendererName(m))
+	streamSpeech(c, speaker, llm.SpeechRequest{Input: req.Input, Voice: req.Voice, Prompter: prompter}, format)
 }
 
 func streamSpeech(c *gin.Context, speaker llm.Speaker, req llm.SpeechRequest, format string) {
@@ -162,7 +163,20 @@ func speechVoices(mf *manifest.Manifest) []string {
 	return voices
 }
 
+// ggufSpeechVoices names the voices of a GGUF that llama-server speaks with,
+// as its renderer's SpeechPrompter lists them. The codec lives in the
+// projector, so a model created without one has none.
+func ggufSpeechVoices(m *Model) []string {
+	if !m.isGGUF() || len(m.ProjectorPaths) == 0 {
+		return nil
+	}
+	if p, ok := renderers.SpeechPrompterForRenderer(resolveRendererName(m)); ok {
+		return p.SpeechVoices()
+	}
+	return nil
+}
+
 // wavHeader describes 16-bit mono PCM of unknown length, as streamed WAV is.
 func wavHeader() []byte {
-	return audio.WAVHeader(speechSampleRate, math.MaxUint32)
+	return audio.WAVHeader(llm.SpeechSampleRate, math.MaxUint32)
 }

@@ -341,8 +341,10 @@ eleven2go's stock Ollama, 2026-10-20). So on stock llama.cpp a negative value
 goes out as `num_ctx`, the per-sequence context each slot was launched with
 (`stockRepeatLastN`, `llm/engine_repeat_last_n.go`, `repeat-last-n` hook in
 both request bodies). The owner asked for this ("map -1 to num_ctx for stock
-llama.cpp", 2026-10-20), and it departs on purpose from upstream's stock path,
-which passes `-1` through and fails. Every other value reaches either engine
+llama.cpp", 2026-10-20). Since v0.40.13 upstream does the same
+(`llamaServerRepeatLastN`, #19344), so on stock the hook calls upstream's
+function and is upstream's behaviour; what it still adds is that opencoti
+gets a negative value as sent and resolves it itself. Every other value reaches either engine
 unchanged.
 
 ## Packaging
