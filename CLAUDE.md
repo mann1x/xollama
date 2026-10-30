@@ -2,7 +2,7 @@
 
 @.wolf/OPENWOLF.md
 
-Soft fork of ollama. `dev` = upstream release v0.40.12 + fork changes (`main` is v0.40.11 since `v0.40.11-xollama`), carrying the full upstream history so every `git merge upstream/main` has a real merge-base.
+Soft fork of ollama. `dev` = upstream release v0.40.13 + fork changes (`main` is v0.40.12 since `v0.40.12-xollama`), carrying the full upstream history so every `git merge upstream/main` has a real merge-base.
 Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING.md
 
 ## Standing rules
