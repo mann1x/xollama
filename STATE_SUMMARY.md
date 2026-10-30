@@ -5,6 +5,26 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-30 — impact analysis of `v0.40.13-rc.1.xollama` (standing fork-follow go, owner 10:13 "go ahead with the v0.40.13 sync"; `xo-44`).** Diff `origin/main..origin/dev` (`f220f3e59`): 50 paths, from the routing rule (`fe4500051`) and the v0.40.13 sync. Per row of VALIDATION "Which gates a change needs":
+> - **Always:** G1 (green on the branch), G2, G12.
+> - **`llm/`, `server/sched.go`, launch:** `llm/llama_server.go` (upstream: honour `add_bos_token`, `repeat_last_n` -1 → num_ctx, audio-only projectors no longer claim vision; our `repeat-last-n` hook now calls upstream's function on stock), `llm/llama_server_speech.go` + `llm/speech.go` (GGUF speech through `/tts`), `llm/engine/arch.go` + `server/arch_engine.go` + `server/xollama_settings.go` (an architecture the pin lacks goes to stock), `server/sched.go`, `server/images.go`: **G3, G4, G8**.
+> - **The llama.cpp runtime:** `LLAMA_CPP_VERSION` b11963, `llama/compat/002-metal-unary-cast-constexpr.patch` (Metal only), the Linux amd64/arm64 runtime pins, the Windows CPU runtime pin: **G3 on llama.cpp, G9, G10**.
+> - **MLX pins:** Windows (`runtime-pin-windows-mlx.txt`) is the installer's download: **G9**. darwin (`runtime-pin-darwin.txt`) is the macOS app's MLX payload (`scripts/build_darwin.sh`): **G11**.
+> - **No row, named with what reaches them:**
+>   - `server/speech.go` (the `media` hook's `nativeSpeechHandler`, the fall-through of `/v1/audio/speech` for a model without a TTS media engine), `server/routes.go`: the speech and chat routes: **the speech parts of G8 and G10**, and the targeted check below.
+>   - `model/renderers/` (LFM3 speech prompter), `create/lfm3.go`: the chat path, **G4**; an LFM3 model only in the targeted check.
+>   - `mlxrunner/` (LFM3 speech moved to `model/renderers`): reached only by an MLX LFM3 model (safetensors); **G1** unit tests. No gate runs MLX LFM3.
+>   - `cmd/cmd.go`, `cmd/welcome.go` removed, `cmd/launch/launch.go` (#19248: `xollama` with no arguments prints help, not the menu): the CLI, **G12** runs the binaries.
+>   - `.github/workflows/compat-origin.yaml`, `scripts/check-engine-archs.sh`: CI, green on the dev push (`lfm3: routed`).
+>   - docs, `.claude/`, `CLAUDE.md`, `README.md`, `STATE_SUMMARY.md`: G1.
+> - **Not triggered:** G5 (no council path), G6 (no `server/media*.go`, `llm/engine_media.go` or media component), G7 (no engine pin, no image build change). The engine pin is unchanged (c13).
+> - **Targeted checks:**
+>   1. **LFM3 on stock** (the reason for the routing rule): `hf.co/LiquidAI/LFM3-1.7B-GGUF:Q4_K_M` answers on stock llama-server b11963 through xOllama with the default engine, and the log names the detour once; the same model pinned `engine=opencoti` is refused by c13 as an unknown architecture (the control).
+>   2. **LFM3 speech through `/tts`** if the LFM3-Audio GGUF loads on stock: `/v1/audio/speech` falls through the media handler to `nativeSpeechHandler` and returns audio.
+>   3. **LFM2.5 on opencoti** still answers correctly (upstream's `add_bos_token` change reaches the lfm2 tokenizer path on both engines).
+>   4. **`repeat_last_n` -1** answers on both engines (stock now through upstream's function, opencoti as sent).
+> - **Order:** G2 on the rc PR with a dry run, G3/G4 and the targeted checks on solidPC against the dry-run artifacts, G8/G9 on eleven2go, G10 amd64 on solidPC and arm64 on dietpi5, G11 on the Mac mini, records committed before the merge.
+
 > **2026-10-30 — upstream sync v0.40.12 → v0.40.13 (`sync/upstream-v0.40.13`), on the fork's move (fork mails #2022/#2023, standing go per FORK-SYNC step 6; owner 10:13: "go ahead with the v0.40.13 sync"; `xo-44`).** Upstream v0.40.13 is 4 commits and 29 files: llama.cpp b11901 → b11963 (#19360), the Metal compat patch `llama/compat/002-metal-unary-cast-constexpr.patch` (#19372), LFM3 GGUF fixes and llama-server speech (#19344: honour `add_bos_token`, `repeat_last_n` -1 → num_ctx, audio-only projectors no longer claim vision, `/v1/audio/speech` on a GGUF through llama-server `/tts`), and `cmd` help with no arguments (#19248, `cmd/welcome.go` removed). MLX and MLX-C unchanged.
 > - **The upstream merge** is `5cced74d6`. Three conflicts. `llm/llama_server.go`: upstream's `llamaServerRepeatLastN` now maps -1 to num_ctx on stock, as our `repeat-last-n` hook did; `stockRepeatLastN` now calls it on stock and keeps only opencoti's pass-through. So `XOLLAMA_ENGINE=llamacpp` is upstream's to the byte again (Registry row and feature doc updated; the num_ctx-unknown test case takes upstream's 0). `server/speech.go`: the `media` hook's `nativeSpeechHandler` keeps its name, upstream's `llm.SpeechSampleRate` taken. `server/routes_test.go`: imports, both kept.
 > - **The fork's 31 patches** at manifest `955bc406`, each its own `--no-ff` merge in `patches[]` order, `6d2b7b41d` … `cf33b6d6a`. 17 conflicted, all in known_conflicts files; each resolved to dev's side, and each conflicted file came out byte-identical to HEAD. Merge shas are in `docs/protocols/CARRIED-PATCHES.md` and were sent to the fork (#2024).
