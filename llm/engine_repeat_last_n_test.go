@@ -18,7 +18,7 @@ func TestStockRepeatLastN(t *testing.T) {
 		{"stock other negative is num_ctx", -2, 8192, false, 8192},
 		{"stock positive unchanged", 64, 32768, false, 64},
 		{"stock zero unchanged", 0, 32768, false, 0},
-		{"stock unknown num_ctx keeps the value", -1, 0, false, -1},
+		{"stock unknown num_ctx is upstream's answer", -1, 0, false, 0},
 		{"opencoti resolves -1 itself", -1, 32768, true, -1},
 	}
 	for _, tt := range tests {

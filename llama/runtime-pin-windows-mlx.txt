@@ -63,9 +63,9 @@
 # fork's v0.40.2-thinkbudget (MLX_VERSION, MLX_C_VERSION and mlx/ did not move;
 # fork mail #926). Only the tag below changed.
 repo      mann1x/ollama
-tag       v0.40.12-thinkbudget
+tag       v0.40.13-thinkbudget
 asset     ollama-windows-amd64-mlx.zip
-sha256    2d1ec3d80d3aa2134d4278c02a7c58578bf0fba660f9287c1e621b2b041a8778
-upstream  v0.40.12
+sha256    1181760e824237110bb030175ac829907f7574620b9fadc6e19667c9d147a4a2
+upstream  v0.40.13
 mlx       065ec4683cce3c4d3d1d846b4759ad59c13a4ffd
 mlx_c     57731b00e8bed710e0750e7356da9f18f8eb3e20

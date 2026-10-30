@@ -220,6 +220,34 @@ Before v0.40.4 the rule was Clef-only (`clefEngine`, feature
 `clef_score_v1`, c9; opencoti took the head for c10) and Nimble stayed on
 opencoti, scored from token probabilities.
 
+### Architectures opencoti does not have yet
+
+Stock llama.cpp gains a model architecture before opencoti does: every
+upstream sync moves `LLAMA_CPP_VERSION`, and opencoti's llama.cpp is
+llamafile's plus its own patch chain, ported later. The first case was `lfm3`
+(llama.cpp #31252, b11963, 2026-10-27): upstream v0.40.13 serves LFM3 GGUFs on
+stock `llama-server`, and the c13 engine does not know the architecture.
+
+`llm/engine/arch.go` lists each such architecture with the pin feature that
+says the engine serves it (`"lfm3": "arch_lfm3_v1"`). While the pin does not
+declare it, `archEngine` (`server/arch_engine.go`, after `decisionEngine` in
+`launchXollama`) names `llamacpp` in the launch config, the path a model's own
+`engine: llamacpp` takes, and says so once per model at Warn. An engine the
+model states itself is kept. On macOS, where no stock `llama-server` ships, the
+load stays on opencoti, whose own error names the architecture it lacks. The
+day the pin declares the feature the model goes back to opencoti; nothing in
+xOllama changes. A row with no feature records an architecture llama.cpp added
+that the pinned engine was checked to serve already. Owner's decision,
+2026-10-30: "add the routing rule, this is going to happen more than once".
+
+**A llama.cpp move cannot skip the table.** `scripts/check-engine-archs.sh
+[<base-ref>]` reads llama.cpp's `src/llama-arch.cpp` at the base's and the
+head's `LLAMA_CPP_VERSION` and fails for every architecture added without a
+row; the `compat-origin` workflow runs it on every pull request and push, and
+it is step 6 of the sync workflow (`docs/protocols/UPSTREAM-SYNC.md`). Guards:
+`server/arch_engine_test.go`, `llm/engine/arch_test.go` (including that the
+script can read every row).
+
 ### The hook
 
 Exactly one surgical hook is expected, at `FindLlamaServer()` — it consults
@@ -313,8 +341,10 @@ eleven2go's stock Ollama, 2026-10-20). So on stock llama.cpp a negative value
 goes out as `num_ctx`, the per-sequence context each slot was launched with
 (`stockRepeatLastN`, `llm/engine_repeat_last_n.go`, `repeat-last-n` hook in
 both request bodies). The owner asked for this ("map -1 to num_ctx for stock
-llama.cpp", 2026-10-20), and it departs on purpose from upstream's stock path,
-which passes `-1` through and fails. Every other value reaches either engine
+llama.cpp", 2026-10-20). Since v0.40.13 upstream does the same
+(`llamaServerRepeatLastN`, #19344), so on stock the hook calls upstream's
+function and is upstream's behaviour; what it still adds is that opencoti
+gets a negative value as sent and resolves it itself. Every other value reaches either engine
 unchanged.
 
 ## Packaging

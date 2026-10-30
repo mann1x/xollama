@@ -2,7 +2,7 @@
 
 @.wolf/OPENWOLF.md
 
-Soft fork of ollama. `dev` = upstream release v0.40.12 + fork changes (`main` is v0.40.11 since `v0.40.11-xollama`), carrying the full upstream history so every `git merge upstream/main` has a real merge-base.
+Soft fork of ollama. `dev` = upstream release v0.40.13 + fork changes (`main` is v0.40.12 since `v0.40.12-xollama`), carrying the full upstream history so every `git merge upstream/main` has a real merge-base.
 Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING.md
 
 ## Standing rules
@@ -149,6 +149,10 @@ see `docs/capabilities/decision.mdx`. Every decision model whose config names no
 `server/decision_engine.go`; `engine.HasSystemOne`). A Clef
 model (`decision.type = clef`) is served by stock `llama-server` while the pinned opencoti declares no
 `clef_score_v1` (`clefEngine`, `server/decision_engine.go`; `engine.HasClefHead`); `nimble` stays on opencoti.
+A GGUF architecture stock llama.cpp has and the pinned opencoti lacks (`lfm3`, llama.cpp b11963) is served by stock
+`llama-server` until the pin declares its feature (`archEngine`, `server/arch_engine.go`; table `llm/engine/arch.go`,
+`engine.ServesArch`; macOS stays on opencoti); `scripts/check-engine-archs.sh` (run by `compat-origin.yaml`) fails a
+`LLAMA_CPP_VERSION` move that adds an architecture with no row — see `.claude/rules/arch-engine.md`.
 **Prompting**: `model/renderers/` (per-model `Render`) ↔ `model/parsers/`
 (streaming output), plus `template/`, `thinking/`, `harmony/`; a model's named
 thinking efforts are `types/model/thinking.go`, a `think_budget` `types/model/think_budget.go`.

@@ -32,6 +32,7 @@ import (
 	gguftest "github.com/ollama/ollama/internal/testutil/gguf"
 	"github.com/ollama/ollama/manifest"
 	"github.com/ollama/ollama/model/parsers"
+	"github.com/ollama/ollama/model/renderers"
 	"github.com/ollama/ollama/openai"
 	"github.com/ollama/ollama/types/model"
 	"github.com/ollama/ollama/version"
@@ -1387,6 +1388,65 @@ func TestGetModelInfo_ManifestVoices(t *testing.T) {
 	}
 }
 
+func TestGetModelInfo_GGUFSpeechVoices(t *testing.T) {
+	t.Setenv("OLLAMA_MODELS", t.TempDir())
+	for _, tt := range []struct {
+		name      string
+		renderer  string
+		projector bool
+		want      []string
+	}{
+		{"lfm3-audio", "lfm3-audio", true, renderers.LFM3SpeechVoices()},
+		{"lfm3-omni", "lfm3-omni", true, renderers.LFM3SpeechVoices()},
+		{"lfm3-audio without projector", "lfm3-audio", false, nil},
+		{"lfm3 text", "lfm3", true, nil},
+		{"no renderer", "", true, nil},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			_, digest := createBinFile(t, gguftest.KV{"general.architecture": "lfm3"}, nil)
+			modelLayer, err := manifest.NewLayerFromLayer(digest, "application/vnd.ollama.image.model", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			layers := []manifest.Layer{modelLayer}
+			if tt.projector {
+				_, projector := createBinFile(t, gguftest.KV{"general.architecture": "clip"}, nil)
+				layers = append(layers, manifest.Layer{MediaType: "application/vnd.ollama.image.projector", Digest: projector})
+			}
+			configLayer, err := createConfigLayer(model.ConfigV2{ModelFormat: "gguf", Renderer: tt.renderer, Capabilities: []string{"completion", "speech"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			name := model.ParseName("show-gguf-speech")
+			if err := manifest.WriteManifest(name, *configLayer, layers); err != nil {
+				t.Fatal(err)
+			}
+
+			resp, err := GetModelInfo(api.ShowRequest{Model: name.String()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(resp.Voices, tt.want) {
+				t.Fatalf("voices %v, want %v", resp.Voices, tt.want)
+			}
+		})
+	}
+
+	// Safetensors speech models list the voices their package stores, never the GGUF fallback.
+	t.Run("safetensors", func(t *testing.T) {
+		_, projector := createBinFile(t, gguftest.KV{"general.architecture": "clip"}, nil)
+		createSafetensorsTestModel(t, "show-safetensors-speech", model.ConfigV2{ModelFormat: "safetensors", Renderer: "lfm3-audio", Capabilities: []string{"completion", "speech"}},
+			[]manifest.Layer{{MediaType: "application/vnd.ollama.image.projector", Digest: projector}})
+		resp, err := GetModelInfo(api.ShowRequest{Model: "show-safetensors-speech"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(resp.Voices) != 0 {
+			t.Fatalf("voices %v, want none", resp.Voices)
+		}
+	})
+}
+
 func TestGetModelInfo_SafetensorsManifestLengthsWin(t *testing.T) {
 	t.Setenv("OLLAMA_MODELS", t.TempDir())
 	// The language model config is nested where config.json reading doesn't
@@ -2557,6 +2617,73 @@ func TestShowOmitsNonFiniteGGUFValues(t *testing.T) {
 	}
 }
 
+func TestShowRendererParserAndTemplateSource(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("OLLAMA_MODELS", t.TempDir())
+
+	var s Server
+
+	create := func(t *testing.T, name string, kv gguftest.KV) {
+		t.Helper()
+		_, digest := createBinFile(t, kv, nil)
+		w := createRequest(t, s.CreateHandler, api.CreateRequest{
+			Name:   name,
+			Files:  map[string]string{"test.gguf": digest},
+			Stream: &stream,
+		})
+		if w.Code != http.StatusOK {
+			t.Fatalf("create %s: %d %s", name, w.Code, w.Body.String())
+		}
+	}
+	show := func(t *testing.T, name string) api.ShowResponse {
+		t.Helper()
+		w := createRequest(t, s.ShowHandler, api.ShowRequest{Name: name})
+		if w.Code != http.StatusOK {
+			t.Fatalf("show %s: %d %s", name, w.Code, w.Body.String())
+		}
+		var resp api.ShowResponse
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatal(err)
+		}
+		return resp
+	}
+
+	// gemma4 auto-resolves the legacy alias by model size; "12b" in the name
+	// selects the large renderer.
+	create(t, "show-gemma4-12b", gguftest.KV{
+		"general.architecture":    "gemma4",
+		"tokenizer.chat_template": "{{ not a named template }}",
+	})
+	resp := show(t, "show-gemma4-12b")
+	if resp.Renderer != gemma4RendererLarge || resp.Parser != "gemma4" {
+		t.Errorf("renderer/parser = %q/%q, want %s/gemma4 (legacy alias resolved)", resp.Renderer, resp.Parser, gemma4RendererLarge)
+	}
+	if resp.TemplateSource != "renderer_parser" {
+		t.Errorf("template source = %q, want renderer_parser", resp.TemplateSource)
+	}
+
+	// A GGUF with an embedded chat template and no renderer/parser hands the
+	// jinja template to llama-server.
+	create(t, "show-plain", gguftest.KV{
+		"general.architecture":    "llama",
+		"tokenizer.chat_template": "{{ not a named template }}",
+	})
+	resp = show(t, "show-plain")
+	if resp.Renderer != "" || resp.Parser != "" {
+		t.Errorf("renderer/parser = %q/%q, want both empty", resp.Renderer, resp.Parser)
+	}
+	if resp.TemplateSource != "gguf_chat_template" {
+		t.Errorf("template source = %q, want gguf_chat_template", resp.TemplateSource)
+	}
+
+	// No template of any kind: nothing renders a chat prompt.
+	create(t, "show-bare", gguftest.KV{"general.architecture": "test"})
+	resp = show(t, "show-bare")
+	if resp.TemplateSource != "none" {
+		t.Errorf("template source = %q, want none", resp.TemplateSource)
+	}
+}
+
 func TestThinkBudgetForCompletion(t *testing.T) {
 	thinkingParser := parsers.ParserForName("gemma4")
 	if thinkingParser == nil || !thinkingParser.HasThinkingSupport() {
@@ -2761,72 +2888,5 @@ func TestThinkBudgetForCompletionHarmony(t *testing.T) {
 	unbounded := &api.Options{Runner: api.Runner{NumCtx: 32768}}
 	if budget, _, _, _ := thinkBudgetForCompletion(harmonyParser, "", "", &api.ThinkValue{Value: "high"}, unbounded); budget != 0 {
 		t.Errorf("level high budget = %d, want 0 (a level bounds nothing)", budget)
-	}
-}
-
-func TestShowRendererParserAndTemplateSource(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	t.Setenv("OLLAMA_MODELS", t.TempDir())
-
-	var s Server
-
-	create := func(t *testing.T, name string, kv gguftest.KV) {
-		t.Helper()
-		_, digest := createBinFile(t, kv, nil)
-		w := createRequest(t, s.CreateHandler, api.CreateRequest{
-			Name:   name,
-			Files:  map[string]string{"test.gguf": digest},
-			Stream: &stream,
-		})
-		if w.Code != http.StatusOK {
-			t.Fatalf("create %s: %d %s", name, w.Code, w.Body.String())
-		}
-	}
-	show := func(t *testing.T, name string) api.ShowResponse {
-		t.Helper()
-		w := createRequest(t, s.ShowHandler, api.ShowRequest{Name: name})
-		if w.Code != http.StatusOK {
-			t.Fatalf("show %s: %d %s", name, w.Code, w.Body.String())
-		}
-		var resp api.ShowResponse
-		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-			t.Fatal(err)
-		}
-		return resp
-	}
-
-	// gemma4 auto-resolves the legacy alias by model size; "12b" in the name
-	// selects the large renderer.
-	create(t, "show-gemma4-12b", gguftest.KV{
-		"general.architecture":    "gemma4",
-		"tokenizer.chat_template": "{{ not a named template }}",
-	})
-	resp := show(t, "show-gemma4-12b")
-	if resp.Renderer != gemma4RendererLarge || resp.Parser != "gemma4" {
-		t.Errorf("renderer/parser = %q/%q, want %s/gemma4 (legacy alias resolved)", resp.Renderer, resp.Parser, gemma4RendererLarge)
-	}
-	if resp.TemplateSource != "renderer_parser" {
-		t.Errorf("template source = %q, want renderer_parser", resp.TemplateSource)
-	}
-
-	// A GGUF with an embedded chat template and no renderer/parser hands the
-	// jinja template to llama-server.
-	create(t, "show-plain", gguftest.KV{
-		"general.architecture":    "llama",
-		"tokenizer.chat_template": "{{ not a named template }}",
-	})
-	resp = show(t, "show-plain")
-	if resp.Renderer != "" || resp.Parser != "" {
-		t.Errorf("renderer/parser = %q/%q, want both empty", resp.Renderer, resp.Parser)
-	}
-	if resp.TemplateSource != "gguf_chat_template" {
-		t.Errorf("template source = %q, want gguf_chat_template", resp.TemplateSource)
-	}
-
-	// No template of any kind: nothing renders a chat prompt.
-	create(t, "show-bare", gguftest.KV{"general.architecture": "test"})
-	resp = show(t, "show-bare")
-	if resp.TemplateSource != "none" {
-		t.Errorf("template source = %q, want none", resp.TemplateSource)
 	}
 }

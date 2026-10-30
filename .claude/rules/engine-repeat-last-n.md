@@ -19,13 +19,13 @@ paths:
   schema accepts only 0 and up, and it answered -1 with a 400 ("Value must be
   between 0 <= value <= 2147483647, but got -1").
 - On stock llama.cpp a negative value is sent as `num_ctx`, the per-sequence
-  context each slot was launched with (`-c num_ctx * parallel`). opencoti
-  resolves -1 itself, so it gets the value as sent. A `numCtx` of 0 sends the
-  value unchanged.
-- **A deliberate departure from upstream's stock path** (owner, 2026-10-20:
-  "map -1 to num_ctx for stock llama.cpp"). With `XOLLAMA_ENGINE=llamacpp`, a
-  request with -1 now succeeds where upstream's fails. Every other value is
-  upstream's.
+  context each slot was launched with (`-c num_ctx * parallel`). `stockRepeatLastN`
+  calls upstream's own `llamaServerRepeatLastN` for this, so a `numCtx` of 0
+  sends 0. opencoti resolves -1 itself, so it gets the value as sent.
+- **Upstream's stock path since v0.40.13** (#19344). xollama had mapped it on
+  stock since 2026-10-20 (owner: "map -1 to num_ctx for stock llama.cpp"); the
+  hook now keeps only opencoti's value, and with `XOLLAMA_ENGINE=llamacpp`
+  every value is upstream's to the byte.
 - Guards in `llm/engine_repeat_last_n_test.go`: `TestStockRepeatLastN`,
   `TestChatBodyRepeatLastNOnStockAndOpencoti`.
 

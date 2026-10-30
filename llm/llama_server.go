@@ -137,6 +137,15 @@ func boundedNumPredict(numPredict, numCtx int) int {
 	return numPredict
 }
 
+// llamaServerRepeatLastN maps Ollama's repeat_last_n=-1 (the whole context)
+// to the context size; llama-server rejects negative values.
+func llamaServerRepeatLastN(repeatLastN, numCtx int) int {
+	if repeatLastN < 0 {
+		return numCtx
+	}
+	return repeatLastN
+}
+
 // llamaServerRunner wraps an upstream llama-server process and implements the LlamaServer interface.
 // It communicates with llama-server over HTTP.
 type llamaServerRunner struct {
@@ -321,10 +330,6 @@ func (s *llamaServerRunner) tokenizerAddsBOS() bool {
 
 	kv := s.metadata.KV()
 
-	if kv.String("tokenizer.ggml.pre") == "lfm2" {
-		return true
-	}
-
 	// llama.cpp forces add_bos on for Gemma4 at load time, even for GGUFs
 	// whose tokenizer.ggml.add_bos_token metadata is explicitly false. Some
 	// GGUFs omit tokenizer.ggml.pre and are still treated as Gemma4 from
@@ -333,7 +338,12 @@ func (s *llamaServerRunner) tokenizerAddsBOS() bool {
 		return true
 	}
 
-	return kv.Bool("tokenizer.ggml.add_bos_token")
+	// Elsewhere an explicit add_bos_token wins; the lfm2 pre-tokenizer only
+	// changes llama.cpp's default when the GGUF does not set it.
+	if kv.Has("tokenizer.ggml.add_bos_token") {
+		return kv.Bool("tokenizer.ggml.add_bos_token")
+	}
+	return kv.String("tokenizer.ggml.pre") == "lfm2"
 }
 
 func (s *llamaServerRunner) completionPromptForRequest(ctx context.Context, req CompletionRequest) (any, error) {

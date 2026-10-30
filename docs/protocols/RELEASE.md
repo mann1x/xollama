@@ -360,10 +360,13 @@ v<upstream>-xollama from the tree of v<upstream>-rc.<k>.xollama"`), check that
 `git rev-parse HEAD^{tree}` still equals the candidate tag's tree, and open the
 PR from that. The workflow prints `tree matches` when it agrees.
 
-The inherited `test.yaml` also runs on the PR. Its native legs target upstream's
-self-hosted `linux`/`windows` runners, which this repository does not have, so
-they stay queued. They are not required checks, so cancel them. The hosted legs
-are the ones that count.
+The inherited `test.yaml` also runs on the PR. Its native legs (`linux (CPU…)`,
+`windows (CUDA…)` and the rest) run on upstream's self-hosted runners only in
+`ollama/ollama`; here they take GitHub's hosted `ubuntu-latest` and
+`windows-2022` (the `runs-on` expressions in `test.yaml`) and finish, about an
+hour for the slowest Windows legs. Let them run; they are part of G2 (all ten
+passed on PR #52, 2026-10-30). Before that change they stayed queued and were
+cancelled.
 
 ### 3. Dry-run it (recommended, and required for the first release of a new upstream base)
 
