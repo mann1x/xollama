@@ -977,8 +977,8 @@ GPU, the stock ollama on 11434 untouched).
   2026-10-07; it now takes `LLM=` and `MEDIA=`, scratch stores of hard links
   mounted writable (0 files of another owner afterwards).
 
-- **Last run (`v0.40.12-rc.1.xollama` image, `:dev` Docker Hub `48b5c17f`, 2026-10-28):** amd64 on solidPC with the 3090, `llama3` at 512 tokens: opencoti 85.9 to 86.0, llama.cpp 86.7 to 87.1, speech 4 of 4, 0 crash lines. PAYLOAD lists runtime `v0.40.12-thinkbudget` `abaf234d`, upstream v0.40.12's GPU and MLX tarballs, engine `2610182159001` with cuda, cuda12, vulkan and media. 0 foreign files in either store; the image was removed. arm64 on dietpi5 (`624ca29e`), `qwen2.5:1.5b` interleaved: opencoti 10.0 to 10.6, llama.cpp 10.8 to 11.0, speech 3 of 3, 0 crash lines; PAYLOAD lists `ffe493eb`, the engine and sbsa. The owner's 4 containers and 11434 untouched, the image removed. Stands for rc.2, whose only change is the Windows installer script.
-- **Before (`v0.40.11-rc.1.xollama` image, `:dev` `d5fe5a16`, 2026-10-25):** amd64 on solidPC with the 3090, `llama3` at 512 tokens: opencoti 84.9 to 85.7, llama.cpp 85.3 to 86.2, speech 4 of 4, 0 crash lines. PAYLOAD lists runtime `v0.40.11-thinkbudget` `8167b4b0`, engine `2610182159001`, and cuda, cuda12, vulkan and media. 0 foreign files; the image was removed. arm64 on dietpi5, `qwen2.5:1.5b` interleaved: opencoti 10.0 to 11.0, llama.cpp 10.9 to 11.0, speech 3 of 3, 0 crash lines. PAYLOAD lists `8791cb5e`, the engine and sbsa. The owner's 4 containers and 11434 were untouched, and the image was removed.
+- **Last run (`v0.40.13-rc.1.xollama` image, docker-release 41052821072, `:dev` Docker Hub `d3d86233`, 2026-10-30):** amd64 on solidPC with the 3090, `llama3` at 512 tokens: opencoti 85.7 to 86.0, llama.cpp 86.3 to 86.5, speech 4 of 4, 0 crash lines. PAYLOAD lists runtime `v0.40.13-thinkbudget` `3355f1f8`, upstream v0.40.13's GPU and MLX tarballs, engine `2610182159001` with cuda, cuda12, vulkan and media. Scratch stores rebuilt as hard links under `/srv/ml/x4013/g10` (the older ones went in step 9); 0 foreign files; the image was removed. arm64 on dietpi5 (`9e3a9255`), `qwen2.5:1.5b` interleaved: opencoti 10.3 to 10.8, llama.cpp 10.7 to 11.0 (50 to 76 °C), speech 3 of 3, 0 crash lines; PAYLOAD lists `99e8db84`, the engine and sbsa. The owner's 4 containers and 11434 untouched, the image removed.
+- **Before (`v0.40.12-rc.1.xollama` image, `:dev` Docker Hub `48b5c17f`, 2026-10-28):** amd64 on solidPC with the 3090, `llama3` at 512 tokens: opencoti 85.9 to 86.0, llama.cpp 86.7 to 87.1, speech 4 of 4, 0 crash lines. PAYLOAD lists runtime `v0.40.12-thinkbudget` `abaf234d`, upstream v0.40.12's GPU and MLX tarballs, engine `2610182159001` with cuda, cuda12, vulkan and media. 0 foreign files in either store; the image was removed. arm64 on dietpi5 (`624ca29e`), `qwen2.5:1.5b` interleaved: opencoti 10.0 to 10.6, llama.cpp 10.8 to 11.0, speech 3 of 3, 0 crash lines; PAYLOAD lists `ffe493eb`, the engine and sbsa. The owner's 4 containers and 11434 untouched, the image removed. Stands for rc.2, whose only change is the Windows installer script.
 
 ### G11. macOS
 
@@ -1018,14 +1018,24 @@ releases endpoint.
   provenance block names engine `2610041714001`. `strings` finds no releases
   endpoint in the compressed installer (expected; the installed app is checked
   in G9).
-- **Last run (`v0.40.12-rc.1.xollama`, merge `7139b0c96`, release run 40712963630, 2026-10-28):**
-  the five jobs succeeded; nine assets; the eight `sha256sum.txt` lines equal
-  GitHub's digests of the published files, the Linux two downloaded and
-  `sha256sum -c` OK; payload id `63c8df03…` (the dry run's); the amd64 binary
-  on solidPC and the arm64 one on dietpi5 name `0.40.12-rc.1.xollama`; the
-  image (docker-release 40716011841) is `linux/amd64` and `linux/arm64` on
-  Docker Hub (`48b5c17f`) and GHCR (`6f6b8497`), `:dev` is it, `:latest` still
-  `ccd55226` (`0.40.11-xollama.1`).
+- **Last run (`v0.40.13-xollama`, cut from rc.1's tree, merge `a70ea6480`, release run 41058247942, 2026-10-30):**
+  six jobs green, nine assets; the eight sums = GitHub's digests, `sha256sum
+  -c` OK; payload `bb510e2a…` (rc.1's); both Linux binaries name
+  `0.40.13-xollama`. The image's arm64 build failed once on a Go proxy stream
+  error and passed on the re-run; after promotion `:latest` is
+  `0.40.13-xollama` on Docker Hub (`aa15218e`) and GHCR (`082dbbea`), amd64 and
+  arm64.
+- **Before (`v0.40.13-rc.1.xollama`, merge `80b5be984`, release run 41051258440, 2026-10-30):**
+  the six jobs succeeded (plan, linux amd64/arm64, windows, macos, publish);
+  a published pre-release, nine assets; the eight `sha256sum.txt` lines equal
+  GitHub's digests, the Linux two downloaded and `sha256sum -c` OK; payload
+  id `bb510e2a…` (the dry run's); the amd64 binary on solidPC and the arm64
+  one on dietpi5 name `0.40.13-rc.1.xollama`; the image (docker-release
+  41052821072) is `linux/amd64` and `linux/arm64` on Docker Hub (`d3d86233`)
+  and GHCR (`bb9e06d1`), `:dev` is it on both, `:latest` still `89b92fe4` /
+  `30292f73` (`0.40.12-xollama.1`). The arm64 manifest differs between the
+  registries only in the compressed base layer (same config `9e3a9255`, so
+  the same uncompressed layers; each registry got its own push).
 
 ## The first release
 
