@@ -32,9 +32,9 @@
 # v0.40.2 (2026-10-10): cut by the fork from upstream v0.40.2's
 # ollama-darwin.tgz (e888b763…); same MLX_VERSION, rebuilt bytes.
 repo      mann1x/ollama
-tag       v0.40.12-thinkbudget
+tag       v0.40.13-thinkbudget
 asset     ollama-darwin-mlx.tgz
-sha256    f69c4b9a1aa71fd254a7d82cd9bad0ad18792f5b1bdcee12ee59965c8dd9af0c
-upstream  v0.40.12
+sha256    c6a28142c6bd3332fc7f82fc669f1b63e118166741b800526f01b7cff8cea238
+upstream  v0.40.13
 mlx       065ec4683cce3c4d3d1d846b4759ad59c13a4ffd
 mlx_c     57731b00e8bed710e0750e7356da9f18f8eb3e20

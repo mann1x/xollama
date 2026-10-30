@@ -27,6 +27,42 @@ first if a patch looks missing or out of date.
    other row in this file keys on the PR number, and these cannot. They are
    listed apart, below.
 
+**Status as of 2026-10-30: the set moved to upstream v0.40.13 (31 patches, same set and `patches[]` order).** Manifest at think-budget `955bc406` (`base: v0.40.13`, `integration.sha b69e68ae`, release `v0.40.13-thinkbudget` @ `63a3ed22`; fork mail #2023, notice #2022). Upstream v0.40.13 is four commits over v0.40.12 (29 files): llama.cpp b11901 -> b11963 (#19360), upstream's `llama/compat/002-metal-unary-cast-constexpr.patch` (#19372), LFM3 GGUF fixes and llama-server speech (#19344), cmd help with no arguments (#19248); MLX and MLX-C unchanged. Consumed on branch `sync/upstream-v0.40.13`: the upstream tag merge `5cced74d6`, then the 31 patches at the shas below, each its own `--no-ff` merge in `patches[]` order. The upstream merge conflicted in `llm/llama_server.go` (upstream's `llamaServerRepeatLastN` now does on stock what our `repeat-last-n` hook did; the hook calls it and keeps opencoti's pass-through), `server/speech.go` (the `media` hook's `nativeSpeechHandler` keeps its name; upstream's `llm.SpeechSampleRate` taken) and `server/routes_test.go` (imports, both kept). Seventeen patch merges conflicted, all in known_conflicts files; every one resolved to dev's side, and each conflicted file came out byte-identical to HEAD (the patches' lines were already there). Proof: for each of the 90 files the integration changes, xollama's diff from `b69e68ae` equals its diff from `4f153b60` before the sync, except the fork-only `PATCHES.json` and release notes, `llm/llama_server.go` (upstream's new `repeat_last_n` line, above) and `server/routes_test.go`. The bug-319 artifact recurred a third time (the `up-think-budget` re-merge duplicated two tests). Our file had differed from the fork's only by the order of those two tests, a 67-line move that gives git a second place to put them, so it was made byte-identical to the fork's (`047c7dfb8`); the next sync should not repeat it. LLAMA_CPP_VERSION b11901 -> b11963, so the inputs digest moves `08b13822` -> `e9d0e2a1`, equal to the fork's; `check-compat-origin` 0 bad.
+
+| PR | branch | manifest sha | v0.40.13 merge |
+|---|---|---|---|
+| #17563 | `up-repeat-guard` | `11ce23d2` | `6d2b7b41d` |
+| #17564 | `up-truncated-tool-calls` | `31c41434` | `c32b8dc93` |
+| #17565 | `up-gemma4-object-close` | `14430c35` | `603f77427` |
+| #17566 | `up-think-budget` | `fee2e885` | `94fde3aa8` |
+| #17567 | `up-mlx-libdl` | `0f4cf15b` | `a5ccd9d59` |
+| #17626 | `up-gemma4-stray-channel-name` | `1abcae8f` | `4945370b9` |
+| #17914 | `qwen3coder-tolerate-malformed-tool-calls` | `5a8267c7` | `a332a9e1b` |
+| #18212 | `up-reasoning-budget-line-boundary` | `f67f7187` | `b34ff9783` |
+| #18281 | `up-native-thinking-replay` | `891acd50` | `2304209e7` |
+| #18288 | `up-gemma4-stray-closer` | `d629067b` | `daf13c34f` |
+| #18289 | `up-jinja-runner-reuse` | `e23b6509` | `065cbf088` |
+| fork-only | `gemma4-toolcall-in-thinking` | `4855b468` | `ad37e61c6` |
+| #18624 | `qwen35-toolcall-in-thinking` | `7dd3fe8d` | `990a0a931` |
+| fork-only | `up-gemma4-unparsed-tool-call-content` | `47f5bb77` | `118ca62ce` |
+| fork-only | `up-toolcall-tags` | `a42fe72c` | `af6851e8e` |
+| fork-only | `up-codex-request-count-mtime` | `5f9bc9a7` | `60cebdf20` |
+| fork-only | `up-fileutil-root-permission-tests` | `9a7eb349` | `9d19f60f4` |
+| fork-only | `up-gofmt-vision-test-data` | `ea945002` | `f75159be0` |
+| fork-only | `up-integration-goroutine-fatal` | `838f5740` | `5cef19cf6` |
+| fork-only | `up-lfm2-think-off-discard` | `1d37b534` | `f92ceed96` |
+| fork-only | `up-gemma4-assistant-shape` | `c7957e28` | `b7d7b403c` |
+| fork-only | `up-gemma4-swallowed-key` | `5ac459ec` | `da2ed6b12` |
+| fork-only | `up-response-scope-think-budget` | `eeb4e889` | `89327f183` |
+| fork-only | `up-modelfile-roundtrip` | `fc2c8964` | `cbabd33a5` |
+| fork-only | `up-qwen35-empty-think-history` | `51ff9b7a` | `5ecc6959f` |
+| fork-only | `up-mlxrunner-manifest-list` | `0d46fbd3` | `acce7fb49` |
+| fork-only | `up-gemma4-channel-in-thinking` | `5bbff482` | `6ffdef142` |
+| fork-only | `up-llama-server-memory-lines` | `a5f1d621` | `75b1f3cfc` |
+| fork-only | `up-qwen-unclosed-tool-call` | `dd65acfb` | `7c6bb6a9f` |
+| fork-only | `up-completion-generation-prompt` | `3a1e2eeb` | `16afb609f` |
+| fork-only | `up-compat-readme` | `ab77cc91` | `cf33b6d6a` |
+
 **Status as of 2026-10-28: the set moved to upstream v0.40.12 (31 patches, same set and `patches[]` order).** Manifest at think-budget `2e2505d5` (`base: v0.40.12`, `integration.sha 4f153b60`, release `v0.40.12-thinkbudget` @ `c04e011a`; fork mail #1999, notice #1996). Upstream v0.40.12 is seven commits over v0.40.11 (138 files): llama.cpp b11845 -> b11901 (#19311), MLX `bebd6422` -> `065ec468` and MLX-C `a341b492` -> `57731b00` (#19291), LFM3 parsers and models (#19333; `LFM3Parser` embeds `Qwen35Parser`, so it inherits the thinking and tool-call tags), and upstream's own `TranscriptionHandler` and `TranslationHandler`. Consumed on branch `sync/upstream-v0.40.12`: the upstream tag merge `3cc386706`, then the 31 patches at the shas below, each its own `--no-ff` merge in `patches[]` order. The upstream merge conflicted only in `server/routes.go`. Upstream's two audio routes now take the `media` hook's `mediaTranscriptionMiddleware(translate)` in front of upstream's handlers, and our `TranslationsHandler` is retired. Every patch conflict kept HEAD. Proof: for each of the 90 files the integration changes, xollama's diff from `4f153b60` equals its diff from `1169d741` before the sync. The exceptions are the fork-only `PATCHES.json` and `scripts/thinkbudget-mlx-assets.sh` (fork release commits `495ded8b` and `6b0b5a253`, no patch carries them), and `server/routes.go` (the media resolution above). The bug-319 artifact recurred: two duplicated tests in `server/routes_test.go`, restored to dev's file plus upstream's 44 lines (`b4c4dc710`). LLAMA_CPP_VERSION b11845 -> b11901, so the inputs digest moves `f689a3d9` -> `08b13822`, equal to the fork's.
 
 | PR | branch | manifest sha | v0.40.12 merge |
