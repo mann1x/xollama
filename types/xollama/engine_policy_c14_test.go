@@ -32,3 +32,23 @@ func TestAnUnknownMoEStrategyIsRefused(t *testing.T) {
 		t.Error("an unknown strategy was accepted")
 	}
 }
+
+func TestTheAdmissionGateTakesOnlyTheEnginesValues(t *testing.T) {
+	for _, v := range ValidAdmissionPoolless() {
+		c := &Config{KV: &KV{AdmissionPoolless: v}}
+		if got := c.requiredVersion(); got != 10 {
+			t.Errorf("%s: version %d", v, got)
+		}
+		c.Version = 10
+		if err := c.Validate(); err != nil {
+			t.Error(err)
+		}
+		if c.IsZero() {
+			t.Errorf("%s: IsZero", v)
+		}
+	}
+	bad := &Config{Version: 10, KV: &KV{AdmissionPoolless: "auto"}}
+	if err := bad.Validate(); err == nil {
+		t.Error("auto is no value of the flag, and the engine would refuse the launch")
+	}
+}

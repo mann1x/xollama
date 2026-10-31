@@ -22,6 +22,7 @@ paths.
 |---|---|---|
 | `stage-engine.sh <platform> [dir]`: the engine THIS TREE pins (`llm/engine/pin`), staged and sha256-checked by `cmake/opencoti-fetch.cmake`; prints its path | used by `serve-side.sh` and for `windows-speech.ps1` | solidPC |
 | `media-combined.sh` (`STORE=` a scratch store with llama3 and the media models, `ENG=` an engine, default the pin's): an LLM and its media in one engine process | media |
+| `engine-options.sh` (`STORE=`, `ENG=`): every per-model engine option on a real load, the admission headers and the Realtime proxy | options |
 | `linux-all.sh` (`ROOTFS=` an assembled payload, `STORE=`, `CSTORE=`, `MSTORE=` scratch stores): builds the tree and runs G3, G4, G6 and G5 in order | G3 to G6 | solidPC, as root |
 | `engine-ab.sh` (`STORE=`) | G3 | solidPC, as `ollama` |
 | `chat-paths.sh` (`STORE=`), `chat-paths.py` | G4 | solidPC |

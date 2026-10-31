@@ -662,6 +662,16 @@ These settings are on `tweak model` and, as defaults, on `tweak server`:
 | `--kv-rolling-window` | `kv.rolling_window` | `off`; `on` (the engine sizes it); a size in MiB |
 | `--fit` | `fit.enabled` | `on`; `off` |
 | `--vram-target` | `fit.vram_target_mib` | all free VRAM minus the compute reserve; a cap in MiB |
+| `--admission-poolless` | `kv.admission_poolless` | `enforced`; `warn`; `off`; unset is enforced with PolyKV pools (c13: always) |
+| `--admission-on-error` | `tuning.admission_on_error` | `admit`; `deny` (503) when the gate cannot check capacity |
+| `--recurrent-state-type` | `tuning.recurrent_state_type` | `bf16`; `f32`; `f16` |
+| `--fa-quant-prompt` | `tuning.fa_quant_prompt` | `auto`; `convert`; `in-place` |
+| `--elastic-alloc-ttl` | `tuning.elastic_alloc_ttl` | seconds; `0` per request; `-1` until closed |
+| `--draft-kvarn`, `--draft-type-k`, `--draft-type-v` | `tuning.draft_*` | the drafter's cache |
+| `--kv-tail-type-k`, `--kv-tail-type-v` | `tuning.tail_type_*` | the KV spilled to the host |
+| `--kvarn-stage-window` | `tuning.stage_window` | 128-token groups; unset is automatic |
+| `--slot-initial-ctx`, `--slot-shrink-idle-ms` | `tuning.slot_*` | start small, grow on demand, shrink when idle |
+| `--gpu-share-weight` | `tuning.gpu_share_weight` | share against other engines on one GPU |
 | `--moe-strategy` | `fit.moe_strategy` | `auto`; `experts-gpu`; `kv-gpu` (c14 engine) |
 | `--vulkan-matvec-tune` | `kv.vulkan_matvec_tune` | off; on times the decode kernel on this GPU, for a longer first boot (c14 engine) |
 | `--mtp-policy` | `draft.auto_mtp_policy` | `measured`; `allocator`; `taper`; `always`; `adaptive` (c14 engine); `off` |

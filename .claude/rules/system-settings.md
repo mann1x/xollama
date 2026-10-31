@@ -72,7 +72,9 @@ paths:
   `fit.vram_target_mib`, `kv.rolling_window`, `draft.auto_mtp_policy`.
   `appendEnginePolicyArgs` (`llm/engine_policy_args.go`, one hook line in
   `startLlamaServer` after `appendKVResidencyArgs`) adds `--fit`,
-  `--vram-target`, `--kv-rolling-window`, `--auto-mtp-policy`, and on a pin that
+  `--vram-target`, `--kv-rolling-window`, `--auto-mtp-policy`, `--admission-poolless`,
+  the `tuning` section (`types/xollama/tuning.go`, `llm/engine_tuning.go`; every
+  flag exists since c13, so no pin gate; `tuning` is a server default too), and on a pin that
   declares them `--moe-strategy` and `--vulkan-matvec-tune` (`enginePolicyRefusal`
   refuses them by name otherwise; features `moe_strategy_v1`,
   `vulkan_matvec_tune_v1`, `auto_mtp_adaptive_v1`); nothing

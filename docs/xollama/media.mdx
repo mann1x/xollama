@@ -315,6 +315,14 @@ A model's capabilities, from `xollama show` or `/api/show`, say which routes it
 answers. A request for media the model doesn't have is a 400 that names what is
 missing.
 
+## Live transcription
+
+`GET /v1/realtime?model=<model>` is OpenAI's Realtime transcription session over
+a websocket, served by the engine for a model with a live mode, such as Whistle.
+A model without one gets the engine's 501. The engine holds one session at a
+time and refuses a second with 503, and the model stays loaded while the
+connection is open.
+
 ## An LLM and its media in one process
 
 A GGUF model that has both an LLM and media runs them in one opencoti process.

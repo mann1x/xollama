@@ -57,6 +57,10 @@ type Config struct {
 	// Draft carries drafter settings that have no api.Options equivalent.
 	Draft *Draft `json:"draft,omitempty"`
 
+	// Tuning carries opencoti flags the engine's defaults cover unless a model
+	// says otherwise.
+	Tuning *Tuning `json:"tuning,omitempty"`
+
 	// KV carries this model's KV cache types. Upstream has one setting,
 	// OLLAMA_KV_CACHE_TYPE, which is server-wide and writes the same type into
 	// both halves of the cache -- so a model that wants a different answer, or
@@ -316,6 +320,11 @@ type KV struct {
 	// mat-vec variants on this GPU and keep the pick, for a longer first boot.
 	// Unset is the engine's default, off: a fixed rule, nothing benchmarked.
 	VulkanMatvecTune *bool `json:"vulkan_matvec_tune,omitempty"`
+
+	// AdmissionPoolless is opencoti's --admission-poolless: the KV-cell gate on
+	// every completion request. Unset is the engine's default: enforced on c13
+	// and, from c14, enforced only with PolyKV pools.
+	AdmissionPoolless string `json:"admission_poolless,omitempty"`
 }
 
 // Draft holds speculative-decoding settings for this model.
@@ -559,7 +568,8 @@ func (c *Config) requiredVersion() int {
 	// An older build would start the model without its detector and write
 	// words for silence and noise, which is what the publisher attached the
 	// detector against.
-	if c.setsC14Policies() {
+	if c.setsC14Policies() || (c.KV != nil && c.KV.AdmissionPoolless != "") || !c.Tuning.IsZero() ||
+		(c.Media != nil && c.Media.TTS != nil && c.Media.TTS.Threads != 0) {
 		return 10
 	}
 	if c.Media != nil && c.Media.STT != nil && c.Media.STT.VAD != "" {
@@ -629,8 +639,9 @@ func (c *Config) IsZero() bool {
 		c.Notices.IsZero() &&
 		(c.KV == nil || c.KV.RollingWindow == "") &&
 		c.Fit.IsZero() &&
+		c.Tuning.IsZero() &&
 		(c.KV == nil || (c.KV.K == "" && c.KV.V == "" && c.KV.KSWA == "" && c.KV.VSWA == "" &&
-			c.KV.Unified == nil && c.KV.ResidencyMode == "" && c.KV.PoolCells == 0 && c.KV.VulkanMatvecTune == nil)) &&
+			c.KV.Unified == nil && c.KV.ResidencyMode == "" && c.KV.PoolCells == 0 && c.KV.VulkanMatvecTune == nil && c.KV.AdmissionPoolless == "")) &&
 		(c.Slots == nil || (c.Slots.Dynamic == nil && c.Slots.Max == 0 && c.Slots.Live == 0 && c.Slots.TPSFloor == 0 &&
 			c.Slots.VRAMReserveMiB == 0 && c.Slots.SWASeqBudget == 0)) &&
 		(c.DCA == nil || (c.DCA.Enabled == nil && c.DCA.ChunkSize == 0)) &&

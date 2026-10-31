@@ -39,6 +39,9 @@ func (w *windowWriter) apply() {
 	if n := w.window.Get(); n > 0 {
 		w.ResponseWriter.Header().Set(llm.ContextWindowHeader, strconv.Itoa(n))
 	}
+	for name, v := range w.window.Admission() {
+		w.ResponseWriter.Header()[name] = v
+	}
 	if largest, retry, refused := w.window.Refusal(); refused {
 		if largest != llm.NoLargestAdmissible { // a stated 0 is sent: nothing is free
 			w.ResponseWriter.Header().Set(llm.LargestAdmissibleHeader, strconv.Itoa(largest))

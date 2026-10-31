@@ -81,3 +81,13 @@ func TestAPolicyThePinDoesNotDeclareIsRefusedByName(t *testing.T) {
 		t.Errorf("a declared policy was refused: %v", err)
 	}
 }
+
+func TestTheAdmissionGateIsTheModelsOnOpencotiOnly(t *testing.T) {
+	x := &xollama.Config{KV: &xollama.KV{AdmissionPoolless: "warn"}}
+	if got := strings.Join(appendEnginePolicyArgs(nil, x, true), " "); !strings.Contains(got, "--admission-poolless warn") {
+		t.Errorf("got %q", got)
+	}
+	if got := appendEnginePolicyArgs(nil, x, false); len(got) != 0 {
+		t.Errorf("stock llama.cpp was given %v", got)
+	}
+}

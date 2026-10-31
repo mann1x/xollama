@@ -263,6 +263,13 @@ func fit(c *xollama.Config) *xollama.Fit {
 	return c.Fit
 }
 
+func tuning(c *xollama.Config) *xollama.Tuning {
+	if c.Tuning == nil {
+		c.Tuning = &xollama.Tuning{}
+	}
+	return c.Tuning
+}
+
 func draft(c *xollama.Config) *xollama.Draft {
 	if c.Draft == nil {
 		c.Draft = &xollama.Draft{}
@@ -294,6 +301,9 @@ func prune(c *xollama.Config) {
 	}
 	if c.Fit.IsZero() {
 		c.Fit = nil
+	}
+	if c.Tuning.IsZero() {
+		c.Tuning = nil
 	}
 	if c.Devices.IsZero() {
 		c.Devices = nil
@@ -857,6 +867,255 @@ var fields = []field{
 			fit(c).MoEStrategy = s
 			return nil
 		},
+	},
+	{
+		name:  "admission-poolless",
+		path:  "kv.admission_poolless",
+		title: "Admission gate — refuse a request the KV cannot hold",
+		help: "enforced refuses with a 429 before any prefill; warn admits it anyway; off lets\n" +
+			"it queue for a slot. Unset is the engine's default: enforced on\n" +
+			"c13, and from c14 enforced only for a model with PolyKV pools.",
+		kind:    kindChoice,
+		choices: func(*xollama.Config) []string { return xollama.ValidAdmissionPoolless() },
+		blocked: opencotiOnly("the admission gate"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.KV != nil, func() string { return c.KV.AdmissionPoolless })
+		},
+		set: func(c *xollama.Config, v string) error {
+			s, err := choice(v, xollama.ValidAdmissionPoolless())
+			if err != nil {
+				return err
+			}
+			kv(c).AdmissionPoolless = s
+			return nil
+		},
+	},
+	{
+		name:    "recurrent-state-type",
+		path:    "tuning.recurrent_state_type",
+		title:   "Recurrent state type — the per-session state of a hybrid model",
+		help:    "bf16 is half the memory of f32, and a prompt's logits then depend slightly on the batch size; f32 matches stock llama.cpp. Unset is the engine's default: bf16, or f32 on macOS with the state on the CPU.",
+		kind:    kindChoice,
+		choices: func(*xollama.Config) []string { return xollama.ValidRecurrentStateTypes() },
+		blocked: opencotiOnly("Recurrent state type"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Tuning != nil, func() string { return c.Tuning.RecurrentStateType })
+		},
+		set: func(c *xollama.Config, v string) error {
+			s, err := choice(v, xollama.ValidRecurrentStateTypes())
+			if err != nil {
+				return err
+			}
+			tuning(c).RecurrentStateType = s
+			return nil
+		},
+	},
+	{
+		name:    "fa-quant-prompt",
+		path:    "tuning.fa_quant_prompt",
+		title:   "Prompts over a quantized KV — how they read the cache on CUDA",
+		help:    "convert keeps an f16 ring, about 1 GB at 262144 cells, for the fastest prompts; in-place has no ring and prompts 1-11% slower; auto is the engine's default.",
+		kind:    kindChoice,
+		choices: func(*xollama.Config) []string { return xollama.ValidFAQuantPrompts() },
+		blocked: opencotiOnly("Prompts over a quantized KV"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Tuning != nil, func() string { return c.Tuning.FAQuantPrompt })
+		},
+		set: func(c *xollama.Config, v string) error {
+			s, err := choice(v, xollama.ValidFAQuantPrompts())
+			if err != nil {
+				return err
+			}
+			tuning(c).FAQuantPrompt = s
+			return nil
+		},
+	},
+	{
+		name:    "admission-on-error",
+		path:    "tuning.admission_on_error",
+		title:   "Admission on a failed check — when the gate cannot check capacity",
+		help:    "admit lets the request through and logs a warning (the engine's default); deny refuses it with a 503.",
+		kind:    kindChoice,
+		choices: func(*xollama.Config) []string { return xollama.ValidAdmissionOnError() },
+		blocked: opencotiOnly("Admission on a failed check"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Tuning != nil, func() string { return c.Tuning.AdmissionOnError })
+		},
+		set: func(c *xollama.Config, v string) error {
+			s, err := choice(v, xollama.ValidAdmissionOnError())
+			if err != nil {
+				return err
+			}
+			tuning(c).AdmissionOnError = s
+			return nil
+		},
+	},
+	{
+		name:    "draft-kvarn",
+		path:    "tuning.draft_kvarn",
+		title:   "Drafter KVarN width — the draft model's cache",
+		help:    "off gives the drafter a plain cache of its stated type (the engine's default); inherit copies the target's width, measured slower; or a width.",
+		kind:    kindChoice,
+		choices: func(*xollama.Config) []string { return xollama.ValidDraftKVarN() },
+		blocked: opencotiOnly("Drafter KVarN width"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Tuning != nil, func() string { return c.Tuning.DraftKVarN })
+		},
+		set: func(c *xollama.Config, v string) error {
+			s, err := choice(v, xollama.ValidDraftKVarN())
+			if err != nil {
+				return err
+			}
+			tuning(c).DraftKVarN = s
+			return nil
+		},
+	},
+	{
+		name:    "draft-type-k",
+		path:    "tuning.draft_type_k",
+		title:   "Drafter cache type K — the draft model's keys",
+		help:    "--cache-type-k-draft. A KVarN width needs the same width on draft-type-v.",
+		kind:    kindOpenChoice,
+		choices: func(*xollama.Config) []string { return nil },
+		blocked: opencotiOnly("Drafter cache type K"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Tuning != nil, func() string { return c.Tuning.DraftTypeK })
+		},
+		set: func(c *xollama.Config, v string) error {
+			tuning(c).DraftTypeK = strings.TrimSpace(v)
+			return nil
+		},
+	},
+	{
+		name:    "draft-type-v",
+		path:    "tuning.draft_type_v",
+		title:   "Drafter cache type V — the draft model's values",
+		help:    "--cache-type-v-draft. A KVarN width needs the same width on draft-type-k.",
+		kind:    kindOpenChoice,
+		choices: func(*xollama.Config) []string { return nil },
+		blocked: opencotiOnly("Drafter cache type V"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Tuning != nil, func() string { return c.Tuning.DraftTypeV })
+		},
+		set: func(c *xollama.Config, v string) error {
+			tuning(c).DraftTypeV = strings.TrimSpace(v)
+			return nil
+		},
+	},
+	{
+		name:    "kv-tail-type-k",
+		path:    "tuning.tail_type_k",
+		title:   "Tail cache type K — keys spilled to the host",
+		help:    "--cache-type-k-tail. Unset is the engine's default.",
+		kind:    kindOpenChoice,
+		choices: func(*xollama.Config) []string { return nil },
+		blocked: opencotiOnly("Tail cache type K"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Tuning != nil, func() string { return c.Tuning.TailTypeK })
+		},
+		set: func(c *xollama.Config, v string) error {
+			tuning(c).TailTypeK = strings.TrimSpace(v)
+			return nil
+		},
+	},
+	{
+		name:    "kv-tail-type-v",
+		path:    "tuning.tail_type_v",
+		title:   "Tail cache type V — values spilled to the host",
+		help:    "--cache-type-v-tail. Unset is the engine's default.",
+		kind:    kindOpenChoice,
+		choices: func(*xollama.Config) []string { return nil },
+		blocked: opencotiOnly("Tail cache type V"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Tuning != nil, func() string { return c.Tuning.TailTypeV })
+		},
+		set: func(c *xollama.Config, v string) error {
+			tuning(c).TailTypeV = strings.TrimSpace(v)
+			return nil
+		},
+	},
+	{
+		name:    "kvarn-stage-window",
+		path:    "tuning.stage_window",
+		title:   "KVarN stage window — exact F16 window per sequence",
+		help:    "Unset is automatic: every query row attends at least 128 exact tokens.",
+		kind:    kindInt,
+		unit:    "128-token groups",
+		blocked: opencotiOnly("KVarN stage window"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Tuning != nil, func() string { return showInt(c.Tuning.StageWindow) })
+		},
+		set: func(c *xollama.Config, v string) error { return setInt(v, &tuning(c).StageWindow) },
+	},
+	{
+		name:    "slot-initial-ctx",
+		path:    "tuning.slot_initial_ctx",
+		title:   "Initial slot size — cells a sequence starts with",
+		help:    "Unset allocates all of them; a number starts there and grows on demand.",
+		kind:    kindInt,
+		unit:    "cells",
+		blocked: opencotiOnly("Initial slot size"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Tuning != nil, func() string { return showInt(c.Tuning.SlotInitialCtx) })
+		},
+		set: func(c *xollama.Config, v string) error { return setInt(v, &tuning(c).SlotInitialCtx) },
+	},
+	{
+		name:    "slot-shrink-idle-ms",
+		path:    "tuning.slot_shrink_idle_ms",
+		title:   "Slot shrink — after how long idle a grown slot shrinks back",
+		help:    "Needs slot-initial-ctx. Unset never shrinks.",
+		kind:    kindInt,
+		unit:    "ms",
+		blocked: opencotiOnly("Slot shrink"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Tuning != nil, func() string { return showInt(c.Tuning.SlotShrinkIdleMs) })
+		},
+		set: func(c *xollama.Config, v string) error { return setInt(v, &tuning(c).SlotShrinkIdleMs) },
+	},
+	{
+		name:    "elastic-alloc-ttl",
+		path:    "tuning.elastic_alloc_ttl",
+		title:   "Session booking TTL — how long an idle session keeps its context",
+		help:    "Seconds; the engine's default is 300. 0 books per request; -1 keeps it until the session is closed.",
+		kind:    kindInt,
+		unit:    "seconds",
+		blocked: opencotiOnly("The session booking TTL"),
+		get: func(c *xollama.Config) string {
+			if c.Tuning == nil || c.Tuning.ElasticAllocTTL == nil {
+				return ""
+			}
+			return strconv.Itoa(*c.Tuning.ElasticAllocTTL)
+		},
+		set: func(c *xollama.Config, v string) error {
+			s := strings.TrimSpace(v)
+			switch strings.ToLower(s) {
+			case "", "unset", "clear", "default", "none":
+				tuning(c).ElasticAllocTTL = nil
+				return nil
+			}
+			n, err := strconv.Atoi(s)
+			if err != nil {
+				return fmt.Errorf("want seconds, 0, -1 or unset (got %q)", v)
+			}
+			tuning(c).ElasticAllocTTL = &n
+			return nil
+		},
+	},
+	{
+		name:    "gpu-share-weight",
+		path:    "tuning.gpu_share_weight",
+		title:   "GPU share — compute weight against other engines on this GPU",
+		help:    "A ratio; the engine's default is 1.0.",
+		kind:    kindFloat,
+		blocked: opencotiOnly("The GPU share"),
+		get: func(c *xollama.Config) string {
+			if c.Tuning == nil || c.Tuning.GPUShareWeight == 0 {
+				return ""
+			}
+			return strconv.FormatFloat(c.Tuning.GPUShareWeight, 'f', -1, 64)
+		},
+		set: func(c *xollama.Config, v string) error { return setFloat(v, &tuning(c).GPUShareWeight) },
 	},
 	{
 		name:  "vulkan-matvec-tune",

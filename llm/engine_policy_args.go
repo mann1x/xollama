@@ -40,6 +40,9 @@ func appendEnginePolicyArgs(args []string, x *xollama.Config, usedOpencoti bool)
 	if x.Draft != nil && x.Draft.AutoMTPPolicy != "" {
 		args = append(args, "--auto-mtp-policy", x.Draft.AutoMTPPolicy)
 	}
+	if x.KV != nil && x.KV.AdmissionPoolless != "" {
+		args = append(args, "--admission-poolless", x.KV.AdmissionPoolless)
+	}
 	if x.Fit != nil && x.Fit.MoEStrategy != "" {
 		args = append(args, "--moe-strategy", x.Fit.MoEStrategy)
 	}
@@ -50,7 +53,7 @@ func appendEnginePolicyArgs(args []string, x *xollama.Config, usedOpencoti bool)
 		}
 		args = append(args, "--vulkan-matvec-tune", v)
 	}
-	return args
+	return appendEngineTuningArgs(args, x.Tuning)
 }
 
 // policyUnavailable is engine.PolicyUnavailable; a variable so a test can state

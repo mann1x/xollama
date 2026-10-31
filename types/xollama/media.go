@@ -106,6 +106,8 @@ type TTSMedia struct {
 	Engine string `json:"engine,omitempty"`
 	// Model is the TTS model. Required.
 	Model string `json:"model"`
+	// Threads is --tts-threads. Zero is the engine's default, half the cores.
+	Threads int `json:"threads,omitempty"`
 	// Vocoder is OuteTTS's WavTokenizer; OuteTTS cannot speak without it.
 	Vocoder string `json:"vocoder,omitempty"`
 	// Voices are extra voices by name, each one file (an OuteTTS speaker
@@ -464,6 +466,9 @@ func (t *TTSMedia) validate() error {
 	if t.Model == "" {
 		return fmt.Errorf("xollama config: media.tts.model is required")
 	}
+	if t.Threads < 0 {
+		return fmt.Errorf("xollama config: media.tts.threads %d must not be negative", t.Threads)
+	}
 	if err := oneOf("tts", "engine", t.Engine, validTTSEngines); err != nil {
 		return err
 	}
@@ -686,7 +691,7 @@ func (m *Media) Prune() *Media {
 		if len(t.Voices) == 0 {
 			t.Voices = nil
 		}
-		if t.Engine == "" && t.Model == "" && t.Vocoder == "" && t.Voices == nil && t.VoiceMap == nil && t.MediaEngine.isZero() && t.Defaults == nil {
+		if t.Engine == "" && t.Model == "" && t.Threads == 0 && t.Vocoder == "" && t.Voices == nil && t.VoiceMap == nil && t.MediaEngine.isZero() && t.Defaults == nil {
 			m.TTS = nil
 		}
 	}

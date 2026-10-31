@@ -1945,6 +1945,8 @@ type llamaServerCompletionRequest struct {
 	// xollama-hook: notices -- opencoti's generation notices, only on an
 	// engine that declares them (llm/engine_notice.go).
 	Notices json.RawMessage `json:"notices,omitempty"`
+	// xollama-hook: overcommit -- opencoti only.
+	Overcommit bool `json:"overcommit,omitempty"`
 	// xollama-hook: tool-choice -- the tool-call tag banned for tool_choice
 	// "none" (llm/engine_tool_choice.go); absent on every other request.
 	LogitBias []any `json:"logit_bias,omitempty"`
@@ -2299,6 +2301,7 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 		lsReq.Notices = n
 		defer s.trackNotice(n)()
 	}
+	lsReq.Overcommit = req.Overcommit && s.usedOpencoti // xollama-hook: overcommit
 	// xollama-hook: council -- a placed call takes the council's pool and
 	// window, and teaches the automatic pools nothing.
 	if pool, n, nmin := placementFields(s.usedOpencoti, s.launch.config, req.Placement); pool != nil || n > 0 {
@@ -2713,6 +2716,9 @@ func (s *llamaServerRunner) Chat(ctx context.Context, req ChatRequest, fn func(C
 	if n := s.noticesFor(ctx, req.Notices); n != nil {
 		lsReq["notices"] = n
 		defer s.trackNotice(n)()
+	}
+	if req.Overcommit && s.usedOpencoti { // xollama-hook: overcommit
+		lsReq["overcommit"] = true
 	}
 	// xollama-hook: context-window-unbooked -- beside the placed window.
 	if n, ok := lsReq["num_ctx"].(int); ok {

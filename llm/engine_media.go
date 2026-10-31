@@ -282,6 +282,9 @@ func MediaArgs(m *xollama.Media, path func(digest string) string) []string {
 			a = append(a, "--tts-engine", t.Engine)
 		}
 		a = append(a, "--tts-model", path(t.Model))
+		if t.Threads > 0 {
+			a = append(a, "--tts-threads", strconv.Itoa(t.Threads))
+		}
 		if t.Vocoder != "" {
 			a = append(a, "--tts-vocoder", path(t.Vocoder))
 		}

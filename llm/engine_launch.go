@@ -440,6 +440,10 @@ func appendSlotArgs(args []string, plan slotPlan, pools int, unified *bool, used
 	}
 	if pools > 0 {
 		args = append(args, "--polykv-max-pools", strconv.Itoa(pools))
+		// opencoti #2046: a pool's prefix should survive the idle-slot clear by
+		// construction, but that is not measured yet (their op-313). Retire
+		// this with that result.
+		args = append(args, "--no-cache-idle-slots")
 	}
 	return args
 }

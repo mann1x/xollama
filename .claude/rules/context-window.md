@@ -2,6 +2,7 @@
 paths:
   - llm/engine_context_window.go
   - llm/engine_admission.go
+  - llm/engine_admission_headers.go
   - llm/engine_council.go
   - llm/engine_ctx_hold.go
   - llm/llama_server.go
@@ -28,6 +29,16 @@ paths:
 - **First report wins.** A council's members and a structured-output second
   pass run inside the first admission's window. The council reports its owner's
   grant after `begin` (`tree.ownerGrant()`).
+- **Admission headers take the same road.** `llm.AdmissionHeaders`
+  (`llm/engine_admission_headers.go`: `X-KV-Pool-Saturated`,
+  `X-Sessions-Remaining`, `X-PolyKV-Settle-Waived`, `X-Session-TPS`) are read by
+  `reportAdmissionHeaders` from `reportEngineWindow` into the collector, first
+  report wins, and `windowWriter.apply` sets them from `Admission()`.
+- **`overcommit`** (`ChatRequest.Overcommit` and `GenerateRequest.Overcommit`
+  in `api/types.go`, marked `// xollama-hook: overcommit`) is opencoti's
+  per-request bypass of the enforced admission gate: sent only when
+  `s.usedOpencoti` (`llm/llama_server.go`), dropped on any other engine, and on
+  the native `/api/chat` and `/api/generate` only.
 - **Only a client driving the engine itself negotiates**: `placement.num_ctx`,
   or `placement.pool_id >= 0` (a worker of its own pool tree; pool 0 is real).
   That is `clientPlacement` calling `llm.WithNegotiation`; a council turn never

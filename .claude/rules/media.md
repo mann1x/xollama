@@ -12,6 +12,10 @@ paths:
 
 # Media models (`media` hook)
 
+- **`GET /v1/realtime`** is `RealtimeHandler` (`server/media_realtime.go`):
+  `ReverseProxy` carries the websocket to the engine. Never gate it on
+  `audio_realtime_v1` in `/health`, which a whisper engine does not list: the
+  engine answers 501 itself. Gate `scripts/gates/engine-options.sh`.
 - **An LLM and its media share one process** (owner, 2026-10-31):
   `combinedMedia` (`server/media_combined.go`) for a GGUF model that generates;
   `llamaServerConfigForModel` fills `MediaArgs` and `MediaEstimate`,
