@@ -315,6 +315,18 @@ var (
 	// so a client choosing among several models of a kind has the operator's
 	// answer instead of a guess.
 	MediaDefaults = String("XOLLAMA_MEDIA_DEFAULTS")
+	// MaxLoadedImageModels, MaxLoadedSpeechModels,
+	// MaxLoadedTranscriptionModels and MaxLoadedVideoModels cap the media
+	// engines of each kind, apart from OLLAMA_MAX_LOADED_MODELS: at the cap a
+	// load unloads an engine of its own kind. Unset is one; 0 puts the kind
+	// back in the OLLAMA_MAX_LOADED_MODELS pool.
+	MaxLoadedImageModels         = Uint("XOLLAMA_MAX_LOADED_IMAGE_MODELS", 1)
+	MaxLoadedSpeechModels        = Uint("XOLLAMA_MAX_LOADED_SPEECH_MODELS", 1)
+	MaxLoadedTranscriptionModels = Uint("XOLLAMA_MAX_LOADED_TRANSCRIPTION_MODELS", 1)
+	MaxLoadedVideoModels         = Uint("XOLLAMA_MAX_LOADED_VIDEO_MODELS", 1)
+	// MaxLoadedDecisionModels is the same cap for decision models, read only
+	// off XOLLAMA_ENGINE=llamacpp.
+	MaxLoadedDecisionModels = Uint("XOLLAMA_MAX_LOADED_DECISION_MODELS", 1)
 	// SessionPool opts in to sharing one physical copy of a common prefix --
 	// a system prompt and tool definitions -- between the conversations of a
 	// model, instead of one copy each. Off by default: it changes how KV is
@@ -567,6 +579,12 @@ func AsMap() map[string]EnvVar {
 		}
 	}
 
+	// xollama-hook: media — set apart so the names' length leaves the rows above aligned
+	ret["XOLLAMA_MAX_LOADED_IMAGE_MODELS"] = EnvVar{"XOLLAMA_MAX_LOADED_IMAGE_MODELS", MaxLoadedImageModels(), "Image engines loaded at once (default 1; 0 shares OLLAMA_MAX_LOADED_MODELS)"}
+	ret["XOLLAMA_MAX_LOADED_SPEECH_MODELS"] = EnvVar{"XOLLAMA_MAX_LOADED_SPEECH_MODELS", MaxLoadedSpeechModels(), "Text-to-speech engines loaded at once (default 1; 0 shares OLLAMA_MAX_LOADED_MODELS)"}
+	ret["XOLLAMA_MAX_LOADED_TRANSCRIPTION_MODELS"] = EnvVar{"XOLLAMA_MAX_LOADED_TRANSCRIPTION_MODELS", MaxLoadedTranscriptionModels(), "Speech-to-text engines loaded at once (default 1; 0 shares OLLAMA_MAX_LOADED_MODELS)"}
+	ret["XOLLAMA_MAX_LOADED_VIDEO_MODELS"] = EnvVar{"XOLLAMA_MAX_LOADED_VIDEO_MODELS", MaxLoadedVideoModels(), "Video engines loaded at once (default 1; 0 shares OLLAMA_MAX_LOADED_MODELS)"}
+	ret["XOLLAMA_MAX_LOADED_DECISION_MODELS"] = EnvVar{"XOLLAMA_MAX_LOADED_DECISION_MODELS", MaxLoadedDecisionModels(), "Decision models loaded at once (default 1; 0, or XOLLAMA_ENGINE=llamacpp, shares OLLAMA_MAX_LOADED_MODELS)"}
 	return ret
 }
 

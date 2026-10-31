@@ -315,6 +315,33 @@ A model's capabilities, from `xollama show` or `/api/show`, say which routes it
 answers. A request for media the model doesn't have is a 400 that names what is
 missing.
 
+## How many media engines stay loaded
+
+Each media kind has its own cap, apart from `OLLAMA_MAX_LOADED_MODELS`, so a
+speech engine never takes an LLM's place:
+
+| Variable | Engines | Default |
+| --- | --- | --- |
+| `XOLLAMA_MAX_LOADED_IMAGE_MODELS` | image generation and edit | 1 |
+| `XOLLAMA_MAX_LOADED_SPEECH_MODELS` | text to speech | 1 |
+| `XOLLAMA_MAX_LOADED_TRANSCRIPTION_MODELS` | speech to text | 1 |
+| `XOLLAMA_MAX_LOADED_VIDEO_MODELS` | video | 1 |
+
+`XOLLAMA_MAX_LOADED_DECISION_MODELS` (default 1) is the same cap for
+[decision models](/capabilities/decision); with `XOLLAMA_ENGINE=llamacpp` they
+stay in the `OLLAMA_MAX_LOADED_MODELS` pool.
+
+- At its cap, a load unloads an engine of its own kind. If that engine is busy,
+  the load waits for it to finish, and other models' loads wait behind it. A
+  video job can hold that up for its whole length, so raise the video cap if
+  you switch between video models while jobs run.
+- `0` puts the kind back in the `OLLAMA_MAX_LOADED_MODELS` pool.
+- One model's media is one engine. It counts once under each kind it serves and
+  needs room under all of them, and it stays in the shared pool while any of
+  its kinds is `0`.
+- The caps count engines. A load that does not fit in memory can still unload
+  anything on its GPUs.
+
 ## A default model per kind
 
 A server with two image models has no single answer for a client that wants

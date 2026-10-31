@@ -333,3 +333,209 @@ func TestAMediaEngineThatExitedIsUnloadedAtOnce(t *testing.T) {
 		}
 	}
 }
+
+func capTestScheduler(models ...*Model) *Scheduler {
+	s := &Scheduler{loaded: make(map[string]*runnerRef)}
+	for _, m := range models {
+		r := &runnerRef{modelKey: schedulerModelKey(m), modelPath: m.ModelPath, sessionDuration: time.Hour}
+		r.model.Store(m)
+		s.loaded[r.modelKey] = r
+	}
+	return s
+}
+
+func mediaEngine(digest string, media xollama.Media) *Model {
+	return mediaTwin(&Model{Digest: digest, Xollama: &xollama.Config{Media: &media}})
+}
+
+var (
+	imageEngine  = xollama.Media{Image: &xollama.ImageMedia{}}
+	speechEngine = xollama.Media{TTS: &xollama.TTSMedia{}}
+)
+
+func TestAMediaLoadUnloadsOnlyItsOwnKindAtTheCap(t *testing.T) {
+	image := mediaEngine("image", imageEngine)
+	speech := mediaEngine("speech", speechEngine)
+	s := capTestScheduler(&Model{ModelPath: "/models/llm"}, image, speech)
+
+	v := s.kindCapVictim(mediaEngine("image2", imageEngine))
+	if v == nil || v.modelKey != schedulerModelKey(image) {
+		t.Fatalf("victim = %+v, want the loaded image engine", v)
+	}
+	if v := s.kindCapVictim(mediaEngine("video", xollama.Media{Video: &xollama.VideoMedia{}})); v != nil {
+		t.Errorf("a kind with room unloaded %s", v.modelKey)
+	}
+	if v := s.kindCapVictim(&Model{ModelPath: "/models/other"}); v != nil {
+		t.Errorf("a text load hit a media cap: %s", v.modelKey)
+	}
+
+	t.Setenv("XOLLAMA_MAX_LOADED_IMAGE_MODELS", "2")
+	if v := s.kindCapVictim(mediaEngine("image2", imageEngine)); v != nil {
+		t.Errorf("under a cap of 2 unloaded %s", v.modelKey)
+	}
+}
+
+func TestAnEngineOfSeveralKindsNeedsRoomUnderEach(t *testing.T) {
+	speech := mediaEngine("speech", speechEngine)
+	s := capTestScheduler(speech)
+	both := xollama.Media{Image: &xollama.ImageMedia{}, TTS: &xollama.TTSMedia{}}
+	v := s.kindCapVictim(mediaEngine("both", both))
+	if v == nil || v.modelKey != schedulerModelKey(speech) {
+		t.Fatalf("victim = %+v, want the speech engine", v)
+	}
+}
+
+func TestMediaEnginesAreOutsideTheSharedPool(t *testing.T) {
+	llm := &Model{ModelPath: "/models/llm"}
+	image := mediaEngine("image", imageEngine)
+	s := capTestScheduler(llm, image)
+
+	if got := s.sharedRunnerCount(&Model{ModelPath: "/models/other"}); got != 1 {
+		t.Errorf("shared count = %d, want 1: the media engine took an LLM's place", got)
+	}
+	if got := s.sharedRunnerCount(mediaEngine("speech", speechEngine)); got != 0 {
+		t.Errorf("a capped media load measured against the shared pool: %d", got)
+	}
+	if v := s.findSharedRunnerToUnload(); v == nil || v.modelKey != schedulerModelKey(llm) {
+		t.Errorf("shared victim = %+v, want the LLM", v)
+	}
+}
+
+func TestACapOfZeroPutsTheKindBackInTheSharedPool(t *testing.T) {
+	t.Setenv("XOLLAMA_MAX_LOADED_IMAGE_MODELS", "0")
+	image := mediaEngine("image", imageEngine)
+	s := capTestScheduler(&Model{ModelPath: "/models/llm"}, image)
+
+	if v := s.kindCapVictim(mediaEngine("image2", imageEngine)); v != nil {
+		t.Errorf("a cap of 0 unloaded %s", v.modelKey)
+	}
+	if got := s.sharedRunnerCount(&Model{ModelPath: "/models/other"}); got != 2 {
+		t.Errorf("shared count = %d, want 2", got)
+	}
+	if got := s.sharedRunnerCount(mediaEngine("image2", imageEngine)); got != 2 {
+		t.Errorf("a kind at 0 measured outside the pool: %d", got)
+	}
+}
+
+func TestAnLLMWithMediaKeepsItsPlaceInTheSharedPool(t *testing.T) {
+	m := &Model{ModelPath: "/models/llm", Xollama: &xollama.Config{Media: &imageEngine}}
+	if !inSharedPool(m) {
+		t.Error("the LLM of a model with media left the shared pool")
+	}
+}
+
+// runCapScheduler runs processPending for real over the given loaded models
+// and returns the scheduler and the channel the pending load lands on.
+func runCapScheduler(t *testing.T, ctx context.Context, pending *Model, models ...*Model) (*Scheduler, chan *Model) {
+	t.Helper()
+	s := InitScheduler(ctx)
+	s.waitForRecovery = 10 * time.Millisecond
+	s.getGpuFn = getGpuFn
+	s.getSystemInfoFn = getSystemInfoFn
+	for _, m := range models {
+		r := &runnerRef{
+			modelKey: schedulerModelKey(m), modelPath: m.ModelPath, sessionDuration: time.Hour,
+			llama: &mockLlm{modelPath: m.ModelPath},
+		}
+		r.model.Store(m)
+		s.loaded[r.modelKey] = r
+	}
+	landed := make(chan *Model, 1)
+	s.loadFn = func(req *LlmRequest, _ ml.SystemInfo, _ []ml.DeviceInfo, _ bool) bool {
+		landed <- req.model
+		return false
+	}
+	s.pendingReqCh <- &LlmRequest{
+		ctx: ctx, model: pending, opts: api.DefaultOptions(),
+		successCh: make(chan *runnerRef, 1), errCh: make(chan error, 1),
+	}
+	s.Run(ctx)
+	return s, landed
+}
+
+func TestTheSchedulerKeepsAnLLMWhenAnEngineLoadsAtTheLimit(t *testing.T) {
+	t.Setenv("OLLAMA_MAX_LOADED_MODELS", "1")
+	ctx, done := context.WithTimeout(t.Context(), 2*time.Second)
+	defer done()
+	llm := &Model{ModelPath: "/models/llm"}
+	s, landed := runCapScheduler(t, ctx, mediaEngine("speech", speechEngine), llm)
+	select {
+	case <-landed:
+	case <-ctx.Done():
+		t.Fatal("the load never landed")
+	}
+	s.loadedMu.Lock()
+	defer s.loadedMu.Unlock()
+	if s.loaded[schedulerModelKey(llm)] == nil {
+		t.Error("a speech engine unloaded the LLM")
+	}
+}
+
+func TestTheSchedulerUnloadsTheSameKindAtItsCap(t *testing.T) {
+	ctx, done := context.WithTimeout(t.Context(), 2*time.Second)
+	defer done()
+	llm := &Model{ModelPath: "/models/llm"}
+	image := mediaEngine("image", imageEngine)
+	s, landed := runCapScheduler(t, ctx, mediaEngine("image2", imageEngine), llm, image)
+	select {
+	case <-landed:
+	case <-ctx.Done():
+		t.Fatal("the load never landed")
+	}
+	s.loadedMu.Lock()
+	defer s.loadedMu.Unlock()
+	if s.loaded[schedulerModelKey(image)] != nil {
+		t.Error("the image engine at the cap was not unloaded")
+	}
+	if s.loaded[schedulerModelKey(llm)] == nil {
+		t.Error("an image load unloaded the LLM")
+	}
+}
+
+func cappedDecisionModel(path string) *Model {
+	return &Model{ModelPath: path, metadata: ggufMetadata{KV: map[string]any{"general.architecture": "nimble", "nimble.decision.type": "nimble"}}}
+}
+
+func TestADecisionModelHasItsOwnCap(t *testing.T) {
+	llm := &Model{ModelPath: "/models/llm"}
+	nimble := cappedDecisionModel("/models/nimble")
+	s := capTestScheduler(llm, nimble, mediaEngine("image", imageEngine))
+
+	v := s.kindCapVictim(cappedDecisionModel("/models/clef"))
+	if v == nil || v.modelKey != schedulerModelKey(nimble) {
+		t.Fatalf("victim = %+v, want the loaded decision model", v)
+	}
+	if got := s.sharedRunnerCount(llm); got != 1 {
+		t.Errorf("shared count = %d, want 1: a decision model took an LLM's place", got)
+	}
+	if got := s.sharedRunnerCount(cappedDecisionModel("/models/clef")); got != 0 {
+		t.Errorf("a capped decision load measured against the shared pool: %d", got)
+	}
+
+	// An MLX decision model has no GGUF metadata.
+	mlx := &Model{Config: model.ConfigV2{Capabilities: []string{"decision"}}}
+	if !isDecisionModel(mlx) {
+		t.Error("an MLX decision model was not recognised")
+	}
+}
+
+func TestAStockEngineKeepsDecisionModelsInTheSharedPool(t *testing.T) {
+	t.Setenv("XOLLAMA_ENGINE", "llamacpp")
+	nimble := cappedDecisionModel("/models/nimble")
+	s := capTestScheduler(&Model{ModelPath: "/models/llm"}, nimble)
+
+	if v := s.kindCapVictim(cappedDecisionModel("/models/clef")); v != nil {
+		t.Errorf("XOLLAMA_ENGINE=llamacpp unloaded %s for a decision cap", v.modelKey)
+	}
+	if got := s.sharedRunnerCount(cappedDecisionModel("/models/clef")); got != 2 {
+		t.Errorf("shared count = %d, want upstream's 2", got)
+	}
+}
+
+func TestTheDecisionCapChangesNothingAtZero(t *testing.T) {
+	t.Setenv("XOLLAMA_MAX_LOADED_DECISION_MODELS", "0")
+	s := capTestScheduler(cappedDecisionModel("/models/nimble"))
+	if v := s.kindCapVictim(cappedDecisionModel("/models/clef")); v != nil {
+		t.Errorf("a cap of 0 unloaded %s", v.modelKey)
+	}
+}

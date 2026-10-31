@@ -76,6 +76,28 @@ paths:
   with ` | ` (`tailWriter.last`), never only the last: the engine states the
   cause first and its advice last. Guard:
   `TestAFailedLoadReportsTheCauseNotOnlyTheLastLine`.
+- **Each media kind has its own cap** (`server/load_caps.go`, three marked
+  lines in `processPending`): `XOLLAMA_MAX_LOADED_IMAGE_MODELS`, `_SPEECH_`,
+  `_TRANSCRIPTION_`, `_VIDEO_`, and `XOLLAMA_MAX_LOADED_DECISION_MODELS` for
+  decision models (no upstream setting exists), default 1 (owner, 2026-10-31).
+  Decision models run on stock llama.cpp, so `XOLLAMA_ENGINE=llamacpp` keeps them
+  in the pool (`decisionLimit`), off means off; media never runs there. Capped engines
+  are outside `OLLAMA_MAX_LOADED_MODELS`, and at the cap only an engine of that
+  kind is unloaded; `0` is the shared pool. An engine counts under every kind
+  it serves and stays in the pool while any of them is 0. Only a twin counts: a
+  model's LLM stays in the pool. Memory eviction ignores the caps. A busy victim
+  blocks `processPending`, as upstream's limit does, so a held video job stalls
+  other loads. Guards: `TestAMediaLoadUnloadsOnlyItsOwnKindAtTheCap`,
+  `TestAnEngineOfSeveralKindsNeedsRoomUnderEach`,
+  `TestMediaEnginesAreOutsideTheSharedPool`,
+  `TestACapOfZeroPutsTheKindBackInTheSharedPool`,
+  `TestAnLLMWithMediaKeepsItsPlaceInTheSharedPool`, and through
+  `processPending` (each fails with the hook removed)
+  `TestTheSchedulerKeepsAnLLMWhenAnEngineLoadsAtTheLimit`,
+  `TestTheSchedulerUnloadsTheSameKindAtItsCap`; decision
+  `TestADecisionModelHasItsOwnCap`,
+  `TestAStockEngineKeepsDecisionModelsInTheSharedPool`,
+  `TestTheDecisionCapChangesNothingAtZero`.
 - **The catalog** (`internal/mediahub/catalog.go`) feeds `xollama media list`
   and `media create`. Entries of one family share a builder (`supertonic(file)`,
   `wan21(model, encoder)`, `wan22(model)`, `whistle(vad)`) so a quant tag differs from its

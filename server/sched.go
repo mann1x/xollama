@@ -324,9 +324,12 @@ func (s *Scheduler) processPending(ctx context.Context) {
 						pending.useLoadedRunner(runner, s.finishedReqCh)
 						break
 					}
-				} else if maxRunners > 0 && loadedCount >= int(maxRunners) {
+				} else if victim := s.kindCapVictim(pending.model); victim != nil { // xollama-hook: media
+					slog.Debug("model kind at its cap, unloading one of that kind", "runner", victim)
+					runnerToExpire = victim
+				} else if maxRunners > 0 && s.sharedRunnerCount(pending.model) >= int(maxRunners) { // xollama-hook: media
 					slog.Debug("max runners achieved, unloading one to make room", "runner_count", loadedCount)
-					runnerToExpire = s.findRunnerToUnload()
+					runnerToExpire = s.findSharedRunnerToUnload() // xollama-hook: media
 				} else {
 					// Either no models are loaded or below envconfig.MaxRunners
 					// Get a refreshed GPU list
