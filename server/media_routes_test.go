@@ -125,7 +125,7 @@ func (m *engineMedia) MediaDo(ctx context.Context, method, path string, _ url.Va
 	return http.DefaultClient.Do(req)
 }
 
-func (m *engineMedia) Features() []string { return nil }
+func (m *engineMedia) MediaFeatures() []string { return nil }
 
 // mediaServer is a server whose scheduler hands every media twin the fake
 // engine, with the named models created in a fresh store.

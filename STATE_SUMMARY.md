@@ -5,6 +5,10 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-31 — an LLM and its media in one opencoti process (owner: "FIX IT NOW ... IT MUST WORK FOR WHEN C14 IS AVAILABLE").** xollama always ran media in a second process, on a reason opencoti closed in M7.6 (b103, 2026-10-02). A GGUF model that generates now loads its media with its LLM (`server/media_combined.go`, `llm/engine_media_combined.go`, `media` hook); a media call never reloads it (`isMediaCall`); the load is priced with the media.
+> - **Gate `scripts/gates/media-combined.sh` PASS on the 3090**, llama3 + Klein 4B + Kokoro + Whisper: pinned c13 and opencoti's c14 cut engine (`release/c14`, on c13's CUDA library, since c14's was still compiling). One runner and one engine pid through chat, speech, transcription and an image; speech read back as "The first ship came in at dawn."; greedy text identical to the plain LLM (first run and repeat); 87 tok/s, 59-63 during the image. Video in one process was not run.
+> - **Left:** rerun the gate on the published c14 with its own CUDA library.
+
 > **2026-10-31 — a load cap per kind (owner: "ok with the names, if unset it's default to 1"; decision too: "we should have a separate env for it as well").** `XOLLAMA_MAX_LOADED_IMAGE_MODELS`, `_SPEECH_`, `_TRANSCRIPTION_`, `_VIDEO_`, `_DECISION_`, default 1, `0` = the `OLLAMA_MAX_LOADED_MODELS` pool (`server/load_caps.go`, `media` hook); `XOLLAMA_ENGINE=llamacpp` keeps decision models in the pool. Before, these counted in that pool and a load at the limit unloaded any kind. Unit-tested only; no live gate yet.
 > - **Left:** live check on a host with two engines of one kind. A busy victim blocks `processPending`, so at the default of 1 a held video job stalls every other load while a second video model waits (documented in `docs/xollama/media.mdx`).
 

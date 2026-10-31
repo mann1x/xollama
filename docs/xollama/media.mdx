@@ -315,6 +315,22 @@ A model's capabilities, from `xollama show` or `/api/show`, say which routes it
 answers. A request for media the model doesn't have is a 400 that names what is
 missing.
 
+## An LLM and its media in one process
+
+A GGUF model that has both an LLM and media runs them in one opencoti process.
+Its media routes answer from the loaded model, with no second engine and no
+load of their own, and a media call never reloads it, whatever options a chat
+loaded it with.
+
+- The model loads its media with its LLM, so a chat pays for that memory too.
+  The load is priced with it.
+- The LLM keeps generating during a media job, slower: 87 tok/s fell to about
+  60 while an image rendered, on a 3090. Its text does not change.
+- It is one runner in the `OLLAMA_MAX_LOADED_MODELS` pool, and the media caps
+  below do not count it. A model made only of media still has its own engine.
+- A model served by stock llama.cpp, an MLX model, and a decision or embedding
+  model keep their media in a separate engine.
+
 ## How many media engines stay loaded
 
 Each media kind has its own cap, apart from `OLLAMA_MAX_LOADED_MODELS`, so a

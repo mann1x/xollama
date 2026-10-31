@@ -3293,6 +3293,7 @@ func chatModeForModel(m *Model) chatExecutionMode {
 }
 
 func llamaServerConfigForModel(m *Model) llm.LlamaServerConfig {
+	mediaArgs, mediaEstimate := combinedMediaLaunch(m) // xollama-hook: media
 	return llm.LlamaServerConfig{
 		DisableJinja:         usesOllamaRenderedChat(m),
 		ManifestDigest:       m.Digest,
@@ -3316,6 +3317,10 @@ func llamaServerConfigForModel(m *Model) llm.LlamaServerConfig {
 
 		// xollama-hook: notices -- the model's templates, else the defaults.
 		NoticeTemplatesPath: noticeTemplatesPath(m),
+
+		// xollama-hook: media -- a model's media in its LLM's process.
+		MediaArgs:     mediaArgs,
+		MediaEstimate: mediaEstimate,
 	}
 }
 

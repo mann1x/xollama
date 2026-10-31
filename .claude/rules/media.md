@@ -12,6 +12,18 @@ paths:
 
 # Media models (`media` hook)
 
+- **An LLM and its media share one process** (owner, 2026-10-31):
+  `combinedMedia` (`server/media_combined.go`) for a GGUF model that generates;
+  `llamaServerConfigForModel` fills `MediaArgs` and `MediaEstimate`,
+  `mediaArgsFor` (`llm/engine_media_combined.go`) adds them on opencoti only,
+  `predictVRAM` prices them, and `mediaRunner` schedules the model itself and
+  checks the engine's `/health` features. A media call never reloads a running
+  LLM (`isMediaCall` in `needsReload`). It stays one runner in the shared pool,
+  never counted under a media cap. Stock, MLX, decision and embedding models
+  keep the twin, and a missing blob keeps the LLM loading. `opencoti` gated this
+  in M7.6; never say otherwise from an old comment. A repeated prompt's greedy
+  text differs from its first run, media or not: compare like with like. Gate:
+  `scripts/gates/media-combined.sh`.
 - A media-only model is served by its own opencoti process
   (`llm/engine_media.go`), scheduled as `media:<digest>` from `server/media.go`;
   its components are `application/vnd.xollama.media` layers by digest, written

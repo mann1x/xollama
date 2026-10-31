@@ -146,7 +146,7 @@ func (f *fakeMedia) MediaDo(context.Context, string, string, url.Values, io.Read
 	return nil, errors.New("not wired")
 }
 
-func (f *fakeMedia) Features() []string { return []string{llm.FeatureSpeech} }
+func (f *fakeMedia) MediaFeatures() []string { return []string{llm.FeatureSpeech} }
 
 func TestTheSchedulerLoadsAMediaTwinThroughItsOwnConstructor(t *testing.T) {
 	ctx, done := context.WithTimeout(t.Context(), 2*time.Second)
@@ -537,5 +537,60 @@ func TestTheDecisionCapChangesNothingAtZero(t *testing.T) {
 	s := capTestScheduler(cappedDecisionModel("/models/nimble"))
 	if v := s.kindCapVictim(cappedDecisionModel("/models/clef")); v != nil {
 		t.Errorf("a cap of 0 unloaded %s", v.modelKey)
+	}
+}
+
+func TestOnlyAnLLMSharesItsProcessWithItsMedia(t *testing.T) {
+	cfg := &xollama.Config{Media: &speechEngine}
+	gguf := model.ConfigV2{ModelFormat: "gguf"}
+	for _, tc := range []struct {
+		name string
+		m    *Model
+		want bool
+	}{
+		{"an LLM with media", &Model{ModelPath: "/m/llm", Config: gguf, Xollama: cfg}, true},
+		{"an LLM alone", &Model{ModelPath: "/m/llm", Config: gguf}, false},
+		{"media alone", &Model{Config: gguf, Xollama: cfg}, false},
+		{"a twin", mediaTwin(&Model{Digest: "d", Xollama: cfg}), false},
+		{"MLX", &Model{ModelPath: "/m/llm", Config: model.ConfigV2{ModelFormat: "safetensors"}, Xollama: cfg}, false},
+		{"embedding", &Model{ModelPath: "/m/llm", Config: gguf, Xollama: cfg, metadata: ggufMetadata{KV: map[string]any{"general.architecture": "bert", "bert.pooling_type": 1}}}, false},
+		{"decision", func() *Model {
+			m := cappedDecisionModel("/m/nimble")
+			m.Config, m.Xollama = gguf, cfg
+			return m
+		}(), false},
+	} {
+		if got := combinedMedia(tc.m); got != tc.want {
+			t.Errorf("%s: combined = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestAMissingComponentLeavesTheLLMLoading(t *testing.T) {
+	t.Setenv("OLLAMA_MODELS", t.TempDir())
+	m := &Model{ShortName: "m", ModelPath: "/m/llm", Config: model.ConfigV2{ModelFormat: "gguf"}, Xollama: &xollama.Config{
+		Media: &xollama.Media{TTS: &xollama.TTSMedia{Model: "sha256:" + strings.Repeat("a", 64)}},
+	}}
+	if args, estimate := combinedMediaLaunch(m); args != nil || estimate != 0 {
+		t.Errorf("args %v, estimate %d: a load with a missing blob", args, estimate)
+	}
+}
+
+func TestAMediaCallKeepsARunningLLMWhateverItWasLoadedWith(t *testing.T) {
+	m := &Model{ModelPath: "/m/llm"}
+	loaded := api.DefaultOptions()
+	loaded.NumCtx = 8192
+	r := &runnerRef{Options: &loaded, llama: &mockLlm{}, llamaConfig: llamaServerConfigForModel(m)}
+	r.model.Store(m)
+
+	req := func(ctx context.Context) *LlmRequest {
+		return &LlmRequest{ctx: ctx, model: m, opts: api.DefaultOptions()}
+	}
+	if !r.needsReload(t.Context(), req(t.Context())) {
+		t.Fatal("different options must reload a plain request, or this test proves nothing")
+	}
+	media := context.WithValue(t.Context(), mediaCallKey{}, true)
+	if r.needsReload(t.Context(), req(media)) {
+		t.Error("a media call reloaded the running LLM")
 	}
 }

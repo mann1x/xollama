@@ -30,12 +30,11 @@ import (
 	"github.com/ollama/ollama/types/xollama"
 )
 
-// A model's media engines (plans/media-integration.md) run in an opencoti
-// process of their own, booted with no -m: the media-only mode. They are not
-// added to the LLM's process because that combination -- media beside PolyKV
-// pools, elastic slots and the rolling window -- is not yet gated by opencoti
-// (#622, #623). The process is a runner like any other to the scheduler: it
-// is placed, accounted, kept alive and evicted the same way.
+// Media with no LLM to share (plans/media-integration.md) runs in an opencoti
+// process of its own, booted with no -m: the media-only mode. A model with an
+// LLM on opencoti has its media in that process (engine_media_combined.go).
+// The media-only process is a runner like any other to the scheduler: it is
+// placed, accounted, kept alive and evicted the same way.
 
 // Engine features each media kind needs, as /health advertises them. The
 // engine is the authority: a kind whose feature is missing is refused at load
@@ -352,8 +351,8 @@ type MediaRunner interface {
 	// MediaDo sends one request to the engine's media surface. The caller
 	// closes the body; status and body are the engine's own.
 	MediaDo(ctx context.Context, method, path string, query url.Values, body io.Reader, contentType string) (*http.Response, error)
-	// Features is what the engine advertised once it was running.
-	Features() []string
+	// MediaFeatures is what the engine advertised once it was running.
+	MediaFeatures() []string
 }
 
 var errMediaOnly = errors.New("this runner serves media (images, speech, transcription), not text")
@@ -675,7 +674,7 @@ func (r *mediaRunner) MediaDo(ctx context.Context, method, path string, query ur
 	return r.client.Do(req)
 }
 
-func (r *mediaRunner) Features() []string {
+func (r *mediaRunner) MediaFeatures() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return slices.Clone(r.features)

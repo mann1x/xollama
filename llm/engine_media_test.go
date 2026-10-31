@@ -175,7 +175,7 @@ func TestAnEngineWithoutTheNeededFeatureIsRefused(t *testing.T) {
 	if err := r.WaitUntilRunning(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if got := r.Features(); len(got) != 2 {
+	if got := r.MediaFeatures(); len(got) != 2 {
 		t.Fatalf("features = %v", got)
 	}
 	if err := r.Ping(context.Background()); err != nil {

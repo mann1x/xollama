@@ -1576,6 +1576,9 @@ func (runner *runnerRef) needsReload(ctx context.Context, req *LlmRequest) bool 
 	if req.model.ModelPath != "" {
 		contextShift = resolveContextShift(req.shift, req.model)
 	}
+	if isMediaCall(req.ctx) { // xollama-hook: media
+		optsNew, contextShift = optsExisting, runner.contextShift
+	}
 	if runner.contextShift != contextShift {
 		return true
 	}

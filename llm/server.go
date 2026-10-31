@@ -92,6 +92,11 @@ type LlamaServerConfig struct {
 	// draft length of 0 alone cannot carry. See appendDraftOffArgs.
 	DraftOff bool
 
+	// xollama-hook: media — the model's media, in the LLM's process on
+	// opencoti, and the memory it books. See CombinedMedia.
+	MediaArgs     []string
+	MediaEstimate uint64
+
 	// xollama-hook: launch-config — this model must be served one sequence at
 	// a time, because it is an embedding model or its architecture gives wrong
 	// answers with several in flight (ollama/ollama#4165). Dynamic slots must
