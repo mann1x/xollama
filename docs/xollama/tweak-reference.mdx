@@ -38,6 +38,7 @@ settings mean is in the page each section links to.
 | `--kv-pool-cells` | `kv.pool_cells` | N, unset | KV pool size — the cells every slot and session share, apart from num_ctx | yes |  |
 | `--kv-residency` | `kv.residency_mode` | auto, head, window, unset | Rolling-KV residency tactic — for a cache that does not fit in VRAM | yes |  |
 | `--kv-rolling-window` | `kv.rolling_window` | on, off, unset | KV rolling window — stream the overflow of the cache through VRAM | yes |  |
+| `--vulkan-matvec-tune` | `kv.vulkan_matvec_tune` | on, off, unset | Vulkan mat-vec tuning — time the decode kernel on this GPU | yes |  |
 
 ## Concurrent requests
 
@@ -72,6 +73,7 @@ settings mean is in the page each section links to.
 |---|---|---|---|---|---|
 | `--fit` | `fit.enabled` | on, off, unset | Automatic fit — the engine places layers and KV in the memory there is | yes |  |
 | `--vram-target` | `fit.vram_target_mib` | N, unset | VRAM target — the memory the fit and the rolling KV may use | yes |  |
+| `--moe-strategy` | `fit.moe_strategy` | auto, experts-gpu, kv-gpu, unset | MoE strategy — what the fit gives the device first on a MoE model | yes |  |
 
 ## Devices
 
@@ -87,7 +89,7 @@ settings mean is in the page each section links to.
 | `--drafter` | `draft.head` | PATH, hf.co/OWNER/REPO/FILE, sha256:DIGEST, unset | Drafter — the draft model attached beside the weights |  |  |
 | `--draft-tokens` | `draft.tokens` | N, unset | Draft length — tokens the drafter proposes per step | yes |  |
 | `--spec-type` | `draft.spec_type` | draft-mtp, draft-dflash, draft-assistant, draft-simple, draft-eagle3, draft-dspark, unset | Speculative decoding type for this model's drafter | yes |  |
-| `--mtp-policy` | `draft.auto_mtp_policy` | measured, allocator, taper, always, off, unset | MTP auto policy — when a built-in MTP head drafts | yes |  |
+| `--mtp-policy` | `draft.auto_mtp_policy` | measured, allocator, taper, always, adaptive, off, unset | MTP auto policy — when a built-in MTP head drafts | yes |  |
 
 ## Council
 
@@ -242,4 +244,4 @@ settings mean is in the page each section links to.
 | `--clear` | Remove the model's xollama config entirely (an attached drafter stays; `--drafter=none` detaches it) |
 | `-y`, `--yes` | Do not ask for confirmation before writing |
 
-144 settings. `xollama tweak model --help` prints the same list as your build has it.
+146 settings. `xollama tweak model --help` prints the same list as your build has it.

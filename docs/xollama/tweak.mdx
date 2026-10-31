@@ -321,7 +321,7 @@ xollama tweak model my-gemma --drafter=none     # detach it
 | `--drafter` | `draft.head` | `auto`; a file path; `hf.co/<owner>/<repo>/<file>`; a sha256 digest; `none` |
 | `--draft-tokens` | `draft.tokens` | tokens per step; `0` is off; unset is the default |
 | `--spec-type` | `draft.spec_type` | the driver; unset infers it from the drafter |
-| `--mtp-policy` | `draft.auto_mtp_policy` | `measured`; `allocator`; `taper`; `always`; `off` |
+| `--mtp-policy` | `draft.auto_mtp_policy` | `measured`; `allocator`; `taper`; `always`; `adaptive` (c14 engine); `off` |
 
 - **`--drafter`** attaches a drafter in place of any the model has. A local
   file is uploaded; a Hugging Face file is downloaded by the server. A drafter
@@ -662,7 +662,9 @@ These settings are on `tweak model` and, as defaults, on `tweak server`:
 | `--kv-rolling-window` | `kv.rolling_window` | `off`; `on` (the engine sizes it); a size in MiB |
 | `--fit` | `fit.enabled` | `on`; `off` |
 | `--vram-target` | `fit.vram_target_mib` | all free VRAM minus the compute reserve; a cap in MiB |
-| `--mtp-policy` | `draft.auto_mtp_policy` | `measured`; `allocator`; `taper`; `always`; `off` |
+| `--moe-strategy` | `fit.moe_strategy` | `auto`; `experts-gpu`; `kv-gpu` (c14 engine) |
+| `--vulkan-matvec-tune` | `kv.vulkan_matvec_tune` | off; on times the decode kernel on this GPU, for a longer first boot (c14 engine) |
+| `--mtp-policy` | `draft.auto_mtp_policy` | `measured`; `allocator`; `taper`; `always`; `adaptive` (c14 engine); `off` |
 | `--draft-tokens` | `draft.tokens` | 4 for an attached drafter, opencoti's choice for a built-in head; a length; `0` for off |
 
 With `kv.residency_mode` set to `window`, `kv.rolling_window` decides what

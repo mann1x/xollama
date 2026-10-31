@@ -1,8 +1,10 @@
 package llm
 
 import (
+	"errors"
 	"strconv"
 
+	"github.com/ollama/ollama/llm/engine"
 	"github.com/ollama/ollama/types/xollama"
 )
 
@@ -38,5 +40,42 @@ func appendEnginePolicyArgs(args []string, x *xollama.Config, usedOpencoti bool)
 	if x.Draft != nil && x.Draft.AutoMTPPolicy != "" {
 		args = append(args, "--auto-mtp-policy", x.Draft.AutoMTPPolicy)
 	}
+	if x.Fit != nil && x.Fit.MoEStrategy != "" {
+		args = append(args, "--moe-strategy", x.Fit.MoEStrategy)
+	}
+	if x.KV != nil && x.KV.VulkanMatvecTune != nil {
+		v := "off"
+		if *x.KV.VulkanMatvecTune {
+			v = "on"
+		}
+		args = append(args, "--vulkan-matvec-tune", v)
+	}
 	return args
+}
+
+// policyUnavailable is engine.PolicyUnavailable; a variable so a test can state
+// either answer.
+var policyUnavailable = engine.PolicyUnavailable
+
+// enginePolicyRefusal refuses a policy the pinned engine does not declare. Sent
+// anyway, the engine would reject the whole command line with "invalid
+// argument", which names nothing the operator can act on.
+func enginePolicyRefusal(x *xollama.Config, usedOpencoti bool) error {
+	if x == nil || !usedOpencoti {
+		return nil
+	}
+	check := func(stated bool, setting, feature string) error {
+		if !stated {
+			return nil
+		}
+		if why := policyUnavailable(setting, feature); why != "" {
+			return errors.New(why)
+		}
+		return nil
+	}
+	return errors.Join(
+		check(x.KV != nil && x.KV.VulkanMatvecTune != nil, "kv.vulkan_matvec_tune", engine.FeatureVulkanMatvecTune),
+		check(x.Fit != nil && x.Fit.MoEStrategy != "", "fit.moe_strategy", engine.FeatureMoEStrategy),
+		check(x.Draft != nil && x.Draft.AutoMTPPolicy == xollama.AutoMTPAdaptive, "draft.auto_mtp_policy adaptive", engine.FeatureAutoMTPAdaptive),
+	)
 }

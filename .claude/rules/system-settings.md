@@ -72,7 +72,10 @@ paths:
   `fit.vram_target_mib`, `kv.rolling_window`, `draft.auto_mtp_policy`.
   `appendEnginePolicyArgs` (`llm/engine_policy_args.go`, one hook line in
   `startLlamaServer` after `appendKVResidencyArgs`) adds `--fit`,
-  `--vram-target`, `--kv-rolling-window` and `--auto-mtp-policy`; nothing
+  `--vram-target`, `--kv-rolling-window`, `--auto-mtp-policy`, and on a pin that
+  declares them `--moe-strategy` and `--vulkan-matvec-tune` (`enginePolicyRefusal`
+  refuses them by name otherwise; features `moe_strategy_v1`,
+  `vulkan_matvec_tune_v1`, `auto_mtp_adaptive_v1`); nothing
   stated adds nothing. `--fit` reaches either engine; the rest are opencoti's,
   refused by `validateEnginePolicies` on a model pinning `llamacpp` and left
   off when stock serves. A rolling window with `kv.residency_mode` `head` is

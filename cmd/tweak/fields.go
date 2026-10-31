@@ -789,7 +789,8 @@ var fields = []field{
 		help: "measured (the engine's default) drafts while the measured acceptance pays;\n" +
 			"allocator and taper decide by memory; always drafts whatever it measures; off\n" +
 			"never drafts, but the head stays loaded -- draft-tokens 0 is what leaves it\n" +
-			"out of memory. It applies only while the engine chooses the driver itself:\n" +
+			"out of memory; adaptive (c14 engine) sets the depth from priced rounds and\n" +
+			"counted acceptance. It applies only while the engine chooses the driver itself:\n" +
 			"a draft-tokens number or a pinned type drafts at full depth regardless.",
 		kind:     kindChoice,
 		choices:  func(*xollama.Config) []string { return xollama.ValidAutoMTPPolicies() },
@@ -834,6 +835,42 @@ var fields = []field{
 			return orEmpty(c.Fit != nil, func() string { return showInt(c.Fit.VRAMTargetMiB) })
 		},
 		set: func(c *xollama.Config, v string) error { return setInt(v, &fit(c).VRAMTargetMiB) },
+	},
+	{
+		name:  "moe-strategy",
+		path:  "fit.moe_strategy",
+		title: "MoE strategy — what the fit gives the device first on a MoE model",
+		help: "auto is the engine's default: experts on the GPU on a fast link, kv-gpu only\n" +
+			"where KV reads from the host cross a slow one. experts-gpu keeps the experts on\n" +
+			"the device; kv-gpu keeps the KV there. Needs a c14 engine.",
+		kind:    kindChoice,
+		choices: func(*xollama.Config) []string { return xollama.ValidMoEStrategies() },
+		blocked: opencotiOnly("the MoE strategy"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Fit != nil, func() string { return c.Fit.MoEStrategy })
+		},
+		set: func(c *xollama.Config, v string) error {
+			s, err := choice(v, xollama.ValidMoEStrategies())
+			if err != nil {
+				return err
+			}
+			fit(c).MoEStrategy = s
+			return nil
+		},
+	},
+	{
+		name:  "vulkan-matvec-tune",
+		path:  "kv.vulkan_matvec_tune",
+		title: "Vulkan mat-vec tuning — time the decode kernel on this GPU",
+		help: "on times the decode mat-vec variants on the first decode steps and keeps the\n" +
+			"pick beside the pipeline cache, for a longer first boot. off is the engine's\n" +
+			"default: a fixed rule, nothing benchmarked. Vulkan only; needs a c14 engine.",
+		kind:    kindTri,
+		blocked: opencotiOnly("Vulkan mat-vec tuning"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.KV != nil, func() string { return tri(c.KV.VulkanMatvecTune) })
+		},
+		set: func(c *xollama.Config, v string) error { return setTri(v, &kv(c).VulkanMatvecTune) },
 	},
 }
 

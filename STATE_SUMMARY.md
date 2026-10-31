@@ -5,6 +5,9 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-10-31 — three c14 engine options per model (owner: "expose per-model option for --vulkan-matvec-tune and --auto-mtp-policy adaptive and --moe-strategy").** `kv.vulkan_matvec_tune`, `draft.auto_mtp_policy adaptive`, `fit.moe_strategy`, schema v10, with `xollama tweak model` rows. Sent only when the pin declares `vulkan_matvec_tune_v1`, `auto_mtp_adaptive_v1`, `moe_strategy_v1`; otherwise the load is refused by name (`enginePolicyRefusal`). The flags were checked against c14's `--help`; no live load, since the c13 pin declares none of the three.
+> - **Left:** opencoti must declare the three features, with `arch_lfm3_v1`, in the c14 pin (mails #2041, #2042).
+
 > **2026-10-31 — an LLM and its media in one opencoti process (owner: "FIX IT NOW ... IT MUST WORK FOR WHEN C14 IS AVAILABLE").** xollama always ran media in a second process, on a reason opencoti closed in M7.6 (b103, 2026-10-02). A GGUF model that generates now loads its media with its LLM (`server/media_combined.go`, `llm/engine_media_combined.go`, `media` hook); a media call never reloads it (`isMediaCall`); the load is priced with the media.
 > - **Gate `scripts/gates/media-combined.sh` PASS on the 3090**, llama3 + Klein 4B + Kokoro + Whisper: pinned c13 and opencoti's c14 cut engine (`release/c14`, on c13's CUDA library, since c14's was still compiling). One runner and one engine pid through chat, speech, transcription and an image; speech read back as "The first ship came in at dawn."; greedy text identical to the plain LLM (first run and repeat); 87 tok/s, 59-63 during the image. Video in one process was not run.
 > - **Left:** rerun the gate on the published c14 with its own CUDA library.

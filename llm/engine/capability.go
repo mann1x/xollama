@@ -133,3 +133,32 @@ func HasGenerationNotice() bool {
 	}
 	return pin.HasFeature(FeatureGenerationNotice)
 }
+
+// Features of the c14 policies a model can state; each is one flag, or one
+// value of a flag, that an older engine refuses with the whole command line.
+const (
+	FeatureVulkanMatvecTune = "vulkan_matvec_tune_v1"
+	FeatureAutoMTPAdaptive  = "auto_mtp_adaptive_v1"
+	FeatureMoEStrategy      = "moe_strategy_v1"
+)
+
+// HasPolicy reports whether the engine this build ships declares feature.
+func HasPolicy(feature string) bool {
+	pin, err := DefaultPin()
+	if err != nil {
+		return false
+	}
+	return pin.HasFeature(feature)
+}
+
+// PolicyUnavailable explains why a stated policy cannot run on this build.
+func PolicyUnavailable(setting, feature string) string {
+	if HasPolicy(feature) {
+		return ""
+	}
+	build := "the engine this build ships"
+	if pin, err := DefaultPin(); err == nil && pin.Tag != "" {
+		build = fmt.Sprintf("the engine this build ships (%s, channel %s)", pin.Tag, pin.Channel)
+	}
+	return fmt.Sprintf("%s does not declare %s, which %s needs; clear the setting or update xollama", build, feature, setting)
+}

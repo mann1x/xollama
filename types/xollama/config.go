@@ -33,7 +33,7 @@ const MediaTypeImageJSON = "application/vnd.ollama.image.json"
 
 // SchemaVersion is the newest schema this build can read. It is NOT
 // necessarily what it writes: see requiredVersion.
-const SchemaVersion = 9
+const SchemaVersion = 10
 
 // SchemaVersionBase is the version that expresses everything except the fields
 // added in v2 (kv.unified, kv.residency_mode), v3 (devices) and v4 (council).
@@ -311,6 +311,11 @@ type KV struct {
 	// It raises no schema floor, like slots.live: an older build ignores it
 	// and serves the same model in the pool num_ctx x num_parallel gives.
 	PoolCells int `json:"pool_cells,omitempty"`
+
+	// VulkanMatvecTune is opencoti's --vulkan-matvec-tune: time the decode
+	// mat-vec variants on this GPU and keep the pick, for a longer first boot.
+	// Unset is the engine's default, off: a fixed rule, nothing benchmarked.
+	VulkanMatvecTune *bool `json:"vulkan_matvec_tune,omitempty"`
 }
 
 // Draft holds speculative-decoding settings for this model.
@@ -549,9 +554,14 @@ func (c *Config) requiredVersion() int {
 	// a model whose publisher turned drafting off, or set another length.
 	// draft.head raises nothing: the head is an upstream DRAFT layer, which
 	// every build loads.
+	// An older build would drop the c14 policies and run the engine's default,
+	// or refuse draft.auto_mtp_policy adaptive as an unknown value.
 	// An older build would start the model without its detector and write
 	// words for silence and noise, which is what the publisher attached the
 	// detector against.
+	if c.setsC14Policies() {
+		return 10
+	}
 	if c.Media != nil && c.Media.STT != nil && c.Media.STT.VAD != "" {
 		return 9
 	}
@@ -620,7 +630,7 @@ func (c *Config) IsZero() bool {
 		(c.KV == nil || c.KV.RollingWindow == "") &&
 		c.Fit.IsZero() &&
 		(c.KV == nil || (c.KV.K == "" && c.KV.V == "" && c.KV.KSWA == "" && c.KV.VSWA == "" &&
-			c.KV.Unified == nil && c.KV.ResidencyMode == "" && c.KV.PoolCells == 0)) &&
+			c.KV.Unified == nil && c.KV.ResidencyMode == "" && c.KV.PoolCells == 0 && c.KV.VulkanMatvecTune == nil)) &&
 		(c.Slots == nil || (c.Slots.Dynamic == nil && c.Slots.Max == 0 && c.Slots.Live == 0 && c.Slots.TPSFloor == 0 &&
 			c.Slots.VRAMReserveMiB == 0 && c.Slots.SWASeqBudget == 0)) &&
 		(c.DCA == nil || (c.DCA.Enabled == nil && c.DCA.ChunkSize == 0)) &&
