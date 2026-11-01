@@ -30,12 +30,11 @@ import (
 	"github.com/ollama/ollama/types/xollama"
 )
 
-// A model's media engines (plans/media-integration.md) run in an opencoti
-// process of their own, booted with no -m: the media-only mode. They are not
-// added to the LLM's process because that combination -- media beside PolyKV
-// pools, elastic slots and the rolling window -- is not yet gated by opencoti
-// (#622, #623). The process is a runner like any other to the scheduler: it
-// is placed, accounted, kept alive and evicted the same way.
+// Media with no LLM to share (plans/media-integration.md) runs in an opencoti
+// process of its own, booted with no -m: the media-only mode. A model with an
+// LLM on opencoti has its media in that process (engine_media_combined.go).
+// The media-only process is a runner like any other to the scheduler: it is
+// placed, accounted, kept alive and evicted the same way.
 
 // Engine features each media kind needs, as /health advertises them. The
 // engine is the authority: a kind whose feature is missing is refused at load
@@ -49,6 +48,9 @@ const (
 	FeatureVAD    = "audio_vad_v1"
 	FeatureSpeech = "audio_speech_v1"
 	FeatureVideos = "videos_generate_v1"
+	// FeatureAudioGenerations is advertised by an engine started with
+	// --sfx-model (opencoti 0824).
+	FeatureAudioGenerations = "audio_generations_v1"
 
 	// FeatureSpeechContentFormat is an audio.cpp that tells a model file's
 	// format by its contents, so it loads a blob path as it is (opencoti
@@ -106,6 +108,13 @@ func needsCodec(m *xollama.Media) bool {
 			return true
 		}
 	}
+	if s := m.SFX; s != nil && s.Defaults != nil {
+		switch s.Defaults.ResponseFormat {
+		case "", "wav", "pcm":
+		default:
+			return true
+		}
+	}
 	return false
 }
 
@@ -153,6 +162,9 @@ func MediaFeatures(m *xollama.Media) []string {
 	}
 	if m.Video != nil {
 		out = append(out, FeatureVideos)
+	}
+	if m.SFX != nil {
+		out = append(out, FeatureAudioGenerations)
 	}
 	if needsCodec(m) {
 		out = append(out, FeatureMediaCodec)
@@ -283,6 +295,9 @@ func MediaArgs(m *xollama.Media, path func(digest string) string) []string {
 			a = append(a, "--tts-engine", t.Engine)
 		}
 		a = append(a, "--tts-model", path(t.Model))
+		if t.Threads > 0 {
+			a = append(a, "--tts-threads", strconv.Itoa(t.Threads))
+		}
 		if t.Vocoder != "" {
 			a = append(a, "--tts-vocoder", path(t.Vocoder))
 		}
@@ -310,6 +325,18 @@ func MediaArgs(m *xollama.Media, path func(digest string) string) []string {
 			a = append(a, "--video-args", strings.Join(o, " "))
 		}
 	}
+	if s := m.SFX; s != nil {
+		a = append(a, "--sfx-model", path(s.Model))
+		if s.Threads > 0 {
+			a = append(a, "--sfx-threads", strconv.Itoa(s.Threads))
+		}
+		if s.MaxSeconds > 0 {
+			a = append(a, "--sfx-max-seconds", strconv.Itoa(s.MaxSeconds))
+		}
+		if s.Defaults != nil && s.Defaults.Seconds != nil {
+			a = append(a, "--sfx-default-seconds", strconv.FormatFloat(*s.Defaults.Seconds, 'f', -1, 64))
+		}
+	}
 	return a
 }
 
@@ -319,6 +346,17 @@ func MediaArgs(m *xollama.Media, path func(digest string) string) []string {
 func MediaEstimate(m *xollama.Media, size func(digest string) int64) uint64 {
 	if m.IsZero() {
 		return 0
+	}
+	// The sound-effects sidecar is on the CPU, and the engine books nothing
+	// for it (opencoti "Sound effects"): beside another kind this estimate is
+	// that kind's GPU memory. Alone it is the RAM a CPU runner books, and the
+	// package's size covers the measured peak (Q8_0 1.68 GB, 1.30 GB RSS).
+	if m.SFX != nil {
+		rest := *m
+		rest.SFX = nil
+		if !rest.IsZero() {
+			m = &rest
+		}
 	}
 	var total int64
 	for _, c := range m.Components() {
@@ -352,8 +390,8 @@ type MediaRunner interface {
 	// MediaDo sends one request to the engine's media surface. The caller
 	// closes the body; status and body are the engine's own.
 	MediaDo(ctx context.Context, method, path string, query url.Values, body io.Reader, contentType string) (*http.Response, error)
-	// Features is what the engine advertised once it was running.
-	Features() []string
+	// MediaFeatures is what the engine advertised once it was running.
+	MediaFeatures() []string
 }
 
 var errMediaOnly = errors.New("this runner serves media (images, speech, transcription), not text")
@@ -398,7 +436,7 @@ type mediaRunner struct {
 }
 
 // mediaOnCPU reports whether every engine of m runs on the CPU: it states
-// device CPU, or it is audio.cpp, which has no GPU backend in the engine, or a
+// device CPU, or it is audio.cpp (speech and sound effects), which has no GPU backend in the engine, or a
 // Whistle speech-to-text model off macOS (whistleOnCPU). A speech model placed
 // on a GPU would book memory it never uses and be launched with a --gpu backend
 // the engine may not have (solidPC, b117, 2026-10-03: a Vulkan-only view of the
@@ -424,6 +462,9 @@ func mediaOnCPU(m *xollama.Media, path func(string) string) bool {
 	}
 	if m.Video != nil {
 		devices = append(devices, m.Video.Device)
+	}
+	if m.SFX != nil {
+		devices = append(devices, "cpu")
 	}
 	for _, d := range devices {
 		if !strings.EqualFold(d, "cpu") {
@@ -542,6 +583,9 @@ func (r *mediaRunner) start(gpus []ml.DeviceInfo) error {
 	}
 	if opencoti && engine.LegacyCUDA(engineDevices(gpus)) {
 		envs[engine.EnvCUDALegacy] = "1"
+	}
+	if opencoti {
+		envs = engine.WithVulkanCache(envs)
 	}
 
 	cmd := exec.Command(name, args...)
@@ -675,7 +719,7 @@ func (r *mediaRunner) MediaDo(ctx context.Context, method, path string, query ur
 	return r.client.Do(req)
 }
 
-func (r *mediaRunner) Features() []string {
+func (r *mediaRunner) MediaFeatures() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return slices.Clone(r.features)

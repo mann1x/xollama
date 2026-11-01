@@ -16,10 +16,13 @@ import (
 // requiresC12 is the first xOllama release on the opencoti c12 engine.
 const requiresC12 = "0.40.3-xollama.3"
 
+// requiresSFX is the first xOllama release with the sound-effects route.
+const requiresSFX = "0.40.13-xollama.1"
+
 type Entry struct {
 	ID          string
 	Name        string
-	Kind        string // image, stt, tts, video, or mix
+	Kind        string // image, stt, tts, video, sfx, or mix
 	Family      string
 	License     string
 	Description string
@@ -114,6 +117,12 @@ func supertonic(file string) *xollama.TTSMedia {
 		VoiceMap: supertonicVoices,
 		Defaults: &xollama.TTSDefaults{Voice: "F1", ResponseFormat: "mp3"},
 	}
+}
+
+// stableAudio is Stable Audio 3 Small SFX. The package is one file; the
+// template states nothing, the engine's defaults are the measured ones.
+func stableAudio(file string) *xollama.SFXMedia {
+	return &xollama.SFXMedia{Model: audioCppHub + "Stable-Audio-3-Small-SFX-GGUF/" + file}
 }
 
 // wan21 is Wan2.1 T2V 1.3B with the given weights and text encoder.
@@ -229,6 +238,18 @@ var catalog = []Entry{
 			VoiceMap: kittenVoices,
 			Defaults: &xollama.TTSDefaults{Voice: "Bella", ResponseFormat: "mp3"},
 		}},
+	},
+	{
+		ID: "stable-audio-3-small-sfx", Template: "mannix/stable-audio:3-small-sfx", Published: true, Name: "Stable Audio 3 Small SFX", Kind: "sfx", Family: "Stable Audio", License: "stability-community",
+		Description: "Sound effects from text, up to 30 seconds, on the CPU.",
+		Requires:    requiresSFX,
+		Media:       xollama.Media{SFX: stableAudio("stable-audio-3-small-sfx-f16.gguf")},
+	},
+	{
+		ID: "stable-audio-3-small-sfx-q8_0", Template: "mannix/stable-audio:3-small-sfx-q8_0", Published: true, Name: "Stable Audio 3 Small SFX (Q8_0)", Kind: "sfx", Family: "Stable Audio", License: "stability-community",
+		Description: "Stable Audio 3 Small SFX from its Q8_0 file, the one opencoti's gate ran.",
+		Requires:    requiresSFX,
+		Media:       xollama.Media{SFX: stableAudio("stable-audio-3-small-sfx-q8_0.gguf")},
 	},
 	{
 		ID: "wan2.1-t2v-1.3b", Template: "mannix/wan2.1:t2v-1.3b", Published: true, Name: "Wan2.1 T2V 1.3B", Kind: "video", Family: "Wan", License: "apache-2.0",

@@ -613,6 +613,9 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	args = appendKVCacheRingArgs(args, kvTypes, usedOpencoti)
 	args = appendKVResidencyArgs(args, kvTypes, usedOpencoti)
 	// xollama-hook: system-settings — fit, rolling window, MTP policy.
+	if err := enginePolicyRefusal(launch.config.Xollama, usedOpencoti); err != nil {
+		return nil, 0, false, err
+	}
 	args = appendEnginePolicyArgs(args, launch.config.Xollama, usedOpencoti)
 
 	// xollama-hook: launch-config — dynamic slots. See docs/xollama/slots.mdx.
@@ -623,6 +626,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	// xollama-hook: council -- the council's pool seats ride on the same flag.
 	args = appendSlotArgs(args, slots, enginePoolSeats(launch.config, len(launch.projectors) > 0), kvTypes.Unified, usedOpencoti)
 	args = withPoolCells(args, launch.config, launch.opts.NumCtx, launch.numParallel, usedOpencoti) // xollama-hook: pool-cells
+	args = mediaArgsFor(args, launch.config, usedOpencoti)                                          // xollama-hook: media
 	args = appendSWABudgetArgs(args, slots, usedOpencoti)
 
 	// xollama-hook: launch-config — dual chunk attention. See docs/xollama/dca.mdx.
@@ -683,6 +687,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 			envs = cloneStringMap(envs)
 			envs["HOME"] = payloadHome
 		}
+		envs = engine.WithVulkanCache(envs)
 	}
 
 	// Set up library paths for GPU backend discovery
@@ -1941,6 +1946,8 @@ type llamaServerCompletionRequest struct {
 	// xollama-hook: notices -- opencoti's generation notices, only on an
 	// engine that declares them (llm/engine_notice.go).
 	Notices json.RawMessage `json:"notices,omitempty"`
+	// xollama-hook: overcommit -- opencoti only.
+	Overcommit bool `json:"overcommit,omitempty"`
 	// xollama-hook: tool-choice -- the tool-call tag banned for tool_choice
 	// "none" (llm/engine_tool_choice.go); absent on every other request.
 	LogitBias []any `json:"logit_bias,omitempty"`
@@ -2295,6 +2302,7 @@ func (s *llamaServerRunner) Completion(ctx context.Context, req CompletionReques
 		lsReq.Notices = n
 		defer s.trackNotice(n)()
 	}
+	lsReq.Overcommit = req.Overcommit && s.usedOpencoti // xollama-hook: overcommit
 	// xollama-hook: council -- a placed call takes the council's pool and
 	// window, and teaches the automatic pools nothing.
 	if pool, n, nmin := placementFields(s.usedOpencoti, s.launch.config, req.Placement); pool != nil || n > 0 {
@@ -2709,6 +2717,9 @@ func (s *llamaServerRunner) Chat(ctx context.Context, req ChatRequest, fn func(C
 	if n := s.noticesFor(ctx, req.Notices); n != nil {
 		lsReq["notices"] = n
 		defer s.trackNotice(n)()
+	}
+	if req.Overcommit && s.usedOpencoti { // xollama-hook: overcommit
+		lsReq["overcommit"] = true
 	}
 	// xollama-hook: context-window-unbooked -- beside the placed window.
 	if n, ok := lsReq["num_ctx"].(int); ok {

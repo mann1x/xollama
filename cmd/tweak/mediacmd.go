@@ -59,7 +59,7 @@ func mediaListCommand() *cobra.Command {
 			return printCatalog(cmd.OutOrStdout(), kind)
 		},
 	}
-	cmd.Flags().String("kind", "", "Only this kind: image, stt, tts, video or mix")
+	cmd.Flags().String("kind", "", "Only this kind: image, stt, tts, video, sfx or mix")
 	return cmd
 }
 
@@ -94,7 +94,7 @@ func mediaSearchCommand() *cobra.Command {
 		Short: "Search Hugging Face for media models of a kind",
 		Long: `Search Hugging Face for media models, most downloaded first.
 
-KIND is image, edit, stt, tts or video. Only GGUF repos are listed unless
+KIND is image, edit, stt, tts, video or sfx. Only GGUF repos are listed unless
 --all-formats is given; list a repo's files with xollama media files.`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -252,6 +252,9 @@ func runMediaCreate(ctx context.Context, client *api.Client, out io.Writer, args
 		}
 		if media.Video != nil {
 			cfg.Media.Video = media.Video
+		}
+		if media.SFX != nil {
+			cfg.Media.SFX = media.SFX
 		}
 		from = to
 	}

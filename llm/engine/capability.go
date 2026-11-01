@@ -1,6 +1,9 @@
 package engine
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 // Engine capabilities that the pinned artifact may or may not have.
 //
@@ -132,4 +135,54 @@ func HasGenerationNotice() bool {
 		return false
 	}
 	return pin.HasFeature(FeatureGenerationNotice)
+}
+
+// Features of the c14 policies a model can state; each is one flag, or one
+// value of a flag, that an older engine refuses with the whole command line.
+const (
+	FeatureVulkanMatvecTune = "vulkan_matvec_tune_v1"
+	FeatureAutoMTPAdaptive  = "auto_mtp_adaptive_v1"
+	FeatureMoEStrategy      = "moe_strategy_v1"
+)
+
+// FeatureIdleSlotPoolSafe is an engine whose idle-slot clear skips a slot
+// holding a PolyKV pool's prefix.
+const FeatureIdleSlotPoolSafe = "idle_slot_pool_safe_v1"
+
+// Sound effects take two pins: the engine's route and a media component whose
+// oc-audiocpp was built with the stable_audio family.
+const (
+	FeatureAudioGenerations = "audio_generations_v1"
+	FeatureSFXSidecar       = "audio_sfx_audiocpp_v1"
+)
+
+// HasSoundEffects reports whether the engine this build ships and its media
+// component both declare sound effects.
+func HasSoundEffects() bool {
+	pin, err := loadPin()
+	if err != nil {
+		return false
+	}
+	return pin.HasFeature(FeatureAudioGenerations) && slices.Contains(pin.MediaFeatures, FeatureSFXSidecar)
+}
+
+// HasPolicy reports whether the engine this build ships declares feature.
+func HasPolicy(feature string) bool {
+	pin, err := DefaultPin()
+	if err != nil {
+		return false
+	}
+	return pin.HasFeature(feature)
+}
+
+// PolicyUnavailable explains why a stated policy cannot run on this build.
+func PolicyUnavailable(setting, feature string) string {
+	if HasPolicy(feature) {
+		return ""
+	}
+	build := "the engine this build ships"
+	if pin, err := DefaultPin(); err == nil && pin.Tag != "" {
+		build = fmt.Sprintf("the engine this build ships (%s, channel %s)", pin.Tag, pin.Channel)
+	}
+	return fmt.Sprintf("%s does not declare %s, which %s needs; clear the setting or update xollama", build, feature, setting)
 }

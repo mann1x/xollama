@@ -787,6 +787,7 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 			// would pin every unrelated prompt to a slot of its own. A caller
 			// that knows these requests belong together sends session_id.
 			SessionID:           req.SessionID,
+			Overcommit:          req.Overcommit, // xollama-hook: overcommit
 			ThinkBudget:         thinkBudget,
 			ThinkBudgetMessage:  opts.ThinkBudgetMessage,
 			ThinkingStartTag:    thinkStartTag,
@@ -2623,12 +2624,14 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.GET("/v1/models/:model", cloudModelPathPassthroughMiddleware(cloudErrRemoteModelDetailsUnavailable), middleware.RetrieveMiddleware(), s.ShowHandler)
 	r.POST("/v1/responses", s.withInferenceRequestLogging("/v1/responses", s.responsesCompactionMiddleware(), cloudPassthroughMiddleware(cloudErrRemoteInferenceUnavailable), middleware.ResponsesMiddleware(lookupThinking), s.ChatHandler)...)
 	r.POST("/v1/responses/compact", s.ResponsesCompactHandler)
+	r.GET("/v1/realtime", s.RealtimeHandler) // xollama-hook: media
 	// OpenAI-compatible audio endpoints
 	// xollama-hook: media — a model with a speech-to-text engine is served by it
 	// (server/media_routes.go); every other goes on to upstream's handler.
 	r.POST("/v1/audio/transcriptions", s.mediaTranscriptionMiddleware(false), s.TranscriptionHandler) // xollama-hook: media
 	r.POST("/v1/audio/translations", s.mediaTranscriptionMiddleware(true), s.TranslationHandler)      // xollama-hook: media
 	r.POST("/v1/audio/speech", s.SpeechHandler)
+	r.POST("/v1/audio/generations", s.SoundEffectsHandler) // xollama-hook: media
 	r.POST("/v1/images/generations", s.ImageGenerationsHandler)
 	r.POST("/v1/images/edits", s.ImageEditsHandler)
 	r.GET(api.XollamaMediaVoicesPath, s.MediaVoicesHandler)
@@ -3293,6 +3296,7 @@ func chatModeForModel(m *Model) chatExecutionMode {
 }
 
 func llamaServerConfigForModel(m *Model) llm.LlamaServerConfig {
+	mediaArgs, mediaEstimate := combinedMediaLaunch(m) // xollama-hook: media
 	return llm.LlamaServerConfig{
 		DisableJinja:         usesOllamaRenderedChat(m),
 		ManifestDigest:       m.Digest,
@@ -3316,6 +3320,10 @@ func llamaServerConfigForModel(m *Model) llm.LlamaServerConfig {
 
 		// xollama-hook: notices -- the model's templates, else the defaults.
 		NoticeTemplatesPath: noticeTemplatesPath(m),
+
+		// xollama-hook: media -- a model's media in its LLM's process.
+		MediaArgs:     mediaArgs,
+		MediaEstimate: mediaEstimate,
 	}
 }
 
@@ -3787,8 +3795,9 @@ func (s *Server) ChatHandler(c *gin.Context) {
 			ThinkBudgetResetTag: thinkBudgetResetTagForCompletion(builtinParser),
 
 			// xollama-hook: council -- a council member's pool and window.
-			Placement: councilPlacement(c),
-			Notices:   req.Notices, // xollama-hook: notices
+			Placement:  councilPlacement(c),
+			Notices:    req.Notices,    // xollama-hook: notices
+			Overcommit: req.Overcommit, // xollama-hook: overcommit
 
 			NoToolCallTag: noToolCallTag(&req, builtinParser, toolParser), // xollama-hook: tool-choice
 		}, func(r llm.CompletionResponse) {

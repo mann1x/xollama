@@ -61,7 +61,7 @@ func TestMediaRunnerLive(t *testing.T) {
 	if err := r.WaitUntilRunning(ctx); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("ready in %s, features %v", time.Since(start).Round(time.Millisecond), r.Features())
+	t.Logf("ready in %s, features %v", time.Since(start).Round(time.Millisecond), r.MediaFeatures())
 
 	sentence := "The quick brown fox jumps over the lazy dog."
 	body, _ := json.Marshal(map[string]any{"model": "tts", "input": sentence, "response_format": "wav"})

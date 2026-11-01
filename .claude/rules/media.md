@@ -12,6 +12,22 @@ paths:
 
 # Media models (`media` hook)
 
+- **`GET /v1/realtime`** is `RealtimeHandler` (`server/media_realtime.go`):
+  `ReverseProxy` carries the websocket to the engine. Never gate it on
+  `audio_realtime_v1` in `/health`, which a whisper engine does not list: the
+  engine answers 501 itself. Gate `scripts/gates/engine-options.sh`.
+- **An LLM and its media share one process** (owner, 2026-10-31):
+  `combinedMedia` (`server/media_combined.go`) for a GGUF model that generates;
+  `llamaServerConfigForModel` fills `MediaArgs` and `MediaEstimate`,
+  `mediaArgsFor` (`llm/engine_media_combined.go`) adds them on opencoti only,
+  `predictVRAM` prices them, and `mediaRunner` schedules the model itself and
+  checks the engine's `/health` features. A media call never reloads a running
+  LLM (`isMediaCall` in `needsReload`). It stays one runner in the shared pool,
+  never counted under a media cap. Stock, MLX, decision and embedding models
+  keep the twin, and a missing blob keeps the LLM loading. `opencoti` gated this
+  in M7.6, and the gate passes on published c14; never say otherwise from an old comment. A repeated prompt's greedy
+  text differs from its first run, media or not: compare like with like. Gate:
+  `scripts/gates/media-combined.sh`.
 - A media-only model is served by its own opencoti process
   (`llm/engine_media.go`), scheduled as `media:<digest>` from `server/media.go`;
   its components are `application/vnd.xollama.media` layers by digest, written
@@ -76,6 +92,41 @@ paths:
   with ` | ` (`tailWriter.last`), never only the last: the engine states the
   cause first and its advice last. Guard:
   `TestAFailedLoadReportsTheCauseNotOnlyTheLastLine`.
+- **Each media kind has its own cap** (`server/load_caps.go`, three marked
+  lines in `processPending`): `XOLLAMA_MAX_LOADED_IMAGE_MODELS`, `_SPEECH_`,
+  `_TRANSCRIPTION_`, `_VIDEO_`, `_SFX_`, and `XOLLAMA_MAX_LOADED_DECISION_MODELS` for
+  decision models (no upstream setting exists), default 1 (owner, 2026-10-31).
+  Decision models run on stock llama.cpp, so `XOLLAMA_ENGINE=llamacpp` keeps them
+  in the pool (`decisionLimit`), off means off; media never runs there. Capped engines
+  are outside `OLLAMA_MAX_LOADED_MODELS`, and at the cap only an engine of that
+  kind is unloaded; `0` is the shared pool. An engine counts under every kind
+  it serves and stays in the pool while any of them is 0. Only a twin counts: a
+  model's LLM stays in the pool. Memory eviction ignores the caps. A busy victim
+  blocks `processPending`, as upstream's limit does, so a held video job stalls
+  other loads. Guards: `TestAMediaLoadUnloadsOnlyItsOwnKindAtTheCap`,
+  `TestAnEngineOfSeveralKindsNeedsRoomUnderEach`,
+  `TestMediaEnginesAreOutsideTheSharedPool`,
+  `TestACapOfZeroPutsTheKindBackInTheSharedPool`,
+  `TestAnLLMWithMediaKeepsItsPlaceInTheSharedPool`, and through
+  `processPending` (each fails with the hook removed)
+  `TestTheSchedulerKeepsAnLLMWhenAnEngineLoadsAtTheLimit`,
+  `TestTheSchedulerUnloadsTheSameKindAtItsCap`; decision
+  `TestADecisionModelHasItsOwnCap`,
+  `TestAStockEngineKeepsDecisionModelsInTheSharedPool`,
+  `TestTheDecisionCapChangesNothingAtZero`.
+- **Sound effects are opencoti's route, `POST /v1/audio/generations`**
+  (`SoundEffectsHandler`, `server/media_sfx.go`; `media.sfx`, schema v11;
+  opencoti `docs/features/media_engines.md`, "Sound effects"). One blob,
+  `--sfx-model`, always on the CPU (`mediaOnCPU`). Two pins must declare it:
+  `audio_generations_v1` on the engine, `audio_sfx_audiocpp_v1` on media
+  (`engine.HasSoundEffects`, `Pin.MediaFeatures`); a media library without the
+  family fails the boot, naming `UNSUPPORTED_FAMILY`. The feature is in
+  `/health` only with a model loaded. The engine has no device, reserve or args
+  flag for this kind, so `SFXMedia.validate` refuses them. Beside a GPU kind the
+  package stays out of `MediaEstimate`: the engine books nothing for a CPU
+  sidecar. `serveMedia` passes the `X-OC-*` headers on: the seed of a clip is
+  nowhere else. Requests are queued here, so a client does not see the engine's
+  503 unless the queue is full. Gate `scripts/gates/sfx.sh`.
 - **The catalog** (`internal/mediahub/catalog.go`) feeds `xollama media list`
   and `media create`. Entries of one family share a builder (`supertonic(file)`,
   `wan21(model, encoder)`, `wan22(model)`, `whistle(vad)`) so a quant tag differs from its

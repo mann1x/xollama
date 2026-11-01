@@ -43,6 +43,10 @@ paths:
   create (HTTP 501). The estimate cannot tell a multimodal load (it gets no
   projector), so it counts the seats anyway: it over-plans there, never
   under-plans.
+- A load with pool seats gets `--no-cache-idle-slots` only from an engine that
+  does not declare `idle_slot_pool_safe_v1` (`appendSlotArgs`,
+  `llm/engine_launch.go`; opencoti #2046, their 0830 and `polykv-idle-slot`
+  gate). c14 r5 declares it, so the flag is no longer sent.
 - Client seats are the client's to create and release through `/api/engine`;
   xollama's own pool registry never counts or evicts them.
 - Pool ids are `*int` and the engine numbers its first pool `0` — including

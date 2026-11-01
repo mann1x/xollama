@@ -94,6 +94,11 @@ none. If you know a series of generate calls belongs together, send
 
 ### The session's window
 
+A chat or generate request can send `"overcommit": true` to pass the engine's
+enforced admission gate. It has no effect on stock llama.cpp. The engine's
+`X-KV-Pool-Saturated`, `X-Sessions-Remaining`, `X-PolyKV-Settle-Waived` and
+`X-Session-TPS` headers reach the client on `/api/chat` and `/api/generate`.
+
 On opencoti with elastic admission (its default under xollama), a session is
 booked a context window of its own, and xollama tells you what you got. Every
 admitted response on `/api/chat` and `/api/generate` carries it, streamed or

@@ -30,6 +30,7 @@ const (
 	CapabilitySpeech          = model.Capability("speech")
 	CapabilityTranscription   = model.Capability("transcription")
 	CapabilityVideo           = model.Capability("video")
+	CapabilitySoundEffects    = model.Capability("sound_effects")
 )
 
 func isMediaKey(path string) bool { return strings.HasPrefix(path, mediaKeyPrefix) }
@@ -64,6 +65,9 @@ func mediaCapabilities(m *Model) []model.Capability {
 	}
 	if media.Video != nil {
 		out = append(out, CapabilityVideo)
+	}
+	if media.SFX != nil {
+		out = append(out, CapabilitySoundEffects)
 	}
 	return out
 }
@@ -147,6 +151,9 @@ func (s *Server) mediaRunner(ctx context.Context, name string, kind model.Capabi
 	}
 	if !has {
 		return nil, nil, fmt.Errorf("%s %w (%s)", name, errNoMedia, kind)
+	}
+	if mr, combined, err := s.combinedMediaRunner(ctx, m, keepAlive); combined {
+		return mr, m, err
 	}
 	twin := mediaTwin(m)
 	opts, err := s.modelOptions(twin, nil)

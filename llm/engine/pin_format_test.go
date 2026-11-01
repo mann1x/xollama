@@ -298,3 +298,28 @@ func TestTheSBSAComponentServesAarch64WithItsOwnSASS(t *testing.T) {
 		t.Error("an aarch64 host is offered a CUDA 12 payload it has no file for")
 	}
 }
+
+func TestSoundEffectsNeedBothPins(t *testing.T) {
+	withPin(t, Pin{Features: []string{FeatureAudioGenerations}, MediaFeatures: []string{FeatureSFXSidecar}})
+	if !HasSoundEffects() {
+		t.Fatal("both rows declared, sound effects refused")
+	}
+	withPin(t, Pin{Features: []string{FeatureAudioGenerations}})
+	if HasSoundEffects() {
+		t.Fatal("a media component built without stable_audio was accepted")
+	}
+	withPin(t, Pin{MediaFeatures: []string{FeatureSFXSidecar}})
+	if HasSoundEffects() {
+		t.Fatal("an engine without the route was accepted")
+	}
+}
+
+func TestThePinnedMediaComponentDeclaresItsFeatures(t *testing.T) {
+	pin, err := DefaultPin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pin.MediaFeatures) == 0 {
+		t.Fatal("no feature row of the media component was read")
+	}
+}

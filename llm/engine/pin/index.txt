@@ -15,6 +15,48 @@
 # Moving a component is one line here plus its pin file, on a MEASUREMENT
 # (scripts/phase2-engine-ab.py, as the `ollama` user), never on a changelog.
 #
+# THIS PIN (2026-11-01, opencoti mail #2100; index f83a7eff, pins f259bb76,
+# payload b790fad6): c14 r5, git tag llamafile-v0.10.5+opencoti.c14-r5. Engine
+# 2611012008001 (bare c93020ca) = r4 + 0828 (media-flag table) + 0829 (one
+# capability table: /props, --print-features and the pin agree) + 0830 (the
+# PolyKV idle-slot skip, idle_slot_pool_safe_v1, which retires our
+# --no-cache-idle-slots). media 2611012031001 (engine-min this engine):
+# oc-audiocpp with audio.cpp 0010, an 8 MiB job thread, so KittenTTS loads on
+# macOS. The other libraries are r4's files.
+# MEASURED: see STATE_SUMMARY.md, entry of this pin.
+#
+# THE c14 r4 PIN (2026-11-01, opencoti mail #2082; index 5e0b3dc4, pins 1b64ee25,
+# payload efc717e2): c14 r4, git tag llamafile-v0.10.5+opencoti.c14-r4. Engine
+# 2611011619001 (bare 0f22e977) = r3 + 0826 (--sfx-model boots without -m,
+# bug-4319) + 0827 (one scalar accumulator in the one-column int-dot mat-vec,
+# the last of bug-4315). vulkan 2611011644001 is new; the other libraries are
+# r3's files.
+# MEASURED: see STATE_SUMMARY.md, entry of this pin.
+#
+# THE c14 r3 PIN (2026-11-01, opencoti mail #2071; index 6e4ada8a, pins 97e5900d,
+# payload a384f47a): c14 r3, git tag llamafile-v0.10.5+opencoti.c14-r3. Engine
+# 2611011335001 (bare 2261d16f) = c14 r2 + 0824 (POST /v1/audio/generations,
+# audio_generations_v1) + 0825 (the one-column integer-dot Vulkan pipelines,
+# bug-4315). vulkan 2611011351001 and media 2611011351002 (oc-audiocpp with
+# stable_audio, audio_sfx_audiocpp_v1) are new and need this engine; the other
+# libraries are r2's files.
+# MEASURED: see STATE_SUMMARY.md, entry of this pin.
+#
+# THE c14 r2 PIN (2026-11-01, opencoti mail #2062; index 60d8102f, pins a8701980,
+# payload f715ed75): c14 r2, git tag llamafile-v0.10.5+opencoti.c14-r2. Engine
+# 2611010802001 (bare 9f4bfaf6) = c14 + patch 0823: the Windows CUDA 12 library
+# is found under its published name (bug-4313). Every library is c14's file.
+# MEASURED: see STATE_SUMMARY.md, entry of this pin.
+#
+# THE c14 PIN (2026-11-01, opencoti mail #2056; index 8dcdcdc4, pins 9ecc8865,
+# payload d2297702): opencoti's c14 release, git tag
+# llamafile-v0.10.5+opencoti.c14, patch chain to 0822. Engine 2610312243001
+# (bare 72d949a3); cuda 2610311711001, cuda12 2610311711002, sbsa
+# 2610311711003, vulkan 2610311711004, macos 2610311711005 (signed, notarised);
+# media unchanged. Same ggml ABI as c13. New feature rows: arch_lfm3_v1,
+# vulkan_matvec_tune_v1, auto_mtp_adaptive_v1, moe_strategy_v1. MEASURED: see
+# STATE_SUMMARY.md, entry of this pin.
+#
 # cuda12 MOVED (2026-10-27, opencoti mail #1980, bug-4246; release index
 # be28e33a, payload 91ee7394): cuda12 2610270912001 adds the Windows CUDA 12
 # library, ggml-cuda-cu12-x86_64.dll (sass 52 61 70, CUTLASS sm_70), so a
@@ -25,7 +67,7 @@
 # tok/s plain, 63 with FA + q8_0 K/V (Vulkan on that card: 83). Not measured
 # here: no such card in our fleet (CUDA 12 legacy ships untested).
 #
-# THIS PIN (2026-10-18, opencoti mail #1683; index b6334984, pins 86c2309e,
+# THE c13 r6 PIN (2026-10-18, opencoti mail #1683; index b6334984, pins 86c2309e,
 # payload 6710a92b): opencoti's c13 RELEASE re-cut r6 (same tag c13, git tag
 # llamafile-v0.10.5+opencoti.c13-r6). Engine 2610182159001 (bare 90c343ff),
 # vulkan 2610182214001 (.so b496869f, DLL 1db8c5fa) and macos 2610182214002
@@ -196,11 +238,11 @@
 #
 format   2
 channel  release
-tag      c13
-engine   pin/engine.txt  rev 86c2309e2985ef49f18a83b2db05f7de22ea0c6d  sha256 409027d27c4c103ba59488a5aca6ecf18832d0c77ecaa393e553b40e69abedad  version 2610182159001
-cuda     pin/cuda.txt  rev 86c2309e2985ef49f18a83b2db05f7de22ea0c6d  sha256 d947cd45f2ad28056546b8169a03a4c1565f72291a047aa6c2fce755b9b30da7  version 2610160820001
-cuda12   pin/cuda12.txt  rev be28e33a4d85a5e1ddaec4b08bb97f9428d992ae  sha256 fbbf3e5f75e06e5f5b210f0d19241a2e3beb8a731ff9e20f37d1d9e217f6a70a  version 2610270912001
-sbsa     pin/sbsa.txt  rev 86c2309e2985ef49f18a83b2db05f7de22ea0c6d  sha256 c7ce1ba07ee353868487ae5413c5edc2e04961294aaca52e971311ec017fdcea  version 2610141455003
-vulkan   pin/vulkan.txt  rev 86c2309e2985ef49f18a83b2db05f7de22ea0c6d  sha256 4d36a46ff627253e3eb0b7a6e8c8993962375c9cdd3b5148a82d86f924bf8375  version 2610182214001
-macos    pin/macos.txt  rev 86c2309e2985ef49f18a83b2db05f7de22ea0c6d  sha256 d5d54ff95f0a23a9db4f3e7d9823b508152df11be7bdec09a8c8f3f907feebfa  version 2610182214002
-media    pin/media.txt  rev 86c2309e2985ef49f18a83b2db05f7de22ea0c6d  sha256 9a884a008658c0198e4f1893676ccb0f102f82e10deefbfa21f7e9c4d7f977f8  version 2610071902001
+tag      c14
+engine   pin/engine.txt  rev f259bb7675c182b20cd5ed0267cfc714faff2ac4  sha256 ae574d33a6118ab3e388451358981d39752ec0f77f03cdadf1fd1f58a9ddc08c  version 2611012008001
+cuda     pin/cuda.txt  rev f259bb7675c182b20cd5ed0267cfc714faff2ac4  sha256 7881470143a88526fc879e297f7ba538e3d56d7548bec7a782022cb7a3bcfefc  version 2610311711001
+cuda12   pin/cuda12.txt  rev f259bb7675c182b20cd5ed0267cfc714faff2ac4  sha256 9ebd9a0d080984bb5f8906f590a2aa7cd5f0a03307a0558d5349450564d9e624  version 2610311711002
+sbsa     pin/sbsa.txt  rev f259bb7675c182b20cd5ed0267cfc714faff2ac4  sha256 92e36869eb4dd4a7beb715c0e1fede456065b3da68eff4a0c8d4327bdcd17d7e  version 2610311711003
+vulkan   pin/vulkan.txt  rev f259bb7675c182b20cd5ed0267cfc714faff2ac4  sha256 f5111f2172b2d324517005618ef514c43beed1a479d8012de0baae16260fd2d8  version 2611011644001
+macos    pin/macos.txt  rev f259bb7675c182b20cd5ed0267cfc714faff2ac4  sha256 1531a3185b0d05dd40cd2bf049dd0f228649642fa3078dee0bae7b02188263f6  version 2610311711005
+media    pin/media.txt  rev f259bb7675c182b20cd5ed0267cfc714faff2ac4  sha256 e923d6cff3ea92c9d2fcb706b7388da5d1b1ea753164c7eb0430a8194d6719d7  version 2611012031001

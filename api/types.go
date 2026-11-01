@@ -61,6 +61,9 @@ type ImageData []byte
 // have to specify the Model and Prompt fields, all the other fields have
 // reasonable defaults for basic uses.
 type GenerateRequest struct {
+	// xollama-hook: overcommit — as ChatRequest.Overcommit.
+	Overcommit bool `json:"overcommit,omitempty"`
+
 	// Model is the model name; it should be a name familiar to Ollama from
 	// the library at https://ollama.com/library
 	Model string `json:"model"`
@@ -196,6 +199,10 @@ type ChatRequest struct {
 	// object (contract v2), passed to the engine unchanged when it plants
 	// notices and dropped otherwise. See docs/xollama/notices.mdx.
 	Notices json.RawMessage `json:"notices,omitempty"`
+
+	// xollama-hook: overcommit — Overcommit is opencoti's per-request bypass
+	// of the enforced admission gate, dropped on any other engine.
+	Overcommit bool `json:"overcommit,omitempty"`
 
 	// Truncate is a boolean that, when set to true, truncates the chat history messages
 	// if the rendered prompt exceeds the context length limit.

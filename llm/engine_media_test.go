@@ -175,7 +175,7 @@ func TestAnEngineWithoutTheNeededFeatureIsRefused(t *testing.T) {
 	if err := r.WaitUntilRunning(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if got := r.Features(); len(got) != 2 {
+	if got := r.MediaFeatures(); len(got) != 2 {
 		t.Fatalf("features = %v", got)
 	}
 	if err := r.Ping(context.Background()); err != nil {
@@ -225,6 +225,46 @@ func TestAudioCppSpeechIsNeverPlacedOnAGPU(t *testing.T) {
 	mixed := &xollama.Media{TTS: kokoro.TTS, Image: &xollama.ImageMedia{Model: d('c')}}
 	if mediaOnCPU(mixed, nil) {
 		t.Fatal("an image engine beside audio.cpp was kept off the GPU")
+	}
+}
+
+func TestSoundEffectsBootOnTheCPUAndBookNoGPUMemory(t *testing.T) {
+	seconds := 2.5
+	sfx := &xollama.SFXMedia{Model: d('a'), Threads: 4, MaxSeconds: 60, Defaults: &xollama.SFXDefaults{Seconds: &seconds}}
+	path := func(digest string) string { return "/blobs/" + digest }
+	got := strings.Join(MediaArgs(&xollama.Media{SFX: sfx}, path), " ")
+	want := "--sfx-model /blobs/" + d('a') + " --sfx-threads 4 --sfx-max-seconds 60 --sfx-default-seconds 2.5"
+	if got != want {
+		t.Fatalf("args = %q, want %q", got, want)
+	}
+	if !mediaOnCPU(&xollama.Media{SFX: sfx}, path) {
+		t.Fatal("the sound-effects sidecar, which has no GPU backend, would be placed on a GPU")
+	}
+
+	size := func(digest string) int64 {
+		if digest == d('a') {
+			return 2 << 30
+		}
+		return 1 << 30
+	}
+	if est := MediaEstimate(&xollama.Media{SFX: sfx}, size); est != 2<<30 {
+		t.Fatalf("alone, the estimate is the RAM a CPU runner books: %d", est)
+	}
+	image := &xollama.ImageMedia{Model: d('b')}
+	mixed := MediaEstimate(&xollama.Media{Image: image, SFX: sfx}, size)
+	if mixed != MediaEstimate(&xollama.Media{Image: image}, size) {
+		t.Fatalf("the CPU package was booked on the image engine's GPU: %d", mixed)
+	}
+}
+
+func TestSoundEffectsNeedTheEnginesRouteAndMp3TheCodec(t *testing.T) {
+	sfx := &xollama.SFXMedia{Model: d('a')}
+	if got := MediaFeatures(&xollama.Media{SFX: sfx}); !slices.Equal(got, []string{FeatureAudioGenerations}) {
+		t.Fatalf("features = %v", got)
+	}
+	sfx.Defaults = &xollama.SFXDefaults{ResponseFormat: "mp3"}
+	if !slices.Contains(MediaFeatures(&xollama.Media{SFX: sfx}), FeatureMediaCodec) {
+		t.Fatal("an mp3 template loaded without asking for the codec sidecar")
 	}
 }
 

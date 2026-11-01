@@ -189,5 +189,5 @@ func statusErrorLine(line string) string {
 		return line
 	}
 
-	return ""
+	return engineRefusalLine(line) // xollama-hook: engine-refusal — opencoti's commit-limit refusal has no error prefix
 }

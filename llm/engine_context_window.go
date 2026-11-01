@@ -30,6 +30,8 @@ type ContextWindow struct {
 	n atomic.Int64
 	// largest and retry are a negotiating request's refusal.
 	largest, retry atomic.Int64
+	// admission is the first report of the engine's admission headers.
+	admission atomic.Pointer[http.Header]
 }
 
 type contextWindowKey struct{}
@@ -153,4 +155,5 @@ func reportEngineWindow(ctx context.Context, res *http.Response) {
 	if n, err := strconv.Atoi(strings.TrimSpace(res.Header.Get(ContextWindowHeader))); err == nil {
 		ReportContextWindow(ctx, n)
 	}
+	reportAdmissionHeaders(ctx, res)
 }

@@ -18,10 +18,31 @@ type Fit struct {
 	// the rolling-KV sizer may use. Zero is the engine's default, all free
 	// VRAM minus the compute reserve.
 	VRAMTargetMiB int `json:"vram_target_mib,omitempty"`
+	// MoEStrategy is opencoti's --moe-strategy: which part of a MoE model the
+	// fit gives the device first when it does not all fit. Unset is the
+	// engine's default, auto.
+	MoEStrategy string `json:"moe_strategy,omitempty"`
 }
 
 // IsZero reports whether f states nothing.
-func (f *Fit) IsZero() bool { return f == nil || (f.Enabled == nil && f.VRAMTargetMiB == 0) }
+func (f *Fit) IsZero() bool {
+	return f == nil || (f.Enabled == nil && f.VRAMTargetMiB == 0 && f.MoEStrategy == "")
+}
+
+// MoE strategies, the engine's --moe-strategy values.
+var validMoEStrategies = []string{"auto", "experts-gpu", "kv-gpu"}
+
+// ValidMoEStrategies returns the --moe-strategy values.
+func ValidMoEStrategies() []string { return slices.Clone(validMoEStrategies) }
+
+// Admission gate modes, the engine's --admission-poolless values.
+var validAdmissionPoolless = []string{"off", "warn", "enforced"}
+
+// ValidAdmissionPoolless returns the --admission-poolless values.
+func ValidAdmissionPoolless() []string { return slices.Clone(validAdmissionPoolless) }
+
+// AutoMTPAdaptive is the --auto-mtp-policy value that needs a c14 engine.
+const AutoMTPAdaptive = "adaptive"
 
 // Rolling window values; anything else must be a size in MiB.
 const (
@@ -35,7 +56,7 @@ const maxRollingMiB = 1 << 16
 
 // MTP policies, the engine's --auto-mtp-policy values. measured is its
 // default: draft when the measured acceptance pays.
-var validAutoMTPPolicies = []string{"measured", "allocator", "taper", "always", "off"}
+var validAutoMTPPolicies = []string{"measured", "allocator", "taper", "always", AutoMTPAdaptive, "off"}
 
 // ValidAutoMTPPolicies returns the --auto-mtp-policy values.
 func ValidAutoMTPPolicies() []string { return slices.Clone(validAutoMTPPolicies) }
@@ -53,9 +74,16 @@ func ValidRollingWindow(v string) bool {
 // window: on, or a size.
 func RollingWindowOn(v string) bool { return v != "" && v != RollingOff }
 
+// setsC14Policies reports the policies an engine before c14 does not have.
+func (c *Config) setsC14Policies() bool {
+	return (c.KV != nil && c.KV.VulkanMatvecTune != nil) ||
+		(c.Fit != nil && c.Fit.MoEStrategy != "") ||
+		(c.Draft != nil && c.Draft.AutoMTPPolicy == AutoMTPAdaptive)
+}
+
 func (c *Config) setsEnginePolicies() bool {
 	return !c.Fit.IsZero() ||
-		(c.KV != nil && c.KV.RollingWindow != "") ||
+		(c.KV != nil && (c.KV.RollingWindow != "" || c.KV.AdmissionPoolless != "")) ||
 		(c.Draft != nil && c.Draft.AutoMTPPolicy != "")
 }
 
@@ -64,6 +92,9 @@ func (c *Config) setsEnginePolicies() bool {
 // residency disables the position window, so a rolling window under it is a
 // setting with no effect, and stating both is refused.
 func (c *Config) validateEnginePolicies() error {
+	if err := c.validateTuning(); err != nil {
+		return err
+	}
 	opencotiOnly := func(what string) error {
 		if c.Engine == EngineLlamaCpp {
 			return fmt.Errorf("xollama config: %s needs the opencoti engine; this config pins engine %q", what, c.Engine)
@@ -86,6 +117,27 @@ func (c *Config) validateEnginePolicies() error {
 			return fmt.Errorf("xollama config: unknown draft.auto_mtp_policy %q (want one of %v)", c.Draft.AutoMTPPolicy, validAutoMTPPolicies)
 		}
 		if err := opencotiOnly("draft.auto_mtp_policy"); err != nil {
+			return err
+		}
+	}
+	if c.KV != nil && c.KV.AdmissionPoolless != "" {
+		if !slices.Contains(validAdmissionPoolless, c.KV.AdmissionPoolless) {
+			return fmt.Errorf("xollama config: unknown kv.admission_poolless %q (want one of %v)", c.KV.AdmissionPoolless, validAdmissionPoolless)
+		}
+		if err := opencotiOnly("kv.admission_poolless"); err != nil {
+			return err
+		}
+	}
+	if c.KV != nil && c.KV.VulkanMatvecTune != nil {
+		if err := opencotiOnly("kv.vulkan_matvec_tune"); err != nil {
+			return err
+		}
+	}
+	if c.Fit != nil && c.Fit.MoEStrategy != "" {
+		if !slices.Contains(validMoEStrategies, c.Fit.MoEStrategy) {
+			return fmt.Errorf("xollama config: unknown fit.moe_strategy %q (want one of %v)", c.Fit.MoEStrategy, validMoEStrategies)
+		}
+		if err := opencotiOnly("fit.moe_strategy"); err != nil {
 			return err
 		}
 	}

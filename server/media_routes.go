@@ -149,6 +149,7 @@ var mediaKindName = map[model.Capability]string{
 	CapabilitySpeech:          "speech",
 	CapabilityTranscription:   "transcription",
 	CapabilityVideo:           "video",
+	CapabilitySoundEffects:    "sound effects",
 }
 
 // mediaRunnerError answers a request whose media engine could not be had.
@@ -213,7 +214,9 @@ func (s *Server) serveMedia(c *gin.Context, name string, kind model.Capability, 
 		return
 	}
 
-	for _, h := range []string{"Content-Type", "Retry-After"} {
+	// The X-OC headers are a sound effect's seed and shape, the only place a
+	// client reads a random seed back.
+	for _, h := range []string{"Content-Type", "Retry-After", "X-OC-Seed", "X-OC-Seconds", "X-OC-Sample-Rate", "X-OC-Channels"} {
 		if v := resp.Header.Get(h); v != "" {
 			c.Header(h, v)
 		}
@@ -704,7 +707,7 @@ func mediaModalities(caps []model.Capability) (in, out []string) {
 			in = add(in, "image")
 		case CapabilityImageGeneration:
 			in, out = add(in, "text"), add(out, "image")
-		case CapabilitySpeech:
+		case CapabilitySpeech, CapabilitySoundEffects:
 			in, out = add(in, "text"), add(out, "audio")
 		case CapabilityTranscription:
 			in, out = add(in, "audio"), add(out, "text")

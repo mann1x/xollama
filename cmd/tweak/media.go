@@ -363,6 +363,19 @@ var videoKind = mediaKind[xollama.VideoMedia]{
 	model:  func(t *xollama.VideoMedia) string { return t.Model },
 }
 
+var sfxKind = mediaKind[xollama.SFXMedia]{
+	name: "sfx", what: "sound-effects",
+	read: func(m *xollama.Media) *xollama.SFXMedia { return m.SFX },
+	make: func(m *xollama.Media) *xollama.SFXMedia {
+		if m.SFX == nil {
+			m.SFX = &xollama.SFXMedia{}
+		}
+		return m.SFX
+	},
+	engine: func(t *xollama.SFXMedia) *xollama.MediaEngine { return &t.MediaEngine },
+	model:  func(t *xollama.SFXMedia) string { return t.Model },
+}
+
 // blobHelp closes every component question.
 const blobHelp = "\nA file path is uploaded on write; an hf.co/<owner>/<repo>/<file> reference is fetched\n" +
 	"by the server from Hugging Face; a sha256 digest names a blob the server has."
@@ -530,6 +543,9 @@ func ttsFields() []field {
 			kindChoice, xollama.ValidTTSEngines(),
 			func(t *xollama.TTSMedia) string { return t.Engine },
 			func(t *xollama.TTSMedia, v string) error { return setChoice(v, xollama.ValidTTSEngines(), &t.Engine) }),
+		k.row("threads", "threads", "Text-to-speech threads", "--tts-threads. Unset is the engine's default, half the cores.", kindInt, nil,
+			func(t *xollama.TTSMedia) string { return showInt(t.Threads) },
+			func(t *xollama.TTSMedia, v string) error { return setInt(v, &t.Threads) }),
 		blobRow(k, "vocoder", "vocoder", "OuteTTS vocoder", "The WavTokenizer GGUF (--tts-vocoder); OuteTTS cannot speak without it.",
 			func(t *xollama.TTSMedia) *string { return &t.Vocoder }),
 		k.row("voices", "voices", "Extra voices",
@@ -634,6 +650,55 @@ func setVoices(v string, dst *map[string]string) error {
 	return nil
 }
 
+func sfxFields() []field {
+	k := sfxKind
+	d := func(t *xollama.SFXMedia) *xollama.SFXDefaults {
+		if t.Defaults == nil {
+			t.Defaults = &xollama.SFXDefaults{}
+		}
+		return t.Defaults
+	}
+	r := func(t *xollama.SFXMedia) xollama.SFXDefaults {
+		if t.Defaults == nil {
+			return xollama.SFXDefaults{}
+		}
+		return *t.Defaults
+	}
+	defHelp := "\nApplied to every request that leaves it out."
+	// The engine has no device, reserve or args flag for this kind: of the
+	// common rows only "fixed" means anything.
+	fixed := k.engineRows([]string{"seconds", "negative_prompt", "steps", "guidance_scale", "seed", "response_format"})[3]
+	rows := []field{
+		k.row("threads", "threads", "Sound-effects threads", "--sfx-threads. Unset is the engine's default; four is where it stops gaining.", kindInt, nil,
+			func(t *xollama.SFXMedia) string { return showInt(t.Threads) },
+			func(t *xollama.SFXMedia, v string) error { return setInt(v, &t.Threads) }),
+		k.row("max-seconds", "max_seconds", "Longest clip in seconds", "--sfx-max-seconds, at most 120. Unset is the engine's default, 30.", kindInt, nil,
+			func(t *xollama.SFXMedia) string { return showInt(t.MaxSeconds) },
+			func(t *xollama.SFXMedia, v string) error { return setInt(v, &t.MaxSeconds) }),
+		fixed,
+		k.row("seconds", "defaults.seconds", "Clip length in seconds", "Also boots the engine. Unset is the engine's default, 4."+defHelp, kindFloat, nil,
+			func(t *xollama.SFXMedia) string { return showFloatPtr(r(t).Seconds) },
+			func(t *xollama.SFXMedia, v string) error { return setFloatPtr(v, &d(t).Seconds) }),
+		k.row("negative-prompt", "defaults.negative_prompt", "Negative prompt", "What the clip should not contain."+defHelp, kindText, nil,
+			func(t *xollama.SFXMedia) string { return r(t).NegativePrompt },
+			func(t *xollama.SFXMedia, v string) error { return setText(v, &d(t).NegativePrompt) }),
+		k.row("steps", "defaults.steps", "Steps", "Unset is the engine's default, 8."+defHelp, kindInt, nil,
+			func(t *xollama.SFXMedia) string { return showInt(r(t).Steps) },
+			func(t *xollama.SFXMedia, v string) error { return setInt(v, &d(t).Steps) }),
+		k.row("guidance", "defaults.guidance_scale", "Guidance scale", "Unset is the engine's default, 1."+defHelp, kindFloat, nil,
+			func(t *xollama.SFXMedia) string { return showFloatPtr(r(t).GuidanceScale) },
+			func(t *xollama.SFXMedia, v string) error { return setFloatPtr(v, &d(t).GuidanceScale) }),
+		k.row("format", "defaults.response_format", "Audio format", "Unset is mp3, or wav without the codec sidecar."+defHelp, kindChoice, xollama.ValidSFXFormats(),
+			func(t *xollama.SFXMedia) string { return r(t).ResponseFormat },
+			func(t *xollama.SFXMedia, v string) error {
+				return setChoice(v, xollama.ValidSFXFormats(), &d(t).ResponseFormat)
+			}),
+	}
+	return append([]field{head(k, "Sound-effects model (/v1/audio/generations)",
+		"A stable_audio package, one file. It runs on the CPU, with the LLM or on its own.\nUnset leaves the model without sound effects.",
+		func(t *xollama.SFXMedia) *string { return &t.Model }, rows)}, rows...)
+}
+
 func videoFields() []field {
 	k := videoKind
 	d := func(t *xollama.VideoMedia) *xollama.VideoDefaults {
@@ -696,5 +761,5 @@ func videoFields() []field {
 }
 
 func init() {
-	fields = append(fields, slices.Concat(imageFields(), sttFields(), ttsFields(), videoFields())...)
+	fields = append(fields, slices.Concat(imageFields(), sttFields(), ttsFields(), videoFields(), sfxFields())...)
 }

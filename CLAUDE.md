@@ -2,7 +2,7 @@
 
 @.wolf/OPENWOLF.md
 
-Soft fork of ollama. `dev` = upstream release v0.40.13 + fork changes (`main` is v0.40.12 since `v0.40.12-xollama`), carrying the full upstream history so every `git merge upstream/main` has a real merge-base.
+Soft fork of ollama. `dev` = upstream release v0.40.13 + fork changes (`main` is v0.40.13 since `v0.40.13-xollama`), carrying the full upstream history so every `git merge upstream/main` has a real merge-base.
 Shared agent notes: @./AGENTS.md · Upstream contribution rules: @./CONTRIBUTING.md
 
 ## Standing rules
@@ -226,14 +226,14 @@ with the Bubble Tea menu in `cmd/tui/tui.go`.
 `fields.go`, `prompt.go`, `reconcile.go`, `devices.go`, `council.go`), registered
 from `cmd/cmd.go` under the `model-config` hook. It reads the model's config
 layer through `/api/show` (`api.ShowResponse.Xollama`), validates against
-`types/xollama/config.go` (schema v9, engine policies in `engine_policy.go`; the `council` block is
-`types/xollama/council.go`; the `media` block — image/stt/tts/video engines, components by digest as
+`types/xollama/config.go` (schema v11, engine policies in `engine_policy.go`; the `council` block is
+`types/xollama/council.go`; the `media` block — image/stt/tts/video/sfx engines, components by digest as
 `application/vnd.xollama.media` layers written by `create/xollama_media.go`, template-owned `defaults`
 and `fixed` — is `types/xollama/media.go`, its tweak rows and uploads `cmd/tweak/media.go`; it is served by a media-only opencoti
 process, `llm/engine_media.go`, scheduled as `media:<digest>` from `server/media.go` (`media` hook; every component goes to the engine as its blob path, each extra voice its own layer passed as `--tts-voice NAME=<blob>`, and an engine lacking a needed `/health` feature is refused at load, `MediaFeatures`); `hf.co` components are resolved by
 `internal/mediahub` and fetched by `/api/xollama/media/pull`, `server/media_pull.go`; catalog and discovery are `xollama media`,
 `cmd/tweak/mediacmd.go`, with a local mirror (`media fetch`, `create --dir`, `internal/mediahub/mirror.go`); the OpenAI media routes,
-per-engine queue and template fill-in are `server/media_routes.go`, an edit without a size keeps its source's (`editSize`, `server/media_edit_size.go`), a speech model's voices `server/media_voices.go`, the operator's default model per kind `server/media_defaults.go` (`XOLLAMA_MEDIA_DEFAULTS`), video jobs (`/v1/videos`, the engine held per job) `server/media_video.go`, see `docs/xollama/media.mdx` and `.claude/rules/media.md`), and replaces only that layer — see
+per-engine queue and template fill-in are `server/media_routes.go`, an edit without a size keeps its source's (`editSize`, `server/media_edit_size.go`), a speech model's voices `server/media_voices.go`, the operator's default model per kind `server/media_defaults.go` (`XOLLAMA_MEDIA_DEFAULTS`), video jobs (`/v1/videos`, the engine held per job) `server/media_video.go`, sound effects (`/v1/audio/generations`, `media.sfx`, CPU only, `engine.HasSoundEffects`) `server/media_sfx.go`, the Realtime websocket proxy `server/media_realtime.go`, a GGUF LLM's media in the LLM's process on opencoti (`server/media_combined.go`, `llm/engine_media_combined.go`), the load cap per kind, decision models too (`XOLLAMA_MAX_LOADED_*_MODELS`, default 1, apart from `OLLAMA_MAX_LOADED_MODELS`) `server/load_caps.go`, see `docs/xollama/media.mdx` and `.claude/rules/media.md`), and replaces only that layer — see
 `docs/xollama/tweak.mdx`. `xollama show` lists the stated settings in an
 `xOllama` table via `tweak.SettingRows` (same hook, in `showInfo`); unstated ones
 are omitted. A council's settings stay out of the launch: `llamaServerConfigForModel`

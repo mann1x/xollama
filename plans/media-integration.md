@@ -254,7 +254,7 @@ All voice models are downloaded to `/srv/ml/media/` for the tests.
   `xollama show`, `tweak show model`, sourcing components from a path or
   `hf.co`, and the layers. Unit and mutation tests.
 - **Phase 2 — CLOSED 2026-10-02.** Built:
-  - **Runner:** `llm/engine_media.go`. A model's media runs in its own media-only opencoti process (no `-m`) until M7 gates a combined boot (#622/#623).
+  - **Runner:** `llm/engine_media.go`. Media with no LLM runs in its own media-only opencoti process (no `-m`). A GGUF model with an LLM on opencoti has its media in the LLM's process since 2026-10-31 (`llm/engine_media_combined.go`, `server/media_combined.go`); opencoti gated that in M7.6 on b103.
     - The scheduler key is `media:<manifest digest>` (`mediaTwin`, `server/media.go`). Loading goes through one hook in `Scheduler.load`.
     - `MediaArgs` maps the config to flags. `MediaEstimate` adds each engine's reserve (image 3072, STT 512, TTS 256, video 3072 MiB) to the GPU with the most free memory.
     - `WaitUntilRunning` refuses an engine whose `/health` `features` lack a configured kind. `--tts-engine` is never sent for OuteTTS.

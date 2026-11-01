@@ -88,6 +88,13 @@ func newFakeEngine(t *testing.T) *fakeEngine {
 		case r.URL.Path == "/v1/audio/speech":
 			w.Header().Set("Content-Type", "audio/wav")
 			_, _ = w.Write([]byte("RIFFwave"))
+		case r.URL.Path == "/v1/audio/generations":
+			w.Header().Set("Content-Type", "audio/wav")
+			w.Header().Set("X-OC-Seed", "42")
+			w.Header().Set("X-OC-Seconds", "2.5")
+			w.Header().Set("X-OC-Sample-Rate", "44100")
+			w.Header().Set("X-OC-Channels", "2")
+			_, _ = w.Write([]byte("RIFFclip"))
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"text":"the quick brown fox"}`))
@@ -125,7 +132,7 @@ func (m *engineMedia) MediaDo(ctx context.Context, method, path string, _ url.Va
 	return http.DefaultClient.Do(req)
 }
 
-func (m *engineMedia) Features() []string { return nil }
+func (m *engineMedia) MediaFeatures() []string { return nil }
 
 // mediaServer is a server whose scheduler hands every media twin the fake
 // engine, with the named models created in a fresh store.
@@ -574,6 +581,7 @@ func TestTheRouterServesTheMediaRoutes(t *testing.T) {
 	s, e := mediaServer(t, map[string]*xollama.Media{
 		"kokoro": {TTS: &xollama.TTSMedia{Engine: "audiocpp", Model: mediaDigest(t, []byte("k"))}},
 		"klein":  kleinMedia(t, "reference"),
+		"sfx":    sfxTemplate(t),
 	})
 	router, err := s.GenerateRoutes()
 	if err != nil {
@@ -593,6 +601,7 @@ func TestTheRouterServesTheMediaRoutes(t *testing.T) {
 	for path, body := range map[string]string{
 		"/v1/images/generations": `{"model":"klein","prompt":"x"}`,
 		"/v1/audio/speech":       `{"model":"kokoro","input":"x"}`,
+		"/v1/audio/generations":  `{"model":"sfx","prompt":"x"}`,
 	} {
 		if w := do(http.MethodPost, path, body); w.Code != http.StatusOK {
 			t.Fatalf("%s = %d %s", path, w.Code, w.Body.String())

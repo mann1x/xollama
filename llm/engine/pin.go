@@ -72,7 +72,10 @@ type Pin struct {
 	Channel string
 	// Features are the capabilities the engine's pin states for every
 	// platform. See HasFeatureOn for the ones a pin limits to some.
-	Features         []string
+	Features []string
+	// MediaFeatures are the feature rows of the media component: what its
+	// sidecars were built with.
+	MediaFeatures    []string
 	platformFeatures map[string][]string
 	// Accels are the backends the pinned files accelerate, per arch: a GPU
 	// library's row is the claim that the backend exists there. It is what
@@ -610,6 +613,10 @@ func LoadPin(fsys fs.FS, dir string) (Pin, error) {
 			p.CUDA12SASS = c.sass
 		case "sbsa":
 			p.SBSASASS = c.sass
+		case "media":
+			for _, f := range c.features {
+				p.MediaFeatures = append(p.MediaFeatures, f[0])
+			}
 		}
 		for _, platform := range platforms {
 			for _, r := range c.rowsFor(platform) {

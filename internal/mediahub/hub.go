@@ -156,6 +156,7 @@ const (
 	KindSTT   Kind = "stt"
 	KindTTS   Kind = "tts"
 	KindVideo Kind = "video"
+	KindSFX   Kind = "sfx"
 )
 
 // pipelineTags maps a kind to the hub's pipeline tag.
@@ -165,10 +166,11 @@ var pipelineTags = map[Kind]string{
 	KindSTT:   "automatic-speech-recognition",
 	KindTTS:   "text-to-speech",
 	KindVideo: "text-to-video",
+	KindSFX:   "text-to-audio",
 }
 
 // Kinds lists the kinds Search takes.
-func Kinds() []Kind { return []Kind{KindImage, KindEdit, KindSTT, KindTTS, KindVideo} }
+func Kinds() []Kind { return []Kind{KindImage, KindEdit, KindSTT, KindTTS, KindVideo, KindSFX} }
 
 // Repo is one search result.
 type Repo struct {

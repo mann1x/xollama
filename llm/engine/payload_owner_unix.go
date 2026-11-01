@@ -38,6 +38,10 @@ func AdoptPayloadHome(home string) {
 	}
 	if owner, ok := fsowner.Intended(envconfig.Models()); ok {
 		adoptPayloadTree(home, owner)
+		// Only our own folder: one the operator named is theirs.
+		if cache := defaultVulkanCacheDir(); cache != "" {
+			adoptPayloadTree(cache, owner)
+		}
 	}
 }
 

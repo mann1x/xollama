@@ -17,7 +17,7 @@ package engine
 // architecture with no row here; keep one row per line, `"<arch>": "<feature>",`.
 var archFeatures = map[string]string{
 	// llama.cpp #31252 (b11963, 2026-10-27): LiquidAI LFM3-1.7B and
-	// LFM3-VL-2B. Not in c13; upstream v0.40.13 serves LFM3 GGUFs on stock.
+	// LFM3-VL-2B. opencoti serves it since c14.
 	"lfm3": "arch_lfm3_v1",
 }
 

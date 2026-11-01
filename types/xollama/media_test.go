@@ -279,3 +279,53 @@ func TestTheSTTDetectorIsAComponentAndRaisesTheFloor(t *testing.T) {
 		t.Error("a detector without a model was accepted")
 	}
 }
+
+func TestSoundEffectsRaiseTheSchemaAndRoundTrip(t *testing.T) {
+	seconds := 2.5
+	c := &Config{Media: &Media{SFX: &SFXMedia{Model: "sha256:" + strings.Repeat("a", 64), Defaults: &SFXDefaults{Seconds: &seconds}}}}
+	if got := c.requiredVersion(); got != 11 {
+		t.Fatalf("an older build would drop sound effects: version %d", got)
+	}
+	if got := c.Media.Components(); len(got) != 1 || got[0].Name != "media/sfx.model" {
+		t.Fatalf("components = %v", got)
+	}
+	clone := c.Media.Clone()
+	*clone.SFX.Defaults.Seconds = 9
+	clone.SFX.Defaults.Seed = new(int64)
+	if c.Media.SFX.Defaults.Seed != nil {
+		t.Fatal("a clone shares its defaults")
+	}
+	c.Media.MapComponents(func(string) string { return "mapped" })
+	if c.Media.SFX.Model != "mapped" {
+		t.Fatalf("model = %q", c.Media.SFX.Model)
+	}
+	empty := &Media{SFX: &SFXMedia{Defaults: &SFXDefaults{}}}
+	if empty.Prune() != nil {
+		t.Fatal("an empty kind survived Prune")
+	}
+}
+
+func TestSoundEffectRefusals(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("a", 64)
+	long, short := 31.0, 0.0
+	neg := int64(-1)
+	for name, s := range map[string]*SFXMedia{
+		"no model":        {},
+		"long max":        {Model: digest, MaxSeconds: 121},
+		"gpu":             {Model: digest, MediaEngine: MediaEngine{Device: "CUDA0"}},
+		"reserve":         {Model: digest, MediaEngine: MediaEngine{ReserveMiB: 1}},
+		"args":            {Model: digest, MediaEngine: MediaEngine{Args: []string{"--x"}}},
+		"past the engine": {Model: digest, Defaults: &SFXDefaults{Seconds: &long}},
+		"no length":       {Model: digest, Defaults: &SFXDefaults{Seconds: &short}},
+		"seed":            {Model: digest, Defaults: &SFXDefaults{Seed: &neg}},
+		"format":          {Model: digest, Defaults: &SFXDefaults{ResponseFormat: "flac"}},
+		"fixed unstated":  {Model: digest, MediaEngine: MediaEngine{Fixed: []string{"steps"}}},
+	} {
+		if err := (&Media{SFX: s}).validate(""); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if err := (&Media{SFX: &SFXMedia{Model: digest, MaxSeconds: 60, Defaults: &SFXDefaults{Seconds: &long}}}).validate(""); err != nil {
+		t.Errorf("a length under the template's own ceiling: %v", err)
+	}
+}

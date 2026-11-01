@@ -191,7 +191,7 @@ through `/api/engine`. None of it needs an `LLAMA_ARG_*` variable. See
 |---|---|---|
 | Sparse attention | `LLAMA_ARG_SPARSE_ATTN=on` | Quest-style block selector; `…_TOPK`, `…_RECENT`, `…_SINK` tune it |
 | Elastic slots | — | Now a first-class setting: [Concurrent requests](/xollama/slots) |
-| Admission gate | `LLAMA_ARG_ADMISSION_POOLLESS` | `enforced` by default — refuses with 429 before prefill rather than thrashing |
+| Admission gate | `xollama tweak model --admission-poolless` | `enforced` refuses with 429 before prefill rather than thrashing; unset is enforced with PolyKV pools (c13: always) |
 | GPU sharing | `LLAMA_ARG_GPU_SHARE_WEIGHT` | Compute share against co-resident opencoti servers on one GPU |
 | RYS layer duplication | `LLAMA_ARG_REPEAT_LAYERS` | Quality experiment; absent means byte-identical to stock |
 | Sampler placement | `LLAMA_ARG_SAMPLING_PLACEMENT` | `auto` routes from a measured crossover. Measured null on this fork's cell — leave it |

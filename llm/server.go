@@ -92,6 +92,11 @@ type LlamaServerConfig struct {
 	// draft length of 0 alone cannot carry. See appendDraftOffArgs.
 	DraftOff bool
 
+	// xollama-hook: media — the model's media, in the LLM's process on
+	// opencoti, and the memory it books. See CombinedMedia.
+	MediaArgs     []string
+	MediaEstimate uint64
+
 	// xollama-hook: launch-config — this model must be served one sequence at
 	// a time, because it is an embedding model or its architecture gives wrong
 	// answers with several in flight (ollama/ollama#4165). Dynamic slots must
@@ -377,6 +382,9 @@ type CompletionRequest struct {
 	// engine that declares generation_notice_v1 (llm/engine_notice.go).
 	Notices json.RawMessage
 
+	// xollama-hook: overcommit -- bypass opencoti's enforced admission gate.
+	Overcommit bool
+
 	// xollama-hook: tool-choice -- the tag a tool call opens with, which the
 	// model must not write (tool_choice "none"); empty for every other request.
 	NoToolCallTag string
@@ -417,6 +425,8 @@ type ChatRequest struct {
 
 	// xollama-hook: notices -- as CompletionRequest.Notices.
 	Notices json.RawMessage
+	// xollama-hook: overcommit -- as CompletionRequest.Overcommit.
+	Overcommit bool
 
 	// xollama-hook: tool-choice -- tool_choice "none": the engine renders the
 	// tools and is told not to call them (chatToolChoice).

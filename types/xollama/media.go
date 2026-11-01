@@ -30,6 +30,7 @@ type Media struct {
 	STT   *STTMedia   `json:"stt,omitempty"`
 	TTS   *TTSMedia   `json:"tts,omitempty"`
 	Video *VideoMedia `json:"video,omitempty"`
+	SFX   *SFXMedia   `json:"sfx,omitempty"`
 }
 
 // MediaTypeMedia is the manifest media type of a media component layer. It is
@@ -106,6 +107,8 @@ type TTSMedia struct {
 	Engine string `json:"engine,omitempty"`
 	// Model is the TTS model. Required.
 	Model string `json:"model"`
+	// Threads is --tts-threads. Zero is the engine's default, half the cores.
+	Threads int `json:"threads,omitempty"`
 	// Vocoder is OuteTTS's WavTokenizer; OuteTTS cannot speak without it.
 	Vocoder string `json:"vocoder,omitempty"`
 	// Voices are extra voices by name, each one file (an OuteTTS speaker
@@ -152,6 +155,33 @@ type VideoDefaults struct {
 	OutputFormat string   `json:"output_format,omitempty"`
 }
 
+// SFXMedia is the sound-effects engine: the audio.cpp sidecar running a
+// stable_audio package, one file with everything in it. It is always on the
+// CPU, and the engine has no device, reserve or args flag for it, so of
+// MediaEngine only Fixed applies; validate refuses the others.
+type SFXMedia struct {
+	// Model is the package (--sfx-model). Required.
+	Model string `json:"model"`
+	// Threads is --sfx-threads. Zero is the engine's default.
+	Threads int `json:"threads,omitempty"`
+	// MaxSeconds is --sfx-max-seconds, the longest clip a request may ask
+	// for. Zero is the engine's default, 30.
+	MaxSeconds int `json:"max_seconds,omitempty"`
+	MediaEngine
+	Defaults *SFXDefaults `json:"defaults,omitempty"`
+}
+
+// SFXDefaults are a sound-effects model's request settings. Seconds also
+// boots the engine (--sfx-default-seconds).
+type SFXDefaults struct {
+	Seconds        *float64 `json:"seconds,omitempty"`
+	NegativePrompt string   `json:"negative_prompt,omitempty"`
+	Steps          int      `json:"steps,omitempty"`
+	GuidanceScale  *float64 `json:"guidance_scale,omitempty"`
+	Seed           *int64   `json:"seed,omitempty"`
+	ResponseFormat string   `json:"response_format,omitempty"`
+}
+
 // MediaEngine holds what every media engine shares.
 type MediaEngine struct {
 	// Device is the engine's device (--diffusion-device, --stt-device,
@@ -176,6 +206,7 @@ var (
 	validTTSEngines   = []string{"outetts", "audiocpp"}
 	validTTSFormats   = []string{"mp3", "opus", "aac", "flac", "wav", "pcm"}
 	validVideoFormats = []string{"mp4", "webm", "webp", "avi"}
+	validSFXFormats   = []string{"mp3", "wav", "pcm"}
 	mediaDigest       = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 	// voiceName is what the engine accepts as a --tts-voice name.
 	voiceName = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
@@ -186,11 +217,16 @@ var (
 	sttDefaultFields     = []string{"language", "response_format", "task"}
 	ttsDefaultFields     = []string{"voice", "language", "response_format", "speed"}
 	videoDefaultFields   = []string{"width", "height", "frames", "fps", "steps", "cfg", "sampler", "flow_shift", "seed", "output_format"}
+	sfxDefaultFields     = []string{"seconds", "negative_prompt", "steps", "guidance_scale", "seed", "response_format"}
 	maxMediaSide         = 8192
 	maxMediaSteps        = 1000
 	maxVideoFrames       = 2048
 	maxVideoFPS          = 240
 	minTTSSpeed, maxTTSS = 0.25, 4.0
+	// maxSFXSeconds is the model's own ceiling, engineSFXSeconds the engine's
+	// default --sfx-max-seconds.
+	maxSFXSeconds    = 120
+	engineSFXSeconds = 30
 )
 
 // ValidImageEdit, ValidImageFormats and the rest return the closed sets, for a
@@ -202,10 +238,11 @@ func ValidSTTTasks() []string     { return slices.Clone(validSTTTasks) }
 func ValidTTSEngines() []string   { return slices.Clone(validTTSEngines) }
 func ValidTTSFormats() []string   { return slices.Clone(validTTSFormats) }
 func ValidVideoFormats() []string { return slices.Clone(validVideoFormats) }
+func ValidSFXFormats() []string   { return slices.Clone(validSFXFormats) }
 
 // IsZero reports whether m attaches nothing.
 func (m *Media) IsZero() bool {
-	return m == nil || (m.Image == nil && m.STT == nil && m.TTS == nil && m.Video == nil)
+	return m == nil || (m.Image == nil && m.STT == nil && m.TTS == nil && m.Video == nil && m.SFX == nil)
 }
 
 // MediaComponent is one blob a model's media needs, with the layer name it is
@@ -254,6 +291,9 @@ func (m *Media) Components() []MediaComponent {
 		add("video", "vae", v.VAE)
 		add("video", "text_encoder", v.TextEncoder)
 	}
+	if s := m.SFX; s != nil {
+		add("sfx", "model", s.Model)
+	}
 	return out
 }
 
@@ -274,6 +314,9 @@ func (m *Media) Kinds() []string {
 	}
 	if m.Video != nil {
 		out = append(out, "video")
+	}
+	if m.SFX != nil {
+		out = append(out, "sfx")
 	}
 	return out
 }
@@ -309,6 +352,11 @@ func (m *Media) validate(engine string) error {
 	}
 	if v := m.Video; v != nil {
 		if err := v.validate(); err != nil {
+			return err
+		}
+	}
+	if s := m.SFX; s != nil {
+		if err := s.validate(); err != nil {
 			return err
 		}
 	}
@@ -464,6 +512,9 @@ func (t *TTSMedia) validate() error {
 	if t.Model == "" {
 		return fmt.Errorf("xollama config: media.tts.model is required")
 	}
+	if t.Threads < 0 {
+		return fmt.Errorf("xollama config: media.tts.threads %d must not be negative", t.Threads)
+	}
 	if err := oneOf("tts", "engine", t.Engine, validTTSEngines); err != nil {
 		return err
 	}
@@ -585,6 +636,67 @@ func (d *VideoDefaults) stated(f string) bool {
 	return false
 }
 
+func (s *SFXMedia) validate() error {
+	if s.Model == "" {
+		return fmt.Errorf("xollama config: media.sfx.model is required")
+	}
+	if s.Threads < 0 {
+		return fmt.Errorf("xollama config: media.sfx.threads %d must not be negative", s.Threads)
+	}
+	if s.MaxSeconds < 0 || s.MaxSeconds > maxSFXSeconds {
+		return fmt.Errorf("xollama config: media.sfx.max_seconds %d must be between 0 and %d", s.MaxSeconds, maxSFXSeconds)
+	}
+	// The engine has no flag for these: stated, they would do nothing.
+	if s.Device != "" && !strings.EqualFold(s.Device, "cpu") {
+		return fmt.Errorf("xollama config: media.sfx.device %q: the sound-effects engine runs on the CPU only", s.Device)
+	}
+	if s.ReserveMiB != 0 || len(s.Args) != 0 {
+		return fmt.Errorf("xollama config: media.sfx takes neither reserve_mib nor args: the engine has no such flags")
+	}
+	d := s.Defaults
+	if d == nil {
+		d = &SFXDefaults{}
+	}
+	ceiling := engineSFXSeconds
+	if s.MaxSeconds > 0 {
+		ceiling = s.MaxSeconds
+	}
+	if d.Seconds != nil && (*d.Seconds <= 0 || *d.Seconds > float64(ceiling)) {
+		return fmt.Errorf("xollama config: media.sfx.defaults.seconds %v must be above 0 and at most %d", *d.Seconds, ceiling)
+	}
+	if err := positive("sfx", "steps", d.Steps, maxMediaSteps); err != nil {
+		return err
+	}
+	if err := nonNegative("sfx", "guidance_scale", d.GuidanceScale); err != nil {
+		return err
+	}
+	if d.Seed != nil && *d.Seed < 0 {
+		return fmt.Errorf("xollama config: media.sfx.defaults.seed %d must not be negative", *d.Seed)
+	}
+	if err := oneOf("sfx", "defaults.response_format", d.ResponseFormat, validSFXFormats); err != nil {
+		return err
+	}
+	return s.MediaEngine.validate("sfx", d.stated, sfxDefaultFields)
+}
+
+func (d *SFXDefaults) stated(f string) bool {
+	switch f {
+	case "seconds":
+		return d.Seconds != nil
+	case "negative_prompt":
+		return d.NegativePrompt != ""
+	case "steps":
+		return d.Steps > 0
+	case "guidance_scale":
+		return d.GuidanceScale != nil
+	case "seed":
+		return d.Seed != nil
+	case "response_format":
+		return d.ResponseFormat != ""
+	}
+	return false
+}
+
 // Clone returns a deep copy, so an edit to the copy cannot reach the
 // original's slices, maps or defaults.
 func (m *Media) Clone() *Media {
@@ -640,6 +752,15 @@ func (m *Media) Clone() *Media {
 		}
 		out.Video = &v
 	}
+	if m.SFX != nil {
+		s := *m.SFX
+		s.MediaEngine = m.SFX.MediaEngine.clone()
+		if m.SFX.Defaults != nil {
+			d := *m.SFX.Defaults
+			s.Defaults = &d
+		}
+		out.SFX = &s
+	}
 	return out
 }
 
@@ -686,7 +807,7 @@ func (m *Media) Prune() *Media {
 		if len(t.Voices) == 0 {
 			t.Voices = nil
 		}
-		if t.Engine == "" && t.Model == "" && t.Vocoder == "" && t.Voices == nil && t.VoiceMap == nil && t.MediaEngine.isZero() && t.Defaults == nil {
+		if t.Engine == "" && t.Model == "" && t.Threads == 0 && t.Vocoder == "" && t.Voices == nil && t.VoiceMap == nil && t.MediaEngine.isZero() && t.Defaults == nil {
 			m.TTS = nil
 		}
 	}
@@ -696,6 +817,14 @@ func (m *Media) Prune() *Media {
 		}
 		if v.Model == "" && v.VAE == "" && v.TextEncoder == "" && v.MediaEngine.isZero() && v.Defaults == nil {
 			m.Video = nil
+		}
+	}
+	if s := m.SFX; s != nil {
+		if s.Defaults != nil && *s.Defaults == (SFXDefaults{}) {
+			s.Defaults = nil
+		}
+		if s.Model == "" && s.Threads == 0 && s.MaxSeconds == 0 && s.MediaEngine.isZero() && s.Defaults == nil {
+			m.SFX = nil
 		}
 	}
 	if m.IsZero() {
@@ -736,5 +865,8 @@ func (m *Media) MapComponents(f func(string) string) {
 		set(&v.Model)
 		set(&v.VAE)
 		set(&v.TextEncoder)
+	}
+	if s := m.SFX; s != nil {
+		set(&s.Model)
 	}
 }

@@ -17,6 +17,7 @@ var referenceSections = []struct{ section, heading string }{
 	{"session", "Sessions and shared prefixes"},
 	{"dca", "Long context (DCA)"},
 	{"fit", "Fitting the model in memory"},
+	{"tuning", "Engine tuning"},
 	{"devices", "Devices"},
 	{"draft", "Drafter"},
 	{"council", "Council"},

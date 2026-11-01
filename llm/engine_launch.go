@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ollama/ollama/envconfig"
+	"github.com/ollama/ollama/llm/engine"
 )
 
 // xollama-hook: launch-config
@@ -387,6 +388,8 @@ func resolvePoolCount(cfg LlamaServerConfig) int {
 	return pools
 }
 
+var idleSlotPoolSafe = func() bool { return engine.HasPolicy(engine.FeatureIdleSlotPoolSafe) }
+
 // appendSlotArgs adds the dynamic-slot and shared-pool arguments, once the
 // engine is known.
 //
@@ -440,6 +443,11 @@ func appendSlotArgs(args []string, plan slotPlan, pools int, unified *bool, used
 	}
 	if pools > 0 {
 		args = append(args, "--polykv-max-pools", strconv.Itoa(pools))
+		// An engine that does not declare the skip clears a pool's prefix with
+		// its idle slots (opencoti #2046, measured in their 0830).
+		if !idleSlotPoolSafe() {
+			args = append(args, "--no-cache-idle-slots")
+		}
 	}
 	return args
 }

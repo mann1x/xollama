@@ -4,11 +4,12 @@
   moves `LLAMA_CPP_VERSION`; opencoti ports later). `llm/engine/arch.go`
   (`archFeatures`) lists each such architecture with the pin feature that says
   the engine serves it: `"lfm3": "arch_lfm3_v1"` (llama.cpp #31252, b11963;
-  not in c13). `engine.ServesArch` asks the pin (`loadPin`, so `withPin` stubs
+  served since c14). `engine.ServesArch` asks the pin (`loadPin`, so `withPin` stubs
   it); an architecture with no row is the engine's to serve or refuse.
 - `archEngine` (`server/arch_engine.go`), chained after `decisionEngine` in
   `launchXollama`, names `llamacpp` in the launch config while the pin lacks
-  the feature, logged once per model at **Warn** (a fallback is loud). It is
+  the feature (none today: c14 declares `arch_lfm3_v1`, and LFM3 went back to
+  opencoti with the pin, measured 256 tokens, 2026-11-01), logged once per model at **Warn** (a fallback is loud). It is
   the same path as a model's own `engine: llamacpp`, so placement, estimate and
   the deny-list all see it through `llamaServerConfigForModel`.
 - **An engine the model states is kept**, and **macOS keeps the load on

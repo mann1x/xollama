@@ -1,13 +1,13 @@
 format     2
 component  sbsa
-version    2610141455003
-built-from 2610141255001
+version    2610311711003
+built-from 2610312243001
 repo       ManniX-ITA/opencoti-llamafile
-rev        6710a92b64ded134e8b2b6bc85cbcf805575acca
+rev        b790fad648fdf0da475479c062ce19182ec56a7e
 abi        ggml bac5050ddc8c58c51f0b059a7f9753b33af0ed79d355090e7c9a17ffaaaf340a
 abi-source exported
-engine-min 2610141212001
+engine-min 2610312243001
 sass       110 121
 requires   aarch64        glibc          2.29
-file  aarch64        cuda       components/sbsa/2610141455003/ggml-cuda-sbsa-aarch64.so  da4b31254b54458f78e94a63c0d4cd54a3388664b468f8cb3609af06d77354a3  345350128
-file  any            build-info components/sbsa/2610141455003/BUILD_INFO.sbsa.md  cdf340b18bdbc292e955829524fb2561879b4b95ad76d9026d4b0cc4d09ecdd4  1941
+file  aarch64        cuda       components/sbsa/2610311711003/ggml-cuda-sbsa-aarch64.so  14ffac18842d5a6d340380fb2b72f9a54ce45c3d7d9bbac26d5c2f27c3fbd775  355192632
+file  any            build-info components/sbsa/2610311711003/BUILD_INFO.sbsa.md  710ea0f4141963146b3aa2a02519bc1274e6afab2d6726909b0693fa2d32d299  2002
