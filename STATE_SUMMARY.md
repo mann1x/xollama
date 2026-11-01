@@ -5,6 +5,10 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-11-01 — pin moved to c14 r3 (mail #2071; index `6e4ada8a`, engine `2611011335001`).** r2 + 0824 (`POST /v1/audio/generations`, `audio_generations_v1`) + 0825 (the one-column integer-dot Vulkan pipelines, bug-4315). `vulkan` `2611011351001` and `media` `2611011351002` (`oc-audiocpp` with `stable_audio`, `audio_sfx_audiocpp_v1`) are new, `engine-min` r3's engine; `cuda`, `cuda12`, `sbsa`, `macos` are r2's files. Every vendored pin's sha256 equals the published index; `llm/engine`, `llm`, `discover` tests pass. Not measured here yet: the gates of r3.
+> - **iGPU:** opencoti reads 0.976 to 0.978 of c13 r6 alone, 0.962 right after the 27B arms; the owner accepted a 0.95 bar, and the gap is chased later (c15 57.12, op-319). r2's gates in the entries below are r2's: the impact analysis is redone on r3.
+> - **Sound effects go into `.1`** (owner, 2026-11-01: "go for xo-46 we release with sound effect").
+
 > **2026-11-01 — `v0.40.13-xollama.1`: impact analysis, written before any gate (owner: "publish with c14 now").** A re-release on the same upstream: the fork is still at v0.40.13 and `v0.40.13-xollama` is published, so no candidate. Diff `origin/main..origin/dev`: 78 paths, six commits. No path in `app/`, `Dockerfile*`, `scripts/docker-*`, `.github/`, `llama/`, `cmake/` or `internal/council/`.
 > - **Always:** G1, G2, G12.
 > - **Engine pin, every component, engine moved (c14 r2):** G3, G4, G5, G6, G7, G8, G10, G11.
