@@ -92,6 +92,19 @@ paths:
   An explicit `XOLLAMA_ENGINE_PATH` is used as given. CUDA 12 is legacy: it
   ships without waiting for a card to test on. Guards:
   `llm/engine/pin_cuda_test.go`, `discover/opencoti_cuda12_test.go`.
+- **The Vulkan pipeline cache has a folder of its own** (`engine.WithVulkanCache`,
+  `llm/engine/vulkan_cache.go`, c14): `OPENCOTI_VK_PIPELINE_CACHE_DIR` is
+  `%LOCALAPPDATA%\xOllama\engine-cache\vulkan` on Windows, else
+  `~/.ollama/engines/vulkan-cache`. Under the payload HOME it would be per
+  artifact and, on Windows, inside `lib\ollama`, which the full installer
+  clears. Never move it there. An operator's value is left alone and never
+  adopted; a root run adopts ours with the payload (`AdoptPayloadHome`). A folder
+  that cannot be made warns; the engine keeps its default. Gate
+  `scripts/gates/vulkan-cache.sh`.
+- **A refusal the engine words itself** has no error prefix: `engineRefusalLine`
+  (`llm/engine_refusal.go`, `engine-refusal` hook in `llm/status.go`) takes c14's
+  Windows commit-limit refusal. Match its own words: a healthy boot prints
+  `host commit [load]:` too.
 - Engine capabilities come from `feature` rows and are never inferred from the
   cut number in the engine's name: the engine pin's own rows
   (`cache_type_swa_v1`, `log_memory_plan_v1`; `Pin.HasFeature`;

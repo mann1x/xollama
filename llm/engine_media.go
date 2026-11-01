@@ -545,6 +545,9 @@ func (r *mediaRunner) start(gpus []ml.DeviceInfo) error {
 	if opencoti && engine.LegacyCUDA(engineDevices(gpus)) {
 		envs[engine.EnvCUDALegacy] = "1"
 	}
+	if opencoti {
+		envs = engine.WithVulkanCache(envs)
+	}
 
 	cmd := exec.Command(name, args...)
 	cmd.Stdout = &r.tail

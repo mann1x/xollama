@@ -4,7 +4,8 @@
 #   STORE=<writable scratch store with llama3 and mannix/whisper:large-v3-turbo>
 #   [ENG=<engine, default the pin's>] [ENGINE_ARGS=<more flags>] [MORE_FLAGS=<to check>] [RT_MODEL=<live model>]
 #   [X=<xollama>] [W=<work dir>] scripts/gates/engine-options.sh
-# PASS: the engine boots on every flag and they are on its command line, chat
+# PASS: the engine boots on every flag and they are on its command line, the
+# stable Vulkan cache folder is in its environment, chat
 # generates 256 tokens, and /v1/realtime reaches the engine (101, or its own 501
 # for a model with no live mode).
 set -uo pipefail
@@ -21,7 +22,8 @@ trap 'for p in $(pgrep -f "^$X serve"); do sudo kill "$p"; done; sleep 2' EXIT
 for i in $(seq 120); do curl -s --max-time 2 $H/api/version >/dev/null && break; sleep 0.5; done
 echo "engine $(basename "$ENG")"
 curl -s $H/api/create -d '{"model":"gate-options","from":"llama3:latest","xollama":{"version":10,
- "kv":{"admission_poolless":"warn"},"session":{"client_pools":1},
+ "kv":{"admission_poolless":"warn","vulkan_matvec_tune":true},"session":{"client_pools":1},
+ "fit":{"moe_strategy":"auto"},"draft":{"auto_mtp_policy":"adaptive"},
  "tuning":{"recurrent_state_type":"f32","fa_quant_prompt":"in-place","admission_on_error":"deny","draft_kvarn":"off",
  "draft_type_k":"q8_0","draft_type_v":"q8_0","tail_type_k":"q8_0","tail_type_v":"q8_0","stage_window":4,
  "slot_initial_ctx":4096,"slot_shrink_idle_ms":5000,"elastic_alloc_ttl":120,"gpu_share_weight":1.5}}}' | tail -1; echo
@@ -29,8 +31,9 @@ curl -s -D "$W/hdr" --max-time 300 $H/api/chat -d '{"model":"gate-options","stre
 python3 -c "import json; d=json.load(open('$W/chat.json')); print('  chat', d.get('eval_count'), 'tokens %.1f tok/s'%(d.get('eval_count',0)/max(d.get('eval_duration',1),1)*1e9), d.get('error',''))"
 check "tokens" "$(python3 -c "import json; print(json.load(open('$W/chat.json')).get('eval_count'))")" 256
 pid=$(pgrep -u ollama -f opencoti-llamafile | head -1); args=$(tr '\0' ' ' < /proc/$pid/cmdline)
-for f in admission-poolless recurrent-state-type fa-quant-prompt polykv-adm-on-error spec-draft-kvarn cache-type-k-draft cache-type-v-draft cache-type-k-tail cache-type-v-tail kvarn-stage-window slot-initial-ctx slot-shrink-idle-ms elastic-alloc-ttl gpu-share-weight no-cache-idle-slots ${MORE_FLAGS:-}; do
+for f in admission-poolless recurrent-state-type fa-quant-prompt polykv-adm-on-error vulkan-matvec-tune moe-strategy auto-mtp-policy spec-draft-kvarn cache-type-k-draft cache-type-v-draft cache-type-k-tail cache-type-v-tail kvarn-stage-window slot-initial-ctx slot-shrink-idle-ms elastic-alloc-ttl gpu-share-weight no-cache-idle-slots ${MORE_FLAGS:-}; do
   check "--$f" "$(echo "$args" | grep -c -- "--$f")" 1; done
+check "stable Vulkan cache" "$(sudo tr '\0' '\n' < /proc/$pid/environ | grep -c '^OPENCOTI_VK_PIPELINE_CACHE_DIR=.*/\.ollama/engines/vulkan-cache$')" 1
 grep -iE '^x-(kv|sessions|polykv|session|context)' "$W/hdr" | sed 's/^/  header /'
 python3 - "$H" "${RT_MODEL:-mannix/whisper:large-v3-turbo}" <<'PY'
 import asyncio,sys,websockets

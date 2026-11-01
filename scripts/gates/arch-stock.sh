@@ -1,4 +1,7 @@
 #!/bin/bash
+# Written for a pin WITHOUT arch_lfm3_v1: on c14 and later lfm3 goes to opencoti
+# by default, so step 2's refusal no longer holds, and the rule needs a new row
+# to exercise. Kept for that row.
 # Targeted check for the arch-engine rule (llm/engine/arch.go): a GGUF
 # architecture the pinned opencoti lacks (lfm3) is served by stock
 # llama-server with the DEFAULT engine, said once in the log; the same model

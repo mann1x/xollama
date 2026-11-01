@@ -25,7 +25,7 @@ paths:
   LLM (`isMediaCall` in `needsReload`). It stays one runner in the shared pool,
   never counted under a media cap. Stock, MLX, decision and embedding models
   keep the twin, and a missing blob keeps the LLM loading. `opencoti` gated this
-  in M7.6; never say otherwise from an old comment. A repeated prompt's greedy
+  in M7.6, and the gate passes on published c14; never say otherwise from an old comment. A repeated prompt's greedy
   text differs from its first run, media or not: compare like with like. Gate:
   `scripts/gates/media-combined.sh`.
 - A media-only model is served by its own opencoti process

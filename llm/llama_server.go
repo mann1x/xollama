@@ -687,6 +687,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 			envs = cloneStringMap(envs)
 			envs["HOME"] = payloadHome
 		}
+		envs = engine.WithVulkanCache(envs)
 	}
 
 	// Set up library paths for GPU backend discovery

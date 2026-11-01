@@ -641,3 +641,14 @@ Intel files, and there would be no engine at all.
   has no meaning on unified memory.
 
 Registry row `macos-engine`.
+
+## The Vulkan pipeline cache
+
+opencoti keeps its Vulkan pipeline cache and the `--vulkan-matvec-tune` pick in
+one folder, keyed by device and driver, so it outlives an engine. xollama states
+that folder (`OPENCOTI_VK_PIPELINE_CACHE_DIR`, `llm/engine/vulkan_cache.go`):
+`%LOCALAPPDATA%\xOllama\engine-cache\vulkan` on Windows, which an update keeps
+and an uninstall removes, and `~/.ollama/engines/vulkan-cache` elsewhere. Left
+to the engine it would sit under the payload HOME, one per artifact and, on
+Windows, inside the `lib\ollama` the full installer clears, so every update
+would boot cold. An operator's own `OPENCOTI_VK_PIPELINE_CACHE_DIR` wins.

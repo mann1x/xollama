@@ -1,8 +1,8 @@
 format     2
 component  engine
-version    2610182159001
+version    2610312243001
 repo       ManniX-ITA/opencoti-llamafile
-rev        6710a92b64ded134e8b2b6bc85cbcf805575acca
+rev        d22977021d256d7838c3458ebb3d4fd2d8be52ed
 abi        ggml bac5050ddc8c58c51f0b059a7f9753b33af0ed79d355090e7c9a17ffaaaf340a
 abi        media b099409b3029a6e380268e31d1caefa6706569961d32e72b3543fbc73903d95c
 abi        loader d6ff34022f1d3fb5af56ca0c80e3f4e552bf09f1bebdf0cb5f314a454bf38dbc
@@ -80,6 +80,10 @@ feature    tps_real_pool_id_v1
 feature    tps_snapshot_v1
 feature    videos_generate_v1 x86_64 win-x86_64 macos-aarch64
 feature    videos_i2v_v1 x86_64 win-x86_64 macos-aarch64
-file  any            bin        components/engine/2610182159001/opencoti-llamafile-0.10.5-c13-bare.llamafile  90c343ffc6839cd3ef0b28081ab702471daa5ad2eefd1d1d197244ec8c4f3a13  146062827
-file  win-x86_64     bin        components/engine/2610182159001/opencoti-llamafile-0.10.5-c13-win-x86_64.llamafile.exe  90c343ffc6839cd3ef0b28081ab702471daa5ad2eefd1d1d197244ec8c4f3a13  146062827
-file  any            build-info components/engine/2610182159001/BUILD_INFO.engine.md  f79bb58058cc5c1ed273ec385d8d81630ffea8fe75884f4cb4cea2c495778663  3719
+feature    arch_lfm3_v1
+feature    vulkan_matvec_tune_v1
+feature    auto_mtp_adaptive_v1
+feature    moe_strategy_v1
+file  any            bin        components/engine/2610312243001/opencoti-llamafile-0.10.5-c14-bare.llamafile  72d949a3cbdd058ff28061767b08afa4bcf77be65773a35e5430846a060d371b  146797982
+file  win-x86_64     bin        components/engine/2610312243001/opencoti-llamafile-0.10.5-c14-win-x86_64.llamafile.exe  72d949a3cbdd058ff28061767b08afa4bcf77be65773a35e5430846a060d371b  146797982
+file  any            build-info components/engine/2610312243001/BUILD_INFO.engine.md  0ae9a8c59b371f19d0a70d57258f9f0572e630dd03d8805e90bc3f50f7077b9c  4444
