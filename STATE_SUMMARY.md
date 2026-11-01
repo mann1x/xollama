@@ -5,6 +5,13 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-11-01 — `v0.40.13-xollama.1` on r4: impact analysis, written before any gate (owner: "commit it and push, release xollama, we will get again another c14 re-release and then will re-release again xollama").** Replaces the analysis below, which was r2's; r2's and r3's numbers count for nothing here. Same upstream, no candidate. Diff `origin/main..origin/dev`: 91 paths, 11 commits. No path in `app/`, `Dockerfile*`, `scripts/docker-*`, `.github/`, `llama/`, `cmake/` or `internal/council/`.
+> - **Always:** G1, G2, G12.
+> - **Engine pin, engine and `vulkan` moved since r2, `media` too:** G3, G4, G5, G6, G7, G8, G10, G11. `cuda`, `cuda12`, `sbsa`, `macos` are r2's library bytes; the engine beside them is not, so no gate drops.
+> - **`llm/`, `server/sched.go`, launch, media:** G3, G4, G6, G8, G10, G11, already named. **Skipped: G9**, nothing under `app/`; the cache folder across an update stays a targeted check in G8.
+> - **Targeted:** `scripts/gates/sfx.sh`, PASS on r4 in the entry below. The eleven2go iGPU cell against c13 (5.65 tok/s on `qwen3:8b`), and a clip on Windows.
+> - **Templates:** `mannix/stable-audio` is not published, the push was not allowed in this session; catalog entries stay `Published: false`, the notes name `xollama media create`.
+
 > **2026-11-01 — pin moved to c14 r4 and sound effects added (mail #2082; index `5e0b3dc4`, engine `2611011619001`; owner: "go for xo-46 we release with sound effect").** r3 + 0826 (`--sfx-model` boots without `-m`, bug-4319, found by our gate: mail #2072) + 0827 (the rest of bug-4315, the owner's order to take it in r4). `vulkan` `2611011644001` is new, the other libraries are r3's files. Every vendored pin's sha256 equals the published index.
 > - **Sound effects:** `media.sfx` (schema v11), `POST /v1/audio/generations` (`server/media_sfx.go`), capability `sound_effects`, `XOLLAMA_MAX_LOADED_SFX_MODELS`, CPU only, `engine.HasSoundEffects` asks both pins; catalog F16 and Q8_0.
 > - **Gate `scripts/gates/sfx.sh` PASS on r4 on solidPC, Q8_0.** On its own engine (`--gpu disable`, 0 VRAM): load + 2 s clip 16.3 s, loaded 5.4 s; WAV 44100 Hz stereo 16 bit, exact frames, not silent; same seed same bytes, another seed different; headers, mp3, pcm, json, 400 past the ceiling, two at once both 200. Beside llama3 in one process on the 3090: 8 s clip real, one runner, same pid, text identical, decode 86.4 idle, 86.2 beside it. r3 failed the own-engine half, as the mail says.
