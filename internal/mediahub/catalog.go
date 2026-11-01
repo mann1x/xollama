@@ -240,13 +240,13 @@ var catalog = []Entry{
 		}},
 	},
 	{
-		ID: "stable-audio-3-small-sfx", Template: "mannix/stable-audio:3-small-sfx", Name: "Stable Audio 3 Small SFX", Kind: "sfx", Family: "Stable Audio", License: "stability-community",
+		ID: "stable-audio-3-small-sfx", Template: "mannix/stable-audio:3-small-sfx", Published: true, Name: "Stable Audio 3 Small SFX", Kind: "sfx", Family: "Stable Audio", License: "stability-community",
 		Description: "Sound effects from text, up to 30 seconds, on the CPU.",
 		Requires:    requiresSFX,
 		Media:       xollama.Media{SFX: stableAudio("stable-audio-3-small-sfx-f16.gguf")},
 	},
 	{
-		ID: "stable-audio-3-small-sfx-q8_0", Template: "mannix/stable-audio:3-small-sfx-q8_0", Name: "Stable Audio 3 Small SFX (Q8_0)", Kind: "sfx", Family: "Stable Audio", License: "stability-community",
+		ID: "stable-audio-3-small-sfx-q8_0", Template: "mannix/stable-audio:3-small-sfx-q8_0", Published: true, Name: "Stable Audio 3 Small SFX (Q8_0)", Kind: "sfx", Family: "Stable Audio", License: "stability-community",
 		Description: "Stable Audio 3 Small SFX from its Q8_0 file, the one opencoti's gate ran.",
 		Requires:    requiresSFX,
 		Media:       xollama.Media{SFX: stableAudio("stable-audio-3-small-sfx-q8_0.gguf")},

@@ -145,6 +145,10 @@ const (
 	FeatureMoEStrategy      = "moe_strategy_v1"
 )
 
+// FeatureIdleSlotPoolSafe is an engine whose idle-slot clear skips a slot
+// holding a PolyKV pool's prefix.
+const FeatureIdleSlotPoolSafe = "idle_slot_pool_safe_v1"
+
 // Sound effects take two pins: the engine's route and a media component whose
 // oc-audiocpp was built with the stable_audio family.
 const (

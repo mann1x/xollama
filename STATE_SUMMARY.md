@@ -5,6 +5,12 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-11-01 — pin moved to c14 r5, impact analysis of the delta, written before any gate (mail #2100; index `f83a7eff`, engine `2611012008001`, media `2611012031001`; owner: "you complete r4 gates and use them for r5, we don't repeat r4 gates for r5", "scoped re-release you need to verify the delta between r4 and r5").** Pin diff against r4, by hash: the engine, and one media file per platform (`oc-audiocpp`, audio.cpp 0010, the 8 MiB job thread that loads KittenTTS on macOS); `cuda`, `cuda12`, `sbsa`, `vulkan`, `macos` are r4's files. One new feature row, `idle_slot_pool_safe_v1`, on which `--no-cache-idle-slots` is retired (`appendSlotArgs`, kept for an engine without the row).
+> - **r4's G3 to G8, G10, G11 stand** (results in VALIDATION.md); they are not rerun.
+> - **Always:** G1, G2, G12.
+> - **Delta, engine bytes (0828 media-flag table, 0829 capability table, 0830 idle-slot skip):** `/props` features against the pin; opencoti's `media-only-boot-gate.sh`; on solidPC `sfx.sh`, speech, image, transcription, video, combined media, 256 tokens on an LLM, one council with pools, with the flag gone from the argv.
+> - **Delta, `oc-audiocpp`:** Windows boot, generation, speech 4/4 and a clip; arm64 speech and a clip; macOS all seven speech lines with KittenTTS, and the first Stable Audio clip on a Mac.
+
 > **2026-11-01 — `v0.40.13-xollama.1` on r4: impact analysis, written before any gate (owner: "commit it and push, release xollama, we will get again another c14 re-release and then will re-release again xollama").** Replaces the analysis below, which was r2's; r2's and r3's numbers count for nothing here. Same upstream, no candidate. Diff `origin/main..origin/dev`: 91 paths, 11 commits. No path in `app/`, `Dockerfile*`, `scripts/docker-*`, `.github/`, `llama/`, `cmake/` or `internal/council/`.
 > - **Always:** G1, G2, G12.
 > - **Engine pin, engine and `vulkan` moved since r2, `media` too:** G3, G4, G5, G6, G7, G8, G10, G11. `cuda`, `cuda12`, `sbsa`, `macos` are r2's library bytes; the engine beside them is not, so no gate drops.

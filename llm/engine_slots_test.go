@@ -135,6 +135,17 @@ func TestSlotArgs(t *testing.T) {
 func TestSlotArgsWithPools(t *testing.T) {
 	t.Run("pooling alone still needs the shared cache", func(t *testing.T) {
 		got := appendSlotArgs(nil, slotPlan{Live: 1}, 2, nil, true)
+		want := []string{"--kv-unified", "--polykv-max-pools", "2"}
+		if !slices.Equal(got, want) {
+			t.Errorf("args = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("an engine that clears a pool with its idle slots is told not to", func(t *testing.T) {
+		defer func(f func() bool) { idleSlotPoolSafe = f }(idleSlotPoolSafe)
+		idleSlotPoolSafe = func() bool { return false }
+
+		got := appendSlotArgs(nil, slotPlan{Live: 1}, 2, nil, true)
 		want := []string{"--kv-unified", "--polykv-max-pools", "2", "--no-cache-idle-slots"}
 		if !slices.Equal(got, want) {
 			t.Errorf("args = %v, want %v", got, want)
@@ -143,7 +154,7 @@ func TestSlotArgsWithPools(t *testing.T) {
 
 	t.Run("both features, one --kv-unified", func(t *testing.T) {
 		got := appendSlotArgs(nil, slotPlan{Dynamic: true, Live: 1, Max: 4}, 2, nil, true)
-		want := []string{"--kv-unified", "--max-parallel", "4", "--polykv-max-pools", "2", "--no-cache-idle-slots"}
+		want := []string{"--kv-unified", "--max-parallel", "4", "--polykv-max-pools", "2"}
 		if !slices.Equal(got, want) {
 			t.Errorf("args = %v, want %v", got, want)
 		}

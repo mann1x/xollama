@@ -15,7 +15,17 @@
 # Moving a component is one line here plus its pin file, on a MEASUREMENT
 # (scripts/phase2-engine-ab.py, as the `ollama` user), never on a changelog.
 #
-# THIS PIN (2026-11-01, opencoti mail #2082; index 5e0b3dc4, pins 1b64ee25,
+# THIS PIN (2026-11-01, opencoti mail #2100; index f83a7eff, pins f259bb76,
+# payload b790fad6): c14 r5, git tag llamafile-v0.10.5+opencoti.c14-r5. Engine
+# 2611012008001 (bare c93020ca) = r4 + 0828 (media-flag table) + 0829 (one
+# capability table: /props, --print-features and the pin agree) + 0830 (the
+# PolyKV idle-slot skip, idle_slot_pool_safe_v1, which retires our
+# --no-cache-idle-slots). media 2611012031001 (engine-min this engine):
+# oc-audiocpp with audio.cpp 0010, an 8 MiB job thread, so KittenTTS loads on
+# macOS. The other libraries are r4's files.
+# MEASURED: see STATE_SUMMARY.md, entry of this pin.
+#
+# THE c14 r4 PIN (2026-11-01, opencoti mail #2082; index 5e0b3dc4, pins 1b64ee25,
 # payload efc717e2): c14 r4, git tag llamafile-v0.10.5+opencoti.c14-r4. Engine
 # 2611011619001 (bare 0f22e977) = r3 + 0826 (--sfx-model boots without -m,
 # bug-4319) + 0827 (one scalar accumulator in the one-column int-dot mat-vec,
@@ -229,10 +239,10 @@
 format   2
 channel  release
 tag      c14
-engine   pin/engine.txt  rev 1b64ee25f225051a5e96adc2c15ae9c1b720338a  sha256 06d236cbc059a62680d1600e31b4029643536c9f16e63cf2bd4bc1734010cace  version 2611011619001
-cuda     pin/cuda.txt  rev 1b64ee25f225051a5e96adc2c15ae9c1b720338a  sha256 a7eefb92bb1b242056a66f91387553a95fe3ae0c8ebd6f14c30b775b6c5786da  version 2610311711001
-cuda12   pin/cuda12.txt  rev 1b64ee25f225051a5e96adc2c15ae9c1b720338a  sha256 9b6ac83edf9892b7ed5da59665aab81177066cbba16b148ffe3e75be68b3cd67  version 2610311711002
-sbsa     pin/sbsa.txt  rev 1b64ee25f225051a5e96adc2c15ae9c1b720338a  sha256 488190909cb90b47b71c8afac114f70b5c02f1dbaf9d3e9148f45136fe81b1f8  version 2610311711003
-vulkan   pin/vulkan.txt  rev 1b64ee25f225051a5e96adc2c15ae9c1b720338a  sha256 7aca58c0e7794b7cfe52725fcf7e1d1a864ecddfe48c4fcb0d173756afae4b83  version 2611011644001
-macos    pin/macos.txt  rev 1b64ee25f225051a5e96adc2c15ae9c1b720338a  sha256 85111f6322f815670be0574ab1c726361d1e53079769cae16e05b85d619bdcec  version 2610311711005
-media    pin/media.txt  rev 1b64ee25f225051a5e96adc2c15ae9c1b720338a  sha256 3db1232b304e4df1fee4e036fd483a3709a09e145de9f62e72a3f502cd24623f  version 2611011351002
+engine   pin/engine.txt  rev f259bb7675c182b20cd5ed0267cfc714faff2ac4  sha256 ae574d33a6118ab3e388451358981d39752ec0f77f03cdadf1fd1f58a9ddc08c  version 2611012008001
+cuda     pin/cuda.txt  rev f259bb7675c182b20cd5ed0267cfc714faff2ac4  sha256 7881470143a88526fc879e297f7ba538e3d56d7548bec7a782022cb7a3bcfefc  version 2610311711001
+cuda12   pin/cuda12.txt  rev f259bb7675c182b20cd5ed0267cfc714faff2ac4  sha256 9ebd9a0d080984bb5f8906f590a2aa7cd5f0a03307a0558d5349450564d9e624  version 2610311711002
+sbsa     pin/sbsa.txt  rev f259bb7675c182b20cd5ed0267cfc714faff2ac4  sha256 92e36869eb4dd4a7beb715c0e1fede456065b3da68eff4a0c8d4327bdcd17d7e  version 2610311711003
+vulkan   pin/vulkan.txt  rev f259bb7675c182b20cd5ed0267cfc714faff2ac4  sha256 f5111f2172b2d324517005618ef514c43beed1a479d8012de0baae16260fd2d8  version 2611011644001
+macos    pin/macos.txt  rev f259bb7675c182b20cd5ed0267cfc714faff2ac4  sha256 1531a3185b0d05dd40cd2bf049dd0f228649642fa3078dee0bae7b02188263f6  version 2610311711005
+media    pin/media.txt  rev f259bb7675c182b20cd5ed0267cfc714faff2ac4  sha256 e923d6cff3ea92c9d2fcb706b7388da5d1b1ea753164c7eb0430a8194d6719d7  version 2611012031001
