@@ -5,6 +5,8 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-11-01 — `v0.40.13-xollama.1` released and promoted (Latest; merge `37a5198d2`, release run 41351329191, payload `6880be30`; c14 r5, sound effects).** `:latest` moved by the rerun on the tag; Discord posted; step 9 done. Records committed after the draft changed the published binaries' commit stamp, so the Windows and macOS checks were repeated on the published files. Results went to opencoti (#2101), and Cerebriline was told the build and templates exist (#2102).
+
 > **2026-11-01 — the r5 delta passed on every platform (draft run 41346199774, payload `6880be30`).** Records in `docs/protocols/VALIDATION.md`. solidPC: speech 8/8, video, one council with pools and the flag gone, `sfx.sh`, `media-combined.sh`, boot gate 6 flags, 79 pin rows in `--print-features`. eleven2go: install, speech 4/4, 103 tok/s, clip 3.4 s. Mac mini: KittenTTS loads, speech 7/7, the first clip on a Mac 3 s. dietpi5: 11.1 tok/s, speech 3/3, clip 59 s.
 > - **A `dev` build cannot pull `mannix/stable-audio`:** it names itself `0.40.13-dev.*`, below the template's `requires` of `0.40.13-xollama.1`. A release is unaffected; a dev build uses `xollama media create`.
 
