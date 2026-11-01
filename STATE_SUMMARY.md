@@ -5,6 +5,15 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-11-01 — `v0.40.13-xollama.1`: impact analysis, written before any gate (owner: "publish with c14 now").** A re-release on the same upstream: the fork is still at v0.40.13 and `v0.40.13-xollama` is published, so no candidate. Diff `origin/main..origin/dev`: 78 paths, six commits. No path in `app/`, `Dockerfile*`, `scripts/docker-*`, `.github/`, `llama/`, `cmake/` or `internal/council/`.
+> - **Always:** G1, G2, G12.
+> - **Engine pin, every component, engine moved (c14 r2):** G3, G4, G5, G6, G7, G8, G10, G11.
+> - **`llm/`, `server/sched.go`, launch (load caps, tuning, combined media, overcommit, Vulkan cache, refusal):** G3, G4, G8, already named. **Media (`server/media*.go`, `llm/engine_media*.go`):** G6, speech of G8, G10, G11, already named.
+> - **Skipped: G9**, the installer: nothing under `app/` moved. Its one reach is the cache folder across an update, taken as the targeted check below instead.
+> - **Targeted, each with its control:** load caps (scheduler unit tests through `processPending`; a live two-engine run of one kind has never been done, named so). Combined media and per-model options: `media-combined.sh`, `engine-options.sh` on r2, control the plain LLM, PASS. LFM3 on the default engine (it was stock in v0.40.13): live on c14 r1, 256 tokens; r2 changes Windows code only. Vulkan cache on Windows: cold then warm across engines and across the small installer, on the draft on eleven2go, with `-v` on a direct engine run. Windows CUDA 12: opencoti's forced arm on r2, not repeated. Commit-limit refusal: unit test on the captured wording, the live limit cannot be staged without starving eleven2go. `overcommit`, admission headers: unit tests, no pool saturated live.
+> - **Security:** Dependabot 113 open (was 109). New: `seroval` high x2 (runtime) and `postcss-selector-parser` medium x2 (development), all in `app/ui/app/package-lock.json`, unchanged from upstream v0.40.13; `seroval` arrives through `solid-js` and our source calls no deserializer. Written down as upstream's. No alert on a line the fork changed; govulncheck 0 affected.
+> - **G1 found** `overcommit` with no Registry row (`bf1c4c2eb`, mine); row added.
+
 > **2026-11-01 — pin moved to c14 r2 (mail #2062; index `60d8102f`, engine `2611010802001`).** c14 + patch 0823: the engine finds `ggml-cuda-cu12-win-x86_64.dll` under its published name (bug-4313), so a Windows card below 7.5 gets CUDA again. Library rows unchanged, read from the pins; the fix is measured by opencoti (zns GTX 1070 29/29 on CUDA0, r1 as control), not here.
 > - **Gates on r2 on the 3090:** `media-combined.sh` and `engine-options.sh` PASS; Linux non-regression only, the patch is Windows code.
 
