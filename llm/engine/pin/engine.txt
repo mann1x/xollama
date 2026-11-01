@@ -1,8 +1,8 @@
 format     2
 component  engine
-version    2610312243001
+version    2611010802001
 repo       ManniX-ITA/opencoti-llamafile
-rev        d22977021d256d7838c3458ebb3d4fd2d8be52ed
+rev        f715ed752de4c59cb8fb5c256b8aedcaf41fdbef
 abi        ggml bac5050ddc8c58c51f0b059a7f9753b33af0ed79d355090e7c9a17ffaaaf340a
 abi        media b099409b3029a6e380268e31d1caefa6706569961d32e72b3543fbc73903d95c
 abi        loader d6ff34022f1d3fb5af56ca0c80e3f4e552bf09f1bebdf0cb5f314a454bf38dbc
@@ -84,6 +84,6 @@ feature    arch_lfm3_v1
 feature    vulkan_matvec_tune_v1
 feature    auto_mtp_adaptive_v1
 feature    moe_strategy_v1
-file  any            bin        components/engine/2610312243001/opencoti-llamafile-0.10.5-c14-bare.llamafile  72d949a3cbdd058ff28061767b08afa4bcf77be65773a35e5430846a060d371b  146797982
-file  win-x86_64     bin        components/engine/2610312243001/opencoti-llamafile-0.10.5-c14-win-x86_64.llamafile.exe  72d949a3cbdd058ff28061767b08afa4bcf77be65773a35e5430846a060d371b  146797982
-file  any            build-info components/engine/2610312243001/BUILD_INFO.engine.md  0ae9a8c59b371f19d0a70d57258f9f0572e630dd03d8805e90bc3f50f7077b9c  4444
+file  any            bin        components/engine/2611010802001/opencoti-llamafile-0.10.5-c14-bare.llamafile  9f4bfaf682a2c2d50eaa1b49434f851ab34a3f7113d6750470f646cf04186c63  146798022
+file  win-x86_64     bin        components/engine/2611010802001/opencoti-llamafile-0.10.5-c14-win-x86_64.llamafile.exe  9f4bfaf682a2c2d50eaa1b49434f851ab34a3f7113d6750470f646cf04186c63  146798022
+file  any            build-info components/engine/2611010802001/BUILD_INFO.engine.md  4cd11af58a6ae01bbfce99eecf023d2a6ebafb3c54d6c6111be8bf54444ebdb8  6038
