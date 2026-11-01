@@ -5,6 +5,9 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-11-01 — the r5 delta passed on every platform (draft run 41346199774, payload `6880be30`).** Records in `docs/protocols/VALIDATION.md`. solidPC: speech 8/8, video, one council with pools and the flag gone, `sfx.sh`, `media-combined.sh`, boot gate 6 flags, 79 pin rows in `--print-features`. eleven2go: install, speech 4/4, 103 tok/s, clip 3.4 s. Mac mini: KittenTTS loads, speech 7/7, the first clip on a Mac 3 s. dietpi5: 11.1 tok/s, speech 3/3, clip 59 s.
+> - **A `dev` build cannot pull `mannix/stable-audio`:** it names itself `0.40.13-dev.*`, below the template's `requires` of `0.40.13-xollama.1`. A release is unaffected; a dev build uses `xollama media create`.
+
 > **2026-11-01 — pin moved to c14 r5, impact analysis of the delta, written before any gate (mail #2100; index `f83a7eff`, engine `2611012008001`, media `2611012031001`; owner: "you complete r4 gates and use them for r5, we don't repeat r4 gates for r5", "scoped re-release you need to verify the delta between r4 and r5").** Pin diff against r4, by hash: the engine, and one media file per platform (`oc-audiocpp`, audio.cpp 0010, the 8 MiB job thread that loads KittenTTS on macOS); `cuda`, `cuda12`, `sbsa`, `vulkan`, `macos` are r4's files. One new feature row, `idle_slot_pool_safe_v1`, on which `--no-cache-idle-slots` is retired (`appendSlotArgs`, kept for an engine without the row).
 > - **r4's G3 to G8, G10, G11 stand** (results in VALIDATION.md); they are not rerun.
 > - **Always:** G1, G2, G12.
