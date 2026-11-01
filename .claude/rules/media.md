@@ -94,7 +94,7 @@ paths:
   `TestAFailedLoadReportsTheCauseNotOnlyTheLastLine`.
 - **Each media kind has its own cap** (`server/load_caps.go`, three marked
   lines in `processPending`): `XOLLAMA_MAX_LOADED_IMAGE_MODELS`, `_SPEECH_`,
-  `_TRANSCRIPTION_`, `_VIDEO_`, and `XOLLAMA_MAX_LOADED_DECISION_MODELS` for
+  `_TRANSCRIPTION_`, `_VIDEO_`, `_SFX_`, and `XOLLAMA_MAX_LOADED_DECISION_MODELS` for
   decision models (no upstream setting exists), default 1 (owner, 2026-10-31).
   Decision models run on stock llama.cpp, so `XOLLAMA_ENGINE=llamacpp` keeps them
   in the pool (`decisionLimit`), off means off; media never runs there. Capped engines
@@ -114,6 +114,19 @@ paths:
   `TestADecisionModelHasItsOwnCap`,
   `TestAStockEngineKeepsDecisionModelsInTheSharedPool`,
   `TestTheDecisionCapChangesNothingAtZero`.
+- **Sound effects are opencoti's route, `POST /v1/audio/generations`**
+  (`SoundEffectsHandler`, `server/media_sfx.go`; `media.sfx`, schema v11;
+  opencoti `docs/features/media_engines.md`, "Sound effects"). One blob,
+  `--sfx-model`, always on the CPU (`mediaOnCPU`). Two pins must declare it:
+  `audio_generations_v1` on the engine, `audio_sfx_audiocpp_v1` on media
+  (`engine.HasSoundEffects`, `Pin.MediaFeatures`); a media library without the
+  family fails the boot, naming `UNSUPPORTED_FAMILY`. The feature is in
+  `/health` only with a model loaded. The engine has no device, reserve or args
+  flag for this kind, so `SFXMedia.validate` refuses them. Beside a GPU kind the
+  package stays out of `MediaEstimate`: the engine books nothing for a CPU
+  sidecar. `serveMedia` passes the `X-OC-*` headers on: the seed of a clip is
+  nowhere else. Requests are queued here, so a client does not see the engine's
+  503 unless the queue is full. Gate `scripts/gates/sfx.sh`.
 - **The catalog** (`internal/mediahub/catalog.go`) feeds `xollama media list`
   and `media create`. Entries of one family share a builder (`supertonic(file)`,
   `wan21(model, encoder)`, `wan22(model)`, `whistle(vad)`) so a quant tag differs from its

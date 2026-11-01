@@ -48,6 +48,9 @@ const (
 	FeatureVAD    = "audio_vad_v1"
 	FeatureSpeech = "audio_speech_v1"
 	FeatureVideos = "videos_generate_v1"
+	// FeatureAudioGenerations is advertised by an engine started with
+	// --sfx-model (opencoti 0824).
+	FeatureAudioGenerations = "audio_generations_v1"
 
 	// FeatureSpeechContentFormat is an audio.cpp that tells a model file's
 	// format by its contents, so it loads a blob path as it is (opencoti
@@ -105,6 +108,13 @@ func needsCodec(m *xollama.Media) bool {
 			return true
 		}
 	}
+	if s := m.SFX; s != nil && s.Defaults != nil {
+		switch s.Defaults.ResponseFormat {
+		case "", "wav", "pcm":
+		default:
+			return true
+		}
+	}
 	return false
 }
 
@@ -152,6 +162,9 @@ func MediaFeatures(m *xollama.Media) []string {
 	}
 	if m.Video != nil {
 		out = append(out, FeatureVideos)
+	}
+	if m.SFX != nil {
+		out = append(out, FeatureAudioGenerations)
 	}
 	if needsCodec(m) {
 		out = append(out, FeatureMediaCodec)
@@ -312,6 +325,18 @@ func MediaArgs(m *xollama.Media, path func(digest string) string) []string {
 			a = append(a, "--video-args", strings.Join(o, " "))
 		}
 	}
+	if s := m.SFX; s != nil {
+		a = append(a, "--sfx-model", path(s.Model))
+		if s.Threads > 0 {
+			a = append(a, "--sfx-threads", strconv.Itoa(s.Threads))
+		}
+		if s.MaxSeconds > 0 {
+			a = append(a, "--sfx-max-seconds", strconv.Itoa(s.MaxSeconds))
+		}
+		if s.Defaults != nil && s.Defaults.Seconds != nil {
+			a = append(a, "--sfx-default-seconds", strconv.FormatFloat(*s.Defaults.Seconds, 'f', -1, 64))
+		}
+	}
 	return a
 }
 
@@ -321,6 +346,17 @@ func MediaArgs(m *xollama.Media, path func(digest string) string) []string {
 func MediaEstimate(m *xollama.Media, size func(digest string) int64) uint64 {
 	if m.IsZero() {
 		return 0
+	}
+	// The sound-effects sidecar is on the CPU, and the engine books nothing
+	// for it (opencoti "Sound effects"): beside another kind this estimate is
+	// that kind's GPU memory. Alone it is the RAM a CPU runner books, and the
+	// package's size covers the measured peak (Q8_0 1.68 GB, 1.30 GB RSS).
+	if m.SFX != nil {
+		rest := *m
+		rest.SFX = nil
+		if !rest.IsZero() {
+			m = &rest
+		}
 	}
 	var total int64
 	for _, c := range m.Components() {
@@ -400,7 +436,7 @@ type mediaRunner struct {
 }
 
 // mediaOnCPU reports whether every engine of m runs on the CPU: it states
-// device CPU, or it is audio.cpp, which has no GPU backend in the engine, or a
+// device CPU, or it is audio.cpp (speech and sound effects), which has no GPU backend in the engine, or a
 // Whistle speech-to-text model off macOS (whistleOnCPU). A speech model placed
 // on a GPU would book memory it never uses and be launched with a --gpu backend
 // the engine may not have (solidPC, b117, 2026-10-03: a Vulkan-only view of the
@@ -426,6 +462,9 @@ func mediaOnCPU(m *xollama.Media, path func(string) string) bool {
 	}
 	if m.Video != nil {
 		devices = append(devices, m.Video.Device)
+	}
+	if m.SFX != nil {
+		devices = append(devices, "cpu")
 	}
 	for _, d := range devices {
 		if !strings.EqualFold(d, "cpu") {

@@ -33,7 +33,7 @@ const MediaTypeImageJSON = "application/vnd.ollama.image.json"
 
 // SchemaVersion is the newest schema this build can read. It is NOT
 // necessarily what it writes: see requiredVersion.
-const SchemaVersion = 10
+const SchemaVersion = 11
 
 // SchemaVersionBase is the version that expresses everything except the fields
 // added in v2 (kv.unified, kv.residency_mode), v3 (devices) and v4 (council).
@@ -568,6 +568,11 @@ func (c *Config) requiredVersion() int {
 	// An older build would start the model without its detector and write
 	// words for silence and noise, which is what the publisher attached the
 	// detector against.
+	// An older build would read sound effects as an unknown field and answer
+	// 400 for a model whose publisher attached them.
+	if c.Media != nil && c.Media.SFX != nil {
+		return 11
+	}
 	if c.setsC14Policies() || (c.KV != nil && c.KV.AdmissionPoolless != "") || !c.Tuning.IsZero() ||
 		(c.Media != nil && c.Media.TTS != nil && c.Media.TTS.Threads != 0) {
 		return 10

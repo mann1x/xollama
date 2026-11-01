@@ -55,6 +55,7 @@ var loadKinds = []loadKind{
 	{envconfig.MaxLoadedSpeechModels, mediaServes(func(m *xollama.Media) bool { return m.TTS != nil })},
 	{envconfig.MaxLoadedTranscriptionModels, mediaServes(func(m *xollama.Media) bool { return m.STT != nil })},
 	{envconfig.MaxLoadedVideoModels, mediaServes(func(m *xollama.Media) bool { return m.Video != nil })},
+	{envconfig.MaxLoadedSFXModels, mediaServes(func(m *xollama.Media) bool { return m.SFX != nil })},
 	{decisionLimit, isDecisionModel},
 }
 

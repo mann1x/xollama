@@ -249,6 +249,20 @@ settings mean is in the page each section links to.
 | `--video-seed` | `media.video.defaults.seed` | N, unset | Seed |  |  |
 | `--video-format` | `media.video.defaults.output_format` | mp4, webm, webp, avi, unset | Video container |  |  |
 
+## media
+
+| Flag | Setting | Values | What it is | Server | Falls back to |
+|---|---|---|---|---|---|
+| `--sfx` | `media.sfx.model` | PATH, hf.co/OWNER/REPO/FILE, sha256:DIGEST, unset | Sound-effects model (/v1/audio/generations) |  |  |
+| `--sfx-threads` | `media.sfx.threads` | N, unset | Sound-effects threads |  |  |
+| `--sfx-max-seconds` | `media.sfx.max_seconds` | N, unset | Longest clip in seconds |  |  |
+| `--sfx-fixed` | `media.sfx.fixed` | TEXT, @file, unset | Settings a request may not override |  |  |
+| `--sfx-seconds` | `media.sfx.defaults.seconds` | N, unset | Clip length in seconds |  |  |
+| `--sfx-negative-prompt` | `media.sfx.defaults.negative_prompt` | TEXT, @file, unset | Negative prompt |  |  |
+| `--sfx-steps` | `media.sfx.defaults.steps` | N, unset | Steps |  |  |
+| `--sfx-guidance` | `media.sfx.defaults.guidance_scale` | N, unset | Guidance scale |  |  |
+| `--sfx-format` | `media.sfx.defaults.response_format` | mp3, wav, pcm, unset | Audio format |  |  |
+
 ## notices
 
 | Flag | Setting | Values | What it is | Server | Falls back to |
@@ -264,4 +278,4 @@ settings mean is in the page each section links to.
 | `--clear` | Remove the model's xollama config entirely (an attached drafter stays; `--drafter=none` detaches it) |
 | `-y`, `--yes` | Do not ask for confirmation before writing |
 
-161 settings. `xollama tweak model --help` prints the same list as your build has it.
+170 settings. `xollama tweak model --help` prints the same list as your build has it.

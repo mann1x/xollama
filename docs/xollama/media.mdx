@@ -125,6 +125,7 @@ What each kind needs:
 | Speech to text | One whisper.cpp or transcribe.cpp model; optionally a speech detector (Silero, on the opencoti c12 engine) | `--stt`, `--stt-vad` |
 | Text to speech | OuteTTS: the model and its vocoder. Kokoro, Supertonic, KittenTTS: one file and `--tts-engine=audiocpp` | `--tts`, `--tts-vocoder`, `--tts-engine` |
 | Video | The diffusion model, its VAE and its text encoder | `--video`, `--video-vae`, `--video-text-encoder` |
+| Sound effects | One `stable_audio` package, everything in the file | `--sfx` |
 
 Every other media flag (sizes, steps, voices, formats, memory reserve, device)
 is listed in [Every tweak setting](/xollama/tweak-reference).
@@ -212,6 +213,17 @@ curl -s http://localhost:22434/v1/videos/video_.../content -o fox.mp4
 Fetch the content as soon as the job is `completed`: the engine keeps a
 finished clip for ten minutes. More in [Video jobs](#video-jobs).
 
+### Sound effects
+
+```shell
+curl http://localhost:22434/v1/audio/generations \
+  -H "Content-Type: application/json" \
+  -d '{"model": "mannix/stable-audio:3-small-sfx-q8_0", "prompt": "a short wooden click", "seconds": 2, "response_format": "wav"}' \
+  -o click.wav
+```
+
+A clip is 44.1 kHz stereo. Its length is `seconds`, 4 by default and at most `max_seconds`, 30 unless the template says otherwise, and one second costs about what eight do. A `seed` repeats a clip exactly on the same machine; without one the engine picks it and `X-OC-Seed` tells you which, so a clip you like can be made again.
+
 ### When a client names no model
 
 A media request without a `model` is a 400 (`model is required`) unless the
@@ -255,7 +267,7 @@ package carries (they are pinned and fetched with the engine):
 | Library | What it serves | Without it |
 |---|---|---|
 | `oc-codec` | mp3, opus and aac speech, mp4 video | Speech is wav or pcm, video avi or webm. A model whose own default format needs the codec is refused at load, naming it. |
-| `oc-audiocpp` | Kokoro, Supertonic, KittenTTS | Those models are refused at load, naming it. |
+| `oc-audiocpp` | Kokoro, Supertonic, KittenTTS, Stable Audio | Those models are refused at load, naming it. |
 | `oc-espeak` | The phonemes Kokoro and KittenTTS speak from | Those two are refused at load, naming it, unless the host has its own eSpeak-ng. Supertonic does not use it. |
 
 Nothing has to be installed on the host. On a Mac with Apple silicon the three
@@ -303,6 +315,7 @@ compares size and time.
 | `POST /v1/audio/speech` | `speech` | JSON `input`, `voice`, `response_format`, `speed`. The audio comes back as the engine encodes it. |
 | `POST /v1/audio/transcriptions` | `transcription` | Multipart `file`. A model without a speech-to-text engine is served as upstream serves it, through an audio-capable LLM. |
 | `POST /v1/audio/translations` | `transcription` | Multipart `file`, translated to English. A model without a speech-to-text engine is served as upstream serves it, through an audio-capable LLM. |
+| `POST /v1/audio/generations` | `sound_effects` | JSON `prompt`, `negative_prompt`, `seconds`, `seed`, `steps`, `guidance_scale`, `response_format` (`mp3`, `wav`, `pcm` or `json`). The audio comes back as the body, with `X-OC-Seed`, `X-OC-Seconds`, `X-OC-Sample-Rate` and `X-OC-Channels`; `json` answers `b64_json` with the same facts. |
 | `GET /api/xollama/media/voices?model=` | `speech` | The model's voices for a picker: the engine's own, the OpenAI names the template maps to each (`aliases`), the `default`, and the engine's `response_formats` and `sample_rate`. POST with `{"model": …}` works too. It starts the speech engine if it isn't running. `xollama media voices MODEL` prints the same. |
 | `POST /v1/videos` | `video` | JSON or multipart: `prompt`, `size` (`832x480`), `seconds` or `frames`, `fps`, `seed`, `steps`, `negative_prompt`, `output_format`, and `input_reference` (a starting image, for a model that takes one). The reply is a job: `{id, object: "video", status, progress}`. |
 | `GET /v1/videos/{id}` | | The job: `queued`, `in_progress`, `completed`, `failed` or `cancelled`, with `progress`. |
@@ -350,6 +363,7 @@ speech engine never takes an LLM's place:
 | `XOLLAMA_MAX_LOADED_SPEECH_MODELS` | text to speech | 1 |
 | `XOLLAMA_MAX_LOADED_TRANSCRIPTION_MODELS` | speech to text | 1 |
 | `XOLLAMA_MAX_LOADED_VIDEO_MODELS` | video | 1 |
+| `XOLLAMA_MAX_LOADED_SFX_MODELS` | sound effects | 1 |
 
 `XOLLAMA_MAX_LOADED_DECISION_MODELS` (default 1) is the same cap for
 [decision models](/capabilities/decision); with `XOLLAMA_ENGINE=llamacpp` they
@@ -374,7 +388,8 @@ kind with `XOLLAMA_MEDIA_DEFAULTS`: comma-separated `kind=model` pairs.
 
 
 - The kinds are `image` (generation and edit), `image_generation`, `image_edit`,
-  `transcription` (or `stt`), `speech` (or `tts`) and `video`. A later pair for
+  `transcription` (or `stt`), `speech` (or `tts`), `video` and `sfx` (or
+  `sound_effects`). A later pair for
   the same kind wins, so `image=a,image_edit=b` generates with `a` and edits
   with `b`.
 - `/v1/models` lists the kinds a model is the default for in `default_for`.

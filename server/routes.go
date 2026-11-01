@@ -2631,6 +2631,7 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.POST("/v1/audio/transcriptions", s.mediaTranscriptionMiddleware(false), s.TranscriptionHandler) // xollama-hook: media
 	r.POST("/v1/audio/translations", s.mediaTranscriptionMiddleware(true), s.TranslationHandler)      // xollama-hook: media
 	r.POST("/v1/audio/speech", s.SpeechHandler)
+	r.POST("/v1/audio/generations", s.SoundEffectsHandler) // xollama-hook: media
 	r.POST("/v1/images/generations", s.ImageGenerationsHandler)
 	r.POST("/v1/images/edits", s.ImageEditsHandler)
 	r.GET(api.XollamaMediaVoicesPath, s.MediaVoicesHandler)

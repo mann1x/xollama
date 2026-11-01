@@ -21,6 +21,7 @@ paths.
 | Script | Gate | Host |
 |---|---|---|
 | `stage-engine.sh <platform> [dir]`: the engine THIS TREE pins (`llm/engine/pin`), staged and sha256-checked by `cmake/opencoti-fetch.cmake`; prints its path | used by `serve-side.sh` and for `windows-speech.ps1` | solidPC |
+| `sfx.sh` (`STORE=` a scratch store with llama3, `SFXGGUF=` the Q8_0 package, `ENG=` an engine, default the pin's): sound effects on their own engine and beside an LLM, the clip read from the WAV | media |
 | `media-combined.sh` (`STORE=` a scratch store with llama3 and the media models, `ENG=` an engine, default the pin's): an LLM and its media in one engine process | media |
 | `vulkan-cache.sh` (`STORE=`, `ENG=`): the engine keeps its Vulkan pipeline cache in the stable folder, on solidPC's Renoir iGPU | options |
 | `engine-options.sh` (`STORE=`, `ENG=`): every per-model engine option on a real load, the admission headers and the Realtime proxy | options |

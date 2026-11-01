@@ -1,6 +1,9 @@
 package engine
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 // Engine capabilities that the pinned artifact may or may not have.
 //
@@ -141,6 +144,23 @@ const (
 	FeatureAutoMTPAdaptive  = "auto_mtp_adaptive_v1"
 	FeatureMoEStrategy      = "moe_strategy_v1"
 )
+
+// Sound effects take two pins: the engine's route and a media component whose
+// oc-audiocpp was built with the stable_audio family.
+const (
+	FeatureAudioGenerations = "audio_generations_v1"
+	FeatureSFXSidecar       = "audio_sfx_audiocpp_v1"
+)
+
+// HasSoundEffects reports whether the engine this build ships and its media
+// component both declare sound effects.
+func HasSoundEffects() bool {
+	pin, err := loadPin()
+	if err != nil {
+		return false
+	}
+	return pin.HasFeature(FeatureAudioGenerations) && slices.Contains(pin.MediaFeatures, FeatureSFXSidecar)
+}
 
 // HasPolicy reports whether the engine this build ships declares feature.
 func HasPolicy(feature string) bool {

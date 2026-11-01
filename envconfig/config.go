@@ -316,7 +316,8 @@ var (
 	// answer instead of a guess.
 	MediaDefaults = String("XOLLAMA_MEDIA_DEFAULTS")
 	// MaxLoadedImageModels, MaxLoadedSpeechModels,
-	// MaxLoadedTranscriptionModels and MaxLoadedVideoModels cap the media
+	// MaxLoadedTranscriptionModels, MaxLoadedVideoModels and
+	// MaxLoadedSFXModels cap the media
 	// engines of each kind, apart from OLLAMA_MAX_LOADED_MODELS: at the cap a
 	// load unloads an engine of its own kind. Unset is one; 0 puts the kind
 	// back in the OLLAMA_MAX_LOADED_MODELS pool.
@@ -324,6 +325,7 @@ var (
 	MaxLoadedSpeechModels        = Uint("XOLLAMA_MAX_LOADED_SPEECH_MODELS", 1)
 	MaxLoadedTranscriptionModels = Uint("XOLLAMA_MAX_LOADED_TRANSCRIPTION_MODELS", 1)
 	MaxLoadedVideoModels         = Uint("XOLLAMA_MAX_LOADED_VIDEO_MODELS", 1)
+	MaxLoadedSFXModels           = Uint("XOLLAMA_MAX_LOADED_SFX_MODELS", 1)
 	// MaxLoadedDecisionModels is the same cap for decision models, read only
 	// off XOLLAMA_ENGINE=llamacpp.
 	MaxLoadedDecisionModels = Uint("XOLLAMA_MAX_LOADED_DECISION_MODELS", 1)
@@ -584,6 +586,7 @@ func AsMap() map[string]EnvVar {
 	ret["XOLLAMA_MAX_LOADED_SPEECH_MODELS"] = EnvVar{"XOLLAMA_MAX_LOADED_SPEECH_MODELS", MaxLoadedSpeechModels(), "Text-to-speech engines loaded at once (default 1; 0 shares OLLAMA_MAX_LOADED_MODELS)"}
 	ret["XOLLAMA_MAX_LOADED_TRANSCRIPTION_MODELS"] = EnvVar{"XOLLAMA_MAX_LOADED_TRANSCRIPTION_MODELS", MaxLoadedTranscriptionModels(), "Speech-to-text engines loaded at once (default 1; 0 shares OLLAMA_MAX_LOADED_MODELS)"}
 	ret["XOLLAMA_MAX_LOADED_VIDEO_MODELS"] = EnvVar{"XOLLAMA_MAX_LOADED_VIDEO_MODELS", MaxLoadedVideoModels(), "Video engines loaded at once (default 1; 0 shares OLLAMA_MAX_LOADED_MODELS)"}
+	ret["XOLLAMA_MAX_LOADED_SFX_MODELS"] = EnvVar{"XOLLAMA_MAX_LOADED_SFX_MODELS", MaxLoadedSFXModels(), "Sound-effects engines loaded at once (default 1; 0 shares OLLAMA_MAX_LOADED_MODELS)"}
 	ret["XOLLAMA_MAX_LOADED_DECISION_MODELS"] = EnvVar{"XOLLAMA_MAX_LOADED_DECISION_MODELS", MaxLoadedDecisionModels(), "Decision models loaded at once (default 1; 0, or XOLLAMA_ENGINE=llamacpp, shares OLLAMA_MAX_LOADED_MODELS)"}
 	return ret
 }

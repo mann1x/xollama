@@ -23,6 +23,8 @@ var mediaKindNames = map[string][]model.Capability{
 	"speech":           {CapabilitySpeech},
 	"tts":              {CapabilitySpeech},
 	"video":            {CapabilityVideo},
+	"sfx":              {CapabilitySoundEffects},
+	"sound_effects":    {CapabilitySoundEffects},
 }
 
 // mediaDefaults reads kind=model pairs. A later pair for the same kind wins,
