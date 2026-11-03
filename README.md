@@ -6,7 +6,7 @@ fixes upstream has not merged, and serves GGUF models on the
 engine.
 
 > **Status.** The current release is
-> [`v0.40.13-xollama.1`](https://github.com/mann1x/xollama/releases/latest):
+> [`v0.40.13-xollama.2`](https://github.com/mann1x/xollama/releases/latest):
 > upstream ollama `v0.40.13` with the carried patches
 > ([`docs/protocols/CARRIED-PATCHES.md`](docs/protocols/CARRIED-PATCHES.md))
 > and the opencoti c14 engine (`llm/engine/pin/`). `main` is the release,
