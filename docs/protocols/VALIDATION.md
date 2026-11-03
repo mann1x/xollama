@@ -1026,7 +1026,8 @@ releases endpoint.
   provenance block names engine `2610041714001`. `strings` finds no releases
   endpoint in the compressed installer (expected; the installed app is checked
   in G9).
-- **Last run (`v0.40.13-xollama`, cut from rc.1's tree, merge `a70ea6480`, release run 41058247942, 2026-10-30):**
+- **Last run (`v0.40.13-xollama.1`, merge `37a5198d2`, release run 41351329191, 2026-11-01):** all jobs green, nine assets, `sha256sum -c` OK, both Linux binaries name `0.40.13-xollama.1`, the image is `linux/amd64` and `linux/arm64` on Docker Hub and GHCR. Payload `6880be30…` = the draft's, the other seven files differ from it: a docs-only records commit went onto `dev` between the draft and the merge, and the binaries stamp the commit. So G8 and G11 were repeated on the published files with the draft's results: 3090 102.8 to 103.3 tok/s, speech 4/4 and 7/7, clips 3.4 s and 3 s.
+- **Before (`v0.40.13-xollama`, cut from rc.1's tree, merge `a70ea6480`, release run 41058247942, 2026-10-30):**
   six jobs green, nine assets; the eight sums = GitHub's digests, `sha256sum
   -c` OK; payload `bb510e2a…` (rc.1's); both Linux binaries name
   `0.40.13-xollama`. The image's arm64 build failed once on a Go proxy stream
