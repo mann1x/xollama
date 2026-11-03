@@ -15,7 +15,21 @@
 # Moving a component is one line here plus its pin file, on a MEASUREMENT
 # (scripts/phase2-engine-ab.py, as the `ollama` user), never on a changelog.
 #
-# THIS PIN (2026-11-03, opencoti mails #2109, #2111, #2126; index 263c8f43,
+# THIS PIN (2026-11-03, opencoti mail #2149; index 71432806, pins 1adb1ed9,
+# payload 887b2747): c14 r9, git tag llamafile-v0.10.5+opencoti.c14-r9. Engine
+# 2611031149001 (bare 357a2ebf) = r8 + 0836 (bug-4334, bug-4335): a Gemma-4
+# tool call the engine's PEG parser rejects, a second call with parallel calls
+# off, or a <|channel> not followed by `thought` was held whole until the
+# generation ended, with no delta and no SSE keepalive (60k+ tokens over 10
+# minutes with nothing on the wire). The unparsed tail now streams as content
+# from its first token, a non-thought channel tail is kept as content, and
+# `: keepalive generating N` goes out every ping interval while output is held.
+# It reaches xollama only on /v1/chat/completions with the engine's Gemma-4
+# parser (a Gemma-4 GGUF with no Go renderer). Every library is r8's file; the
+# 79 feature rows are unchanged.
+# MEASURED: see STATE_SUMMARY.md, entry of this pin.
+#
+# THE c14 r8 PIN (2026-11-03, opencoti mails #2109, #2111, #2126; index 263c8f43,
 # pins cbf93c57, payload c0086fad): c14 r8, git tag
 # llamafile-v0.10.5+opencoti.c14-r8. Engine 2611030148001 (bare 04cdf548) =
 # r5 + 0831 (the router hands --gpu to its children, bug-4327; xollama starts
@@ -252,10 +266,10 @@
 format   2
 channel  release
 tag      c14
-engine   pin/engine.txt  rev cbf93c57b3afbb03db8e38b9b34c73822c8adceb  sha256 f43274ba8ce4643cca269d4e8a8f7d4bfb43667429e1f8e1f83c7990e861f5d3  version 2611030148001
-cuda     pin/cuda.txt  rev cbf93c57b3afbb03db8e38b9b34c73822c8adceb  sha256 251b2229b6c2f6eaa0eb4b34ced9070a55fbfb965fbb082826f7edc3fd6acb25  version 2610311711001
-cuda12   pin/cuda12.txt  rev cbf93c57b3afbb03db8e38b9b34c73822c8adceb  sha256 6033a4d891965ab89b3b72e769b9f04e996b7ed3211707966fedf9d36297a345  version 2610311711002
-sbsa     pin/sbsa.txt  rev cbf93c57b3afbb03db8e38b9b34c73822c8adceb  sha256 2ed561f2c1f52336f5b9f18bde0b8f434d4e41aa339c0920aeea87575d92fb4b  version 2610311711003
-vulkan   pin/vulkan.txt  rev cbf93c57b3afbb03db8e38b9b34c73822c8adceb  sha256 b9e4221f3e2fd82c884e372b84436d0c0e1c37919e8031cb54bdf02df33ad851  version 2611030129001
-macos    pin/macos.txt  rev cbf93c57b3afbb03db8e38b9b34c73822c8adceb  sha256 309f02bda51a6b754413ed68b4e87a0d9cdbc400661ee7a88980a227f34c4244  version 2610311711005
-media    pin/media.txt  rev cbf93c57b3afbb03db8e38b9b34c73822c8adceb  sha256 4311cf141998f5d52e180f83255f77288a2829926a794f912a3146a4af887551  version 2611012031001
+engine   pin/engine.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 ab17227d24b856b240f944c1f46ecba7894d1a2c4ab7d23e591b44e8e6b907c8  version 2611031149001
+cuda     pin/cuda.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 c56d0a22e7615fbd925c4fae2aae06cc3cb39652dc1568b13257f9a097298dff  version 2610311711001
+cuda12   pin/cuda12.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 19bf03c916692c77fb22eefce3d5a67383dff486feb22b591ace4c3a1ae0b144  version 2610311711002
+sbsa     pin/sbsa.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 c91927dd159ca30b2e6c4464a2ac5d3fa6a2086c67bacb37cd08f25ea8569cf4  version 2610311711003
+vulkan   pin/vulkan.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 3e85f70e4350ed3fd7576dafd75045e5e451ccdc66f2c82dddb769c7a592a09c  version 2611030129001
+macos    pin/macos.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 8d97d6c47fe3ac43a19b09f2e41bfe2a449e337fc995583f9d0851115a66974d  version 2610311711005
+media    pin/media.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 bccefdc642e11a9009e3bd48e950056629d9295c36310494bfc59d5ec4d6f880  version 2611012031001

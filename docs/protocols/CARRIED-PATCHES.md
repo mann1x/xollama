@@ -27,6 +27,42 @@ first if a patch looks missing or out of date.
    other row in this file keys on the PR number, and these cannot. They are
    listed apart, below.
 
+**Status as of 2026-11-03: the set moved to upstream v0.40.14 (31 patches, same set and `patches[]` order).** Manifest at think-budget `386854a4` (`base: v0.40.14`, `integration.sha 9dda2928`, release `v0.40.14-thinkbudget` @ `386854a4`; fork notice #2150). Upstream v0.40.14 is eight commits over v0.40.13 (34 files): OpenAI sampler defaults no longer forced (#19432), readable Responses input content (#19192), MLX top-k sorted in chunks (#19392), cloud web search responses decoded (#19476), ChatGPT routing checked before configuring and retryable disconnects (#19470, #19336), model output limits for Claude Code (#19410), a buildx pin (#19373); llama.cpp, `llama/`, MLX and MLX-C unchanged. Consumed on branch `sync/upstream-v0.40.14`: the upstream tag merge `a761ce52a`, then the 31 patches at the shas below, each its own `--no-ff` merge in `patches[]` order. The upstream merge conflicted only in `app/cmd/app/app_darwin.m` (#19336 rewrote the ChatGPT row and failure alert; upstream's logic taken, its three strings that name Ollama rebranded under `app-brand`). Every patch is the same change as in the v0.40.13 manifest (only rebased), so the seventeen patch merges that conflicted all resolved to dev's side and the 31 merges leave the tree unchanged (`git diff a761ce52a` after them is empty). Proof: for each of the 74 files the patches change, xollama's diff from `386854a4` equals its diff from `955bc406` before the sync; and for each of the 34 files upstream changed, our added and removed lines are the same against v0.40.14 as against v0.40.13, except the `app_darwin.m` resolution above. No bug-319 duplicate this time. Two new upstream tests set `OLLAMA_HOST` and were pointed at `XOLLAMA_HOST` (`a314d4e26`, bug-292 again). LLAMA_CPP_VERSION stays b11963, so the inputs digest stays `e9d0e2a1`.
+
+| PR | branch | manifest sha | v0.40.14 merge |
+|---|---|---|---|
+| #17563 | `up-repeat-guard` | `3fede4ab` | `2d4f1bb91` |
+| #17564 | `up-truncated-tool-calls` | `1c6a011a` | `7be8967fb` |
+| #17565 | `up-gemma4-object-close` | `27e96260` | `54ae2247b` |
+| #17566 | `up-think-budget` | `f3f71b67` | `2cc4f8a72` |
+| #17567 | `up-mlx-libdl` | `24abce6e` | `7f93fb1ca` |
+| #17626 | `up-gemma4-stray-channel-name` | `249963f4` | `c90c7e5e0` |
+| #17914 | `qwen3coder-tolerate-malformed-tool-calls` | `e1071ce3` | `65fc1f3e8` |
+| #18212 | `up-reasoning-budget-line-boundary` | `d03c0756` | `97a920bbd` |
+| #18281 | `up-native-thinking-replay` | `1690d500` | `45ef4b9b8` |
+| #18288 | `up-gemma4-stray-closer` | `1873c4af` | `cba2b86b2` |
+| #18289 | `up-jinja-runner-reuse` | `cd054e66` | `51192d853` |
+| fork-only | `gemma4-toolcall-in-thinking` | `750904b3` | `5b5bcbcab` |
+| #18624 | `qwen35-toolcall-in-thinking` | `78029d9b` | `bf5fa6aa7` |
+| fork-only | `up-gemma4-unparsed-tool-call-content` | `21f3b2fa` | `a4288925f` |
+| fork-only | `up-toolcall-tags` | `5dd2210c` | `01d222022` |
+| fork-only | `up-codex-request-count-mtime` | `7a90f889` | `767de3d36` |
+| fork-only | `up-fileutil-root-permission-tests` | `e0b8e2c7` | `bcaba6083` |
+| fork-only | `up-gofmt-vision-test-data` | `1719aeb2` | `b69dc85fa` |
+| fork-only | `up-integration-goroutine-fatal` | `9ed90df6` | `b171118f6` |
+| fork-only | `up-lfm2-think-off-discard` | `78f1b1b8` | `610db49db` |
+| fork-only | `up-gemma4-assistant-shape` | `6eb83ff6` | `585e93ad4` |
+| fork-only | `up-gemma4-swallowed-key` | `75040c68` | `7274e4d35` |
+| fork-only | `up-response-scope-think-budget` | `e049c541` | `038505a55` |
+| fork-only | `up-modelfile-roundtrip` | `12253e90` | `104360ef4` |
+| fork-only | `up-qwen35-empty-think-history` | `e9f2e5f6` | `5dfc1e630` |
+| fork-only | `up-mlxrunner-manifest-list` | `62f72566` | `18af2e61b` |
+| fork-only | `up-gemma4-channel-in-thinking` | `745f87a1` | `cff87651e` |
+| fork-only | `up-llama-server-memory-lines` | `14ed73cd` | `19e455b31` |
+| fork-only | `up-qwen-unclosed-tool-call` | `64f3fe2d` | `10c39a161` |
+| fork-only | `up-completion-generation-prompt` | `18489b6f` | `394c541a5` |
+| fork-only | `up-compat-readme` | `97f20dec` | `c491895d8` |
+
 **Status as of 2026-10-30: the set moved to upstream v0.40.13 (31 patches, same set and `patches[]` order).** Manifest at think-budget `955bc406` (`base: v0.40.13`, `integration.sha b69e68ae`, release `v0.40.13-thinkbudget` @ `63a3ed22`; fork mail #2023, notice #2022). Upstream v0.40.13 is four commits over v0.40.12 (29 files): llama.cpp b11901 -> b11963 (#19360), upstream's `llama/compat/002-metal-unary-cast-constexpr.patch` (#19372), LFM3 GGUF fixes and llama-server speech (#19344), cmd help with no arguments (#19248); MLX and MLX-C unchanged. Consumed on branch `sync/upstream-v0.40.13`: the upstream tag merge `5cced74d6`, then the 31 patches at the shas below, each its own `--no-ff` merge in `patches[]` order. The upstream merge conflicted in `llm/llama_server.go` (upstream's `llamaServerRepeatLastN` now does on stock what our `repeat-last-n` hook did; the hook calls it and keeps opencoti's pass-through), `server/speech.go` (the `media` hook's `nativeSpeechHandler` keeps its name; upstream's `llm.SpeechSampleRate` taken) and `server/routes_test.go` (imports, both kept). Seventeen patch merges conflicted, all in known_conflicts files; every one resolved to dev's side, and each conflicted file came out byte-identical to HEAD (the patches' lines were already there). Proof: for each of the 90 files the integration changes, xollama's diff from `b69e68ae` equals its diff from `4f153b60` before the sync, except the fork-only `PATCHES.json` and release notes, `llm/llama_server.go` (upstream's new `repeat_last_n` line, above) and `server/routes_test.go`. The bug-319 artifact recurred a third time (the `up-think-budget` re-merge duplicated two tests). Our file had differed from the fork's only by the order of those two tests, a 67-line move that gives git a second place to put them, so it was made byte-identical to the fork's (`047c7dfb8`); the next sync should not repeat it. LLAMA_CPP_VERSION b11901 -> b11963, so the inputs digest moves `08b13822` -> `e9d0e2a1`, equal to the fork's; `check-compat-origin` 0 bad.
 
 | PR | branch | manifest sha | v0.40.13 merge |
