@@ -436,6 +436,6 @@ func cloudAnthropicServer(t *testing.T, upstreamURL string) *httptest.Server {
 	}
 	local := httptest.NewServer(router)
 	t.Cleanup(local.Close)
-	t.Setenv("OLLAMA_HOST", local.URL)
+	t.Setenv("XOLLAMA_HOST", local.URL)
 	return local
 }

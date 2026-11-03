@@ -331,7 +331,7 @@ func TestLaunchCmdChatGPT(t *testing.T) {
 				}
 			}))
 			defer server.Close()
-			t.Setenv("OLLAMA_HOST", server.URL)
+			t.Setenv("XOLLAMA_HOST", server.URL)
 
 			configDir := filepath.Join(home, ".codex")
 			if err := os.MkdirAll(configDir, 0o700); err != nil {
