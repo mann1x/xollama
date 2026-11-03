@@ -3,7 +3,7 @@ component  macos
 version    2610311711005
 built-from 2610312243001
 repo       ManniX-ITA/opencoti-llamafile
-rev        b790fad648fdf0da475479c062ce19182ec56a7e
+rev        c0086fad34dcc5fef67535436db61a48b325185e
 abi        ggml bac5050ddc8c58c51f0b059a7f9753b33af0ed79d355090e7c9a17ffaaaf340a
 abi        loader d6ff34022f1d3fb5af56ca0c80e3f4e552bf09f1bebdf0cb5f314a454bf38dbc
 abi-source exported
@@ -13,7 +13,10 @@ gated-with 2611010802001
 gated-with 2611011335001
 gated-with 2611011619001
 gated-with 2611012008001
+gated-with 2611021022001
+gated-with 2611021946001
+gated-with 2611030148001
 requires   macos-aarch64  macos          13.0
 file  macos-aarch64  ape        components/macos/2610311711005/ape-macos-aarch64  07f550415a59415973ef877eec99a776dfa5263b06fdb1fd9cefb7b884f0f723  56896
 file  macos-aarch64  metal      components/macos/2610311711005/ggml-metal-aarch64.dylib  9ae723efa04dc383138cc6a4ec8e7e8203081a9c5e64c67b317b18e2d9baa036  1821904
-file  any            build-info components/macos/2610311711005/BUILD_INFO.macos.md  ae7a323fe192f7ba1a767e244c8791a8faf65ed306d2c8ab7e2fb3bde5f4f0f0  3011
+file  any            build-info components/macos/2610311711005/BUILD_INFO.macos.md  99221d9327f67767202a02041dd0507d8c0ff48de256ab689188d29666197e79  3056

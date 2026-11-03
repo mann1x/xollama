@@ -1,4 +1,4 @@
-# govulncheck go1.26.10, tree 7470367f5, 2026-11-01
+# govulncheck go1.26.10, tree f56435e63, 2026-11-03
 === Symbol Results ===
 === Package Results ===
 === Module Results ===
@@ -14,7 +14,7 @@ Vulnerability #3: GO-2026-5932
     The golang.org/x/crypto/openpgp package is unmaintained, unsafe by design,
   Module: golang.org/x/crypto
     Found in: golang.org/x/crypto@v0.58.0
-    Fixed in: N/A
+    Fixed in: golang.org/x/crypto@v0.58.1-0.20261009181718-2f1f834330b2
 Your code is affected by 0 vulnerabilities.
 This scan also found 0 vulnerabilities in packages you import and 3
 vulnerabilities in modules you require, but your code doesn't appear to call
