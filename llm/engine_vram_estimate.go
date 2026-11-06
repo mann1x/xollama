@@ -186,7 +186,7 @@ func PredictOpencotiVRAM(modelPath string, f *gguf.Model, cfg LlamaServerConfig,
 	if layout.window > 0 && layout.swaK+layout.swaV > 0 {
 		// The window cache is sized per sequence, for every sequence the
 		// engine may admit: the same count PredictServerSlotVRAM plans for.
-		plan := resolveSlotPlan(cfg, numParallel, cfg.singleSequence(true))
+		plan := resolveSlotPlan(cfg, numParallel, cfg.SingleSequenceOnly)
 		seqs := max(plan.concurrency(), councilLive(cfg, numParallel, true)) + resolvePoolCount(cfg) + max(cfg.CouncilPools, 0) + clientPoolSeats(cfg)
 		windows := seqs
 		if plan.SWASeqBudget > 0 {
@@ -207,7 +207,7 @@ func PredictOpencotiVRAM(modelPath string, f *gguf.Model, cfg LlamaServerConfig,
 		// One row per sequence the context holds, and with a built-in
 		// drafter one more per draft step: the rollback ring. Priced in
 		// full: Metal allocates it so, a card commits it as it is used.
-		plan := resolveSlotPlan(cfg, numParallel, cfg.singleSequence(true))
+		plan := resolveSlotPlan(cfg, numParallel, cfg.SingleSequenceOnly)
 		rows := max(plan.concurrency(), councilLive(cfg, numParallel, true)) + resolvePoolCount(cfg) + max(cfg.CouncilPools, 0) + clientPoolSeats(cfg)
 		if layout.draftK > 0 && !cfg.DraftOff {
 			rows *= 1 + max(draftDepth, 0)

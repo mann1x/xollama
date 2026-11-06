@@ -1056,7 +1056,7 @@ func (s *Server) SystemOneHandler(c *gin.Context) {
 	}
 	var encoding string
 	switch m.Config.Renderer {
-	case "tev1", "clef", "strands", "kev", "pplx", "d3", "d1":
+	case "tev1", "clef", "strands", "kev", "pplx", "d3", "autotrust-decision", "d1":
 		encoding = m.Config.Renderer
 	}
 	compiled, err := decision.Compile(req, encoding)
@@ -3311,8 +3311,7 @@ func llamaServerConfigForModel(m *Model) llm.LlamaServerConfig {
 		// xollama-hook: system-settings -- the server's defaults under it.
 		Xollama: launchXollama(m).LaunchConfig(),
 		// xollama-hook: launch-config
-		SingleSequenceOnly:      singleSequenceOnly(m),
-		SingleSequenceStockOnly: parallelUnsafeArchitecture(m),
+		SingleSequenceOnly: singleSequenceOnly(m),
 
 		// xollama-hook: council -- pool seats for the council's pool tree.
 		CouncilPools: councilPoolSeats(m),
@@ -3327,40 +3326,13 @@ func llamaServerConfigForModel(m *Model) llm.LlamaServerConfig {
 	}
 }
 
-// parallelUnsafeArchitectures give wrong answers with more than one sequence in
-// flight. ref: https://github.com/ollama/ollama/issues/4165
-var parallelUnsafeArchitectures = []string{
-	"mllama", "qwen3vl", "qwen3vlmoe", "qwen35", "qwen35moe", "qwen3next",
-	"lfm2", "lfm2moe", "nemotron_h", "nemotron_h_moe", "nemotron_h_omni",
-}
-
 // singleSequenceOnly reports whether this model must be served one sequence at
-// a time, whatever anyone asked for.
+// a time, whatever anyone asked for: an embedding model.
 //
 // Extracted so the scheduler's decision and the launch configuration cannot
-// drift apart: dynamic slots must never grow past one here, and a second copy
-// of the deny-list is how that would quietly stop being true.
+// drift apart: dynamic slots must never grow past one here.
 func singleSequenceOnly(m *Model) bool {
-	if m == nil {
-		return false
-	}
-	if m.CheckCapabilities(model.CapabilityCompletion) != nil {
-		return true // an embedding model
-	}
-	return parallelUnsafeArchitecture(m)
-}
-
-// parallelUnsafeArchitecture reports whether a completion model is held to one
-// sequence only by the ollama/ollama#4165 deny-list.
-//
-// xollama-hook: launch-config -- that list records what stock llama.cpp gets
-// wrong, so it binds only there: on opencoti these architectures run with
-// several sequences (llm.LlamaServerConfig.SingleSequenceStockOnly).
-func parallelUnsafeArchitecture(m *Model) bool {
-	if m == nil || m.CheckCapabilities(model.CapabilityCompletion) != nil {
-		return false
-	}
-	return slices.Contains(parallelUnsafeArchitectures, m.Config.ModelFamily)
+	return m != nil && m.CheckCapabilities(model.CapabilityCompletion) != nil
 }
 
 func usesOllamaRenderedChat(m *Model) bool {

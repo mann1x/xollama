@@ -567,19 +567,6 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 			enginePin, engine.EnvSelector)
 	}
 
-	// xollama-hook: launch-config — the scheduler lifts the ollama/ollama#4165
-	// single-sequence rule when it predicts opencoti (WouldUseOpencoti). A
-	// prediction is not the launch: with the artifact missing, or on the
-	// opt-in retry after an opencoti failure, stock llama.cpp serves the load
-	// and gets upstream's one sequence back. Fewer sequences than planned only
-	// ever uses less memory than was reserved.
-	if n := servedSequences(launch.config, launch.numParallel, usedOpencoti); n != launch.numParallel {
-		slog.Warn("model architecture does not currently support parallel requests on stock llama-server; serving one sequence",
-			"requested", launch.numParallel)
-		launch.numParallel = n
-		return startLlamaServer(launch, out)
-	}
-
 	// xollama-hook: launch-config — a cache type stock llama.cpp does not know,
 	// or a sliding-window ring it has no flag for, must be refused here rather
 	// than handed to an engine that will reject the argument itself. The
@@ -622,7 +609,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 	// xollama-hook: council -- a council starts with a slot per parallel member.
 	live := councilLive(launch.config, launch.numParallel, usedOpencoti)
 	args = councilSlotArgs(args, live, launch.numParallel)
-	slots := resolveSlotPlan(launch.config, live, launch.config.singleSequence(usedOpencoti))
+	slots := resolveSlotPlan(launch.config, live, launch.config.SingleSequenceOnly)
 	// xollama-hook: council -- the council's pool seats ride on the same flag.
 	args = appendSlotArgs(args, slots, enginePoolSeats(launch.config, len(launch.projectors) > 0), kvTypes.Unified, usedOpencoti)
 	args = withPoolCells(args, launch.config, launch.opts.NumCtx, launch.numParallel, usedOpencoti) // xollama-hook: pool-cells
@@ -1397,7 +1384,7 @@ func (s *llamaServerRunner) startProcess() error {
 	// at a time. Resized here rather than at construction because it depends on
 	// which engine answered, which is only known now.
 	// xollama-hook: council -- the council's live slots, as in the launch.
-	if plan := resolveSlotPlan(s.launch.config, councilLive(s.launch.config, s.launch.numParallel, usedOpencoti), s.launch.config.singleSequence(usedOpencoti)); usedOpencoti {
+	if plan := resolveSlotPlan(s.launch.config, councilLive(s.launch.config, s.launch.numParallel, usedOpencoti), s.launch.config.SingleSequenceOnly); usedOpencoti {
 		if n := plan.concurrency(); n > s.launch.numParallel {
 			slog.Info("dynamic slots: concurrency raised, engine admits slots as headroom allows",
 				"live", plan.Live, "max", n)
@@ -3625,6 +3612,8 @@ func PredictServerVRAM(modelPath string, f *gguf.Model, numCtx int) uint64 {
 //	CUDA_Host compute buffer size =   268.05 MiB
 //	MTL0_Mapped model buffer size =  1918.35 MiB
 //	ROCm0 model buffer size =  1918.35 MiB
+//	llama_context:         CUDA0 layer input buffer size =     4.00 MiB (16 layers)
+//	init_rotation:         CUDA0 rotation buffer size =    23.04 MiB
 //
 // Output is parsed a line at a time. llama-server's stdout and stderr share
 // one pipe, and a read from it ends wherever the pipe had data, not at a line
@@ -3722,7 +3711,7 @@ var deviceFreeRegex = regexp.MustCompile(`using device (\S+)\s+\(.*\)\s+-\s+(\d+
 // target's and then a drafter's.
 var modelLoaderRegex = regexp.MustCompile(`llama_model_loader: loaded meta data with \d+ key-value pairs and \d+ tensors from (\S+)`)
 
-var bufferSizeRegex = regexp.MustCompile(`(?m)(?:^|\n)[^\n:]*?([A-Za-z_][A-Za-z0-9_]*):\s+(\S+)\s+(model|KVarN|KV|compute|output|RS)\s+buffer(?:\s+\(stream\s+(\d+)\))?\s+size\s*=\s*([\d.]+)\s*MiB`)
+var bufferSizeRegex = regexp.MustCompile(`(?m)(?:^|\n)[^\n:]*?([A-Za-z_][A-Za-z0-9_]*):\s+(\S+)\s+(layer input|rotation|model|KVarN|KV|compute|output|RS)\s+buffer(?:\s+\(stream\s+(\d+)\))?\s+size\s*=\s*([\d.]+)\s*MiB`)
 
 var (
 	offloadedLayersRegex      = regexp.MustCompile(`offloaded\s+(\d+)/(\d+)\s+layers to GPU`)

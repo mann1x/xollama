@@ -35,7 +35,7 @@ import (
 // cells per slot (kv.unified false), where more slots would cut each one's
 // share of -c.
 func councilLive(cfg LlamaServerConfig, numParallel int, opencoti bool) int {
-	if !opencoti || cfg.CouncilSlots <= 0 || cfg.singleSequence(opencoti) {
+	if !opencoti || cfg.CouncilSlots <= 0 || cfg.SingleSequenceOnly {
 		return numParallel
 	}
 	if x := cfg.Xollama; x != nil && x.KV != nil && x.KV.Unified != nil && !*x.KV.Unified {
