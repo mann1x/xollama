@@ -41,12 +41,9 @@ GHSA-5p4m-2wfm-xmqj	high	development	app/ui/app/package-lock.json	js-yaml	>= 4.0
 GHSA-h67p-54hq-rp68	medium	development	app/ui/app/package-lock.json	js-yaml	>= 4.0.0, <= 4.1.1	4.2.0	2026-09-18	JS-YAML: Quadratic-complexity DoS in merge key handling via repeated aliases
 GHSA-mh29-5h37-fv8m	medium	development	app/ui/app/package-lock.json	js-yaml	>= 4.0.0, < 4.1.1	4.1.1	2026-09-18	js-yaml has prototype pollution in merge (<<)
 GHSA-238p-pmpm-9mq7	low	runtime	app/ui/app/package-lock.json	katex	>= 0.11.0, < 0.18.2	0.18.2	2026-10-07	KaTeX: Existing prototype pollution can bypass trust restrictions
-GHSA-f23m-r3pf-42rh	medium	development	app/ui/app/package-lock.json	lodash	<= 4.17.23	4.18.0	2026-09-18	lodash vulnerable to Prototype Pollution via array path bypass in `_.unset` and `_.omit`
 GHSA-r5fr-rjxr-66jc	high	development	app/ui/app/package-lock.json	lodash	>= 4.0.0, <= 4.17.23	4.18.0	2026-09-18	lodash vulnerable to Code Injection via `_.template` imports key names
-GHSA-xxjr-mmjv-4gpg	medium	development	app/ui/app/package-lock.json	lodash	>= 4.0.0, <= 4.17.22	4.17.23	2026-09-18	Lodash has Prototype Pollution Vulnerability in `_.unset` and `_.omit` functions
-GHSA-f23m-r3pf-42rh	medium	runtime	app/ui/app/package-lock.json	lodash-es	<= 4.17.23	4.18.0	2026-09-18	lodash vulnerable to Prototype Pollution via array path bypass in `_.unset` and `_.omit`
+GHSA-xxjr-mmjv-4gpg	medium	development	app/ui/app/package-lock.json	lodash	>= 4.0.0, <= 4.17.22	4.17.23	2026-09-18	Lodash has Prototype Pollution Vulnerability in `_.unset`, `_.omit`, and `_.pullAt` functions
 GHSA-r5fr-rjxr-66jc	high	runtime	app/ui/app/package-lock.json	lodash-es	>= 4.0.0, <= 4.17.23	4.18.0	2026-09-18	lodash vulnerable to Code Injection via `_.template` imports key names
-GHSA-xxjr-mmjv-4gpg	medium	runtime	app/ui/app/package-lock.json	lodash-es	>= 4.0.0, <= 4.17.22	4.17.23	2026-09-18	Lodash has Prototype Pollution Vulnerability in `_.unset` and `_.omit` functions
 GHSA-4fh9-h7wg-q85m	medium	runtime	app/ui/app/package-lock.json	mdast-util-to-hast	>= 13.0.0, < 13.2.1	13.2.1	2026-09-18	mdast-util-to-hast has unsanitized class attribute
 GHSA-2v8p-3f2j-5mp7	medium	runtime	app/ui/app/package-lock.json	mermaid	>= 11.0.0-alpha.1, < 11.16.1	11.16.1	2026-09-18	Mermaid XY Charts are vulnerable to an infinite loop DoS
 GHSA-3rrr-jr9j-h3q3	medium	runtime	app/ui/app/package-lock.json	mermaid	>= 11.5.0, < 11.16.1	11.16.1	2026-09-18	Mermaid Architecture diagrams are vulnerable to prototype pollution
