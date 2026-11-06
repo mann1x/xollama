@@ -14,6 +14,10 @@
 # The gpu rows are upstream's arm64 tarballs, as its own arm64 image carries
 # them: CUDA 12 and 13 for arm servers, and the two JetPack payloads. A
 # Raspberry Pi uses none of them and runs on the CPU.
+# v0.40.15 (2026-11-06): sync v0.40.14 -> v0.40.15 (12 upstream commits).
+# LLAMA_CPP_VERSION b11963 -> b12111 and upstream dropped llama/compat/002, so
+# the runtime is rebuilt by v0.40.15-thinkbudget (inputs 839000ff, built
+# 920a136b, run 42183570899); the gpu rows are upstream v0.40.15's.
 # v0.40.14 (2026-11-03): sync v0.40.13 -> v0.40.14 (8 upstream commits).
 # LLAMA_CPP_VERSION b11963, llama/server and llama/compat unchanged, so the
 # runtime is reused from v0.40.13-thinkbudget (inputs e9d0e2a1, built
@@ -33,12 +37,12 @@
 # (built 0e85a55c), inputs c3f7c881. The gpu rows are upstream v0.40.9's arm64
 # tarballs; the jetpack ones were rebuilt too.
 repo      mann1x/ollama
-tag       v0.40.14-thinkbudget
+tag       v0.40.15-thinkbudget
 asset     ollama-linux-arm64-runtime.tgz
-sha256    99e8db84ad2c392b5dab36b609ec91a8c10dc7a584a2cb4f249d994f412882d0
-inputs    e9d0e2a1bf7083471e0dc75cc44162dd1e6fbd228cc9637a074f7145fc52a0ce
-built     63a3ed22394c8de02d6fc59092cf7853717085cb
-upstream  v0.40.14
-gpu       ollama-linux-arm64.tar.zst           39bb333b7b4c0bafcdd7fad35eab1ae9aaf4518ea0f2c731de4376e3a29c94d0
-gpu       ollama-linux-arm64-jetpack5.tar.zst  7454281d9a061b5a46d6e3cad21f363ee9f00ebc47ffa82dcfc7f5ecc001e6dd
-gpu       ollama-linux-arm64-jetpack6.tar.zst  b9641c00bd111229949f6db18d2d6d345ca39dd132a6d1974f6f38f55e9ccde8
+sha256    34d012602e7c74e26e6aa33de5c9d992151a0800b531722951b917143032c062
+inputs    839000ffb7074982c5cb40309ba4e82a65cb0dbbdb13599ee0c5434516175c2a
+built     920a136ba6ce59fd66e80637aa2533cf0a49cb7f
+upstream  v0.40.15
+gpu       ollama-linux-arm64.tar.zst           7f699ead5cdb4ae1ed89b888b148a238af188708800871e1889ab9dcee95f247
+gpu       ollama-linux-arm64-jetpack5.tar.zst  d2a33bcc6a05c1ec1d398d021b443198147ebedaebc77a71972c5ebf87c2d6a4
+gpu       ollama-linux-arm64-jetpack6.tar.zst  65c8359c11c2b04d72c6b2194358dfcb50228fa8a49830a1ade22ee894e4d1da

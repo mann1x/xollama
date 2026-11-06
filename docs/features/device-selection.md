@@ -349,8 +349,9 @@ to the legacy type. `server/placement_opencoti.go`, registry row
 `opencoti-placement`.
 
 The list is filtered in `processPending`, right after the device pin, so the
-whole load sees it, not only the placement. `slots.live` and the
-single-sequence deny-list ask whether opencoti serves the same list. Filtered
+whole load sees it, not only the placement. `slots.live` asks
+whether opencoti serves the same list (so did the single-sequence deny-list,
+until upstream v0.40.15 dropped it). Filtered
 only at the placement call (b22e5649), they saw both cards, answered no, and
 the council model launched with one slot's context (`-c 196608`, not
 `num_ctx × slots.live` = 393216). Its conversation's owner then booked the

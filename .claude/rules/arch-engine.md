@@ -10,8 +10,8 @@
   `launchXollama`, names `llamacpp` in the launch config while the pin lacks
   the feature (none today: c14 declares `arch_lfm3_v1`, and LFM3 went back to
   opencoti with the pin, measured 256 tokens, 2026-11-01), logged once per model at **Warn** (a fallback is loud). It is
-  the same path as a model's own `engine: llamacpp`, so placement, estimate and
-  the deny-list all see it through `llamaServerConfigForModel`.
+  the same path as a model's own `engine: llamacpp`, so placement and estimate
+  both see it through `llamaServerConfigForModel`.
 - **An engine the model states is kept**, and **macOS keeps the load on
   opencoti** (`engine.StockShipped`): moving it there would trade the engine's
   "unknown model architecture" for the generic stockless refusal.

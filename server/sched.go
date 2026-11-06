@@ -585,22 +585,6 @@ func (s *Scheduler) load(req *LlmRequest, systemInfo ml.SystemInfo, gpus []ml.De
 		numParallel = 1
 	}
 
-	// Some architectures are not safe with num_parallel > 1.
-	// ref: https://github.com/ollama/ollama/issues/4165
-	//
-	// xollama-hook: launch-config — the deny-list itself lives in
-	// singleSequenceOnly so the scheduler's decision and the launch
-	// configuration cannot drift apart. Dynamic slots read the same answer.
-	//
-	// The list is stock llama.cpp's: when opencoti will serve the load the
-	// operator's count stands, and a launch that lands on stock after all
-	// drops back to one sequence itself (llm.startLlamaServer).
-	if completion && singleSequenceOnly(req.model) && numParallel != 1 &&
-		!llm.WouldUseOpencoti(llamaServerConfigForModel(req.model), gpus) {
-		numParallel = 1
-		slog.Warn("model architecture does not currently support parallel requests", "architecture", req.model.Config.ModelFamily)
-	}
-
 	// xollama-hook: slots-live
 	numParallel = liveSlots(req.model, gpus, completion, numParallel)
 

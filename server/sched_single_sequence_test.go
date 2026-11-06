@@ -14,50 +14,35 @@ import (
 	"github.com/ollama/ollama/types/model"
 )
 
-// TestTheSingleSequenceRuleBindsOnlyStockLlamaCpp holds the ollama/ollama#4165
-// exemption: the architecture deny-list is what stock llama.cpp gets wrong, so
-// on opencoti the operator's sequence count stands -- XOLLAMA_PARALLEL there,
-// OLLAMA_NUM_PARALLEL on stock. With the engine pinned to llama.cpp the
-// scheduler must still start upstream's one sequence.
-func TestTheSingleSequenceRuleBindsOnlyStockLlamaCpp(t *testing.T) {
-	for _, tc := range []struct {
-		engine string
-		family string
-		want   int
-	}{
-		{"opencoti", "qwen35", 4},
-		{"llamacpp", "qwen35", 1},
-		{"opencoti", "llama", 4},
-		{"llamacpp", "llama", 4},
-	} {
-		t.Run(tc.engine+"/"+tc.family, func(t *testing.T) {
-			t.Setenv("XOLLAMA_ENGINE", tc.engine)
-			t.Setenv("OLLAMA_NUM_PARALLEL", "4")
-			t.Setenv("XOLLAMA_PARALLEL", "4")
+// TestEveryEngineServesTheOperatorsSequenceCount holds upstream v0.40.15
+// (#19545): the ollama/ollama#4165 architecture deny-list is gone, so a family
+// it named keeps the operator's count on stock llama.cpp too --
+// XOLLAMA_PARALLEL on opencoti, OLLAMA_NUM_PARALLEL on stock.
+func TestEveryEngineServesTheOperatorsSequenceCount(t *testing.T) {
+	for _, engine := range []string{"opencoti", "llamacpp"} {
+		for _, family := range []string{"qwen35", "llama"} {
+			t.Run(engine+"/"+family, func(t *testing.T) {
+				t.Setenv("XOLLAMA_ENGINE", engine)
+				t.Setenv("OLLAMA_NUM_PARALLEL", "4")
+				t.Setenv("XOLLAMA_PARALLEL", "4")
 
-			got := schedLoadParallel(t, completionModel(t, tc.family))
-			if got != tc.want {
-				t.Errorf("numParallel = %d, want %d", got, tc.want)
-			}
-		})
+				if got := schedLoadParallel(t, completionModel(t, family)); got != 4 {
+					t.Errorf("numParallel = %d, want 4", got)
+				}
+			})
+		}
 	}
 }
 
-func TestTheDenyListIsTheOnlyReasonOpencotiLifts(t *testing.T) {
-	m := completionModel(t, "qwen35")
-	cfg := llamaServerConfigForModel(m)
-	if !cfg.SingleSequenceOnly || !cfg.SingleSequenceStockOnly {
-		t.Errorf("qwen35: SingleSequenceOnly=%v SingleSequenceStockOnly=%v, want both", cfg.SingleSequenceOnly, cfg.SingleSequenceStockOnly)
-	}
-
-	cfg = llamaServerConfigForModel(completionModel(t, "llama"))
-	if cfg.SingleSequenceOnly || cfg.SingleSequenceStockOnly {
-		t.Errorf("llama: SingleSequenceOnly=%v SingleSequenceStockOnly=%v, want neither", cfg.SingleSequenceOnly, cfg.SingleSequenceStockOnly)
+// TestOnlyAnEmbeddingModelIsHeldToOneSequence: with the deny-list gone, the
+// launch configuration's single-sequence flag means an embedding model.
+func TestOnlyAnEmbeddingModelIsHeldToOneSequence(t *testing.T) {
+	if cfg := llamaServerConfigForModel(completionModel(t, "qwen35")); cfg.SingleSequenceOnly {
+		t.Error("qwen35: SingleSequenceOnly = true, want false")
 	}
 }
 
-// completionModel is a one-layer GGUF a scheduler can load, whose family is
-// what the deny-list reads.
+// completionModel is a one-layer GGUF a scheduler can load, of the given family.
 func completionModel(t *testing.T, family string) *Model {
 	t.Helper()
 	m := &Model{Config: model.ConfigV2{ModelFamily: family}}

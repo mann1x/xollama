@@ -98,18 +98,9 @@ type LlamaServerConfig struct {
 	MediaEstimate uint64
 
 	// xollama-hook: launch-config — this model must be served one sequence at
-	// a time, because it is an embedding model or its architecture gives wrong
-	// answers with several in flight (ollama/ollama#4165). Dynamic slots must
-	// never grow past one here: that deny-list is a correctness decision, not
-	// a capacity preference. See docs/xollama/slots.mdx.
+	// a time, because it is an embedding model. Dynamic slots must never grow
+	// past one here. See docs/xollama/slots.mdx.
 	SingleSequenceOnly bool
-
-	// xollama-hook: launch-config — the only reason for SingleSequenceOnly is
-	// the ollama/ollama#4165 architecture deny-list. That list records what
-	// stock llama.cpp gets wrong; opencoti serves those architectures with
-	// several sequences in flight, so on opencoti the rule is lifted. An
-	// embedding model never sets this. See singleSequence.
-	SingleSequenceStockOnly bool
 
 	// xollama-hook: council -- engine pool seats reserved for a council's pool
 	// tree, over and above the automatic prefix pools. Zero for a model that

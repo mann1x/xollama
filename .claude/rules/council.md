@@ -161,8 +161,7 @@ paths:
   `TestACouncilRootStandsOnTheClientsPool`,
   `TestAClientPoolThatDoesNotMatchIsLeftAlone`,
   `TestANewClientPoolLetsTheOldRootGo`.
-- Parallel members need parallel slots: on stock llama.cpp the ollama#4165
-  architectures take turns, on opencoti they run at once — see
+- Parallel members need parallel slots — see
   `.claude/rules/dynamic-slots.md`.
 - Guards in `server/council_test.go`: `TestToolsAndFormatBypassTheCouncil`,
   `TestAModelWithoutACouncilIsUntouched`,

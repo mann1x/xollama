@@ -12,23 +12,21 @@ paths:
 
 # Dynamic slots and the single-sequence rule
 
-- Two flags on `llm.LlamaServerConfig` (`llm/server.go`), both set by
+- One flag on `llm.LlamaServerConfig` (`llm/server.go`), set by
   `llamaServerConfigForModel` in `server/routes.go`: `SingleSequenceOnly`
-  (`singleSequenceOnly` — an embedding model or the ollama#4165 deny-list) and
-  `SingleSequenceStockOnly` (`parallelUnsafeArchitecture` — the deny-list
-  alone, never an embedding model).
-- **The deny-list is stock llama.cpp's.** It records what stock gets wrong
-  with more than one sequence in flight; opencoti serves those architectures
-  in parallel, so there the rule is lifted. `LlamaServerConfig.singleSequence`
-  (`llm/engine_estimate.go`) is the one place that combines the two flags with
-  the engine; every `resolveSlotPlan` caller passes it, never the raw field.
-- The scheduler (`server/sched.go`) clamps to one only when
-  `llm.WouldUseOpencoti` says stock will serve — a prediction made before the
-  process exists.
+  (`singleSequenceOnly` — an embedding model). Every `resolveSlotPlan` caller
+  passes it.
+- **No architecture deny-list.** Upstream v0.40.15 (#19545) dropped the
+  ollama#4165 list because llama-server serves those families in parallel;
+  xollama's opencoti exemption from it (`SingleSequenceStockOnly`,
+  `parallelUnsafeArchitecture`, the scheduler's `WouldUseOpencoti` check and
+  the relaunch at one sequence, `servedSequences`) went with it. Do not bring
+  a per-engine clamp back: with `XOLLAMA_ENGINE=llamacpp` the count must be
+  upstream's.
 - **`slots.live`** (`types/xollama/config.go`, `xollama tweak model`
   `slots-live`) is the count a load starts with: `liveSlots` in
   `server/slots_live.go` (`slots-live` hook, one line in `load()` after the
-  ollama#4165 cap). For a completion model `llm.WouldUseOpencoti` says
+  embedding model's cap to one). For a completion model `llm.WouldUseOpencoti` says
   opencoti will serve it is `slots.live`, else `XOLLAMA_PARALLEL`, else one:
   **`OLLAMA_NUM_PARALLEL` is never read on opencoti** (owner's rule
   2026-09-27 — a stock ollama beside xollama shares it). Stock llama.cpp
@@ -55,16 +53,10 @@ paths:
   rolling window not engaged. Guards: `llm/engine_pool_cells_test.go`,
   `TestAStatedPoolIsWhatThePredictionPricesTheCacheAt`,
   `types/xollama/pool_cells_test.go`. Tweak: `--kv-pool-cells`.
-- **A prediction is not the launch.** `servedSequences` in `startLlamaServer`
-  (`llm/llama_server.go`) drops back to one and relaunches when stock served
-  after all: the artifact was missing, or the opt-in fallback retried. Fewer
-  sequences than reserved only ever uses less memory.
-- With `XOLLAMA_ENGINE=llamacpp` `wouldUseOpencoti` is false, so both
-  decisions are upstream's byte for byte. Embedding models stay at one
-  sequence on every engine.
-- Guards: `TestTheSingleSequenceRuleBindsOnlyStockLlamaCpp` and
-  `TestTheDenyListIsTheOnlyReasonOpencotiLifts` in
-  `server/sched_single_sequence_test.go`;
-  `TestAStockLaunchServesTheDenyListOneSequence` in
-  `llm/engine_estimate_test.go`. Prose: `docs/xollama/slots.mdx`. Registry row
+- With `XOLLAMA_ENGINE=llamacpp` `wouldUseOpencoti` is false, so the count
+  is upstream's byte for byte. Embedding models stay at one sequence on every
+  engine.
+- Guards: `TestEveryEngineServesTheOperatorsSequenceCount` and
+  `TestOnlyAnEmbeddingModelIsHeldToOneSequence` in
+  `server/sched_single_sequence_test.go`. Prose: `docs/xollama/slots.mdx`. Registry row
   `launch-config` in `docs/protocols/UPSTREAM-SYNC.md`.
