@@ -124,10 +124,9 @@ engine is bound by `bindEngineLifetime` (`llm/engine_lifetime.go`, `engine.BindL
 `llm/drafter.go` holds
 the drafter rules (built-in vs attached head, `--spec-type`) as pure functions
 shared by the launch and `show` (`server/drafter_show.go`), so the two cannot drift; `xollama tweak model --drafter` / `--draft-tokens` (`cmd/tweak/drafter.go`, `types/xollama/drafter.go`) attach the DRAFT layer and set its length through `server/xollama_drafter.go`, and a length of 0 starts opencoti with `--spec-type none` (`llm/engine_draft_off.go`; `drafter` hook, `docs/features/gemma4-drafter.md`); a drafter the engine dropped at load (opencoti `drafter_state_v1`) is reported by `ps` and `show` (`llm/engine_drafter_state.go`, `server/drafter_state.go`; `DrafterState` in `api/types.go`).
-The ollama#4165 single-sequence deny-list binds only on stock llama.cpp:
-`server/sched.go` asks `llm.WouldUseOpencoti` before clamping, and
-`servedSequences` (`llm/engine_estimate.go`) drops a launch that lands on stock
-after all back to one — see `.claude/rules/dynamic-slots.md`.
+Only an embedding model is held to one sequence: upstream v0.40.15 dropped the
+ollama#4165 architecture deny-list (#19545), and xollama's opencoti exemption
+from it went with it — see `.claude/rules/dynamic-slots.md`.
 `/api/engine` (`server/routes_engine.go` + `llm/engine_introspect.go`, the
 `engine-introspect` hook) proxies the engine's own management routes — GET,
 POST and DELETE, by name from `engineRoutes`, inference excluded — see

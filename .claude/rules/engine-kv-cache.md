@@ -44,9 +44,9 @@ paths:
   `llm/engine_placement.go`) is placed only on the GPU groups opencoti serves:
   `opencotiPlacement` in `server/placement_opencoti.go` filters the GPU list
   in `processPending`, right after the device pin, so `load` sees only those
-  GPUs. Never filter only at `selectLlamaServerPlacement`: `liveSlots` and the
-  deny-list ask `WouldUseOpencoti` of the list first, and on the mixed list
-  they drop `slots.live` to one slot. A server-wide
+  GPUs. Never filter only at `selectLlamaServerPlacement`: `liveSlots` asks
+  `WouldUseOpencoti` of the list first, and on the mixed list it drops
+  `slots.live` to one slot. A server-wide
   `XOLLAMA_K_CACHE_TYPE` does not count. No such setting, no opencoti group, or
   `XOLLAMA_ENGINE=llamacpp`: the list is unchanged. Guard:
   `TestAModelOnlyOpencotiServesIsPlacedWhereOpencotiRuns` and
