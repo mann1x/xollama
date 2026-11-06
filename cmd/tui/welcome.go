@@ -70,7 +70,7 @@ func (m welcomeModel) View() string {
 
 func (m welcomeModel) introView() string {
 	var s strings.Builder
-	s.WriteString(selectorTitleStyle.Render("Welcome to Ollama!"))
+	s.WriteString(selectorTitleStyle.Render("Welcome to xOllama!")) // xollama-hook: app-brand
 	s.WriteString("\n\nRun open models with your coding agents so you can spend less\nwhile keeping your data private.\n\n")
 	s.WriteString(selectorTitleStyle.Render("Connect your apps"))
 	s.WriteString("\nPower your existing coding apps with open models\n\n")

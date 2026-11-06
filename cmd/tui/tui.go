@@ -256,7 +256,7 @@ func (m model) View() string {
 		return ""
 	}
 
-	s := selectorTitleStyle.Render("Ollama "+versionStyle.Render(version.Version)) + "\n\n"
+	s := selectorTitleStyle.Render("xOllama "+versionStyle.Render(version.Version)) + "\n\n" // xollama-hook: app-brand
 
 	for i, item := range m.items {
 		s += m.renderMenuItem(i, item)
