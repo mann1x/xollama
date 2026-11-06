@@ -27,6 +27,42 @@ first if a patch looks missing or out of date.
    other row in this file keys on the PR number, and these cannot. They are
    listed apart, below.
 
+**Status as of 2026-11-06: the set moved to upstream v0.40.15 (31 patches, same set and `patches[]` order).** Manifest at think-budget `63f9b25c` (`base: v0.40.15`, `integration.sha 43366fa5`, release `v0.40.15-thinkbudget` @ `920a136b`, run 42183570899; fork notice #2171, bump #2173). Upstream v0.40.15 is twelve commits over v0.40.14 (73 files): llama.cpp b11963 -> b12111 (#19530, which also drops `llama/compat/002-metal-unary-cast-constexpr.patch` and reads the new `layer input` and `rotation` buffer lines), parallel requests for the ollama#4165 architectures (#19545), MLX 065ec468 -> 54a70511 with unsupported CUDA devices refused (#19521) and bundled CUDA libraries loaded in-process on Linux (#19433), Qwen3/Qwen3.5 YaRN on MLX (#19231), the AutoTrust decision model on MLX (#19399), a MiMo V2.6 renderer (#19400), the no-argument launcher restored (#19478), Kimi Code (#19506), Pi model catalog (#19460), Claude Desktop gateway names (#19533) and an MLX cache close on shutdown (#19550); MLX-C unchanged. Consumed on branch `sync/upstream-v0.40.15`: the upstream tag merge `d9c6cfc1d`, then the 31 patches at the shas below, each its own `--no-ff` merge in `patches[]` order. The upstream merge conflicted in `llm/llama_server.go` (the two new buffer kinds added to our `memory-scrape` regex; the doc comment keeps both, upstream's example lines first, as the fork resolved it) and `server/sched.go` (#19545 deleted the deny-list our `launch-config` hook only lifted on opencoti; the exemption was retired with it, see `.claude/rules/dynamic-slots.md`). Every patch is the same change as in the v0.40.14 manifest (only rebased), so the seventeen patch merges that conflicted all resolved to dev's side and the 31 merges leave the tree unchanged (`git diff 3cdf1106b` after them is empty). Proof: for each of the 90 files the integration changes, xollama's sorted added and removed lines against `43366fa5` equal those against `9dda2928` before the sync, except the four files of the deny-list retirement and regex above (`llm/llama_server.go`, `llm/server.go`, `server/routes.go`, `server/sched.go`), whose differences are exactly those changes. Three new upstream test files set `OLLAMA_HOST` and were pointed at `XOLLAMA_HOST` (`3cdf1106b`, bug-292 again). LLAMA_CPP_VERSION b11963 -> b12111, so the inputs digest moves `e9d0e2a1` -> `839000ff`, equal to the fork's; `check-compat-origin` 0 bad; `check-engine-archs` finds four new architectures, routed to stock (`7dc76985f`).
+
+| PR | branch | manifest sha | v0.40.15 merge |
+|---|---|---|---|
+| #17563 | `up-repeat-guard` | `2fe79619` | `311be8d3b` |
+| #17564 | `up-truncated-tool-calls` | `ffd88a19` | `7cbdd4cd4` |
+| #17565 | `up-gemma4-object-close` | `c7fb6b64` | `43c4eb37f` |
+| #17566 | `up-think-budget` | `4ee9a29d` | `043f5c025` |
+| #17567 | `up-mlx-libdl` | `12429ce1` | `a0f7b5577` |
+| #17626 | `up-gemma4-stray-channel-name` | `a7ddcd86` | `833cf646f` |
+| #17914 | `qwen3coder-tolerate-malformed-tool-calls` | `ddcffb00` | `cf80ad4a0` |
+| #18212 | `up-reasoning-budget-line-boundary` | `bb5dfe4b` | `2d0327ac7` |
+| #18281 | `up-native-thinking-replay` | `b7acdc54` | `a0439c1be` |
+| #18288 | `up-gemma4-stray-closer` | `5ffd0514` | `2b7094cb3` |
+| #18289 | `up-jinja-runner-reuse` | `0725a91d` | `3157c8862` |
+| fork-only | `gemma4-toolcall-in-thinking` | `26f8aece` | `44156cee2` |
+| #18624 | `qwen35-toolcall-in-thinking` | `cf6c93e3` | `cd2a5fe0e` |
+| fork-only | `up-gemma4-unparsed-tool-call-content` | `2297ebfc` | `b7c8d2a53` |
+| fork-only | `up-toolcall-tags` | `3c18aa41` | `3edd6b761` |
+| fork-only | `up-codex-request-count-mtime` | `941b1818` | `9b68528e9` |
+| fork-only | `up-fileutil-root-permission-tests` | `552c75cc` | `5b4906221` |
+| fork-only | `up-gofmt-vision-test-data` | `c101d7c2` | `c2aea40e6` |
+| fork-only | `up-integration-goroutine-fatal` | `4c2733cf` | `755513253` |
+| fork-only | `up-lfm2-think-off-discard` | `735af547` | `73806a885` |
+| fork-only | `up-gemma4-assistant-shape` | `e844d3f2` | `232386f67` |
+| fork-only | `up-gemma4-swallowed-key` | `c16bb915` | `d5d06f6a0` |
+| fork-only | `up-response-scope-think-budget` | `a0b59e54` | `ebd8b38bd` |
+| fork-only | `up-modelfile-roundtrip` | `5a76ef2c` | `8ae3e4606` |
+| fork-only | `up-qwen35-empty-think-history` | `d8ba8870` | `e64db593c` |
+| fork-only | `up-mlxrunner-manifest-list` | `f5be3aa1` | `5ffe29314` |
+| fork-only | `up-gemma4-channel-in-thinking` | `de7cfc88` | `1faf3f987` |
+| fork-only | `up-llama-server-memory-lines` | `2ba4e629` | `3a9a8439d` |
+| fork-only | `up-qwen-unclosed-tool-call` | `b1e0733e` | `4cb845083` |
+| fork-only | `up-completion-generation-prompt` | `89b93592` | `04655b394` |
+| fork-only | `up-compat-readme` | `6527ce3d` | `43c3c2110` |
+
 **Status as of 2026-11-03: the set moved to upstream v0.40.14 (31 patches, same set and `patches[]` order).** Manifest at think-budget `386854a4` (`base: v0.40.14`, `integration.sha 9dda2928`, release `v0.40.14-thinkbudget` @ `386854a4`; fork notice #2150). Upstream v0.40.14 is eight commits over v0.40.13 (34 files): OpenAI sampler defaults no longer forced (#19432), readable Responses input content (#19192), MLX top-k sorted in chunks (#19392), cloud web search responses decoded (#19476), ChatGPT routing checked before configuring and retryable disconnects (#19470, #19336), model output limits for Claude Code (#19410), a buildx pin (#19373); llama.cpp, `llama/`, MLX and MLX-C unchanged. Consumed on branch `sync/upstream-v0.40.14`: the upstream tag merge `a761ce52a`, then the 31 patches at the shas below, each its own `--no-ff` merge in `patches[]` order. The upstream merge conflicted only in `app/cmd/app/app_darwin.m` (#19336 rewrote the ChatGPT row and failure alert; upstream's logic taken, its three strings that name Ollama rebranded under `app-brand`). Every patch is the same change as in the v0.40.13 manifest (only rebased), so the seventeen patch merges that conflicted all resolved to dev's side and the 31 merges leave the tree unchanged (`git diff a761ce52a` after them is empty). Proof: for each of the 74 files the patches change, xollama's diff from `386854a4` equals its diff from `955bc406` before the sync; and for each of the 34 files upstream changed, our added and removed lines are the same against v0.40.14 as against v0.40.13, except the `app_darwin.m` resolution above. No bug-319 duplicate this time. Two new upstream tests set `OLLAMA_HOST` and were pointed at `XOLLAMA_HOST` (`a314d4e26`, bug-292 again). LLAMA_CPP_VERSION stays b11963, so the inputs digest stays `e9d0e2a1`.
 
 | PR | branch | manifest sha | v0.40.14 merge |
