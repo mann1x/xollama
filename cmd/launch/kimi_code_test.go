@@ -82,7 +82,7 @@ func TestKimiRun_KimiCodeWritesConfigAndSelectsModel(t *testing.T) {
 
 	srv := httptest.NewServer(http.NotFoundHandler())
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	configPath := filepath.Join(homeDir, ".kimi-code", "config.toml")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
@@ -267,7 +267,7 @@ func TestWriteKimiCodeConfig_UsesKimiCodeHome(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	kimiHome := t.TempDir()
 	t.Setenv("KIMI_CODE_HOME", kimiHome)
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 
 	if err := writeKimiCodeConfig("glm-5.3:cloud", []LaunchModel{{Name: "glm-5.3:cloud", ContextLength: 200000}}); err != nil {
 		t.Fatalf("writeKimiCodeConfig() error = %v", err)
@@ -319,7 +319,7 @@ model = "k3"
 			setTestHome(t, t.TempDir())
 			kimiHome := t.TempDir()
 			t.Setenv("KIMI_CODE_HOME", kimiHome)
-			t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+			t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 			configPath := filepath.Join(kimiHome, "config.toml")
 			if err := os.WriteFile(configPath, []byte(tt.existing), 0o644); err != nil {
 				t.Fatal(err)
@@ -374,7 +374,7 @@ func TestWriteKimiCodeConfig_AddsPrimaryWhenMissingFromModels(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	kimiHome := t.TempDir()
 	t.Setenv("KIMI_CODE_HOME", kimiHome)
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 
 	if err := writeKimiCodeConfig("glm-5.3:cloud", nil); err != nil {
 		t.Fatalf("writeKimiCodeConfig() error = %v", err)
@@ -406,7 +406,7 @@ func TestWriteKimiCodeConfig_DeclinedUpdateLeavesConfigUntouched(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	kimiHome := t.TempDir()
 	t.Setenv("KIMI_CODE_HOME", kimiHome)
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 	configPath := filepath.Join(kimiHome, "config.toml")
 	existing := `default_model = "kimi-code/k3"
 
@@ -489,7 +489,7 @@ model = "k3"
 			setTestHome(t, t.TempDir())
 			kimiHome := t.TempDir()
 			t.Setenv("KIMI_CODE_HOME", kimiHome)
-			t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+			t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 			configPath := filepath.Join(kimiHome, "config.toml")
 			if tt.existing != "" {
 				if err := os.WriteFile(configPath, []byte(tt.existing), 0o644); err != nil {
@@ -527,7 +527,7 @@ func TestWriteKimiCodeConfig_SkipsUnchangedRewrite(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	kimiHome := t.TempDir()
 	t.Setenv("KIMI_CODE_HOME", kimiHome)
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 	configPath := filepath.Join(kimiHome, "config.toml")
 	existing := `[providers."managed:kimi-code"]
 type = "kimi"
@@ -579,7 +579,7 @@ func TestWriteKimiCodeConfig_UsesResolvedPrimaryMetadata(t *testing.T) {
 
 	srv := httptest.NewServer(http.NotFoundHandler())
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 
 	models := []LaunchModel{{
 		Name:          "llama3.2:latest",
@@ -612,7 +612,7 @@ func TestWriteKimiCodeConfig_PreservesUnrelatedContent(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	kimiHome := t.TempDir()
 	t.Setenv("KIMI_CODE_HOME", kimiHome)
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 	configPath := filepath.Join(kimiHome, "config.toml")
 	existing := `# hand-tuned, keep this
 telemetry = false
@@ -676,7 +676,7 @@ CONFIG
 			setTestHome(t, t.TempDir())
 			kimiHome := t.TempDir()
 			t.Setenv("KIMI_CODE_HOME", kimiHome)
-			t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+			t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 			path := filepath.Join(kimiHome, "config.toml")
 			existing := fmt.Sprintf("[[hooks]]\nevent = 'SessionStart'\ncommand = %s\n%s%s\n", delimiter, command, delimiter)
 			if err := os.WriteFile(path, []byte(existing), 0o600); err != nil {
@@ -969,7 +969,7 @@ func TestWriteKimiCodeConfig_PreservesCustomOllamaAlias(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	kimiHome := t.TempDir()
 	t.Setenv("KIMI_CODE_HOME", kimiHome)
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 	configPath := filepath.Join(kimiHome, "config.toml")
 	existing := `default_model = "local-fast"
 
@@ -1026,7 +1026,7 @@ max_context_size = 8192
 			setTestHome(t, t.TempDir())
 			kimiHome := t.TempDir()
 			t.Setenv("KIMI_CODE_HOME", kimiHome)
-			t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+			t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 			configPath := filepath.Join(kimiHome, "config.toml")
 			if err := os.WriteFile(configPath, []byte(existing), 0o644); err != nil {
 				t.Fatal(err)
@@ -1072,7 +1072,7 @@ func TestWriteKimiCodeConfig_HandlesDottedProviderKeys(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	kimiHome := t.TempDir()
 	t.Setenv("KIMI_CODE_HOME", kimiHome)
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 	configPath := filepath.Join(kimiHome, "config.toml")
 	existing := `providers.ollama.type = "openai"
 providers.ollama.base_url = "http://gpu-box:11434/v1"
@@ -1111,7 +1111,7 @@ func TestWriteKimiCodeConfig_HandlesDottedKeysInsideTables(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	kimiHome := t.TempDir()
 	t.Setenv("KIMI_CODE_HOME", kimiHome)
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 	configPath := filepath.Join(kimiHome, "config.toml")
 	existing := `[providers]
 ollama.type = "openai"
@@ -1137,7 +1137,7 @@ func TestWriteKimiCodeConfig_HandlesInlineProviderTable(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	kimiHome := t.TempDir()
 	t.Setenv("KIMI_CODE_HOME", kimiHome)
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 	configPath := filepath.Join(kimiHome, "config.toml")
 	existing := `providers = { ollama = { type = "openai", base_url = "http://gpu-box:11434/v1", api_key = "ollama" } }
 `
@@ -1161,7 +1161,7 @@ func TestWriteKimiCodeConfig_PreservesProviderAndModelFields(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	kimiHome := t.TempDir()
 	t.Setenv("KIMI_CODE_HOME", kimiHome)
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 	configPath := filepath.Join(kimiHome, "config.toml")
 	existing := `[providers.ollama]
 type = "openai"
@@ -1216,7 +1216,7 @@ func TestWriteKimiCodeConfig_PreservesProviderAuthentication(t *testing.T) {
 			setTestHome(t, t.TempDir())
 			kimiHome := t.TempDir()
 			t.Setenv("KIMI_CODE_HOME", kimiHome)
-			t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+			t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 			path := filepath.Join(kimiHome, "config.toml")
 			if err := os.WriteFile(path, []byte("[providers.ollama]\ntype = 'openai'\n"+tc.config+"\n"), 0o600); err != nil {
 				t.Fatal(err)
@@ -1278,7 +1278,7 @@ func TestWriteKimiCodeConfig_PrivateConfigDir(t *testing.T) {
 	homeDir := t.TempDir()
 	setTestHome(t, homeDir)
 	t.Setenv("KIMI_CODE_HOME", "")
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 
 	if err := writeKimiCodeConfig("glm-5.3:cloud", nil); err != nil {
 		t.Fatalf("writeKimiCodeConfig() error = %v", err)
@@ -1296,7 +1296,7 @@ func TestKimiConfigureOnlyWritesConfig(t *testing.T) {
 	setTestHome(t, t.TempDir())
 	kimiHome := t.TempDir()
 	t.Setenv("KIMI_CODE_HOME", kimiHome)
-	t.Setenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+	t.Setenv("XOLLAMA_HOST", "http://127.0.0.1:11434")
 
 	oldConfirm := DefaultConfirmPrompt
 	DefaultConfirmPrompt = func(prompt string, options ConfirmOptions) (bool, error) {

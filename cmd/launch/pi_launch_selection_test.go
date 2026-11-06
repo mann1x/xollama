@@ -131,7 +131,7 @@ func TestLaunchCmdPiPickerPolicy(t *testing.T) {
 				}
 			}))
 			defer srv.Close()
-			t.Setenv("OLLAMA_HOST", srv.URL)
+			t.Setenv("XOLLAMA_HOST", srv.URL)
 			cmd := LaunchCmd(func(*cobra.Command, []string) error { return nil }, nil)
 			cmd.SetArgs(append([]string{"pi"}, tc.args...))
 			err := cmd.Execute()
@@ -231,7 +231,7 @@ func TestLaunchIntegration_PiDownloadPromptCancellationPreservesConfig(t *testin
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 	err := LaunchIntegration(context.Background(), IntegrationLaunchRequest{
 		Name: "pi", ForceConfigure: true, ConfigureOnly: true,
 	})
@@ -268,7 +268,7 @@ func TestPiRun_PassesSelectedModelToClient(t *testing.T) {
 		fmt.Fprint(w, `{"cloud":{"disabled":true}}`)
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 	if err := (&Pi{}).Run("chosen:latest", nil, []string{"--offline", "--print", "probe"}); err != nil {
 		t.Fatal(err)
 	}
@@ -374,7 +374,7 @@ func TestLaunchIntegrationPiPreservesModelChoice(t *testing.T) {
 				}
 			}))
 			defer server.Close()
-			t.Setenv("OLLAMA_HOST", server.URL)
+			t.Setenv("XOLLAMA_HOST", server.URL)
 			for range 2 {
 				select {
 				case <-firstLookup:

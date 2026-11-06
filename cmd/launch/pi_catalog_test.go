@@ -67,7 +67,7 @@ func TestPiPrimaryMetadataBudget(t *testing.T) {
 			}))
 			defer srv.Close()
 			defer close(stop)
-			t.Setenv("OLLAMA_HOST", srv.URL)
+			t.Setenv("XOLLAMA_HOST", srv.URL)
 			c, err := newLauncherClient(defaultLaunchPolicy(true, false))
 			if err != nil {
 				t.Fatal(err)
@@ -160,7 +160,7 @@ func TestPiCatalogSync(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 	c, err := newLauncherClient(defaultLaunchPolicy(true, false))
 	if err != nil {
 		t.Fatal(err)
@@ -247,7 +247,7 @@ func TestPiLauncherStateUsesOnlyStartingModel(t *testing.T) {
 				}
 			}))
 			defer srv.Close()
-			t.Setenv("OLLAMA_HOST", srv.URL)
+			t.Setenv("XOLLAMA_HOST", srv.URL)
 			c, err := newLauncherClient(defaultLaunchPolicy(true, false))
 			if err != nil {
 				t.Fatal(err)
@@ -314,7 +314,7 @@ func TestPiRemoteAliasAuthAndPayment(t *testing.T) {
 				}
 			}))
 			defer srv.Close()
-			t.Setenv("OLLAMA_HOST", srv.URL)
+			t.Setenv("XOLLAMA_HOST", srv.URL)
 			c, err := newLauncherClient(defaultLaunchPolicy(true, false))
 			if err != nil {
 				t.Fatal(err)
@@ -385,7 +385,7 @@ func TestPiCatalogInventoryErrorPreservesConfig(t *testing.T) {
 				}
 			}))
 			defer srv.Close()
-			t.Setenv("OLLAMA_HOST", srv.URL)
+			t.Setenv("XOLLAMA_HOST", srv.URL)
 			if err := LaunchIntegration(t.Context(), IntegrationLaunchRequest{Name: "pi", ConfigureOnly: true}); err == nil {
 				t.Fatal("expected config or inventory error")
 			}
@@ -439,7 +439,7 @@ func TestPiShowBudgetDoesNotChargeStatus(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 	c, err := newLauncherClient(defaultLaunchPolicy(true, false))
@@ -490,7 +490,7 @@ func TestPiCatalogMetadataFallback(t *testing.T) {
 				}
 			}))
 			defer srv.Close()
-			t.Setenv("OLLAMA_HOST", srv.URL)
+			t.Setenv("XOLLAMA_HOST", srv.URL)
 			c, err := newLauncherClient(defaultLaunchPolicy(true, false))
 			if err != nil {
 				t.Fatal(err)
@@ -572,7 +572,7 @@ func TestPiResolvedPrimaryIsNotShownTwice(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 	c, err := newLauncherClient(defaultLaunchPolicy(true, false))
 	if err != nil {
 		t.Fatal(err)
@@ -624,7 +624,7 @@ func TestPiMetadataFallbackNormalizesLatest(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 	c, err := newLauncherClient(defaultLaunchPolicy(true, false))
 	if err != nil {
 		t.Fatal(err)
@@ -680,7 +680,7 @@ func TestPiTaggedAliasRetainsPlanGuidance(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	t.Setenv("OLLAMA_HOST", srv.URL)
+	t.Setenv("XOLLAMA_HOST", srv.URL)
 	c, err := newLauncherClient(defaultLaunchPolicy(true, false))
 	if err != nil {
 		t.Fatal(err)
