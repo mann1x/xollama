@@ -19,8 +19,8 @@ var archFeatures = map[string]string{
 	// llama.cpp #31252 (b11963, 2026-10-27): LiquidAI LFM3-1.7B and
 	// LFM3-VL-2B. opencoti serves it since c14.
 	"lfm3": "arch_lfm3_v1",
-	// llama.cpp b12111 (upstream v0.40.15) adds four; the c14 r9 engine has
-	// none of them, so their models go to stock llama-server.
+	// llama.cpp b12111 (upstream v0.40.15) adds four; the c14 r9 engine had
+	// none of them, opencoti serves all four since c14 r10.
 	// #29433 (2026-10-29): Limite 1B.
 	"limite": "arch_limite_v1",
 	// #31306 (2026-11-02): Clover MoE.

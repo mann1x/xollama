@@ -9,7 +9,9 @@
 - `archEngine` (`server/arch_engine.go`), chained after `decisionEngine` in
   `launchXollama`, names `llamacpp` in the launch config while the pin lacks
   the feature (none today: c14 declares `arch_lfm3_v1`, and LFM3 went back to
-  opencoti with the pin, measured 256 tokens, 2026-11-01), logged once per model at **Warn** (a fallback is loud). It is
+  opencoti with the pin, measured 256 tokens, 2026-11-01; b12111's `limite`,
+  `mistral-large4`, `clover_moe` and `metis16` were on stock under c14 r9 and
+  went back with c14 r10, 2026-11-07), logged once per model at **Warn** (a fallback is loud). It is
   the same path as a model's own `engine: llamacpp`, so placement and estimate
   both see it through `llamaServerConfigForModel`.
 - **An engine the model states is kept**, and **macOS keeps the load on
