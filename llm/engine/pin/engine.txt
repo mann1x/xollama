@@ -1,8 +1,8 @@
 format     2
 component  engine
-version    2611031149001
+version    2611061648001
 repo       ManniX-ITA/opencoti-llamafile
-rev        887b2747b957a5c37fa2b4bd2e37ce4870645046
+rev        1181a026d2e4cbd90e5da2418c3e3ec1551e370d
 abi        ggml bac5050ddc8c58c51f0b059a7f9753b33af0ed79d355090e7c9a17ffaaaf340a
 abi        media b099409b3029a6e380268e31d1caefa6706569961d32e72b3543fbc73903d95c
 abi        loader d6ff34022f1d3fb5af56ca0c80e3f4e552bf09f1bebdf0cb5f314a454bf38dbc
@@ -68,6 +68,10 @@ feature    shutdown_gpu_policy_v1
 feature    parent_watch_v1
 feature    graceful_shutdown_v1
 feature    arch_lfm3_v1
+feature    arch_limite_v1
+feature    arch_mistral_large4_v1
+feature    arch_clover_moe_v1
+feature    arch_metis16_v1
 feature    vulkan_matvec_tune_v1
 feature    auto_mtp_adaptive_v1
 feature    moe_strategy_v1
@@ -86,6 +90,6 @@ feature    images_generate_v1 x86_64 win-x86_64 macos-aarch64
 feature    sdcpp_vid_gen_v1 x86_64 win-x86_64 macos-aarch64
 feature    videos_generate_v1 x86_64 win-x86_64 macos-aarch64
 feature    videos_i2v_v1 x86_64 win-x86_64 macos-aarch64
-file  any            bin        components/engine/2611031149001/opencoti-llamafile-0.10.5-c14-bare.llamafile  357a2ebf9daf3f27b307e9553e4921b35779705a95fb4798f19f8f3aea6a90d8  146972786
-file  win-x86_64     bin        components/engine/2611031149001/opencoti-llamafile-0.10.5-c14-win-x86_64.llamafile.exe  357a2ebf9daf3f27b307e9553e4921b35779705a95fb4798f19f8f3aea6a90d8  146972786
-file  any            build-info components/engine/2611031149001/BUILD_INFO.engine.md  a84931e60b941d3aca0e7c8d293ee74f8ffcfdb16a48ecfd5ea85e167ec0aa24  14378
+file  any            bin        components/engine/2611061648001/opencoti-llamafile-0.10.5-c14-bare.llamafile  3c5980015c6ed3e2b69a97228ec67d09cdafe7c10b571aaaa75565a903aebb25  147127595
+file  win-x86_64     bin        components/engine/2611061648001/opencoti-llamafile-0.10.5-c14-win-x86_64.llamafile.exe  3c5980015c6ed3e2b69a97228ec67d09cdafe7c10b571aaaa75565a903aebb25  147127595
+file  any            build-info components/engine/2611061648001/BUILD_INFO.engine.md  63b299c322c5be71798dc4d4b2e64c27c8f5d56d04b5f519deddc084a872ba73  15533

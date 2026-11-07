@@ -15,7 +15,25 @@
 # Moving a component is one line here plus its pin file, on a MEASUREMENT
 # (scripts/phase2-engine-ab.py, as the `ollama` user), never on a changelog.
 #
-# THIS PIN (2026-11-03, opencoti mail #2149; index 71432806, pins 1adb1ed9,
+# THIS PIN (2026-11-07, opencoti mails #2175, #2176, #2177; index 7be4e8f5,
+# pins 65606b6c, payload 1181a026): c14 r10, git tag
+# llamafile-v0.10.5+opencoti.c14-r10. Engine 2611061648001 (bare 3c598001) =
+# r9 + 0837 (the llama.cpp b12111 architectures limite, mistral-large4,
+# clover_moe and metis16; feature rows arch_limite_v1, arch_mistral_large4_v1,
+# arch_clover_moe_v1, arch_metis16_v1, so archEngine stops sending those
+# models to stock llama-server) + 0838 (bug-4339: a host-resident op in the
+# middle of a device graph raced the async input copy). vulkan 2611061722001
+# (engine-min this engine; .so 44737da5, DLL b8f44b9a): 0839 (bug-4340: the
+# multi-pass soft_max of a row wider than 16384 columns lost 120 of 128 lanes'
+# maxima, so device sampling with min_p first on the raw logits produced
+# garbage), 0841 (bug-4343: TOP_K k == 1 compared float bit patterns as signed
+# ints, so a row whose maximum is negative returned its minimum), 0840 (DSV4
+# hyper-connection ops). macos 2611061722002: the Metal library rebuilt with
+# 0840 (f977a252, signed, notarised); the loader is r9's file. cuda, cuda12,
+# sbsa and media are r9's files. 83 feature rows.
+# MEASURED: see STATE_SUMMARY.md, entry of this pin.
+#
+# THE c14 r9 PIN (2026-11-03, opencoti mail #2149; index 71432806, pins 1adb1ed9,
 # payload 887b2747): c14 r9, git tag llamafile-v0.10.5+opencoti.c14-r9. Engine
 # 2611031149001 (bare 357a2ebf) = r8 + 0836 (bug-4334, bug-4335): a Gemma-4
 # tool call the engine's PEG parser rejects, a second call with parallel calls
@@ -266,10 +284,10 @@
 format   2
 channel  release
 tag      c14
-engine   pin/engine.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 ab17227d24b856b240f944c1f46ecba7894d1a2c4ab7d23e591b44e8e6b907c8  version 2611031149001
-cuda     pin/cuda.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 c56d0a22e7615fbd925c4fae2aae06cc3cb39652dc1568b13257f9a097298dff  version 2610311711001
-cuda12   pin/cuda12.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 19bf03c916692c77fb22eefce3d5a67383dff486feb22b591ace4c3a1ae0b144  version 2610311711002
-sbsa     pin/sbsa.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 c91927dd159ca30b2e6c4464a2ac5d3fa6a2086c67bacb37cd08f25ea8569cf4  version 2610311711003
-vulkan   pin/vulkan.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 3e85f70e4350ed3fd7576dafd75045e5e451ccdc66f2c82dddb769c7a592a09c  version 2611030129001
-macos    pin/macos.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 8d97d6c47fe3ac43a19b09f2e41bfe2a449e337fc995583f9d0851115a66974d  version 2610311711005
-media    pin/media.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 bccefdc642e11a9009e3bd48e950056629d9295c36310494bfc59d5ec4d6f880  version 2611012031001
+engine   pin/engine.txt  rev 65606b6c6ba27d841399617f1695956b276d2283  sha256 89cf2dd00eb66340e1f73388ebe4ebaded044018a8d44d14af4b06936703ddf3  version 2611061648001
+cuda     pin/cuda.txt  rev 65606b6c6ba27d841399617f1695956b276d2283  sha256 3a1edc6a52dbeefbb5eab1590b490ffa586c445a5d90d1e6485f8837f5a492e6  version 2610311711001
+cuda12   pin/cuda12.txt  rev 65606b6c6ba27d841399617f1695956b276d2283  sha256 bac3744ea0daa04e6868623dfb7ef10ed8572e684ff105df887e428f626c1303  version 2610311711002
+sbsa     pin/sbsa.txt  rev 65606b6c6ba27d841399617f1695956b276d2283  sha256 7a4c63275205991c62b8490f4b739f83359c3cd61edd1c8641b406c79781ad4a  version 2610311711003
+vulkan   pin/vulkan.txt  rev 65606b6c6ba27d841399617f1695956b276d2283  sha256 67e8a5ca526be94077cbe3a320ea54f7dd1c6c07e2e288c8fcffe0bd824f4ece  version 2611061722001
+macos    pin/macos.txt  rev 65606b6c6ba27d841399617f1695956b276d2283  sha256 d5681cbca9086e98ac01a27ea375fed35b9859d37ac5442631df00e8143a3ce8  version 2611061722002
+media    pin/media.txt  rev 65606b6c6ba27d841399617f1695956b276d2283  sha256 99026a65c10bf1f10129674d32b5820081bc1eac07f828e6a49a2c5f7d34c24c  version 2611012031001
