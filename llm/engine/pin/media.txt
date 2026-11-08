@@ -3,7 +3,7 @@ component  media
 version    2611012031001
 built-from 2611012008001
 repo       ManniX-ITA/opencoti-llamafile
-rev        887b2747b957a5c37fa2b4bd2e37ce4870645046
+rev        34d60330e4061d212e03142cb4f946d25cc099f1
 abi        media b099409b3029a6e380268e31d1caefa6706569961d32e72b3543fbc73903d95c
 abi-source exported
 engine-min 2611012008001

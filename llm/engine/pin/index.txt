@@ -15,7 +15,39 @@
 # Moving a component is one line here plus its pin file, on a MEASUREMENT
 # (scripts/phase2-engine-ab.py, as the `ollama` user), never on a changelog.
 #
-# THIS PIN (2026-11-03, opencoti mail #2149; index 71432806, pins 1adb1ed9,
+# THIS PIN (2026-11-08, opencoti mail #2197; index 56746d93, pins b2e9fb68,
+# payload 34d60330): c14 r11, git tag llamafile-v0.10.5+opencoti.c14-r11, an
+# engine-only re-cut. Engine 2611080957001 (bare c941b8f7) = r10 + 0842
+# (bug-4348, our #2181: under --kv-unified the KQ mask's scatter inputs were
+# sized by the dirty-cell count, so a cached-prompt request built another
+# graph than a fresh one and Clover's greedy text differed between them) +
+# 0843/0844 (bug-4349: on NextN models the ngram lookup table was
+# server-lifetime and the auto-MTP depth was chosen on the first request; now
+# per sequence, and chosen on a warm-up before the server reports ready) +
+# 0845 (bug-4351: gemma-embedding2, feature arch_gemma_embedding2_v1). Every
+# library and media are r10's files; their pins moved only in rev, gated-with
+# and BUILD_INFO text. 84 feature rows.
+# MEASURED: see STATE_SUMMARY.md, entry of this pin.
+#
+# THE c14 r10 PIN (2026-11-07, opencoti mails #2175, #2176, #2177; index 7be4e8f5,
+# pins 65606b6c, payload 1181a026): c14 r10, git tag
+# llamafile-v0.10.5+opencoti.c14-r10. Engine 2611061648001 (bare 3c598001) =
+# r9 + 0837 (the llama.cpp b12111 architectures limite, mistral-large4,
+# clover_moe and metis16; feature rows arch_limite_v1, arch_mistral_large4_v1,
+# arch_clover_moe_v1, arch_metis16_v1, so archEngine stops sending those
+# models to stock llama-server) + 0838 (bug-4339: a host-resident op in the
+# middle of a device graph raced the async input copy). vulkan 2611061722001
+# (engine-min this engine; .so 44737da5, DLL b8f44b9a): 0839 (bug-4340: the
+# multi-pass soft_max of a row wider than 16384 columns lost 120 of 128 lanes'
+# maxima, so device sampling with min_p first on the raw logits produced
+# garbage), 0841 (bug-4343: TOP_K k == 1 compared float bit patterns as signed
+# ints, so a row whose maximum is negative returned its minimum), 0840 (DSV4
+# hyper-connection ops). macos 2611061722002: the Metal library rebuilt with
+# 0840 (f977a252, signed, notarised); the loader is r9's file. cuda, cuda12,
+# sbsa and media are r9's files. 83 feature rows.
+# MEASURED: see STATE_SUMMARY.md, entry of this pin.
+#
+# THE c14 r9 PIN (2026-11-03, opencoti mail #2149; index 71432806, pins 1adb1ed9,
 # payload 887b2747): c14 r9, git tag llamafile-v0.10.5+opencoti.c14-r9. Engine
 # 2611031149001 (bare 357a2ebf) = r8 + 0836 (bug-4334, bug-4335): a Gemma-4
 # tool call the engine's PEG parser rejects, a second call with parallel calls
@@ -266,10 +298,10 @@
 format   2
 channel  release
 tag      c14
-engine   pin/engine.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 ab17227d24b856b240f944c1f46ecba7894d1a2c4ab7d23e591b44e8e6b907c8  version 2611031149001
-cuda     pin/cuda.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 c56d0a22e7615fbd925c4fae2aae06cc3cb39652dc1568b13257f9a097298dff  version 2610311711001
-cuda12   pin/cuda12.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 19bf03c916692c77fb22eefce3d5a67383dff486feb22b591ace4c3a1ae0b144  version 2610311711002
-sbsa     pin/sbsa.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 c91927dd159ca30b2e6c4464a2ac5d3fa6a2086c67bacb37cd08f25ea8569cf4  version 2610311711003
-vulkan   pin/vulkan.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 3e85f70e4350ed3fd7576dafd75045e5e451ccdc66f2c82dddb769c7a592a09c  version 2611030129001
-macos    pin/macos.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 8d97d6c47fe3ac43a19b09f2e41bfe2a449e337fc995583f9d0851115a66974d  version 2610311711005
-media    pin/media.txt  rev 1adb1ed9f4a6207f4cefde3c08576c1899a87058  sha256 bccefdc642e11a9009e3bd48e950056629d9295c36310494bfc59d5ec4d6f880  version 2611012031001
+engine   pin/engine.txt  rev b2e9fb68524c36ad0617bfb75d30e57eb4278493  sha256 cdef5ff12222de8f8e91a4383d014b80b6fd79dee7f438ed8890299c527190c5  version 2611080957001
+cuda     pin/cuda.txt  rev b2e9fb68524c36ad0617bfb75d30e57eb4278493  sha256 09667052056420bd4f7786b3a395ec073d9efd88a0500726720ef5af969d0128  version 2610311711001
+cuda12   pin/cuda12.txt  rev b2e9fb68524c36ad0617bfb75d30e57eb4278493  sha256 2658a9a53bd14b57ec99abf1c57e80f94a1994db6795b80a687f2a3b3b767d1c  version 2610311711002
+sbsa     pin/sbsa.txt  rev b2e9fb68524c36ad0617bfb75d30e57eb4278493  sha256 397173bf067765e0cb9d99b86871262a13437a913cf55f12afec3a76dfdf0d20  version 2610311711003
+vulkan   pin/vulkan.txt  rev b2e9fb68524c36ad0617bfb75d30e57eb4278493  sha256 2b6d894ff041eb835277521406819122a8c03731e5af8fa34988562ae448b44f  version 2611061722001
+macos    pin/macos.txt  rev b2e9fb68524c36ad0617bfb75d30e57eb4278493  sha256 14eeced824afb1c2ebe9cbc6e701ed4925e9164c5cfd2c013923e0c4443861ec  version 2611061722002
+media    pin/media.txt  rev b2e9fb68524c36ad0617bfb75d30e57eb4278493  sha256 bbe643f05e0768f7ae41586ad35e38fe2df5edb019e93fe15062a8bb8bd8c88d  version 2611012031001
