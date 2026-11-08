@@ -3,7 +3,7 @@ component  sbsa
 version    2610311711003
 built-from 2610312243001
 repo       ManniX-ITA/opencoti-llamafile
-rev        34d60330e4061d212e03142cb4f946d25cc099f1
+rev        3b5d0c8985cc9af0889b294763d065b55c6468e2
 abi        ggml bac5050ddc8c58c51f0b059a7f9753b33af0ed79d355090e7c9a17ffaaaf340a
 abi-source exported
 engine-min 2610312243001
