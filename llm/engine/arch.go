@@ -29,6 +29,10 @@ var archFeatures = map[string]string{
 	"metis16": "arch_metis16_v1",
 	// #31376 (2026-10-29): Mistral Large 4.
 	"mistral-large4": "arch_mistral_large4_v1",
+	// EmbeddingGemma 2 (embeddinggemma-2:270m), in llama.cpp since before
+	// b11803, so older than this table and its sync check; every engine up to
+	// c14 r10 refused it, opencoti serves it since c14 r11.
+	"gemma-embedding2": "arch_gemma_embedding2_v1",
 }
 
 // ArchFeature is the pin feature that says the engine serves GGUF architecture
