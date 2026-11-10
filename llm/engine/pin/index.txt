@@ -15,7 +15,34 @@
 # Moving a component is one line here plus its pin file, on a MEASUREMENT
 # (scripts/phase2-engine-ab.py, as the `ollama` user), never on a changelog.
 #
-# THIS PIN (2026-11-08, opencoti mail #2218; index 183c5562, pins ac5066c0,
+# THIS PIN (2026-11-10, opencoti mail #2255; index 10c17162, pins 72e1b4ef,
+# payload 87a66207): c14 r15, git tag llamafile-v0.10.5+opencoti.c14-r15, an
+# engine-only re-cut. Engine 2611100546001 (bare 6ca3cad2) = r14 + 0850
+# (bug-4359, our #2244): a repeat of the same prompt, every token cached, was
+# re-decoded as one token while the fresh request computed that position
+# inside a prefill ubatch, so its logits differed by 0.2 to 0.7 nat and a
+# greedy Gemma-4 26B-A4B tool call became a `length` stop on every repeat
+# (llama.cpp's own class, upstream 9309bf1b has it). The repeat is now
+# re-evaluated from the start of the ubatch that produced its last token;
+# OPENCOTI_PROMPT_REPEAT_CHUNK=0 restores the one-token re-decode. Every
+# library and media are r14's files; their pins moved only in rev, gated-with
+# and BUILD_INFO text. 85 feature rows, unchanged.
+# MEASURED: see STATE_SUMMARY.md, entry of this pin.
+#
+# THE c14 r14 PIN (2026-11-09, opencoti mail #2235; index 30e59d1c, pins 8f12f6bd,
+# payload 3d8a9515): c14 r14, git tag llamafile-v0.10.5+opencoti.c14-r14, an
+# engine-only re-cut (r13, index 810cd800, was superseded the same evening).
+# Engine 2611092159001 (bare 7765f0bc) = r12 + 0847 (r13, bug-4355: streaming
+# a Gemma-4 tool call through the engine's own chat path sent one character
+# of the arguments twice, ',,' or '""', because a partial-value trim could
+# retract text already sent; now a hold from the first ambiguous character)
+# + 0848 (bug-4356: build_info is the reporting build's own) + 0849 (GET
+# /props gains "build_id", feature props_build_id_v1). Every library and
+# media are r12's files; their pins moved only in rev, gated-with and
+# BUILD_INFO text. 85 feature rows.
+# MEASURED: see STATE_SUMMARY.md, entry of this pin.
+#
+# THE c14 r12 PIN (2026-11-08, opencoti mail #2218; index 183c5562, pins ac5066c0,
 # payload 3b5d0c89): c14 r12, git tag llamafile-v0.10.5+opencoti.c14-r12, an
 # engine-only re-cut. Engine 2611081513001 (bare 0da9ee14) = r11 + 0846
 # (bug-4352, our #2201: the NextN drafter read the previous sequence's last
@@ -309,10 +336,10 @@
 format   2
 channel  release
 tag      c14
-engine   pin/engine.txt  rev ac5066c017e1afb38ed23795d566a8d355e3d7e6  sha256 89831c27f72a8959bf6ef4586d121befc73feab3b769f48886b329769d898a9d  version 2611081513001
-cuda     pin/cuda.txt  rev ac5066c017e1afb38ed23795d566a8d355e3d7e6  sha256 3f36bedae81c91e724878f4a12e344716a5186f6b6fd7f2523a5e3a3af301bff  version 2610311711001
-cuda12   pin/cuda12.txt  rev ac5066c017e1afb38ed23795d566a8d355e3d7e6  sha256 6c0d2e240000e2fb09ba3514b96da4fe97525630e68d6f131954cc466e606f76  version 2610311711002
-sbsa     pin/sbsa.txt  rev ac5066c017e1afb38ed23795d566a8d355e3d7e6  sha256 d8880c032588f8e01f50337ffbdd6bbdec1664deae33ef0eaa698f279f9c55da  version 2610311711003
-vulkan   pin/vulkan.txt  rev ac5066c017e1afb38ed23795d566a8d355e3d7e6  sha256 b30b80bbef29a5088f928af727983ac61ade2f67298512c72a2bb64f98f17432  version 2611061722001
-macos    pin/macos.txt  rev ac5066c017e1afb38ed23795d566a8d355e3d7e6  sha256 81c0949351da01b36d34052fb0d1de1a74250f0a2467b69aedf63dcd18fb73c6  version 2611061722002
-media    pin/media.txt  rev ac5066c017e1afb38ed23795d566a8d355e3d7e6  sha256 d16c2adaa3c03ab4defefdfd3d2d1d58914752df416463af98f0bc37921cd21f  version 2611012031001
+engine   pin/engine.txt  rev 72e1b4ef47574b913f06aa5b3bc2e9d19fd63964  sha256 65864084a56831ba058442efe68fa1254ab3c081b930a6034fd19294496b8f2d  version 2611100546001
+cuda     pin/cuda.txt  rev 72e1b4ef47574b913f06aa5b3bc2e9d19fd63964  sha256 3b5a0ab31d50e6ef4e2c3ba84746f4c356aa7c2d5e8a00c80d58db4cabb00370  version 2610311711001
+cuda12   pin/cuda12.txt  rev 72e1b4ef47574b913f06aa5b3bc2e9d19fd63964  sha256 19c2dcd304b528f983ae9c5591a91ed8ab1dbabbcbba7a2b745137d78156d4cc  version 2610311711002
+sbsa     pin/sbsa.txt  rev 72e1b4ef47574b913f06aa5b3bc2e9d19fd63964  sha256 9c3e4f78db8269bc4a51389083f3fbbb0e6896bdddc585e9276fe805de8d2cd7  version 2610311711003
+vulkan   pin/vulkan.txt  rev 72e1b4ef47574b913f06aa5b3bc2e9d19fd63964  sha256 29ad990a8448e1cd06eab642c9d53f254c92074a3d8762060b79a3bbf4b1e560  version 2611061722001
+macos    pin/macos.txt  rev 72e1b4ef47574b913f06aa5b3bc2e9d19fd63964  sha256 06b89e821cf96e62f9b3de9d21f0c3612df7b6cce6671a9f3f9eeaf985a510f1  version 2611061722002
+media    pin/media.txt  rev 72e1b4ef47574b913f06aa5b3bc2e9d19fd63964  sha256 38b8471b6db2f0fb7cb5e77eb7e70d50c12e4c2f6ab3ac8f4922508c959dbcb4  version 2611012031001

@@ -1,8 +1,8 @@
 format     2
 component  engine
-version    2611081513001
+version    2611100546001
 repo       ManniX-ITA/opencoti-llamafile
-rev        3b5d0c8985cc9af0889b294763d065b55c6468e2
+rev        87a6620764ab754e0b61567e60fee7374a1d51fe
 abi        ggml bac5050ddc8c58c51f0b059a7f9753b33af0ed79d355090e7c9a17ffaaaf340a
 abi        media b099409b3029a6e380268e31d1caefa6706569961d32e72b3543fbc73903d95c
 abi        loader d6ff34022f1d3fb5af56ca0c80e3f4e552bf09f1bebdf0cb5f314a454bf38dbc
@@ -77,6 +77,7 @@ feature    vulkan_matvec_tune_v1
 feature    auto_mtp_adaptive_v1
 feature    moe_strategy_v1
 feature    idle_slot_pool_safe_v1
+feature    props_build_id_v1
 feature    audio_generations_v1
 feature    audio_realtime_v1
 feature    audio_speech_content_format_v1
@@ -91,6 +92,6 @@ feature    images_generate_v1 x86_64 win-x86_64 macos-aarch64
 feature    sdcpp_vid_gen_v1 x86_64 win-x86_64 macos-aarch64
 feature    videos_generate_v1 x86_64 win-x86_64 macos-aarch64
 feature    videos_i2v_v1 x86_64 win-x86_64 macos-aarch64
-file  any            bin        components/engine/2611081513001/opencoti-llamafile-0.10.5-c14-bare.llamafile  0da9ee14705a48d4e5546a1de71a1540d21db01be70a26f6473eb3ce22e65c9a  147199725
-file  win-x86_64     bin        components/engine/2611081513001/opencoti-llamafile-0.10.5-c14-win-x86_64.llamafile.exe  0da9ee14705a48d4e5546a1de71a1540d21db01be70a26f6473eb3ce22e65c9a  147199725
-file  any            build-info components/engine/2611081513001/BUILD_INFO.engine.md  a3472f3b1e5d2421f4b34e3da9868c16e1eece95ec454523d28212cb82fb017b  4447
+file  any            bin        components/engine/2611100546001/opencoti-llamafile-0.10.5-c14-bare.llamafile  6ca3cad2e4f6c23b06f81083623f2cabec61e05c5447ae0274f212fbfd597fbd  147201681
+file  win-x86_64     bin        components/engine/2611100546001/opencoti-llamafile-0.10.5-c14-win-x86_64.llamafile.exe  6ca3cad2e4f6c23b06f81083623f2cabec61e05c5447ae0274f212fbfd597fbd  147201681
+file  any            build-info components/engine/2611100546001/BUILD_INFO.engine.md  f7532c4ebbbfb7600ef7bdbf32275faf800ab502b14c803f78bc089e8140109a  8325
