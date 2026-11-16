@@ -381,7 +381,7 @@ func GPUDevices(ctx context.Context, runners []ml.FilteredRunnerDiscovery) []ml.
 				slog.Warn("unable to refresh free memory, using old values")
 			}
 		}
-		settleStaleFree(devices, updated, byRunner) // xollama-hook: stale-free
+		settleStaleFree(devices, updated, byRunner, runners != nil) // xollama-hook: stale-free
 	}
 
 	return onePerGPU(append([]ml.DeviceInfo{}, devices...)) // xollama-hook: backend-copies

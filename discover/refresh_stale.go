@@ -36,8 +36,14 @@ func noteListedFree(devices []ml.DeviceInfo, mask []bool) {
 // stayed in the table after the runner unloaded, every refresh that could
 // not reach the card kept it, and every load went to another GPU until the
 // server was restarted. Such a device goes back to its last listed value.
+//
+// Only a caller that passed its runners (the scheduler, with a list that is
+// empty when nothing is loaded) can say no runner holds a device. A nil list
+// is a caller that does not know what is loaded (the startup log, the
+// devices route, the link probe): its listings are recorded, but nothing is
+// put back, or a loaded model's card read as empty in the device table.
 // XOLLAMA_ENGINE=llamacpp keeps upstream's table (CLAUDE.md rule 2).
-func settleStaleFree(devices []ml.DeviceInfo, updated, byRunner []bool) {
+func settleStaleFree(devices []ml.DeviceInfo, updated, byRunner []bool, runnersKnown bool) {
 	if strings.EqualFold(strings.TrimSpace(envconfig.Engine()), "llamacpp") {
 		return
 	}
@@ -46,6 +52,9 @@ func settleStaleFree(devices []ml.DeviceInfo, updated, byRunner []bool) {
 		listed[i] = updated[i] && (i >= len(byRunner) || !byRunner[i])
 	}
 	noteListedFree(devices, listed)
+	if !runnersKnown {
+		return
+	}
 	for i := range devices {
 		if updated[i] {
 			continue

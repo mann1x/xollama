@@ -251,7 +251,11 @@ measure a device neither through a listing nor through a loaded runner, the
 device goes back to the last value a listing measured, logged at Warn
 (`stale-free` hook, `discover/refresh_stale.go`). Before this, a runner's value
 stayed in the table after its runner unloaded, for as long as no listing reached
-the card.
+the card. Only the scheduler, which passes the runners it has loaded, puts a
+device back. The device table (`/api/xollama/devices`), the link probe and the
+startup log call discovery without runners, so they cannot tell a gone runner
+from a loaded one; for them nothing is put back, and the table shows what the
+scheduler last saw.
 
 ## One GPU, two backends
 
