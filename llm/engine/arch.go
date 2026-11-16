@@ -33,6 +33,13 @@ var archFeatures = map[string]string{
 	// b11803, so older than this table and its sync check; every engine up to
 	// c14 r10 refused it, opencoti serves it since c14 r11.
 	"gemma-embedding2": "arch_gemma_embedding2_v1",
+	// llama.cpp b12177 (upstream v0.40.16) adds two; the c14 r15 engine has
+	// neither.
+	// #31692 (2026-11-05): Ripple by ricursiveai, the model upstream's MLX
+	// runner, renderer and parser also gained in v0.40.16 (#19592).
+	"ricursive": "arch_ricursive_v1",
+	// #31589 (2026-11-06): xing4_0.
+	"xing4_0": "arch_xing4_0_v1",
 }
 
 // ArchFeature is the pin feature that says the engine serves GGUF architecture

@@ -37,12 +37,12 @@
 # (built 0e85a55c), inputs c3f7c881. The gpu rows are upstream v0.40.9's arm64
 # tarballs; the jetpack ones were rebuilt too.
 repo      mann1x/ollama
-tag       v0.40.15-thinkbudget
+tag       v0.40.16-thinkbudget
 asset     ollama-linux-arm64-runtime.tgz
-sha256    34d012602e7c74e26e6aa33de5c9d992151a0800b531722951b917143032c062
-inputs    839000ffb7074982c5cb40309ba4e82a65cb0dbbdb13599ee0c5434516175c2a
-built     920a136ba6ce59fd66e80637aa2533cf0a49cb7f
-upstream  v0.40.15
-gpu       ollama-linux-arm64.tar.zst           7f699ead5cdb4ae1ed89b888b148a238af188708800871e1889ab9dcee95f247
-gpu       ollama-linux-arm64-jetpack5.tar.zst  d2a33bcc6a05c1ec1d398d021b443198147ebedaebc77a71972c5ebf87c2d6a4
-gpu       ollama-linux-arm64-jetpack6.tar.zst  65c8359c11c2b04d72c6b2194358dfcb50228fa8a49830a1ade22ee894e4d1da
+sha256    c9dd395617f9a81cd6caac628fdfb05450008be0ce9c854f48d331d1179cff63
+inputs    0f703af181d69c8f3048771e4d0a3ededc7ded9d2e75618beee3eed1a9ea0184
+built     98230d3cc188968ac77df22d54102578551616e5
+upstream  v0.40.16
+gpu       ollama-linux-arm64.tar.zst           e45b8e6dcb86cb9f3057396351655079c9a4879b4ced2678c9350d375dcbc224
+gpu       ollama-linux-arm64-jetpack5.tar.zst  e2e708b495c4a8f9ebfadee8c8ade7cea29ac69f90d1c16557a5d00a1043c793
+gpu       ollama-linux-arm64-jetpack6.tar.zst  6e10ad60bd6f78acc432536c86170b4f3b1ba904c339b9317d9bbc028e0901a4

@@ -8,7 +8,9 @@
   it); an architecture with no row is the engine's to serve or refuse.
 - `archEngine` (`server/arch_engine.go`), chained after `decisionEngine` in
   `launchXollama`, names `llamacpp` in the launch config while the pin lacks
-  the feature (none today: c14 declares `arch_lfm3_v1`, and LFM3 went back to
+  the feature (today b12177's `ricursive`, Ripple by ricursiveai, and
+  `xing4_0`, which c14 r15 does not serve, 2026-11-16; earlier: c14 declares
+  `arch_lfm3_v1`, and LFM3 went back to
   opencoti with the pin, measured 256 tokens, 2026-11-01; b12111's `limite`,
   `mistral-large4`, `clover_moe` and `metis16` were on stock under c14 r9 and
   went back with c14 r10, 2026-11-07; `gemma-embedding2`, older in llama.cpp
