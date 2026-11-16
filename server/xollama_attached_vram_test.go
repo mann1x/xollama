@@ -11,39 +11,39 @@ import (
 	"github.com/ollama/ollama/ml"
 )
 
-// Before the engine has reported a head, the solidPC curve prices it
-// (RTX 3090, c14 r15, 26B-A4B head, 2026-11-16): never below what it took
-// at num_ctx 32768, and the long contexts on the safe side.
+// Before the engine has reported a head, the solidPC line prices it (RTX
+// 3090, c14 r16, 26B-A4B head, 2026-11-16): never below what it took, the
+// same at every batch, and never the r15 batch curve (300 to 1200 MiB).
 func TestDraftHeadContextBeforeAReport(t *testing.T) {
 	head := drafterInfo{path: "/blobs/sha256-unreported", assistant: true, width: 2816}
 	for _, c := range []struct{ ctx, batch, measuredMiB int }{
-		{32768, 512, 76},
-		{32768, 1024, 152},
-		{32768, 2048, 302},
-		{131072, 512, 172},
-		{256000, 512, 294},
-		{256000, 1024, 338},
-		{256000, 2048, 424},
+		{32768, 512, 6},
+		{32768, 2048, 6},
+		{256000, 512, 20},
+		{256000, 2048, 20},
 	} {
 		got := drafterContextVRAM(head, c.ctx, c.batch) / format.MebiByte
-		if got+2 < uint64(c.measuredMiB) {
+		if got < uint64(c.measuredMiB) || got > uint64(c.measuredMiB)+8 {
 			t.Errorf("num_ctx %d num_batch %d: priced %d MiB, took %d", c.ctx, c.batch, got, c.measuredMiB)
+		}
+		if other := drafterContextVRAM(head, c.ctx, 4096-c.batch) / format.MebiByte; other != got {
+			t.Errorf("num_ctx %d: %d MiB at num_batch %d, %d at %d; r16's head does not grow with the batch", c.ctx, got, c.batch, other, 4096-c.batch)
 		}
 	}
 }
 
-// After a report, the engine's own number is the price, scaled to the batch
-// and to a longer context.
+// After a report, the engine's own number is the price, at any batch, and
+// scaled to a longer context only.
 func TestDraftHeadContextFromTheEnginesReport(t *testing.T) {
-	head := drafterInfo{path: "/blobs/sha256-eleven2go-head", assistant: true, width: 2816}
-	llm.StoreDraftHeadContext(head.path, llm.DraftHeadMeasure{NumCtx: 256000, NumBatch: 2048, Context: 4424 << 20})
-	if got := drafterContextVRAM(head, 256000, 2048) >> 20; got != 4424 {
-		t.Errorf("same load: %d MiB, reported 4424", got)
+	head := drafterInfo{path: "/blobs/sha256-reported-head", assistant: true, width: 2816}
+	llm.StoreDraftHeadContext(head.path, llm.DraftHeadMeasure{NumCtx: 32768, NumBatch: 512, Context: 6 << 20})
+	if got := drafterContextVRAM(head, 32768, 2048) >> 20; got != 6 {
+		t.Errorf("four times the batch: %d MiB, reported 6 at 512 (r16 took 6 at 2048 too)", got)
 	}
-	if got := drafterContextVRAM(head, 256000, 1024) >> 20; got != 2212 {
-		t.Errorf("half the batch: %d MiB, want 2212 (eleven2go measured 2338)", got)
+	if got := drafterContextVRAM(head, 262144, 512) >> 20; got != 48 {
+		t.Errorf("eight times the context: %d MiB, want 48 (the safe side of the 20 r16 took)", got)
 	}
-	if got := drafterContextVRAM(head, 32768, 2048) >> 20; got != 4424 {
+	if got := drafterContextVRAM(head, 16384, 512) >> 20; got != 6 {
 		t.Errorf("a shorter context keeps the reported price, got %d MiB", got)
 	}
 }
@@ -105,7 +105,8 @@ func TestTheLighterQuantStaysLighter(t *testing.T) {
 
 	for _, report := range []bool{false, true} {
 		if report {
-			llm.StoreDraftHeadContext(drafter, llm.DraftHeadMeasure{NumCtx: 256000, NumBatch: 2048, Context: 4424 << 20})
+			// c14 r16's report for this head (solidPC, 2026-11-16).
+			llm.StoreDraftHeadContext(drafter, llm.DraftHeadMeasure{NumCtx: 256000, NumBatch: 2048, Context: 20 << 20})
 		}
 		bIQ2, tIQ2 := load(iq2, m)
 		bQ4, tQ4 := load(q4, m)
@@ -114,9 +115,6 @@ func TestTheLighterQuantStaysLighter(t *testing.T) {
 		if tIQ2+format.GibiByte > tQ4 {
 			t.Errorf("head report %v: the IQ2 takes %.1f GiB at %d, the Q4_K_M %.1f GiB at %d: the lighter file is not lighter",
 				report, float64(tIQ2)/(1<<30), bIQ2, float64(tQ4)/(1<<30), bQ4)
-		}
-		if report && bIQ2 == 2048 {
-			t.Error("with eleven2go's head report the IQ2 still gets 2048")
 		}
 	}
 }

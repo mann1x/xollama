@@ -15,12 +15,13 @@ type DraftHeadMeasure struct {
 	Context          uint64 // bytes
 }
 
-// The cost depends on how the engine runs the head on that host, which is
-// not known before the load: on solidPC (RTX 3090, Linux) the draft context
-// of the 26B-A4B head was 76 to 430 MiB from num_ctx 32768 to 256000 and
-// num_batch 512 to 2048, on eleven2go (RTX 3090, Windows) 2338 MiB at 256000
-// and 1024, and 4424 at 2048 (mail #2308). So the scheduler prices a head by
-// the engine's own last report for it, where there is one.
+// The cost depends on the engine and the host: under c14 r15 the draft
+// context of the 26B-A4B head was built at the target's batch, 76 to 430 MiB
+// on solidPC (RTX 3090, Linux) and 2338 / 4424 MiB on eleven2go (RTX 3090,
+// Windows, num_batch 1024 / 2048, mail #2308); since c14 r16 it has
+// max(32, drafting sequences) rows, 6 MiB at num_ctx 32768 and 20 at 256000
+// on solidPC (our #2311). So the scheduler prices a head by the engine's own
+// last report for it, where there is one.
 var draftHeadRegex = regexp.MustCompile(`assistant head took (\d+) MiB on \S+ \(weights (\d+) \+ draft context (\d+)\)`)
 
 var draftHeads sync.Map // drafter blob name -> DraftHeadMeasure
