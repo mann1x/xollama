@@ -62,7 +62,8 @@ func predictVRAM(req *LlmRequest, f *gguf.Model, gpus []ml.DeviceInfo, predicted
 		numBatch = llamaServerGenerationBatchDefault
 	}
 	return llm.PredictOpencotiVRAM(req.model.ModelPath, f, cfg, predictedCtx,
-		numCtxSeq, numBatch, numParallel, req.opts.DraftNumPredict).Total() + cfg.MediaEstimate
+		numCtxSeq, numBatch, numParallel, req.opts.DraftNumPredict).Total() + cfg.MediaEstimate +
+		attachedVRAM(req.model, predictedCtx, attachedBatch(req, numBatch))
 }
 
 // needsEviction decides whether a load that has to share its GPUs evicts.

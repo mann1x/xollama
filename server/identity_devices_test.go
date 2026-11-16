@@ -14,6 +14,41 @@ import (
 	"github.com/ollama/ollama/ml"
 )
 
+// The table reads a loaded model's GPU through its runner, as the scheduler
+// does; without the runners it showed the card's free memory from before
+// the load (eleven2go, 2026-11-16).
+func TestTheDevicesRouteAsksTheLoadedRunners(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s, runner := loadedNamed(t, "gemma4:latest", 0)
+	restore := discoverDevices
+	t.Cleanup(func() { discoverDevices = restore })
+	var got []ml.FilteredRunnerDiscovery
+	discoverDevices = func(_ context.Context, runners []ml.FilteredRunnerDiscovery) []ml.DeviceInfo {
+		got = runners
+		return solidPCDevices()
+	}
+	h, err := s.GenerateRoutes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodGet, api.XollamaDevicesPath, nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("status %d: %s", w.Code, w.Body)
+	}
+	if len(got) != 1 || got[0] != ml.FilteredRunnerDiscovery(runner) {
+		t.Fatalf("discovery got runners %v, want the loaded one", got)
+	}
+
+	s.sched.loadedMu.Lock()
+	clear(s.sched.loaded)
+	s.sched.loadedMu.Unlock()
+	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, api.XollamaDevicesPath, nil))
+	if got == nil || len(got) != 0 {
+		t.Fatalf("with nothing loaded the route must pass an empty list, never nil (stale-free settles only then); got %#v", got)
+	}
+}
+
 func TestTheDevicesRouteListsWhatAModelCanBePinnedTo(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	t.Setenv("XOLLAMA_ENGINE", "llamacpp")

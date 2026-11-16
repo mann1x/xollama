@@ -63,8 +63,30 @@ func servedFeatures() []string {
 // Every device discovery admitted, including an integrated GPU that unpinned
 // models are kept off (see selectModelDevices): being pinnable is exactly
 // what the listing is for.
-func XollamaDevicesHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, xollamaDevices(discoverDevices(c.Request.Context(), nil)))
+//
+// Discovery is given the loaded runners, as the scheduler gives them, so a
+// GPU a model is on reads what that model leaves free. Without them the
+// table showed the card as it was before the load: 22.8 GiB free on
+// eleven2go's 3090 while a model held 15.1 GiB of it (2026-11-16).
+func (s *Server) XollamaDevicesHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, xollamaDevices(discoverDevices(c.Request.Context(), s.loadedRunners())))
+}
+
+// loadedRunners is the scheduler's loaded runners. With none it is an empty
+// list, never nil: a caller that passes its runners lets the refresh put a
+// gone runner's number back (stale-free, discover/refresh_stale.go). Nil
+// only without a scheduler.
+func (s *Server) loadedRunners() []ml.FilteredRunnerDiscovery {
+	if s == nil || s.sched == nil {
+		return nil
+	}
+	s.sched.loadedMu.Lock()
+	defer s.sched.loadedMu.Unlock()
+	runners := make([]ml.FilteredRunnerDiscovery, 0, len(s.sched.loaded))
+	for _, r := range s.sched.loaded {
+		runners = append(runners, r)
+	}
+	return runners
 }
 
 // discoverDevices is discovery behind a seam, so a route test does not run

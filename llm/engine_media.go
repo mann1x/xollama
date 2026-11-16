@@ -538,14 +538,53 @@ func (r *mediaRunner) Load(ctx context.Context, _ ml.SystemInfo, gpus []ml.Devic
 	return []ml.DeviceID{gpu.DeviceID}, nil
 }
 
+// freePort picks the port the media engine listens on. A loopback bind of
+// port 0 is not enough on its own: on Linux it can hand out a port another
+// process already serves on every address, because Go listens with
+// SO_REUSEADDR and the specific address binds beside the wildcard one. On
+// solidPC it handed out 8787, Docker's readarr (0.0.0.0:8787, docker-proxy
+// plus a DNAT rule), and the engine's /health was read from readarr's HTML
+// (bug-352, 2026-11-10). So a port where something answers a connection
+// while our own listener is closed is somebody's, and another is picked.
 func freePort() int {
-	if a, err := net.ResolveTCPAddr("tcp", "localhost:0"); err == nil {
-		if l, err := net.ListenTCP("tcp", a); err == nil {
-			defer l.Close()
-			return l.Addr().(*net.TCPAddr).Port
+	for range 20 {
+		port := pickLoopbackPort()
+		if port == 0 {
+			break
 		}
+		if !portAnswers(port) {
+			return port
+		}
+		slog.Debug("media engine port is served by another process; picking another", "port", port)
 	}
 	return rand.Intn(65535-49152) + 49152
+}
+
+// pickLoopbackPort is loopbackPort, replaceable in tests.
+var pickLoopbackPort = loopbackPort
+
+func loopbackPort() int {
+	a, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	if err != nil {
+		return 0
+	}
+	l, err := net.ListenTCP("tcp", a)
+	if err != nil {
+		return 0
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
+}
+
+// portAnswers reports whether something accepts a connection on the port on
+// loopback.
+func portAnswers(port int) bool {
+	c, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), 200*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	c.Close()
+	return true
 }
 
 func (r *mediaRunner) start(gpus []ml.DeviceInfo) error {

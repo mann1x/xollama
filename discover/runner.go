@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -269,6 +270,7 @@ func GPUDevices(ctx context.Context, runners []ml.FilteredRunnerDiscovery) []ml.
 			libDirs[""] = struct{}{}
 		}
 
+		noteListedFree(devices, nil) // xollama-hook: stale-free
 		bootstrapped = true
 	} else {
 		if runtime.GOOS == "darwin" && runtime.GOARCH == "arm64" {
@@ -339,6 +341,7 @@ func GPUDevices(ctx context.Context, runners []ml.FilteredRunnerDiscovery) []ml.
 				break
 			}
 		}
+		byRunner := slices.Clone(updated) // xollama-hook: stale-free
 		if !allDone() {
 			slog.Debug("unable to refresh all GPUs with existing runners, performing bootstrap discovery")
 
@@ -378,6 +381,7 @@ func GPUDevices(ctx context.Context, runners []ml.FilteredRunnerDiscovery) []ml.
 				slog.Warn("unable to refresh free memory, using old values")
 			}
 		}
+		settleStaleFree(devices, updated, byRunner, runners != nil) // xollama-hook: stale-free
 	}
 
 	return onePerGPU(append([]ml.DeviceInfo{}, devices...)) // xollama-hook: backend-copies
