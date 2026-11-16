@@ -18,20 +18,24 @@ import (
 // (12.6 GB), because 2048 "fitted" (eleven2go, RTX 3090, num_ctx 256000,
 // mail #2308, 2026-11-16).
 
-// An assistant head's draft context, measured there (26B-A4B head, 2816
-// wide, num_ctx 256000): 2911 MiB at num_batch 1024 and 5010 MiB at 2048, so
-// about 862 MiB plus 2.05 MiB per batch row. It is sized like the target's
-// compute buffer (2358 and 4479 MiB on the same loads): by the context and by
-// the batch. On c13 at num_ctx 32768 the same head's context was 212 MiB
-// (c41/run4), which this scaling over-states slightly: the safe side.
+// An assistant head's draft context depends on how the engine runs it on
+// the host, which is not known before the load (llm/engine_draft_head.go:
+// 76 to 430 MiB on solidPC, 2338 and 4424 MiB on eleven2go, same head). It is
+// priced from the engine's own last report for that drafter, scaled to the
+// batch (linear in both measurements) and to a longer context (linear, the
+// safe side). Before any report, the solidPC curve stands: 75 MiB per 512
+// batch rows at num_ctx 32768, growing with the context up to four times
+// (measured 2026-11-16, 26B-A4B head, 2816 wide; it over-states the large
+// batches at long context, 1200 MiB against 424 at 256000 and 2048).
 const (
-	draftHeadMeasuredCtx   = 262144
 	draftHeadMeasuredWidth = 2816
-	draftHeadBase          = 862 * format.MebiByte
-	draftHeadPerRow        = 2150 * format.KibiByte // 2.05 MiB
+	draftHeadPer512Rows    = 75 * format.MebiByte
+	draftHeadCurveCtx      = 32768
+	draftHeadCurveMaxScale = 4
 )
 
 type drafterInfo struct {
+	path      string
 	size      uint64
 	assistant bool   // a gemma4-assistant head, built against the target's context
 	width     uint64 // its embedding_length_out
@@ -46,7 +50,7 @@ func drafterOf(path string) drafterInfo {
 	if v, ok := drafterInfos.Load(path); ok {
 		return v.(drafterInfo)
 	}
-	var d drafterInfo
+	d := drafterInfo{path: path}
 	if st, err := os.Stat(path); err == nil {
 		d.size = uint64(st.Size())
 	}
@@ -59,9 +63,9 @@ func drafterOf(path string) drafterInfo {
 }
 
 // drafterContextVRAM is an attached drafter's context at this num_ctx and
-// num_batch. A head of another width is scaled by its width; a drafter that
-// is not an assistant head (a model of its own) is priced as one more compute
-// reserve plus the batch's, as the target's compute is.
+// num_batch. A drafter that is not an assistant head (a model of its own) is
+// priced as one more compute reserve plus the batch's, as the target's
+// compute is.
 func drafterContextVRAM(d drafterInfo, numCtx, numBatch int) uint64 {
 	if numCtx <= 0 {
 		return 0
@@ -70,27 +74,40 @@ func drafterContextVRAM(d drafterInfo, numCtx, numBatch int) uint64 {
 	if !d.assistant {
 		return format.GibiByte + llm.LlamaServerBatchMemory(batch)
 	}
+	if m, ok := llm.DraftHeadContext(d.path); ok && m.NumBatch > 0 && m.Context > 0 {
+		c := m.Context * uint64(batch) / uint64(m.NumBatch)
+		if m.NumCtx > 0 && numCtx > m.NumCtx {
+			c = c * uint64(numCtx) / uint64(m.NumCtx)
+		}
+		return c
+	}
 	width := d.width
 	if width == 0 {
 		width = draftHeadMeasuredWidth
 	}
-	at := draftHeadBase + draftHeadPerRow*uint64(batch)
-	return at * uint64(numCtx) / draftHeadMeasuredCtx * width / draftHeadMeasuredWidth
+	scale := min(max(uint64(numCtx)/draftHeadCurveCtx, 1), draftHeadCurveMaxScale)
+	return draftHeadPer512Rows * uint64(batch) / 512 * scale * width / draftHeadMeasuredWidth
 }
 
-// attachedVRAM is what the opencoti prediction leaves out at this num_batch:
-// the drafter's file and context, and the projectors' files. opencoti loads a
-// projector at the first image; it is counted at load so that image has room
-// on the card instead of going to the CPU.
+// attachedVRAM is what the opencoti prediction leaves out and the engine
+// allocates at load: an attached drafter's file and its draft context.
 func attachedVRAM(m *Model, numCtx, numBatch int) uint64 {
+	if m == nil || m.DraftPath == "" || llamaServerConfigForModel(m).DraftOff {
+		return 0
+	}
+	d := drafterOf(m.DraftPath)
+	return d.size + drafterContextVRAM(d, numCtx, numBatch)
+}
+
+// projectorVRAM is the projectors' files. opencoti loads a projector at the
+// first image, not at load, so it is not part of the load's prediction
+// (placement and eviction); it is headroom the automatic num_batch keeps, so
+// that image finds room on the card instead of going to the CPU (mail #2308).
+func projectorVRAM(m *Model) uint64 {
 	if m == nil {
 		return 0
 	}
 	var total uint64
-	if m.DraftPath != "" && !llamaServerConfigForModel(m).DraftOff {
-		d := drafterOf(m.DraftPath)
-		total += d.size + drafterContextVRAM(d, numCtx, numBatch)
-	}
 	for _, p := range m.ProjectorPaths {
 		if st, err := os.Stat(p); err == nil {
 			total += uint64(st.Size())
@@ -125,16 +142,19 @@ func attachedBatch(req *LlmRequest, numBatch int) int {
 }
 
 // drafterAwareBatch steps an automatic num_batch down until the batch fits
-// with the drafter's share counted too (mail #2308). It runs after upstream's
-// choice, only for an automatic batch on an opencoti load with a drafter.
+// with what is attached counted too: the drafter's share of the batch and
+// the projector's headroom (mail #2308). It runs after upstream's choice,
+// only for an automatic batch on an opencoti load with a drafter or a
+// projector.
 func (req *LlmRequest) drafterAwareBatch(numCtx int, predicted, available uint64, gpus []ml.DeviceInfo) {
-	if !req.numBatchAuto || req.model == nil || req.model.DraftPath == "" ||
+	if !req.numBatchAuto || req.model == nil || (req.model.DraftPath == "" && len(req.model.ProjectorPaths) == 0) ||
 		!llm.EveryGroupOnOpencoti(llamaServerConfigForModel(req.model), gpus) {
 		return
 	}
 	at := llamaServerGenerationBatchDefault
+	headroom := projectorVRAM(req.model)
 	for req.opts.NumBatch > at &&
-		!generationBatchFits(req.opts.NumBatch, predicted+drafterBatchVRAM(req.model, numCtx, at, req.opts.NumBatch, gpus), available) {
+		!generationBatchFits(req.opts.NumBatch, predicted+headroom+drafterBatchVRAM(req.model, numCtx, at, req.opts.NumBatch, gpus), available) {
 		req.opts.NumBatch = nextLowerGenerationBatch(req.opts.NumBatch)
 	}
 }

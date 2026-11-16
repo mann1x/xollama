@@ -6,8 +6,11 @@ paths:
   - server/xollama_batch_unknown_test.go
   - server/xollama_attached_vram.go
   - server/xollama_attached_vram_test.go
+  - llm/engine_draft_head.go
+  - llm/engine_draft_head_test.go
   - llm/engine_vram_estimate.go
   - llm/engine_vram_estimate_test.go
+  - llm/llama_server.go
   - server/sched.go
   - docs/features/device-selection.md
 ---
@@ -41,16 +44,24 @@ paths:
   1 GiB reserve. The reserve is a
   constant fitted to two loads, not derived.
 - **What is attached to the model is priced too** (`attached-vram` hook,
-  `server/xollama_attached_vram.go`): `predictVRAM` adds `attachedVRAM` (an
-  assistant drafter's file and draft context, the projectors' files), `load`
+  `server/xollama_attached_vram.go`, `llm/engine_draft_head.go`): `predictVRAM`
+  adds `attachedVRAM` (an attached drafter's file and draft context), `load`
   adds `drafterBatchVRAM(...)` to `predictedForLoad`, and
   `req.drafterAwareBatch(...)` (after `batch-unknown-memory`) steps the
-  automatic `num_batch` down until the drafter's share fits. The draft context
-  is measured (26B-A4B head on eleven2go: 862 MiB plus 2.05 MiB per batch row
-  at num_ctx 256000), scaled by context and head width. Without it an IQ2 got
-  2048 and the Q4_K_M 1024 (mail #2308). Stock llama.cpp keeps upstream's
-  numbers. Guards: `TestTheLighterQuantDoesNotGetTheBiggerBatch`,
-  `TestStockEngineBatchIsUpstreams`, `TestDraftHeadContextMatchesTheMeasurement`.
+  automatic `num_batch` down until the drafter's share and `projectorVRAM`
+  fit. The projectors (opencoti loads them at the first image) are headroom
+  for the batch only, never in the prediction that places and evicts. The
+  draft context is priced from the engine's own last report for that drafter
+  (`w.noteDraftHead(line)` first in `parseLineLocked`, `llm/llama_server.go`;
+  `llm.DraftHeadContext`, keyed by blob name), scaled to the batch and to a
+  longer context; before a report, the solidPC curve (75 MiB per 512 batch
+  rows at num_ctx 32768, up to four times). The same head took 76 to 430 MiB
+  on solidPC and 2338/4424 MiB on eleven2go: no fixed formula holds. Without
+  it an IQ2 got 2048 and the Q4_K_M 1024 (mail #2308). Stock llama.cpp keeps
+  upstream's numbers. Guards: `TestTheLighterQuantStaysLighter`,
+  `TestTheEnginesHeadReportIsRecorded`, `TestDraftHeadContextBeforeAReport`,
+  `TestDraftHeadContextFromTheEnginesReport`,
+  `TestTheProjectorIsNotInTheLoadPrediction`, `TestStockEngineBatchIsUpstreams`.
 - **A stated `kv.pool_cells` is priced as launched** (`pool-cells` hook):
   `predictVRAM` passes its context through `llm.PoolCellsFor`
   (`llm/engine_pool_cells.go`), the same `-c` the opencoti launch gets; a load
