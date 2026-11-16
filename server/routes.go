@@ -2566,7 +2566,7 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.HEAD(api.XollamaIdentityPath, XollamaIdentityHandler)
 	r.GET(api.XollamaIdentityPath, XollamaIdentityHandler)
 	// xollama-hook: device-select — see docs/features/device-selection.md
-	r.GET(api.XollamaDevicesPath, XollamaDevicesHandler)
+	r.GET(api.XollamaDevicesPath, s.XollamaDevicesHandler)
 	// xollama-hook: system-telemetry — see docs/xollama/system.mdx
 	r.GET(api.XollamaSystemPath, s.SystemHandler)
 	r.POST(api.XollamaAPIKeyPath, s.APIKeyHandler) // xollama-hook: api-key

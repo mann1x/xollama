@@ -29,9 +29,8 @@ paths:
   `deviceMu`); `settleStaleFree` puts a device no listing and no loaded
   runner measured back to the last listed value, at Warn — only when the
   caller passed its runners (`runners != nil`: the scheduler, whose list is
-  empty, never nil, with nothing loaded). The devices route, the link probe
-  and the startup log pass nil; settling for them showed a loaded model's
-  card as empty in the table. Guards:
+  empty, never nil, with nothing loaded). The link probe and the startup log
+  pass nil and put nothing back. Guards:
   `TestARunnersFreeMemoryDoesNotOutliveTheRunner`,
   `TestACallerThatDoesNotKnowTheRunnersPutsNothingBack`,
   `TestTheRefreshSettlesStaleFreeMemory`.
@@ -46,6 +45,12 @@ paths:
   Guards: `TestDeleteHandlerUnloadsTheModel`,
   `TestDeleteOfABusyModelUnloadsWhenTheRequestEnds`,
   `TestUnloadByANameNoLongerOnDisk`, `TestStockEngineDeleteDoesNotUnload`.
+- **The device table asks the loaded runners** (`device-select` route,
+  `s.XollamaDevicesHandler` → `loadedRunners` in `server/identity.go`).
+  Discovery is a cache the scheduler refreshes before a load and at an
+  unload; without the runners the table showed a card's free memory from
+  before the model loaded (eleven2go 3090: 22.8 GiB free under 15.1 GiB).
+  Guard: `TestTheDevicesRouteAsksTheLoadedRunners`.
 - Registry rows `free-at-load`, `stale-free`, `delete-unload` in
   `docs/protocols/UPSTREAM-SYNC.md`; prose in
   `docs/features/device-selection.md`.
