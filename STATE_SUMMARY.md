@@ -3174,8 +3174,9 @@ error" of `mtp-vision-Q6_K` is fixed (bug-4364, #2313), an assistant drafter
 head's draft context no longer grows with the batch (#2311; 6 / 20 MiB at
 32768 / 256000, priced so by `attached-vram`), and Ripple (`ricursive`) and
 `xing4_0` run on opencoti again. The base is unchanged: upstream v0.40.16, the
-fork's `v0.40.16-thinkbudget`, llama.cpp b12177. It is deployed on eleven2go
-and solidPC only after the owner's word (both run `v0.40.16-xollama`). Open:
+fork's `v0.40.16-thinkbudget`, llama.cpp b12177. eleven2go runs it (the G8
+install, then the published update installer at G12); solidPC's
+`ollama.service` stays on `v0.40.16-xollama` until the owner says. Open:
 the Ripple parser's tool and thinking tags (fork mail #2316), backup_models'
 IQ2 re-runs (around 2026-11-17), upstream v0.40.17-rc0. Every release's gates
 are picked by the impact analysis (RELEASE.md rule 8); xollama follows the
