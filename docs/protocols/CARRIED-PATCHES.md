@@ -27,6 +27,42 @@ first if a patch looks missing or out of date.
    other row in this file keys on the PR number, and these cannot. They are
    listed apart, below.
 
+**Status as of 2026-11-16: the set moved to upstream v0.40.16 (31 patches, same set and `patches[]` order).** Manifest at think-budget `98bfffd6` (`base: v0.40.16`, `integration.sha cd271b4a`, release `v0.40.16-thinkbudget` @ `98230d3c`, run 42766495754; fork bump #2258, after #2254). Upstream v0.40.16 is eight commits over v0.40.15 (63 files): llama.cpp b12111 -> b12177 (#19576; adds the `ricursive` and `xing4_0` architectures, routed to stock llama-server in `llm/engine/arch.go`), Ripple on the MLX runner with its renderer and parser (#19592), a memory-efficient Qwen3.8 Flash Next on MLX (#18078), CUDA 13.5 and SM 103 for Windows ARM64 (#19580), Claude Code launch routing and retired-model errors (#19587), `/v1/models` as an empty array with no models (#19539) and the Responses `truncation` option forwarded (#19501); MLX and MLX-C unchanged (the archives rebuilt). Consumed on branch `sync/upstream-v0.40.16`: the upstream tag merge `4d5950d92` (one conflict, `README.md`, ours kept), then the 31 patches at the shas below, each its own `--no-ff` merge in `patches[]` order. Every merge left the tree unchanged except under `llama/compat/` (the fork's `004-reasoning-budget-line-boundary.patch` rebased onto b12177, and the README, from `up-compat-readme` last); a conflicted file was resolved to ours only where `HEAD` already held every line the patch adds, or where the patch's diff equals its `63f9b25c` version already merged (`gemma4-toolcall-in-thinking`, `up-modelfile-roundtrip`, `up-llama-server-memory-lines`: later patches rework those lines). The llama inputs digest (README excluded) is `0f703af1`, the fork's at `98230d3c`.
+
+| PR | branch | manifest sha | v0.40.16 merge |
+|---|---|---|---|
+| #17563 | `up-repeat-guard` | `f03b6afa` | `d6b1a82a3` |
+| #17564 | `up-truncated-tool-calls` | `0a7de948` | `0ddca0561` |
+| #17565 | `up-gemma4-object-close` | `dee267f7` | `112d6ee89` |
+| #17566 | `up-think-budget` | `735ff2f9` | `781f98fc3` |
+| #17567 | `up-mlx-libdl` | `1e1e9ff0` | `96374dcee` |
+| #17626 | `up-gemma4-stray-channel-name` | `361c374d` | `37d722b2f` |
+| #17914 | `qwen3coder-tolerate-malformed-tool-calls` | `05c827ea` | `230f41c5a` |
+| #18212 | `up-reasoning-budget-line-boundary` | `88b48f10` | `ffa92a2c1` |
+| #18281 | `up-native-thinking-replay` | `7a43f76d` | `3d81b2cc9` |
+| #18288 | `up-gemma4-stray-closer` | `6f85a226` | `6ef8f6c19` |
+| #18289 | `up-jinja-runner-reuse` | `e5cd019a` | `ee4f9a26e` |
+| fork-only | `gemma4-toolcall-in-thinking` | `d5efae27` | `2104f889b` |
+| #18624 | `qwen35-toolcall-in-thinking` | `11ddc230` | `cf1340d4e` |
+| fork-only | `up-gemma4-unparsed-tool-call-content` | `aaac0154` | `e2f57664f` |
+| fork-only | `up-toolcall-tags` | `10f12bf8` | `19d021687` |
+| fork-only | `up-codex-request-count-mtime` | `4588f515` | `dbcc4ad09` |
+| fork-only | `up-fileutil-root-permission-tests` | `497a4266` | `cc139b39e` |
+| fork-only | `up-gofmt-vision-test-data` | `42cd1422` | `138d01a6f` |
+| fork-only | `up-integration-goroutine-fatal` | `2efc75a4` | `c5dbecfdb` |
+| fork-only | `up-lfm2-think-off-discard` | `74ab473a` | `b3767d663` |
+| fork-only | `up-gemma4-assistant-shape` | `5786a814` | `87d6ee21d` |
+| fork-only | `up-gemma4-swallowed-key` | `73add712` | `84992ba6c` |
+| fork-only | `up-response-scope-think-budget` | `503597b9` | `ddd678e71` |
+| fork-only | `up-modelfile-roundtrip` | `a07d7339` | `5aaa76904` |
+| fork-only | `up-qwen35-empty-think-history` | `6ad1078b` | `570dcc1ca` |
+| fork-only | `up-mlxrunner-manifest-list` | `eb9f6374` | `68ef054ba` |
+| fork-only | `up-gemma4-channel-in-thinking` | `aef140aa` | `853f8d54b` |
+| fork-only | `up-llama-server-memory-lines` | `291bb24a` | `0c116ce9f` |
+| fork-only | `up-qwen-unclosed-tool-call` | `929c4d7e` | `5c1282035` |
+| fork-only | `up-completion-generation-prompt` | `7193def7` | `c16d71d6d` |
+| fork-only | `up-compat-readme` | `9d882631` | `5808bed29` |
+
 **Status as of 2026-11-06: the set moved to upstream v0.40.15 (31 patches, same set and `patches[]` order).** Manifest at think-budget `63f9b25c` (`base: v0.40.15`, `integration.sha 43366fa5`, release `v0.40.15-thinkbudget` @ `920a136b`, run 42183570899; fork notice #2171, bump #2173). Upstream v0.40.15 is twelve commits over v0.40.14 (73 files): llama.cpp b11963 -> b12111 (#19530, which also drops `llama/compat/002-metal-unary-cast-constexpr.patch` and reads the new `layer input` and `rotation` buffer lines), parallel requests for the ollama#4165 architectures (#19545), MLX 065ec468 -> 54a70511 with unsupported CUDA devices refused (#19521) and bundled CUDA libraries loaded in-process on Linux (#19433), Qwen3/Qwen3.5 YaRN on MLX (#19231), the AutoTrust decision model on MLX (#19399), a MiMo V2.6 renderer (#19400), the no-argument launcher restored (#19478), Kimi Code (#19506), Pi model catalog (#19460), Claude Desktop gateway names (#19533) and an MLX cache close on shutdown (#19550); MLX-C unchanged. Consumed on branch `sync/upstream-v0.40.15`: the upstream tag merge `d9c6cfc1d`, then the 31 patches at the shas below, each its own `--no-ff` merge in `patches[]` order. The upstream merge conflicted in `llm/llama_server.go` (the two new buffer kinds added to our `memory-scrape` regex; the doc comment keeps both, upstream's example lines first, as the fork resolved it) and `server/sched.go` (#19545 deleted the deny-list our `launch-config` hook only lifted on opencoti; the exemption was retired with it, see `.claude/rules/dynamic-slots.md`). Every patch is the same change as in the v0.40.14 manifest (only rebased), so the seventeen patch merges that conflicted all resolved to dev's side and the 31 merges leave the tree unchanged (`git diff 3cdf1106b` after them is empty). Proof: for each of the 90 files the integration changes, xollama's sorted added and removed lines against `43366fa5` equal those against `9dda2928` before the sync, except the four files of the deny-list retirement and regex above (`llm/llama_server.go`, `llm/server.go`, `server/routes.go`, `server/sched.go`), whose differences are exactly those changes. Three new upstream test files set `OLLAMA_HOST` and were pointed at `XOLLAMA_HOST` (`3cdf1106b`, bug-292 again). LLAMA_CPP_VERSION b11963 -> b12111, so the inputs digest moves `e9d0e2a1` -> `839000ff`, equal to the fork's; `check-compat-origin` 0 bad; `check-engine-archs` finds four new architectures, routed to stock (`7dc76985f`).
 
 | PR | branch | manifest sha | v0.40.15 merge |
