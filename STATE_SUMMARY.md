@@ -5,6 +5,8 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-11-16 — released `v0.40.16-xollama.1` on opencoti c14 r16 (owner: "go ahead with .1").** PR #67 (head `288686881`, dry run 43929833321, payload `b1ba3c82`), merge `9e95a26a1`, release run 43948925111, promoted Latest, Discord posted, `:latest` = `:0.40.16-xollama.1` (Docker Hub `5fa323be`, GHCR `c7dee648`). Every gate the analysis named passed (rows in `docs/protocols/VALIDATION.md`): G1 (64 hooks, 0 lint issues), G2 (the macOS race leg re-run once, never acquired a hosted runner), G3 opencoti 77.3 / 679 / 3.66 and stock 77.8 / 612 / 3.14, G4, G5 (four `kv3-384k` runs, `kv3-nopolykv`, `omni-council-idle`), G6, G7 (RADV 39.7 to 40.2), G8 (3090 124.3, 9070 XT 102.7, iGPU 5.4, speech, sfx, install and update), G10 (amd64 85.6 to 86.3, arm64 10.9 to 11.2), G11 (notarized, MLX), G12. Targeted: the #2313 call 256 tokens, 0 compute errors; the head 432 / 446 MiB at 32768 / 256000 on solidPC and on eleven2go's Windows 3090 (r15 there: 2338 / 4424 MiB), `mtp-vision-Q4_K_M` 188 / 197 tok/s with the drafter; Ripple and xing4_0 on opencoti, 256 tokens each. Still open, outside this cut: the Ripple parser's tool and thinking tags (fork mail #2316); backup_models' IQ2 re-runs (around 2026-11-17); upstream v0.40.17-rc0.
+
 > **2026-11-16 — impact analysis of `v0.40.16-xollama.1` on c14 r16 (owner: "go ahead with .1").** Written before any gate. Security check: Dependabot 112 open (2 new, both medium npm alerts in `app/ui/app/package-lock.json`, from upstream's lock: `lodash-es` runtime, `minimatch` development), govulncheck 0 reachable on go1.26.11. Diff against the released `v0.40.16-xollama` (`84b903ccc`): records, `llm/engine/pin/*`, `llm/engine/arch.go` (comment), `server/xollama_attached_vram.go` + test, `llm/engine_draft_head.go` (comment), docs and rules.
 > - **The pin** (row "the engine pin"; `1074679a1`). Index `c00dc61e`, pins `b5895dd8`, payload `5a44b46a`, tag `llamafile-v0.10.5+opencoti.c14-r16`, engine `2611161751001` (bare `e4f34a99`); all seven pins sha-verified against opencoti's index; every library and media are r15's files (pins moved only in rev, `gated-with` and BUILD_INFO text); 87 feature rows (+`arch_ricursive_v1`, `arch_xing4_0_v1`). Only the engine moved, on every platform. Content: 0851 (#2311, the head's draft context at max(32, drafting sequences) rows), 0852 (#2313, a first ubatch of exactly 32 rows allocated a 400 MiB spare-lane buffer: "Compute error" at the first decode; bug-4367, the next decode no longer aborts), 0853 (the head's device line: `using device` once), 0854 (ricursive and xing4_0 served, so `archEngine` sends them to opencoti again). Gates: G1, G2, G12 (always); G3, G4 (every load; the off-path control); G5 (the engine moved); G6 (the media engine is the same binary); G7 (Linux Vulkan through the image); G8 (Windows engine, with the head's report on eleven2go, where r15 took 2338/4424 MiB); G10 amd64 and arm64; G11 (macOS engine). Not run: G9 (`app/`, installer scripts and runtime untouched; the draft's installer runs in G8).
 > - **The head estimate** (rows `llm/`, `server/sched.go`; `2ae4460eb`, hook `attached-vram`). r16's draft context does not grow with the batch: measured before the analysis on solidPC (3090, the dev binary on r16, `mtp-vision-Q4_K_M`): 6 MiB at num_ctx 32768 and 20 at 256000, at num_batch 512 and 2048 alike (r15: 76 to 430). The estimate priced it linear in the batch (300 to 1200 MiB before a report), so it now takes a report at any batch, scaled to a longer context only, and 5 MiB plus 2 per 32768 before a report. Gates: G3, G4, G8 (already named).
@@ -3166,26 +3168,18 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
 ## Where we are
 
-`v0.40.11-xollama.1` is the latest release (promoted Latest 2026-10-27).
-It is `v0.40.11-xollama` plus Windows CUDA 12: cuda12 `2610270912001` carries
-`ggml-cuda-cu12-x86_64.dll`, and routing looks the CUDA 12 library up per
-platform, so a Maxwell/Pascal/Volta card on Windows loads on CUDA 12 instead of
-crashing on CUDA 13 (GTX 1070 on zns: 87.9 tok/s). The base is unchanged:
-upstream v0.40.11, the fork's `v0.40.11-thinkbudget` (31
-carried patches), llama.cpp b11845, MLX `bebd6422`, and opencoti c13 r6
-(`2610182159001`). New in `v0.40.11-xollama`: `kv.pool_cells`, the per-model KV report in
-`GET /api/xollama/system`, and the Windows GPU metrics sidecar in both
-installers. Its gates were picked by the impact analysis, now the rule for every
-release (RELEASE.md rule 8). xollama follows the fork to every new upstream with
-a release; the next re-release on this base is `v0.40.11-xollama.2`, on the
-owner's word. opencoti's op-296 (KV pools refused at runtime instead of
-spilled to host) is planned for c14. The engine's four-slot admission bug (bug-4143) is fixed
-in an opencoti dev build, not pinned yet. It carries generation notices v2 and
-v3 with per-model templates, `num_ctx_hold`, the gemma4 re-opened channel fix
-(`up-gemma4-channel-in-thinking`), the batch kept at 512 on unread memory, the
-shared-store anchor, the template-swallowed refusal and the Qwen3.5 tool-path
-fix. Next: opencoti c14, the c12 readers, the realtime proxy. The Agentic
-Council Chat is in Phase 11.
+`v0.40.16-xollama.1` is the latest release (promoted Latest 2026-11-16). It is
+`v0.40.16-xollama` on opencoti c14 r16 (`2611161751001`): the 256k "Compute
+error" of `mtp-vision-Q6_K` is fixed (bug-4364, #2313), an assistant drafter
+head's draft context no longer grows with the batch (#2311; 6 / 20 MiB at
+32768 / 256000, priced so by `attached-vram`), and Ripple (`ricursive`) and
+`xing4_0` run on opencoti again. The base is unchanged: upstream v0.40.16, the
+fork's `v0.40.16-thinkbudget`, llama.cpp b12177. It is deployed on eleven2go
+and solidPC only after the owner's word (both run `v0.40.16-xollama`). Open:
+the Ripple parser's tool and thinking tags (fork mail #2316), backup_models'
+IQ2 re-runs (around 2026-11-17), upstream v0.40.17-rc0. Every release's gates
+are picked by the impact analysis (RELEASE.md rule 8); xollama follows the
+fork to every new upstream with a release.
 
 ## What exists today
 
