@@ -373,6 +373,9 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
+			if s.unloadOrphan(c, req.Model, req.KeepAlive, req.Prompt == "") { // xollama-hook: delete-unload
+				return
+			}
 			c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("model '%s' not found", req.Model)})
 		case errors.Is(err, manifest.ErrNoCompatibleManifest):
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1877,6 +1880,8 @@ func (s *Server) DeleteHandler(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("model '%s' not found", cmp.Or(r.Model, r.Name))})
 		return
 	}
+
+	s.unloadBeforeDelete(n) // xollama-hook: delete-unload
 
 	removed, err := manifest.RemoveNamed(n)
 	if err != nil {
@@ -3461,6 +3466,9 @@ func (s *Server) ChatHandler(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, os.ErrNotExist):
+			if s.unloadOrphan(c, req.Model, req.KeepAlive, len(req.Messages) == 0) { // xollama-hook: delete-unload
+				return
+			}
 			c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("model '%s' not found", req.Model)})
 		case errors.Is(err, manifest.ErrNoCompatibleManifest):
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

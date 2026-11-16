@@ -625,6 +625,7 @@ func (s *Scheduler) load(req *LlmRequest, systemInfo ml.SystemInfo, gpus []ml.De
 			var batchMemory uint64
 			launchOpts.NumBatch, batchMemory = llm.LlamaServerBatch(f, launchOpts, completion)
 			predictedForLoad := predicted + batchMemory
+			predictedForLoad += drafterBatchVRAM(req.model, predictedCtx, attachedBatch(req, launchOpts.NumBatch), launchOpts.NumBatch, loadGpus) // xollama-hook: attached-vram
 
 			// Pre-flight check: estimate whether the model fits in remaining memory.
 			// llama-server auto-detects layers based on available VRAM, so if
@@ -659,7 +660,7 @@ func (s *Scheduler) load(req *LlmRequest, systemInfo ml.SystemInfo, gpus []ml.De
 
 			config := llamaServerConfigForModel(req.model)
 			config.ContextShift = req.contextShift
-			logModelLoad(req.model, f, loadGpus, launchOpts, numParallel, predictedForLoad) // xollama-hook: load-log
+			logModelLoad(req.model, f, loadGpus, launchOpts, numParallel, predictedForLoad, req.numBatchAuto) // xollama-hook: load-log
 			llama, err = s.newServerFn(systemInfo, loadGpus, req.model.ModelPath, f, req.model.AdapterPaths, req.model.ProjectorPaths, launchOpts, numParallel, config)
 			if err != nil {
 				// some older models are not compatible with newer versions of llama.cpp
@@ -834,6 +835,7 @@ iGPUScan:
 			return
 		}
 		slog.Debug("finished setting up", "runner", runner)
+		logPredictionMiss(req.model, llama) // xollama-hook: load-log
 		if runner.pid < 0 {
 			runner.pid = llama.Pid()
 		}
@@ -938,6 +940,7 @@ func (req *LlmRequest) applyAutomaticGenerationBatch(completion bool, effectiveC
 
 	req.opts.NumBatch = automaticGenerationBatch(effectiveCtx, predictedVRAM, availableMemory, flashAttention, gpus)
 	req.opts.NumBatch = batchForUnknownMemory(req, req.opts.NumBatch, availableMemory, gpus) // xollama-hook: batch-unknown-memory
+	req.drafterAwareBatch(effectiveCtx, predictedVRAM, availableMemory, gpus)                // xollama-hook: attached-vram
 }
 
 func automaticGenerationBatch(effectiveCtx int, predictedVRAM, availableMemory uint64, flashAttention ml.FlashAttentionType, gpus []ml.DeviceInfo) int {

@@ -56,7 +56,7 @@ func TestALoadIsLoggedByTheModelsName(t *testing.T) {
 	opts.NumCtx, opts.NumBatch = 32768, 512
 	gpus := []ml.DeviceInfo{{DeviceID: ml.DeviceID{Library: "CUDA", ID: "0"}, Description: "NVIDIA GeForce RTX 3090"}}
 
-	lines := modelLoadLog(m, f, gpus, opts, 2, 20<<30)
+	lines := modelLoadLog(m, f, gpus, opts, 2, 20<<30, true)
 	if len(lines) != 3 {
 		t.Fatalf("got %d lines, want 3", len(lines))
 	}
@@ -88,7 +88,7 @@ func TestALoadIsLoggedByTheModelsName(t *testing.T) {
 // Without a parsed file there is still a name and a placement, and a CPU load
 // says so rather than listing nothing.
 func TestALoadWithoutAFileStillNamesTheModel(t *testing.T) {
-	lines := modelLoadLog(&Model{Name: "x:latest", ModelPath: "/b/sha256-9"}, nil, nil, api.DefaultOptions(), 1, 0)
+	lines := modelLoadLog(&Model{Name: "x:latest", ModelPath: "/b/sha256-9"}, nil, nil, api.DefaultOptions(), 1, 0, false)
 	if len(lines) != 2 || attrs(lines[0])["model"] != "x:latest" || attrs(lines[1])["devices"] != "cpu" {
 		t.Fatalf("lines = %+v", lines)
 	}

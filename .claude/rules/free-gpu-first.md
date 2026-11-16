@@ -4,6 +4,8 @@ paths:
   - server/evict_last_test.go
   - server/xollama_batch_unknown.go
   - server/xollama_batch_unknown_test.go
+  - server/xollama_attached_vram.go
+  - server/xollama_attached_vram_test.go
   - llm/engine_vram_estimate.go
   - llm/engine_vram_estimate_test.go
   - server/sched.go
@@ -38,6 +40,17 @@ paths:
   one row per sequence, times `1 + draftDepth` with a built-in drafter), and a
   1 GiB reserve. The reserve is a
   constant fitted to two loads, not derived.
+- **What is attached to the model is priced too** (`attached-vram` hook,
+  `server/xollama_attached_vram.go`): `predictVRAM` adds `attachedVRAM` (an
+  assistant drafter's file and draft context, the projectors' files), `load`
+  adds `drafterBatchVRAM(...)` to `predictedForLoad`, and
+  `req.drafterAwareBatch(...)` (after `batch-unknown-memory`) steps the
+  automatic `num_batch` down until the drafter's share fits. The draft context
+  is measured (26B-A4B head on eleven2go: 862 MiB plus 2.05 MiB per batch row
+  at num_ctx 256000), scaled by context and head width. Without it an IQ2 got
+  2048 and the Q4_K_M 1024 (mail #2308). Stock llama.cpp keeps upstream's
+  numbers. Guards: `TestTheLighterQuantDoesNotGetTheBiggerBatch`,
+  `TestStockEngineBatchIsUpstreams`, `TestDraftHeadContextMatchesTheMeasurement`.
 - **A stated `kv.pool_cells` is priced as launched** (`pool-cells` hook):
   `predictVRAM` passes its context through `llm.PoolCellsFor`
   (`llm/engine_pool_cells.go`), the same `-c` the opencoti launch gets; a load

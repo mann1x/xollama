@@ -234,6 +234,25 @@ for `2609242056001` states no `accel` rows at all — it lists its payload set i
 a header comment — and keying on those rows alone would have made the pin
 accelerate nothing while the engine sat there holding a working Vulkan payload.
 
+## Free memory a runner reports, and after it is gone
+
+While a model is loaded, a refresh takes the free memory of its GPUs from the
+runner itself: what the card had free when the engine started, minus what the
+runner uses. "When the engine started" is the first `using device <dev> (...) -
+N MiB free` line of the engine process. A load with an assistant drafter prints
+that line a second time, after the target is already on the card (22089 then
+6875 MiB on a 3090). Keeping the last one made the runner report 0 free, and
+discovery wrote the 0 into its device table. The 3090 then read as full, and
+every load went to the 9070 XT until the server was restarted (eleven2go,
+2026-11-16; `free-at-load` hook, `llm/engine_free_at_load.go`).
+
+A runner's number is true only while that runner is loaded. When a refresh can
+measure a device neither through a listing nor through a loaded runner, the
+device goes back to the last value a listing measured, logged at Warn
+(`stale-free` hook, `discover/refresh_stale.go`). Before this, a runner's value
+stayed in the table after its runner unloaded, for as long as no listing reached
+the card.
+
 ## One GPU, two backends
 
 A 3090 is both a CUDA and a Vulkan device. Upstream's discovery keeps one

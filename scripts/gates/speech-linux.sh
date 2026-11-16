@@ -11,6 +11,7 @@ ss -ltn | grep -q '127.0.0.1:22498 ' && { echo "22498 busy"; exit 1; }
 for i in $(seq 120); do curl -s --max-time 2 $H/api/version >/dev/null && break; sleep 0.5; done
 grep -m1 "stage-engine: engine" serve.log
 T="The first ship came in at dawn."
+bad=0 # a non-200 fails the gate (bug-352: it printed SPEECH-DONE at 7/8)
 say() { # model voice outfile
   local body="{\"model\":\"$1\",\"input\":\"$T\"${2:+,\"voice\":\"$2\"}}"
   local s=$(date +%s.%N)
@@ -19,6 +20,7 @@ say() { # model voice outfile
   local kind=$(file -b out/$3 | cut -c1-40)
   local txt=$(curl -s $H/v1/audio/transcriptions -F model=mannix/whisper:large-v3-turbo -F file=@out/$3 | python3 -c 'import sys,json; print(json.load(sys.stdin).get("text","?").strip())' 2>&1)
   printf '%s voice=%s http=%s %.1fs [%s] -> %s\n' "$1" "${2:-default}" "$code" "$(echo "$e - $s" | bc)" "$kind" "$txt"
+  [ "$code" = 200 ] || bad=$((bad+1))
 }
 say mannix/kokoro:82m "" kokoro.mp3
 say mannix/kokoro:82m nova kokoro_nova.mp3
@@ -33,4 +35,5 @@ grep -a -m1 "opencoti build" serve.log | cut -c1-160
 # listing was complete when its caller stopped waiting (see image-x86.sh).
 grep -a -i "signal: \\|unexpectedly\\|panic" serve.log | grep -a -v 'stopped as asked\|free-memory refresh" .*refreshed=[1-9]\|refresh cut short by its caller' | grep -c "" | sed 's/^/crash lines: /'
 P=$(ss -ltnp | grep '127.0.0.1:22498 ' | sed -n 's/.*pid=\([0-9]*\).*/\1/p'); [ -n "$P" ] && kill $P
+[ "$bad" -eq 0 ] || { echo "SPEECH-FAIL: $bad request(s) did not return 200"; exit 1; }
 echo SPEECH-DONE

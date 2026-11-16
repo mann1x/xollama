@@ -3779,7 +3779,7 @@ func (w *memoryParsingWriter) parseLineLocked(line []byte) {
 	if match := deviceFreeRegex.FindSubmatch(line); match != nil {
 		devName := string(match[1])
 		if mib, err := strconv.ParseUint(string(match[2]), 10, 64); err == nil {
-			w.runner.systemFreeAtLoad[devName] = mib * 1024 * 1024
+			recordFreeAtLoad(w.runner.systemFreeAtLoad, devName, mib*1024*1024) // xollama-hook: free-at-load
 		}
 	}
 	if match := offloadedLayersRegex.FindSubmatch(line); match != nil {
