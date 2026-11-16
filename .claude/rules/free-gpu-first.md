@@ -53,10 +53,13 @@ paths:
   for the batch only, never in the prediction that places and evicts. The
   draft context is priced from the engine's own last report for that drafter
   (`w.noteDraftHead(line)` first in `parseLineLocked`, `llm/llama_server.go`;
-  `llm.DraftHeadContext`, keyed by blob name), scaled to the batch and to a
-  longer context; before a report, the solidPC curve (75 MiB per 512 batch
-  rows at num_ctx 32768, up to four times). The same head took 76 to 430 MiB
-  on solidPC and 2338/4424 MiB on eleven2go: no fixed formula holds. Without
+  `llm.DraftHeadContext`, keyed by blob name), scaled to a longer context
+  only; before a report, the solidPC line (5 MiB plus 2 per 32768 of
+  context). Since c14 r16 (0851, our #2311) the head's draft context has
+  max(32, drafting sequences) rows and does not grow with `num_batch`: 6 MiB
+  at 32768, 20 at 256000, at 512 and 2048 alike (solidPC 3090). Under r15 it
+  was the target's batch: 76 to 430 MiB on solidPC, 2338/4424 on eleven2go,
+  priced linear in the batch until `v0.40.16-xollama.1`. Without
   it an IQ2 got 2048 and the Q4_K_M 1024 (mail #2308). Stock llama.cpp keeps
   upstream's numbers. Guards: `TestTheLighterQuantStaysLighter`,
   `TestTheEnginesHeadReportIsRecorded`, `TestDraftHeadContextBeforeAReport`,

@@ -18,20 +18,20 @@ import (
 // (12.6 GB), because 2048 "fitted" (eleven2go, RTX 3090, num_ctx 256000,
 // mail #2308, 2026-11-16).
 
-// An assistant head's draft context depends on how the engine runs it on
-// the host, which is not known before the load (llm/engine_draft_head.go:
-// 76 to 430 MiB on solidPC, 2338 and 4424 MiB on eleven2go, same head). It is
-// priced from the engine's own last report for that drafter, scaled to the
-// batch (linear in both measurements) and to a longer context (linear, the
-// safe side). Before any report, the solidPC curve stands: 75 MiB per 512
-// batch rows at num_ctx 32768, growing with the context up to four times
-// (measured 2026-11-16, 26B-A4B head, 2816 wide; it over-states the large
-// batches at long context, 1200 MiB against 424 at 256000 and 2048).
+// An assistant head's draft context is priced from the engine's own last
+// report for that drafter (llm/engine_draft_head.go), scaled to a longer
+// context (linear, the safe side). Since c14 r16 (0851, bug-4363, our #2311)
+// the engine builds it with max(32, drafting sequences) rows instead of the
+// target's batch, so it does not grow with num_batch: 6 MiB at num_ctx 32768
+// and 20 at 256000, for num_batch 512 and 2048 alike (solidPC RTX 3090,
+// 26B-A4B head, 2816 wide, 2026-11-16). Under r15 it was 76 to 430 MiB on
+// solidPC and 2338 / 4424 on eleven2go, linear in the batch. Before any
+// report, that line stands: 5 MiB plus 2 per 32768 of context.
 const (
 	draftHeadMeasuredWidth = 2816
-	draftHeadPer512Rows    = 75 * format.MebiByte
+	draftHeadBase          = 5 * format.MebiByte
+	draftHeadPerCurveCtx   = 2 * format.MebiByte
 	draftHeadCurveCtx      = 32768
-	draftHeadCurveMaxScale = 4
 )
 
 type drafterInfo struct {
@@ -63,9 +63,9 @@ func drafterOf(path string) drafterInfo {
 }
 
 // drafterContextVRAM is an attached drafter's context at this num_ctx and
-// num_batch. A drafter that is not an assistant head (a model of its own) is
-// priced as one more compute reserve plus the batch's, as the target's
-// compute is.
+// num_batch. An assistant head's does not depend on the batch (c14 r16). A
+// drafter that is not an assistant head (a model of its own) is priced as one
+// more compute reserve plus the batch's, as the target's compute is.
 func drafterContextVRAM(d drafterInfo, numCtx, numBatch int) uint64 {
 	if numCtx <= 0 {
 		return 0
@@ -74,8 +74,8 @@ func drafterContextVRAM(d drafterInfo, numCtx, numBatch int) uint64 {
 	if !d.assistant {
 		return format.GibiByte + llm.LlamaServerBatchMemory(batch)
 	}
-	if m, ok := llm.DraftHeadContext(d.path); ok && m.NumBatch > 0 && m.Context > 0 {
-		c := m.Context * uint64(batch) / uint64(m.NumBatch)
+	if m, ok := llm.DraftHeadContext(d.path); ok && m.Context > 0 {
+		c := m.Context
 		if m.NumCtx > 0 && numCtx > m.NumCtx {
 			c = c * uint64(numCtx) / uint64(m.NumCtx)
 		}
@@ -85,8 +85,8 @@ func drafterContextVRAM(d drafterInfo, numCtx, numBatch int) uint64 {
 	if width == 0 {
 		width = draftHeadMeasuredWidth
 	}
-	scale := min(max(uint64(numCtx)/draftHeadCurveCtx, 1), draftHeadCurveMaxScale)
-	return draftHeadPer512Rows * uint64(batch) / 512 * scale * width / draftHeadMeasuredWidth
+	c := draftHeadBase + draftHeadPerCurveCtx*uint64(numCtx)/draftHeadCurveCtx
+	return c * width / draftHeadMeasuredWidth
 }
 
 // attachedVRAM is what the opencoti prediction leaves out and the engine

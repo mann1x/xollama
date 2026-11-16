@@ -15,7 +15,25 @@
 # Moving a component is one line here plus its pin file, on a MEASUREMENT
 # (scripts/phase2-engine-ab.py, as the `ollama` user), never on a changelog.
 #
-# THIS PIN (2026-11-10, opencoti mail #2255; index 10c17162, pins 72e1b4ef,
+# THIS PIN (2026-11-16, opencoti mails #2320, #2321; index c00dc61e, pins
+# b5895dd8, payload 5a44b46a): c14 r16, git tag llamafile-v0.10.5+opencoti.c14-r16,
+# an engine-only re-cut. Engine 2611161751001 (bare e4f34a99) = r15 + 0851
+# (bug-4363, our #2311: the assistant head's KV-less draft context was built
+# at the target's batch size; now max(32, drafting sequences) rows, 294 -> 20
+# MiB at -c 256000 for -b 512 and 2048) + 0852 (bug-4364, our #2313: a first
+# ubatch of exactly 32 rows, prompt = n_keep + 32 tokens, made a spare graph
+# lane copy a host-resident expert tensor into a 400 MiB compute buffer and
+# the first decode failed "Compute error"; the small-batch class now ends
+# below the offload batch; bug-4367: a failed compute-buffer allocation no
+# longer aborts the next decode) + 0853 (the head's device line reads
+# "assistant draft head on device ... left by the target"; "using device"
+# appears once) + 0854 (llama.cpp b12177's ricursive and xing4_0, features
+# arch_ricursive_v1 and arch_xing4_0_v1, so archEngine stops sending them to
+# stock llama-server). Every library and media are r15's files; their pins
+# moved only in rev, gated-with and BUILD_INFO text. 87 feature rows.
+# MEASURED: see STATE_SUMMARY.md, entry of this pin.
+#
+# THE c14 r15 PIN (2026-11-10, opencoti mail #2255; index 10c17162, pins 72e1b4ef,
 # payload 87a66207): c14 r15, git tag llamafile-v0.10.5+opencoti.c14-r15, an
 # engine-only re-cut. Engine 2611100546001 (bare 6ca3cad2) = r14 + 0850
 # (bug-4359, our #2244): a repeat of the same prompt, every token cached, was
@@ -336,10 +354,10 @@
 format   2
 channel  release
 tag      c14
-engine   pin/engine.txt  rev 72e1b4ef47574b913f06aa5b3bc2e9d19fd63964  sha256 65864084a56831ba058442efe68fa1254ab3c081b930a6034fd19294496b8f2d  version 2611100546001
-cuda     pin/cuda.txt  rev 72e1b4ef47574b913f06aa5b3bc2e9d19fd63964  sha256 3b5a0ab31d50e6ef4e2c3ba84746f4c356aa7c2d5e8a00c80d58db4cabb00370  version 2610311711001
-cuda12   pin/cuda12.txt  rev 72e1b4ef47574b913f06aa5b3bc2e9d19fd63964  sha256 19c2dcd304b528f983ae9c5591a91ed8ab1dbabbcbba7a2b745137d78156d4cc  version 2610311711002
-sbsa     pin/sbsa.txt  rev 72e1b4ef47574b913f06aa5b3bc2e9d19fd63964  sha256 9c3e4f78db8269bc4a51389083f3fbbb0e6896bdddc585e9276fe805de8d2cd7  version 2610311711003
-vulkan   pin/vulkan.txt  rev 72e1b4ef47574b913f06aa5b3bc2e9d19fd63964  sha256 29ad990a8448e1cd06eab642c9d53f254c92074a3d8762060b79a3bbf4b1e560  version 2611061722001
-macos    pin/macos.txt  rev 72e1b4ef47574b913f06aa5b3bc2e9d19fd63964  sha256 06b89e821cf96e62f9b3de9d21f0c3612df7b6cce6671a9f3f9eeaf985a510f1  version 2611061722002
-media    pin/media.txt  rev 72e1b4ef47574b913f06aa5b3bc2e9d19fd63964  sha256 38b8471b6db2f0fb7cb5e77eb7e70d50c12e4c2f6ab3ac8f4922508c959dbcb4  version 2611012031001
+engine   pin/engine.txt  rev b5895dd88048ef37557b9c2dee04eb3ead066aba  sha256 6201b4434c4c4fc32baf0308135dc02bd8d1c1f70b21492d25213cb53347642e  version 2611161751001
+cuda     pin/cuda.txt  rev b5895dd88048ef37557b9c2dee04eb3ead066aba  sha256 1579ce7accff0c6f19752197f50f18211fd2a2af1fac18674a2da88587cc74f9  version 2610311711001
+cuda12   pin/cuda12.txt  rev b5895dd88048ef37557b9c2dee04eb3ead066aba  sha256 712fac1f3cfd51105e18218dced1f879748c67dd054d13fb3627c28daf117fe0  version 2610311711002
+sbsa     pin/sbsa.txt  rev b5895dd88048ef37557b9c2dee04eb3ead066aba  sha256 b918f34caa4842b1485d199a21139343e440f0481e2fb9e7353fd5e5ec71c920  version 2610311711003
+vulkan   pin/vulkan.txt  rev b5895dd88048ef37557b9c2dee04eb3ead066aba  sha256 5f39cedc05a00c5b15aedb3d5d2ef306ee2ec4c6ef6c764f8cc7571580e507ba  version 2611061722001
+macos    pin/macos.txt  rev b5895dd88048ef37557b9c2dee04eb3ead066aba  sha256 82b9d7b3746222cb94e019ad301c7e160d7eb24508ac51ba37268156c180788b  version 2611061722002
+media    pin/media.txt  rev b5895dd88048ef37557b9c2dee04eb3ead066aba  sha256 3132d6be308e1cea213535c327f19ee50780095054635674648ccda816ee3367  version 2611012031001

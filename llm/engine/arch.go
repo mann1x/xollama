@@ -33,8 +33,8 @@ var archFeatures = map[string]string{
 	// b11803, so older than this table and its sync check; every engine up to
 	// c14 r10 refused it, opencoti serves it since c14 r11.
 	"gemma-embedding2": "arch_gemma_embedding2_v1",
-	// llama.cpp b12177 (upstream v0.40.16) adds two; the c14 r15 engine has
-	// neither.
+	// llama.cpp b12177 (upstream v0.40.16) adds two; the c14 r15 engine had
+	// neither, opencoti serves both since c14 r16.
 	// #31692 (2026-11-05): Ripple by ricursiveai, the model upstream's MLX
 	// runner, renderer and parser also gained in v0.40.16 (#19592).
 	"ricursive": "arch_ricursive_v1",
