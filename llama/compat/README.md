@@ -25,11 +25,13 @@ intentionally skipped so a developer can iterate on a local llama.cpp tree.
   small tensor repacking primitives.
 - `001-llama-cpp-hooks.patch` - small additive call-site edits in llama.cpp files.
   It currently touches `src/llama-model-loader.cpp` and `tools/mtmd/clip.cpp`.
-- `004-reasoning-budget-line-boundary.patch` - makes a spent reasoning budget
-  close the thinking block at a line boundary instead of as soon as the current
-  UTF-8 codepoint completes, which lands mid-word. Carried here until
-  ggml-org/llama.cpp merges it; drop this file when the pinned llama.cpp
-  contains the change.
+- `005-gemma4-assistant-unchecked-tensor-shape.patch` - makes an empty expected
+  `ne` mean "shape unchecked" in `check_tensor_dims` and stops
+  `llama_format_tensor_shape` throwing while it reports an error. Without it, loading a
+  Gemma 4 **E2B/E4B** assistant drafter always fails with
+  `vector::_M_range_check: __n (which is 0) >= this->size() (which is 0)`.
+  Carried here until ggml-org/llama.cpp merges it; drop this file when the
+  pinned llama.cpp contains the change.
 - `compat.cmake` - CMake glue that invokes the shared
   `cmake/apply-git-patches.cmake` idempotent applier (used by
   `llama/server/CMakeLists.txt`) for every `*.patch` under
