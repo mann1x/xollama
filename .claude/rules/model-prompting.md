@@ -16,8 +16,8 @@ paths:
   are resolved from the `Renderer` / `Parser` fields in `types/model/config.go`.
 - Optional parser interfaces in `model/parsers/parsers.go`: `ThinkingTags()`
   (read via `ThinkingTagsForParser`) and `ToolCallTags()` (`ToolCallTagger`,
-  read via `ToolCallStartTagForParser`, implemented by `model/parsers/gemma4.go`
-  and `model/parsers/qwen35.go`). The thinking budget is spent across the whole
+  read via `ToolCallStartTagForParser`, implemented by `model/parsers/gemma4.go`,
+  `model/parsers/qwen35.go` and `model/parsers/ripple.go`). The thinking budget is spent across the whole
   response (`reasoning_budget_scope: "response"` in `llm/llama_server.go`), not
   per thinking block; the tool-call open tag rides along as
   `ThinkBudgetResetTag` (`thinkBudgetResetTagForCompletion` in
