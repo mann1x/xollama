@@ -27,6 +27,8 @@ first if a patch looks missing or out of date.
    other row in this file keys on the PR number, and these cannot. They are
    listed apart, below.
 
+**Bump of 2026-11-19 on the same base (fork mail #2330, after #2316, #2323, #2329): manifest at think-budget `8c188d0d` (integration `86f44e59`), no base move, no runtime change, no fork release.** `RippleParser` gains `ThinkingTags()` (with `ThinkingTagsAreText()`, a new optional parser interface) on `up-think-budget` and `ToolCallTags()` on `up-toolcall-tags`, both fast-forwards of one commit; `up-response-scope-think-budget` and `up-gemma4-channel-in-thinking` were rebuilt on them (the old heads archived in the fork) and brought no other content here. When a parser's tags are text, the runner arms a thinking budget only on an engine whose `GET /props` declares `reasoning_tags_text_v1` (opencoti c14 r17 on); stock llama-server, an older opencoti or a 404 leave it off. Merged in `patches[]` order, each `--no-ff`: the rows below carry the new shas, the old ones in brackets.
+
 **Status as of 2026-11-16: the set moved to upstream v0.40.16 (31 patches, same set and `patches[]` order).** Manifest at think-budget `98bfffd6` (`base: v0.40.16`, `integration.sha cd271b4a`, release `v0.40.16-thinkbudget` @ `98230d3c`, run 42766495754; fork bump #2258, after #2254). Upstream v0.40.16 is eight commits over v0.40.15 (63 files): llama.cpp b12111 -> b12177 (#19576; adds the `ricursive` and `xing4_0` architectures, routed to stock llama-server in `llm/engine/arch.go`), Ripple on the MLX runner with its renderer and parser (#19592), a memory-efficient Qwen3.8 Flash Next on MLX (#18078), CUDA 13.5 and SM 103 for Windows ARM64 (#19580), Claude Code launch routing and retired-model errors (#19587), `/v1/models` as an empty array with no models (#19539) and the Responses `truncation` option forwarded (#19501); MLX and MLX-C unchanged (the archives rebuilt). Consumed on branch `sync/upstream-v0.40.16`: the upstream tag merge `4d5950d92` (one conflict, `README.md`, ours kept), then the 31 patches at the shas below, each its own `--no-ff` merge in `patches[]` order. Every merge left the tree unchanged except under `llama/compat/` (the fork's `004-reasoning-budget-line-boundary.patch` rebased onto b12177, and the README, from `up-compat-readme` last); a conflicted file was resolved to ours only where `HEAD` already held every line the patch adds, or where the patch's diff equals its `63f9b25c` version already merged (`gemma4-toolcall-in-thinking`, `up-modelfile-roundtrip`, `up-llama-server-memory-lines`: later patches rework those lines). The llama inputs digest (README excluded) is `0f703af1`, the fork's at `98230d3c`.
 
 | PR | branch | manifest sha | v0.40.16 merge |
@@ -34,7 +36,7 @@ first if a patch looks missing or out of date.
 | #17563 | `up-repeat-guard` | `f03b6afa` | `d6b1a82a3` |
 | #17564 | `up-truncated-tool-calls` | `0a7de948` | `0ddca0561` |
 | #17565 | `up-gemma4-object-close` | `dee267f7` | `112d6ee89` |
-| #17566 | `up-think-budget` | `735ff2f9` | `781f98fc3` |
+| #17566 | `up-think-budget` | `5f2a7bfe` (was `735ff2f9`) | `e59c5d6b0` (was `781f98fc3`) |
 | #17567 | `up-mlx-libdl` | `1e1e9ff0` | `96374dcee` |
 | #17626 | `up-gemma4-stray-channel-name` | `361c374d` | `37d722b2f` |
 | #17914 | `qwen3coder-tolerate-malformed-tool-calls` | `05c827ea` | `230f41c5a` |
@@ -45,7 +47,7 @@ first if a patch looks missing or out of date.
 | fork-only | `gemma4-toolcall-in-thinking` | `d5efae27` | `2104f889b` |
 | #18624 | `qwen35-toolcall-in-thinking` | `11ddc230` | `cf1340d4e` |
 | fork-only | `up-gemma4-unparsed-tool-call-content` | `aaac0154` | `e2f57664f` |
-| fork-only | `up-toolcall-tags` | `10f12bf8` | `19d021687` |
+| fork-only | `up-toolcall-tags` | `2887996e` (was `10f12bf8`) | `cd46feedb` (was `19d021687`) |
 | fork-only | `up-codex-request-count-mtime` | `4588f515` | `dbcc4ad09` |
 | fork-only | `up-fileutil-root-permission-tests` | `497a4266` | `cc139b39e` |
 | fork-only | `up-gofmt-vision-test-data` | `42cd1422` | `138d01a6f` |
@@ -53,11 +55,11 @@ first if a patch looks missing or out of date.
 | fork-only | `up-lfm2-think-off-discard` | `74ab473a` | `b3767d663` |
 | fork-only | `up-gemma4-assistant-shape` | `5786a814` | `87d6ee21d` |
 | fork-only | `up-gemma4-swallowed-key` | `73add712` | `84992ba6c` |
-| fork-only | `up-response-scope-think-budget` | `503597b9` | `ddd678e71` |
+| fork-only | `up-response-scope-think-budget` | `5d23f6e3` (was `503597b9`) | `78155e285` (was `ddd678e71`) |
 | fork-only | `up-modelfile-roundtrip` | `a07d7339` | `5aaa76904` |
 | fork-only | `up-qwen35-empty-think-history` | `6ad1078b` | `570dcc1ca` |
 | fork-only | `up-mlxrunner-manifest-list` | `eb9f6374` | `68ef054ba` |
-| fork-only | `up-gemma4-channel-in-thinking` | `aef140aa` | `853f8d54b` |
+| fork-only | `up-gemma4-channel-in-thinking` | `7a9e5cdd` (was `aef140aa`) | `7fb53a2e5` (was `853f8d54b`) |
 | fork-only | `up-llama-server-memory-lines` | `291bb24a` | `0c116ce9f` |
 | fork-only | `up-qwen-unclosed-tool-call` | `929c4d7e` | `5c1282035` |
 | fork-only | `up-completion-generation-prompt` | `7193def7` | `c16d71d6d` |
