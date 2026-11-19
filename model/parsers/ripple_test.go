@@ -226,3 +226,16 @@ func TestRippleParserCapabilities(t *testing.T) {
 		}
 	}
 }
+
+func TestRippleToolCallTags(t *testing.T) {
+	p := &RippleParser{}
+	start, end := p.ToolCallTags()
+	if start != "<tool_call>" || end != "</tool_call>" {
+		t.Fatalf("tool call tags = %q, %q", start, end)
+	}
+
+	// The response-wide budget reads the opening tag through the generic helper.
+	if got := ToolCallStartTagForParser(p); got != "<tool_call>" {
+		t.Fatalf("ToolCallStartTagForParser = %q, want %q", got, "<tool_call>")
+	}
+}
