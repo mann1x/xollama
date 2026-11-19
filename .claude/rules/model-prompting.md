@@ -30,8 +30,11 @@ paths:
   `CompletionRequest.ThinkingTagsText` (`llm/server.go`), and the runner arms
   the budget on them only when the engine's `GET /props` lists
   `reasoning_tags_text_v1` (`matchesReasoningTagsAsText`,
-  `llm/llama_server.go`; opencoti c14 r17 on). Elsewhere the budget is left
-  off, never reported and not held.
+  `llm/llama_server.go`; opencoti c14 r17 on). Elsewhere (stock
+  llama-server, an older opencoti) the budget is left off and not held, though
+  the response still reports it as applied: `thinkBudgetApplied` comes from the
+  route, which does not know the runner's engine (the fork's known gap, as on
+  MLX).
 - `tool_call_progress_v1` (`tool-call-progress` hook) names and touches no
   parser: `server/xollama_tool_call_progress.go` reports, by one rule for every
   model, the raw text of a run of steps of engine output the handler delivered
