@@ -5,6 +5,8 @@ release tags, measurements) and what is left. The fixed sections below the
 entries are rewritten in place so they always describe *now*. Plans are
 indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
+> **2026-11-19 — released `v0.40.16-xollama.2` on opencoti c14 r17 with the fork's bump `8c188d0d` (owner: "tell the fork to proceed, release together"); solidPC's service on it (owner: "update solidpc directly to .2").** PR #68 (head `e82a07fc1`, dry run 44529456338, payload `74f198bf`), merge `498e7611d`, release run 44564686589, promoted Latest, Discord run 44571160794, `:latest` = `:0.40.16-xollama.2` (docker-release 44571177126; Docker Hub `83dcf364`, GHCR `7fee7d9f`, amd64 and arm64). Every gate the analysis named passed (rows in `docs/protocols/VALIDATION.md`): G1 (64 hooks, 0 lint issues), G2 (13 pass, 7 skipped), G3 opencoti 77.15 / 673 / 3.81 and stock 78.1 / 606 / 2.86, G4, G5, G6, G7 (RADV 38.6 to 40.5), G8 (3090 124.7, 9070 XT 102.2, iGPU 5.3, speech, sfx, install and update), G10 (amd64 86.0 to 86.3, arm64 10.4 to 10.7), G11 (notarized, MLX 77.8), G12. G3, G7 and G10 amd64 were re-measured under `solidpc:quiet` after a first pass on a loaded host (load 20 to 37, another session's CPU jobs and a Docker rsync); G8's first install got a torn installer copy (two runners shared an asset dir; bug-358) and was re-run after a hash check on the host; the `:dev` image's amd64 leg was re-run once (an Ubuntu mirror refused the connection). Targeted (Ripple-65B IQ1_M, a prompt it reasons on): budget 1 / 40 cut the thinking to 154 / 321 chars against 3015, 2000 = no budget byte for byte; on stock llama-server the budget is left off (budget 40 = a cached no-budget run, no `reasoning_budget` field sent); `tool_choice: none` returns no call; a tool call under a budget parses; a notice planted inside the thinking and one in the answer. solidPC's `ollama.service` swapped from `v0.40.16-xollama` with `/srv/ml/xollama-phase2/solidpc-swap-0.40.16.2.sh` (payload assembled from the published binary, engine = the r17 pin), verified `/api/xollama` 0.40.16-xollama.2, CUDA0 on opencoti `2611191220001`, `qwen2.5:1.5b` 193.7 tok/s on a shared 3090; backup `.bak-20261119-175934` kept, `.bak-20261116-142657` removed. Results mailed to opencoti for its notes (#2347). Step 9: run dir `/srv/ml/xr17` 8.8 MB (files of 1 MB or less), the assemble tree and the r16 staged engines and their cache entries removed, eleven2go's gate folder and the Mac's ci-app copies removed (each under its claim), no xollama image on solidPC or dietpi5; `df -h /` 85G free, `/srv/ml` 323G free.
+
 > **2026-11-19 — impact analysis of `v0.40.16-xollama.2` on c14 r17 with the fork's bump `8c188d0d` (owner: "tell the fork to proceed, release together").** Written before any gate. Security check: Dependabot 112 open (unchanged), govulncheck: one standard-library finding on the local go1.26.10 (GO-2026-6859, net/http), fixed in go1.26.11, which the release workflow builds with, so 0 reachable. Diff against the released `v0.40.16-xollama.1` (`9e95a26a1`): records, README, `llm/engine/pin/*`, the bump's `llm/llama_server.go`, `llm/server.go`, `model/parsers/{parsers,ripple}.go`, `server/routes.go` and their tests, and `.claude/rules/model-prompting.md`.
 > - **The pin** (row "the engine pin"; `50013222c`). r17 = r16 + 0856 (bug-4370, `reasoning_tags_text_v1`: budget and notice tags matched as text) + 0855 (the saver; no inference effect). Only the engine moved, on every platform; libraries and media are r16's files. Gates: G1, G2, G12 (always); G3, G4 (every load; the off-path control); G5 (the engine moved); G6 (the media engine is the same binary); G7 (Linux Vulkan through the image); G8 (Windows engine); G10 amd64 and arm64; G11 (macOS engine). Not run: G9 (`app/`, installer scripts and runtime untouched; the draft's installer runs in G8).
 > - **The bump** (rows `llm/`, `model/parsers/`, `server/routes.go`; carried patches). A thinking budget on a parser whose tags are text (only `RippleParser`) is armed only on an engine declaring `reasoning_tags_text_v1`; Ripple also gains `ToolCallTags()`, so `tool_choice: none` bans its call tag and a response-wide budget resets on a call. Every other parser is untouched: no other declares text tags, so no request with special-token tags reads `/props`. Gates: G3 and G4 (already named; the think-budget and tool-choice paths of other models).
@@ -3175,19 +3177,21 @@ indexed in [`plans/MASTER_PLAN.md`](plans/MASTER_PLAN.md).
 
 ## Where we are
 
-`v0.40.16-xollama.1` is the latest release (promoted Latest 2026-11-16). It is
-`v0.40.16-xollama` on opencoti c14 r16 (`2611161751001`): the 256k "Compute
-error" of `mtp-vision-Q6_K` is fixed (bug-4364, #2313), an assistant drafter
-head's draft context no longer grows with the batch (#2311; 6 / 20 MiB at
-32768 / 256000, priced so by `attached-vram`), and Ripple (`ricursive`) and
-`xing4_0` run on opencoti again. The base is unchanged: upstream v0.40.16, the
-fork's `v0.40.16-thinkbudget`, llama.cpp b12177. eleven2go runs it (the G8
-install, then the published update installer at G12); solidPC's
-`ollama.service` stays on `v0.40.16-xollama` until the owner says. Open:
-the Ripple parser's tool and thinking tags (fork mail #2316), backup_models'
-IQ2 re-runs (around 2026-11-17), upstream v0.40.17-rc0. Every release's gates
-are picked by the impact analysis (RELEASE.md rule 8); xollama follows the
-fork to every new upstream with a release.
+`v0.40.16-xollama.2` is the latest release (promoted Latest 2026-11-19). It is
+`v0.40.16-xollama.1` on opencoti c14 r17 (`2611191220001`) with the fork's
+v0.40.16 bump `8c188d0d`: a thinking budget now holds on Ripple, whose
+`<think>` tags are ordinary text (bug-4370, `reasoning_tags_text_v1`; the
+runner arms such a budget only on an engine declaring that row, so stock
+llama-server leaves it off), and `tool_choice: none` ends a Ripple reply where
+a call would start. The base is unchanged: upstream v0.40.16, the fork's
+`v0.40.16-thinkbudget`, llama.cpp b12177. eleven2go runs it (the G8 install,
+then the published update installer at G12), and so does solidPC's
+`ollama.service` (owner: "update solidpc directly to .2"; backup
+`.bak-20261119-175934`). Open: a response still reports a thinking budget the
+runner left off (stock llama-server, MLX; the fork's known gap), upstream
+v0.40.17-rc0. Every release's gates are picked by the impact analysis
+(RELEASE.md rule 8); xollama follows the fork to every new upstream with a
+release.
 
 ## What exists today
 
