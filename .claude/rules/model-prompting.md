@@ -23,6 +23,15 @@ paths:
   `ThinkBudgetResetTag` (`thinkBudgetResetTagForCompletion` in
   `server/routes.go`) so thinking that led to a tool call does not count
   against later thinking.
+- **Thinking tags that are ordinary text** (several tokens merging with the
+  newline after them, Ripple's in `model/parsers/ripple.go`) say so through
+  `ThinkingTagsAsText` (read via `ThinkingTagsAreTextForParser`);
+  `thinkingTagsTextForCompletion` (`server/routes.go`) sets
+  `CompletionRequest.ThinkingTagsText` (`llm/server.go`), and the runner arms
+  the budget on them only when the engine's `GET /props` lists
+  `reasoning_tags_text_v1` (`matchesReasoningTagsAsText`,
+  `llm/llama_server.go`; opencoti c14 r17 on). Elsewhere the budget is left
+  off, never reported and not held.
 - `tool_call_progress_v1` (`tool-call-progress` hook) names and touches no
   parser: `server/xollama_tool_call_progress.go` reports, by one rule for every
   model, the raw text of a run of steps of engine output the handler delivered
