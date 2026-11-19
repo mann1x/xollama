@@ -1,8 +1,8 @@
 format     2
 component  engine
-version    2611161751001
+version    2611191220001
 repo       ManniX-ITA/opencoti-llamafile
-rev        5a44b46a29a11e0e18722d4f014544f23b1636f4
+rev        7e456738454b9dfd16d826bb44463f8f9924e730
 abi        ggml bac5050ddc8c58c51f0b059a7f9753b33af0ed79d355090e7c9a17ffaaaf340a
 abi        media b099409b3029a6e380268e31d1caefa6706569961d32e72b3543fbc73903d95c
 abi        loader d6ff34022f1d3fb5af56ca0c80e3f4e552bf09f1bebdf0cb5f314a454bf38dbc
@@ -80,6 +80,7 @@ feature    auto_mtp_adaptive_v1
 feature    moe_strategy_v1
 feature    idle_slot_pool_safe_v1
 feature    props_build_id_v1
+feature    reasoning_tags_text_v1
 feature    audio_generations_v1
 feature    audio_realtime_v1
 feature    audio_speech_content_format_v1
@@ -94,6 +95,6 @@ feature    images_generate_v1 x86_64 win-x86_64 macos-aarch64
 feature    sdcpp_vid_gen_v1 x86_64 win-x86_64 macos-aarch64
 feature    videos_generate_v1 x86_64 win-x86_64 macos-aarch64
 feature    videos_i2v_v1 x86_64 win-x86_64 macos-aarch64
-file  any            bin        components/engine/2611161751001/opencoti-llamafile-0.10.5-c14-bare.llamafile  e4f34a99f79e0f16e1d4c894994cfeaf7c13f713195c3bce356e920a74072ca3  147266132
-file  win-x86_64     bin        components/engine/2611161751001/opencoti-llamafile-0.10.5-c14-win-x86_64.llamafile.exe  e4f34a99f79e0f16e1d4c894994cfeaf7c13f713195c3bce356e920a74072ca3  147266132
-file  any            build-info components/engine/2611161751001/BUILD_INFO.engine.md  859201f196eb9062307d3811a7addfec6839863cb321dac466ac81c6fdefb0ee  13853
+file  any            bin        components/engine/2611191220001/opencoti-llamafile-0.10.5-c14-bare.llamafile  9f078205b11c1152ddbf8ba180262bca226744a8d9a0fa6f8f3eb1fb0d9b27a6  147274450
+file  win-x86_64     bin        components/engine/2611191220001/opencoti-llamafile-0.10.5-c14-win-x86_64.llamafile.exe  9f078205b11c1152ddbf8ba180262bca226744a8d9a0fa6f8f3eb1fb0d9b27a6  147274450
+file  any            build-info components/engine/2611191220001/BUILD_INFO.engine.md  4c9a25336db83269ab87592e6afca678cc943d3a38a3faa63579625144c618c0  15837
