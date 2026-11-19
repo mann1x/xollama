@@ -322,6 +322,12 @@ type CompletionRequest struct {
 	ThinkBudgetMessage string
 	ThinkingStartTag   string
 	ThinkingEndTag     string
+	// ThinkingTagsText says the two tags are ordinary text in the model's
+	// vocabulary (several tokens that merge with their neighbours), not
+	// special tokens. A runner arms the budget on such tags only when its
+	// engine matches tags on the decoded text; otherwise the budget is left
+	// off rather than reported and not held.
+	ThinkingTagsText bool
 
 	// ThinkBudgetResetTag is the tag a tool call opens with, when the model has
 	// a parser that names one. The budget is spent across the whole response

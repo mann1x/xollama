@@ -16,13 +16,25 @@ paths:
   are resolved from the `Renderer` / `Parser` fields in `types/model/config.go`.
 - Optional parser interfaces in `model/parsers/parsers.go`: `ThinkingTags()`
   (read via `ThinkingTagsForParser`) and `ToolCallTags()` (`ToolCallTagger`,
-  read via `ToolCallStartTagForParser`, implemented by `model/parsers/gemma4.go`
-  and `model/parsers/qwen35.go`). The thinking budget is spent across the whole
+  read via `ToolCallStartTagForParser`, implemented by `model/parsers/gemma4.go`,
+  `model/parsers/qwen35.go` and `model/parsers/ripple.go`). The thinking budget is spent across the whole
   response (`reasoning_budget_scope: "response"` in `llm/llama_server.go`), not
   per thinking block; the tool-call open tag rides along as
   `ThinkBudgetResetTag` (`thinkBudgetResetTagForCompletion` in
   `server/routes.go`) so thinking that led to a tool call does not count
   against later thinking.
+- **Thinking tags that are ordinary text** (several tokens merging with the
+  newline after them, Ripple's in `model/parsers/ripple.go`) say so through
+  `ThinkingTagsAsText` (read via `ThinkingTagsAreTextForParser`);
+  `thinkingTagsTextForCompletion` (`server/routes.go`) sets
+  `CompletionRequest.ThinkingTagsText` (`llm/server.go`), and the runner arms
+  the budget on them only when the engine's `GET /props` lists
+  `reasoning_tags_text_v1` (`matchesReasoningTagsAsText`,
+  `llm/llama_server.go`; opencoti c14 r17 on). Elsewhere (stock
+  llama-server, an older opencoti) the budget is left off and not held, though
+  the response still reports it as applied: `thinkBudgetApplied` comes from the
+  route, which does not know the runner's engine (the fork's known gap, as on
+  MLX).
 - `tool_call_progress_v1` (`tool-call-progress` hook) names and touches no
   parser: `server/xollama_tool_call_progress.go` reports, by one rule for every
   model, the raw text of a run of steps of engine output the handler delivered
