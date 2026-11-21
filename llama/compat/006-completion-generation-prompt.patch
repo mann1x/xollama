@@ -1,0 +1,21 @@
+diff --git a/tools/server/server-schema.cpp b/tools/server/server-schema.cpp
+--- a/tools/server/server-schema.cpp
++++ b/tools/server/server-schema.cpp
+@@ -404,6 +404,17 @@ std::vector<std::unique_ptr<field>> make_llama_cmpl_schema(const common_params &
+             }
+         }));
+ 
++    // A template that opens the thinking block itself ends the prompt with the
++    // opening tag, so the reasoning budget sampler never sees it generated and
++    // stays idle. The caller names that tail here and the sampler replays it
++    // before decoding. b11669 dropped this field from the completion schema
++    // along with the chat path that set it, which left every such budget inert.
++    add((new field_str("generation_prompt"))
++        ->set_desc("Text the prompt already ends with that the samplers must see as generated, such as a thinking block the template opens; replayed into the reasoning budget sampler before decoding")
++        ->set_handler([&](field_eval_context & ctx, const json & data) {
++            ctx.params.sampling.generation_prompt = data.at("generation_prompt").get<std::string>();
++        }));
++
+     add((new field_json("logit_bias"))
+         ->set_desc("Modify the likelihood of specific tokens. Accepts an array of [token, bias] pairs or an object mapping token to bias. Use false as bias to ban a token")
+         ->set_handler([&](field_eval_context & ctx, const json & data) {
