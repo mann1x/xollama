@@ -42,7 +42,7 @@ esac
 # xollama publishes its releases on GitHub. ollama.com/download serves UPSTREAM
 # ollama, so leaving it here would quietly install stock ollama under our name.
 # GitHub encodes the version in the path rather than a query string, so the
-# version selection lives in the base URL and VER_PARAM stays empty.
+# version selection lives in the base URL and DOWNLOAD_PARAM stays empty.
 XOLLAMA_RELEASES="https://github.com/mann1x/xollama/releases"
 XOLLAMA_PICK_VERSION="${XOLLAMA_VERSION:-${OLLAMA_VERSION:-}}"
 if [ -n "$XOLLAMA_PICK_VERSION" ]; then
@@ -50,7 +50,7 @@ if [ -n "$XOLLAMA_PICK_VERSION" ]; then
 else
     DOWNLOAD_BASE="${XOLLAMA_RELEASES}/latest/download"
 fi
-VER_PARAM=""
+DOWNLOAD_PARAM=""
 
 ###########################################
 # macOS
@@ -144,7 +144,7 @@ download_and_extract() {
     local filename="$3"
 
     # Check if .tar.zst is available
-    if curl --fail --silent --head --location "${url_base}/${filename}.tar.zst${VER_PARAM}" >/dev/null 2>&1; then
+    if curl --fail --silent --head --location "${url_base}/${filename}.tar.zst${DOWNLOAD_PARAM}" >/dev/null 2>&1; then
         # zst file exists - check if we have zstd tool
         if ! available zstd; then
             error "This version requires zstd for extraction. Please install zstd and try again:
@@ -155,7 +155,7 @@ download_and_extract() {
 
         status "Downloading ${filename}.tar.zst"
         curl --fail --show-error --location --progress-bar \
-            "${url_base}/${filename}.tar.zst${VER_PARAM}" | \
+            "${url_base}/${filename}.tar.zst${DOWNLOAD_PARAM}" | \
             zstd -d | $SUDO tar -xf - -C "${dest_dir}"
         return 0
     fi
@@ -163,7 +163,7 @@ download_and_extract() {
     # Fall back to .tgz for older versions
     status "Downloading ${filename}.tgz"
     curl --fail --show-error --location --progress-bar \
-        "${url_base}/${filename}.tgz${VER_PARAM}" | \
+        "${url_base}/${filename}.tgz${DOWNLOAD_PARAM}" | \
         $SUDO tar -xzf - -C "${dest_dir}"
 }
 

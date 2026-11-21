@@ -24,25 +24,9 @@ intentionally skipped so a developer can iterate on a local llama.cpp tree.
   KV edits, tensor renames, skip-prefix tracking, tensor load operations, and
   small tensor repacking primitives.
 - `001-llama-cpp-hooks.patch` - small additive call-site edits in llama.cpp files.
-  It currently touches `src/llama-model-loader.cpp` and `tools/mtmd/clip.cpp`.
-- `004-reasoning-budget-line-boundary.patch` - makes a spent reasoning budget
-  close the thinking block at a line boundary instead of as soon as the current
-  UTF-8 codepoint completes, which lands mid-word. Carried here until
-  ggml-org/llama.cpp merges it; drop this file when the pinned llama.cpp
-  contains the change.
-- `005-gemma4-assistant-unchecked-tensor-shape.patch` - makes an empty expected
-  `ne` mean "shape unchecked" in `check_tensor_dims` and stops
-  `llama_format_tensor_shape` throwing while it reports an error. Without it, loading a
-  Gemma 4 **E2B/E4B** assistant drafter always fails with
-  `vector::_M_range_check: __n (which is 0) >= this->size() (which is 0)`.
-  Carried here until ggml-org/llama.cpp merges it; drop this file when the
-  pinned llama.cpp contains the change.
-- `006-completion-generation-prompt.patch` - accepts `generation_prompt` on
-  llama-server's completion request again, so a thinking block the template
-  opens is replayed into the reasoning budget sampler. llama.cpp b11669 dropped
-  the field; without it a `think_budget` on any model whose prompt ends with the
-  opening tag (qwen3, gemma4) is reported but never enforced. Drop this file
-  when the pinned llama.cpp accepts the field again.
+  It currently touches `src/llama-model-loader.cpp` and `tools/mtmd/mtmd-model.cpp`
+  (the file upstream refactored and renamed from `tools/mtmd/clip.cpp`, first
+  seen at b12257, upstream #31865).
 - `compat.cmake` - CMake glue that invokes the shared
   `cmake/apply-git-patches.cmake` idempotent applier (used by
   `llama/server/CMakeLists.txt`) for every `*.patch` under
@@ -73,9 +57,9 @@ The layer runs at a small set of loader hook points:
    evicted when the next tensor's first range arrives) and serves each
    requested (offset, size) range from it, so quantize memory stays at one
    op tensor, matching the whole-tensor `load_data_for` read it replaced.
-4. `mtmd/clip` constructor: `translate_clip_metadata` rewrites a clip-facing
+4. `mtmd/mtmd-model` loader constructor: `translate_clip_metadata` rewrites a clip-facing
    view of monolithic GGUFs into the mmproj form expected by llama.cpp.
-5. `mtmd/clip` tensor load loop: `maybe_load_tensor` applies clip-side load
+5. `mtmd/mtmd-model` tensor load loop: `maybe_load_tensor` applies clip-side load
    operations, such as F16 to F32 promotion, QKV merge, tensor repack, tensor
    split, or zero-fill.
 
@@ -138,7 +122,7 @@ fresh checkout and run:
 cd /path/to/llama.cpp
 git diff -- \
     src/llama-model-loader.cpp \
-    tools/mtmd/clip.cpp \
+    tools/mtmd/mtmd-model.cpp \
     > /path/to/ollama/llama/compat/001-llama-cpp-hooks.patch
 ```
 
