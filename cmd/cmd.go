@@ -1667,13 +1667,18 @@ func showInfo(resp *api.ShowResponse, verbose bool, w io.Writer) error {
 		})
 	}
 
-	if len(resp.Tensors) > 0 && verbose {
-		tableRender("Tensors", func() (rows [][]string) {
-			for _, t := range resp.Tensors {
-				rows = append(rows, []string{"", t.Name, t.Type, fmt.Sprint(t.Shape)})
+	if verbose && len(resp.Tensors) > 0 {
+		var rows [][]string
+		for _, t := range resp.Tensors {
+			if resp.Details.Format == manifest.FormatSafetensors && len(t.Shape) == 1 &&
+				(strings.HasSuffix(t.Name, ".bias") || strings.HasSuffix(t.Name, ".gamma")) {
+				continue
 			}
-			return
-		})
+			rows = append(rows, []string{"", t.Name, t.Type, fmt.Sprint(t.Shape)})
+		}
+		if len(rows) > 0 {
+			tableRender("Tensors", func() [][]string { return rows })
+		}
 	}
 
 	head := func(s string, n int) (rows [][]string) {
@@ -2623,19 +2628,23 @@ func NewCLI() *cobra.Command {
 		CompletionOptions: cobra.CompletionOptions{
 			DisableDefaultCmd: true,
 		},
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			if version, _ := cmd.Flags().GetBool("version"); version {
 				versionHandler(cmd, args)
-				return
+				return nil
+			}
+			if !isInteractiveTerminal() {
+				return cmd.Help()
 			}
 
 			if err := runWelcome(); err != nil {
 				if !errors.Is(err, launch.ErrCancelled) {
 					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				}
-				return
+				return nil
 			}
 			runInteractiveTUI(cmd)
+			return nil
 		},
 	}
 

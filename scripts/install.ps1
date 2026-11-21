@@ -13,6 +13,10 @@
 
         $env:XOLLAMA_VERSION="0.34.2"; irm https://raw.githubusercontent.com/mann1x/xollama/main/scripts/install.ps1 | iex
 
+    Preview channel:
+
+        $env:OLLAMA_CHANNEL="preview"; irm "https://ollama.com/install.ps1?channel=preview" | iex
+
     Custom install directory:
 
         $env:XOLLAMA_INSTALL_DIR="D:\xOllama"; irm https://raw.githubusercontent.com/mann1x/xollama/main/scripts/install.ps1 | iex
@@ -23,7 +27,8 @@
 
     Environment variables:
 
-        OLLAMA_VERSION       Target version (default: latest stable)
+        OLLAMA_VERSION       Target version (overrides OLLAMA_CHANNEL)
+        OLLAMA_CHANNEL       Release channel: stable or preview (default: stable)
         OLLAMA_INSTALL_DIR   Custom install directory
         XOLLAMA_UNINSTALL    Set to 1 to uninstall xOllama
         OLLAMA_DEBUG         Enable verbose output
@@ -33,6 +38,9 @@
 
 .EXAMPLE
     $env:XOLLAMA_VERSION = "0.34.2"; irm https://raw.githubusercontent.com/mann1x/xollama/main/scripts/install.ps1 | iex
+
+.EXAMPLE
+    $env:OLLAMA_CHANNEL = "preview"; irm "https://ollama.com/install.ps1?channel=preview" | iex
 
 .LINK
     https://github.com/mann1x/xollama

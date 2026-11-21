@@ -1,8 +1,8 @@
 format     2
 component  engine
-version    2611191220001
+version    2611211816001
 repo       ManniX-ITA/opencoti-llamafile
-rev        7e456738454b9dfd16d826bb44463f8f9924e730
+rev        7ba147766a3ad42b4a418bf7e2d443188eeeab98
 abi        ggml bac5050ddc8c58c51f0b059a7f9753b33af0ed79d355090e7c9a17ffaaaf340a
 abi        media b099409b3029a6e380268e31d1caefa6706569961d32e72b3543fbc73903d95c
 abi        loader d6ff34022f1d3fb5af56ca0c80e3f4e552bf09f1bebdf0cb5f314a454bf38dbc
@@ -95,6 +95,6 @@ feature    images_generate_v1 x86_64 win-x86_64 macos-aarch64
 feature    sdcpp_vid_gen_v1 x86_64 win-x86_64 macos-aarch64
 feature    videos_generate_v1 x86_64 win-x86_64 macos-aarch64
 feature    videos_i2v_v1 x86_64 win-x86_64 macos-aarch64
-file  any            bin        components/engine/2611191220001/opencoti-llamafile-0.10.5-c14-bare.llamafile  9f078205b11c1152ddbf8ba180262bca226744a8d9a0fa6f8f3eb1fb0d9b27a6  147274450
-file  win-x86_64     bin        components/engine/2611191220001/opencoti-llamafile-0.10.5-c14-win-x86_64.llamafile.exe  9f078205b11c1152ddbf8ba180262bca226744a8d9a0fa6f8f3eb1fb0d9b27a6  147274450
-file  any            build-info components/engine/2611191220001/BUILD_INFO.engine.md  4c9a25336db83269ab87592e6afca678cc943d3a38a3faa63579625144c618c0  15837
+file  any            bin        components/engine/2611211816001/opencoti-llamafile-0.10.5-c14-bare.llamafile  88b90c2795aea60ec689e322ebff647245ffd70f08dcbe2a614534ce7120f0ec  147296029
+file  win-x86_64     bin        components/engine/2611211816001/opencoti-llamafile-0.10.5-c14-win-x86_64.llamafile.exe  88b90c2795aea60ec689e322ebff647245ffd70f08dcbe2a614534ce7120f0ec  147296029
+file  any            build-info components/engine/2611211816001/BUILD_INFO.engine.md  1d59882856e64fb5a45892ae2ae6330e93f2bd084c714ed1ab93afc5a889f081  17398

@@ -3,6 +3,7 @@ package server
 import (
 	"testing"
 
+	"github.com/ollama/ollama/types/model"
 	"github.com/ollama/ollama/types/xollama"
 )
 
@@ -56,5 +57,21 @@ func TestXollamaParallelReplacesNumParallelOnOpencoti(t *testing.T) {
 				t.Errorf("liveSlots = %d, want %d", got, tc.want)
 			}
 		})
+	}
+}
+
+// An MLX model never runs on opencoti, so it keeps ollama's count: since
+// upstream v0.40.17 (#19197) the MLX runner generates concurrently on it, and
+// the opencoti floor (XOLLAMA_PARALLEL, default one) made every MLX load serial.
+func TestAnMLXModelKeepsOllamasParallel(t *testing.T) {
+	t.Setenv("XOLLAMA_ENGINE", "opencoti")
+	t.Setenv("XOLLAMA_PARALLEL", "")
+	mlx := &Model{Config: model.ConfigV2{ModelFormat: "safetensors"}}
+	if got := liveSlots(mlx, nil, true, 2); got != 2 {
+		t.Errorf("liveSlots(MLX) = %d, want ollama's 2", got)
+	}
+	gguf := &Model{Config: model.ConfigV2{ModelFormat: "gguf"}}
+	if got := liveSlots(gguf, nil, true, 2); got != 1 {
+		t.Errorf("liveSlots(GGUF on opencoti) = %d, want XOLLAMA_PARALLEL's floor 1", got)
 	}
 }

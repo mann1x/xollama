@@ -289,11 +289,12 @@ func withoutLogVerbosity(params []string) []string {
 //
 // ollama gained --load-mode as one flag covering how weights are read off disk:
 // "none" means do not memory-map them, "dio" means bypass the page cache on an
-// integrated GPU that would otherwise buffer them twice. The engine's llama.cpp
-// predates that merge and still spells the first half --no-mmap. It has no
-// equivalent of the second, which costs nothing here: "dio" is only ever chosen
-// for an integrated CUDA or ROCm GPU on Linux, and this engine is not routed to
-// on that hardware.
+// integrated GPU that would otherwise buffer them twice, "mmap" means map them.
+// The engine's llama.cpp predates that merge and still spells "none" --no-mmap.
+// The other two are dropped. "mmap" (upstream v0.40.17 emits it for a Vulkan
+// iGPU) is the engine's default, so dropping it maps the weights as asked.
+// "dio" (an integrated CUDA or ROCm GPU on Linux) has no equivalent; on that
+// hardware the weights are read the default way, mapped.
 //
 // This matters more than a missing flag usually would, because ollama disables
 // mmap by default for a llama-server load. --load-mode none is therefore on

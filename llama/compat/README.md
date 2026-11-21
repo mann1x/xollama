@@ -24,7 +24,9 @@ intentionally skipped so a developer can iterate on a local llama.cpp tree.
   KV edits, tensor renames, skip-prefix tracking, tensor load operations, and
   small tensor repacking primitives.
 - `001-llama-cpp-hooks.patch` - small additive call-site edits in llama.cpp files.
-  It currently touches `src/llama-model-loader.cpp` and `tools/mtmd/clip.cpp`.
+  It currently touches `src/llama-model-loader.cpp` and `tools/mtmd/mtmd-model.cpp`
+  (the file upstream refactored and renamed from `tools/mtmd/clip.cpp`, first
+  seen at b12257, upstream #31865).
 - `004-reasoning-budget-line-boundary.patch` - makes a spent reasoning budget
   close the thinking block at a line boundary instead of as soon as the current
   UTF-8 codepoint completes, which lands mid-word. Carried here until
@@ -73,9 +75,9 @@ The layer runs at a small set of loader hook points:
    evicted when the next tensor's first range arrives) and serves each
    requested (offset, size) range from it, so quantize memory stays at one
    op tensor, matching the whole-tensor `load_data_for` read it replaced.
-4. `mtmd/clip` constructor: `translate_clip_metadata` rewrites a clip-facing
+4. `mtmd/mtmd-model` loader constructor: `translate_clip_metadata` rewrites a clip-facing
    view of monolithic GGUFs into the mmproj form expected by llama.cpp.
-5. `mtmd/clip` tensor load loop: `maybe_load_tensor` applies clip-side load
+5. `mtmd/mtmd-model` tensor load loop: `maybe_load_tensor` applies clip-side load
    operations, such as F16 to F32 promotion, QKV merge, tensor repack, tensor
    split, or zero-fill.
 
@@ -138,7 +140,7 @@ fresh checkout and run:
 cd /path/to/llama.cpp
 git diff -- \
     src/llama-model-loader.cpp \
-    tools/mtmd/clip.cpp \
+    tools/mtmd/mtmd-model.cpp \
     > /path/to/ollama/llama/compat/001-llama-cpp-hooks.patch
 ```
 
