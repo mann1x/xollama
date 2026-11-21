@@ -19,7 +19,10 @@
 #   ARCH          amd64 (default) or arm64. The Go binary is built in a
 #                 container of that architecture: natively on a runner of it,
 #                 under qemu elsewhere.
-#   SKIP_GO=1     reuse <out-dir>/rootfs/bin/xollama (local iteration only)
+#   SKIP_GO=1     reuse <out-dir>/rootfs/bin/xollama (local iteration, and the
+#                 release's Linux job, which puts its own binary there)
+#   LIST_DIR      write each gpu row's file list there (<asset>.list), for
+#                 scripts/linux-tarballs.sh
 #   ALLOW_UPSTREAM_RUNTIME=1
 #                 local testing only, refused in CI: when the pin has no
 #                 runtime rows (the fork has not published one for this
@@ -123,6 +126,12 @@ fetch() { # repo tag asset sha256
 while read -r _ asset sum; do
     fetch ollama/ollama "$upstream" "$asset" "$sum"
     zstd -dc "$assets/$asset" | tar -x -C "$rootfs" lib/ollama
+    # LIST_DIR: the files each row brought, for scripts/linux-tarballs.sh,
+    # which cuts the release tarballs from this same tree.
+    if [ -n "${LIST_DIR:-}" ]; then
+        mkdir -p "$LIST_DIR"
+        zstd -dc "$assets/$asset" | tar -t lib/ollama > "$LIST_DIR/$asset.list"
+    fi
     [ -n "${KEEP_ASSETS:-}" ] || [ -z "${CI:-}" ] || rm -f "$assets/$asset"
 done < <(awk '$1=="gpu"' "$pin")
 

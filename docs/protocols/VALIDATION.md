@@ -1118,7 +1118,9 @@ GPU, the stock ollama on 11434 untouched).
 
 `RELEASE.md` step 5 on what reached the release: `sha256sum -c`, the version
 each binary names, both image architectures, the installer naming the fork's
-releases endpoint.
+releases endpoint, and `scripts/install.sh` against the release's Linux
+tarballs in a clean container with no compiler (since `v0.40.17-rc.1.xollama`):
+it installs, and a GPU load runs on opencoti with the shipped dlopen helper.
 
 - **Baseline** (`v0.35.1-rc.1.xollama`, merge commit `3284571c5`): the release
   run's five jobs succeeded; seven assets, every `sha256sum.txt` line OK; the

@@ -21,8 +21,8 @@ engine.
 |---|---|
 | Windows | `xOllamaSetup.exe` (unsigned: SmartScreen warns on first run; check it against `sha256sum.txt`) |
 | macOS, Apple silicon | `xOllama.dmg` (signed and notarized) |
-| Linux, with a runtime | the [Docker image](#docker), amd64 and arm64 |
-| Linux, binary only | `xollama-linux-amd64`, `xollama-linux-arm64` (glibc 2.28 or newer; no runtime, for a host that already has one) |
+| Linux | `curl -fsSL https://raw.githubusercontent.com/mann1x/xollama/main/scripts/install.sh \| sh` (amd64 and arm64, glibc 2.28 or newer: the binary, the runtime, the opencoti engine, MLX on an NVIDIA amd64 host), or the [Docker image](#docker) |
+| Linux, binary only | `xollama-linux-amd64`, `xollama-linux-arm64` (no runtime, for a host that already has one) |
 
 The server listens on **22434**. Then:
 

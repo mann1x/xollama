@@ -157,7 +157,8 @@ rebuild of a checked candidate's tree.
 | `payload-id.txt` | `payloadId` in `scripts/build_windows.ps1` | the updater, to pick between the two installers |
 | `xollama-windows-amd64.exe` | `go build`, static | anyone replacing only the CLI/server |
 | `xollama-linux-amd64`, `xollama-linux-arm64` | `go build` inside AlmaLinux 8 (glibc 2.28), each on a runner of its architecture | Linux hosts that already have a runtime |
-| container image `mannixita/xollama:<version>`, `ghcr.io/mann1x/xollama:<version>` | `docker-release.yaml` on the tag: assembled from pins, one image per architecture joined in a manifest | Linux amd64 and arm64 (a Raspberry Pi 5 included), the only Linux delivery that carries a runtime |
+| `xollama-linux-<arch>.tar.zst`, `-opencoti.tar.zst`; `xollama-linux-amd64-mlx.tar.zst`; `xollama-linux-arm64-jetpack5.tar.zst`, `-jetpack6.tar.zst` | the `linux` job: `scripts/docker-assemble.sh` around the binary just built (the image's payload), split by `scripts/linux-tarballs.sh`: the base (binary, CPU runtime, upstream's base GPU libraries), the engine with every file beside it and its prebuilt dlopen helper, one archive per further `gpu` pin row | `scripts/install.sh` (owner, 2026-11-21: part of every release; `publish` refuses a release without all seven) |
+| container image `mannixita/xollama:<version>`, `ghcr.io/mann1x/xollama:<version>` | `docker-release.yaml` on the tag: assembled from pins, one image per architecture joined in a manifest | Linux amd64 and arm64 (a Raspberry Pi 5 included) |
 | `sha256sum.txt` | every asset above except the image | the updater verifies the installer against it before running it |
 
 The asset names are a contract with `app/updater/fork.go`. It matches
@@ -403,7 +404,8 @@ Use the **Create a merge commit** button, or
    them.
 3. `linux` builds the Linux binary in AlmaLinux 8, once per architecture on a
    runner of that architecture (`ubuntu-latest`, `ubuntu-24.04-arm`), runs it
-   there and uploads `xollama-linux-amd64` and `xollama-linux-arm64`.
+   there, assembles the payload around it and cuts the install tarballs
+   (`scripts/linux-tarballs.sh`), and uploads the binary and the tarballs.
 4. `publish` checks the exact asset set and sizes, writes `sha256sum.txt`, and
    only then turns the draft into a **pre-release**. That also creates the tag
    `v<version>` on the merge commit.
@@ -433,6 +435,10 @@ gh release download "$tag" --repo mann1x/xollama --clobber
 sha256sum -c sha256sum.txt                       # every line OK
 ./xollama-linux-amd64 --version                  # names $tag without the v
 scp xollama-linux-arm64 root@dietpi5.local:/root/xollama-arm64/ && ssh root@dietpi5.local /root/xollama-arm64/xollama-linux-arm64 --version   # the same, on arm64
+# install.sh against these files, in a clean container (no compiler), then a GPU load on opencoti:
+python3 -m http.server 18765 --bind 127.0.0.1 &   # in $d
+docker run --rm --gpus all --network host -v "$repo/scripts/install.sh:/install.sh:ro" ubuntu:24.04 bash -c \
+  'apt-get update -qq && apt-get install -y -qq curl zstd >/dev/null && XOLLAMA_DOWNLOAD_BASE=http://127.0.0.1:18765 sh /install.sh && xollama --version'
 docker buildx imagetools inspect mannixita/xollama:${tag#v} | grep Platform   # linux/amd64 and linux/arm64
 strings xOllamaSetup.exe | grep -c 'repos/mann1x/xollama/releases'   # not 0 (Inno compresses; if 0, check the installed app in step 7)
 ```
@@ -749,7 +755,6 @@ installed release passes step 7, never before. They are the fallback until then.
   the version. Releases up to `.4` were built on the Mac mini
   (`sh build-release.sh`) and attached by hand; that still works if the hosted
   job cannot run.
-- **No Windows arm64, no Linux runtime archive.** On Linux
-  the image is the delivery with a runtime; `xollama-linux-<arch>` is the
-  binary alone. Bare Linux hosts (solidPC) are still deployed from a local
-  build with the full deployment script.
+- **No Windows arm64.** Linux has the install tarballs (since
+  `v0.40.17-rc.1.xollama`) and the image; `xollama-linux-<arch>` is the binary
+  alone. solidPC's service is still swapped with its own script.

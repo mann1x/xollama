@@ -50,6 +50,9 @@ if [ -n "$XOLLAMA_PICK_VERSION" ]; then
 else
     DOWNLOAD_BASE="${XOLLAMA_RELEASES}/latest/download"
 fi
+# XOLLAMA_DOWNLOAD_BASE: a directory URL holding a release's assets, for
+# checking a release before it is published (RELEASE.md, G12).
+DOWNLOAD_BASE="${XOLLAMA_DOWNLOAD_BASE:-$DOWNLOAD_BASE}"
 DOWNLOAD_PARAM=""
 
 ###########################################
@@ -179,26 +182,30 @@ fi
 status "Installing xollama to $OLLAMA_INSTALL_DIR"
 $SUDO install -o0 -g0 -m755 -d $BINDIR
 $SUDO install -o0 -g0 -m755 -d "$OLLAMA_INSTALL_DIR/lib/ollama"
+# Every release publishes these per architecture (scripts/linux-tarballs.sh):
+# the base (bin/xollama, the CPU runtime, CUDA 12 and 13 and Vulkan for stock
+# llama.cpp) and the opencoti engine with every library beside it, the engine
+# xollama runs by default. Both always.
 download_and_extract "$DOWNLOAD_BASE" "$OLLAMA_INSTALL_DIR" "xollama-linux-${ARCH}"
+download_and_extract "$DOWNLOAD_BASE" "$OLLAMA_INSTALL_DIR" "xollama-linux-${ARCH}-opencoti"
 
 if [ "$OLLAMA_INSTALL_DIR/bin/xollama" != "$BINDIR/xollama" ] ; then
     status "Making xollama accessible in the PATH in $BINDIR"
-    $SUDO ln -sf "$OLLAMA_INSTALL_DIR/xollama" "$BINDIR/xollama"
+    $SUDO ln -sf "$OLLAMA_INSTALL_DIR/bin/xollama" "$BINDIR/xollama"
 fi
 
-# The legacy CUDA payload. cuda_v13 and opencoti-llamafile both floor at compute
-# 7.5, so Maxwell, Pascal and Volta (a GTX 1080 Ti, a Tesla V100) are served by
-# cuda_v12 or not at all -- and "not at all" means a silent fall back to CPU,
-# which reads as "it is slow" rather than "it is missing something". Detect the
-# hardware and fetch the tier rather than leaving it to be discovered.
-if available nvidia-smi ; then
-    OLDEST_CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null \
-        | tr -d ' ' | awk -F. 'NF==2 {printf "%d\n", $1*10+$2}' | sort -n | head -1)
-    if [ -n "$OLDEST_CC" ] && [ "$OLDEST_CC" -lt 75 ] ; then
-        status "Detected an NVIDIA GPU below compute 7.5; adding the legacy CUDA 12 payload"
-        download_and_extract "$DOWNLOAD_BASE" "$OLLAMA_INSTALL_DIR" "xollama-linux-${ARCH}-cuda12"
+# MLX (CUDA) serves only what opencoti cannot, safetensors models; it runs on
+# NVIDIA alone, as the Windows installer decides. XOLLAMA_MLX=0 skips it.
+if [ "$ARCH" = "amd64" ] && [ "${XOLLAMA_MLX:-1}" != "0" ] ; then
+    if available nvidia-smi || { available lspci && lspci -d '10de:' 2>/dev/null | grep -q 'NVIDIA'; } ; then
+        status "NVIDIA GPU found; adding the MLX runtime"
+        download_and_extract "$DOWNLOAD_BASE" "$OLLAMA_INSTALL_DIR" "xollama-linux-${ARCH}-mlx"
     fi
 fi
+
+# Maxwell, Pascal and Volta (compute below 7.5) need no download of their own:
+# the base carries llama.cpp's cuda_v12 and the engine archive its CUDA 12
+# library, which it selects itself when every NVIDIA card is older than 7.5.
 
 # Check for NVIDIA JetPack systems with additional downloads
 if [ -f /etc/nv_tegra_release ] ; then
@@ -212,7 +219,7 @@ if [ -f /etc/nv_tegra_release ] ; then
 fi
 
 install_success() {
-    status 'The xollama API is now available at 127.0.0.1:11434.'
+    status 'The xollama API is now available at 127.0.0.1:22434.'
     status 'Install complete. Run "xollama" from the command line.'
 }
 trap install_success EXIT
@@ -328,10 +335,11 @@ if ! check_gpu lspci nvidia && ! check_gpu lshw nvidia && ! check_gpu lspci amdg
 fi
 
 if check_gpu lspci amdgpu || check_gpu lshw amdgpu; then
-    download_and_extract "$DOWNLOAD_BASE" "$OLLAMA_INSTALL_DIR" "xollama-linux-${ARCH}-rocm"
-
+    # AMD runs on Vulkan (the engine's library and llama.cpp's, both installed
+    # above); xollama ships no ROCm payload. It needs the distribution's Mesa
+    # Vulkan driver (RADV).
     install_success
-    status "AMD GPU ready."
+    status "AMD GPU ready (Vulkan)."
     exit 0
 fi
 
