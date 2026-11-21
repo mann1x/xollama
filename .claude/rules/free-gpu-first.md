@@ -74,6 +74,14 @@ paths:
   (20; owner, 2026-10-11) of the weights would not fit the card. Below that it
   loads, the engine keeps the rest in host memory (the rolling window), and a
   load that does not fit whole says so at Info. Never a guessed threshold.
+- **An explicit `num_gpu` that reaches every layer fits its weights whole**
+  (`explicitFullGPUOffload`; `needsEviction` takes the pre-flight's
+  `launchOpts`). It reaches the engine as `-ngl`, and the engine's fit then
+  moves nothing ("n_gpu_layers already set by user to 99, abort"): no weights
+  stay in host memory. eleven2go, 2026-11-21 (mail #2362): a 15.9 GiB model on
+  a 15.1 GiB RX 9070 XT, paged into shared memory by Windows, about 3 tok/s.
+  The cache still never evicts. Guard
+  `TestAnExplicitNumGPUMustFitTheWeightsWhole`.
 - **Where the GPU's memory is the host's, a load that does not fit whole
   evicts** (`sharesHostMemory`: every device `Integrated`; Apple silicon):
   `needsEviction` is `predicted > free` there, since there is no other memory

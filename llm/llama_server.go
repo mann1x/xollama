@@ -3642,6 +3642,7 @@ func (s *llamaServerRunner) MemorySize() (total, vram uint64) {
 		if totalLayers > 0 && gpuLayers >= totalLayers && gpuLayerOverflow == 0 {
 			total = vram
 		}
+		vram = s.residentVRAM(vram) // xollama-hook: engine-overcommit
 		return total, vram
 	}
 	// Fallback: use model file size as a rough proxy
