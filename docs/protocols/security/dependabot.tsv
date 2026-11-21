@@ -26,7 +26,7 @@ GHSA-gvmj-g25r-r7wr	low	runtime	app/ui/app/package-lock.json	dompurify	>= 3.0.0,
 GHSA-h7mw-gpvr-xq4m	medium	runtime	app/ui/app/package-lock.json	dompurify	< 3.4.0	3.4.0	2026-09-18	DOMPurify: FORBID_TAGS bypassed by function-based ADD_TAGS predicate (asymmetry with FORBID_ATTR fix)
 GHSA-h8r8-wccr-v5f2	medium	runtime	app/ui/app/package-lock.json	dompurify	< 3.3.2	3.3.2	2026-09-18	DOMPurify is vulnerable to mutation-XSS via Re-Contextualization 
 GHSA-hpcv-96wg-7vj8	medium	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.5	3.4.6	2026-09-18	DOMPurify: Cross-realm IN_PLACE sanitization leaves executable markup intact via realm-bound `instanceof` checks
-GHSA-mrv2-3pqr-j5jr	high	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.16	3.4.17	2026-10-23	DOMPurify IN_PLACE: hook that removes a parent or sibling leaves the detached subtree's event handlers armed (incomplete
+GHSA-mrv2-3pqr-j5jr	low	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.16	3.4.17	2026-10-23	DOMPurify IN_PLACE: hook that removes a parent or sibling leaves the detached subtree's event handlers armed (incomplete
 GHSA-r47g-fvhr-h676	medium	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.5	3.4.6	2026-09-18	DOMPurify: IN_PLACE mode preserves attributes of a clobbered root element, allowing XSS via attacker-controlled root DOM
 GHSA-rp9w-3fw7-7cwq	medium	runtime	app/ui/app/package-lock.json	dompurify	<= 3.4.6	3.4.7	2026-09-18	DOMPurify IN_PLACE Sanitization Bypass via Attached Shadow Root Inside <template>.content
 GHSA-v2wj-7wpq-c8vv	medium	runtime	app/ui/app/package-lock.json	dompurify	>= 3.1.3, <= 3.3.1	3.3.2	2026-09-18	DOMPurify contains a Cross-site Scripting vulnerability
@@ -44,6 +44,7 @@ GHSA-238p-pmpm-9mq7	low	runtime	app/ui/app/package-lock.json	katex	>= 0.11.0, < 
 GHSA-r5fr-rjxr-66jc	high	development	app/ui/app/package-lock.json	lodash	>= 4.0.0, <= 4.17.23	4.18.0	2026-09-18	lodash vulnerable to Code Injection via `_.template` imports key names
 GHSA-xxjr-mmjv-4gpg	medium	development	app/ui/app/package-lock.json	lodash	>= 4.0.0, <= 4.17.22	4.17.23	2026-09-18	Lodash has Prototype Pollution Vulnerability in `_.unset`, `_.omit`, and `_.pullAt` functions
 GHSA-r5fr-rjxr-66jc	high	runtime	app/ui/app/package-lock.json	lodash-es	>= 4.0.0, <= 4.17.23	4.18.0	2026-09-18	lodash vulnerable to Code Injection via `_.template` imports key names
+GHSA-xxjr-mmjv-4gpg	medium	runtime	app/ui/app/package-lock.json	lodash-es	>= 4.0.0, < 4.17.23	4.17.23	2026-11-16	Lodash has Prototype Pollution Vulnerability in `_.unset`, `_.omit`, and `_.pullAt` functions
 GHSA-4fh9-h7wg-q85m	medium	runtime	app/ui/app/package-lock.json	mdast-util-to-hast	>= 13.0.0, < 13.2.1	13.2.1	2026-09-18	mdast-util-to-hast has unsanitized class attribute
 GHSA-2v8p-3f2j-5mp7	medium	runtime	app/ui/app/package-lock.json	mermaid	>= 11.0.0-alpha.1, < 11.16.1	11.16.1	2026-09-18	Mermaid XY Charts are vulnerable to an infinite loop DoS
 GHSA-3rrr-jr9j-h3q3	medium	runtime	app/ui/app/package-lock.json	mermaid	>= 11.5.0, < 11.16.1	11.16.1	2026-09-18	Mermaid Architecture diagrams are vulnerable to prototype pollution
@@ -56,6 +57,7 @@ GHSA-rhh3-jpg6-66xh	medium	runtime	app/ui/app/package-lock.json	mermaid	>= 11.6.
 GHSA-xcj9-5m2h-648r	medium	runtime	app/ui/app/package-lock.json	mermaid	>= 11.0.0-alpha.1, <= 11.14.0	11.15.0	2026-09-18	Mermaid: Improper sanitization of `classDefs` in diagrams leads to CSS injection
 GHSA-7r86-cg39-jmmj	high	development	app/ui/app/package-lock.json	minimatch	< 3.1.3	3.1.3	2026-09-18	minimatch has ReDoS: matchOne() combinatorial backtracking via multiple non-adjacent GLOBSTAR segments
 GHSA-7r86-cg39-jmmj	high	development	app/ui/app/package-lock.json	minimatch	>= 9.0.0, < 9.0.7	9.0.7	2026-09-18	minimatch has ReDoS: matchOne() combinatorial backtracking via multiple non-adjacent GLOBSTAR segments
+GHSA-g3hv-75wg-m249	medium	development	app/ui/app/package-lock.json	minimatch	>= 7.0.0, < 11.0.1	11.0.1	2026-11-16	minimatch has potential denial of service via globparts amplification
 GHSA-xwg4-73v4-xw9w	high	development	app/ui/app/package-lock.json	nanoid	< 3.3.12	3.3.12	2026-09-18	nanoid: Integer Overflow or Wraparound
 GHSA-3v7f-55p6-f55p	medium	development	app/ui/app/package-lock.json	picomatch	< 2.3.2	2.3.2	2026-09-18	Picomatch: Method Injection in POSIX Character Classes causes incorrect Glob Matching
 GHSA-3v7f-55p6-f55p	medium	development	app/ui/app/package-lock.json	picomatch	>= 4.0.0, < 4.0.4	4.0.4	2026-09-18	Picomatch: Method Injection in POSIX Character Classes causes incorrect Glob Matching
