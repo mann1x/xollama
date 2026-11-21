@@ -18,6 +18,9 @@ func TestSchedParallelCapacity(t *testing.T) {
 				for _, capability := range []string{"completion", "embedding", "decision", "speech"} {
 					t.Run(fmt.Sprintf("%s/%s/%d/%s", family, format, parallel, capability), func(t *testing.T) {
 						t.Setenv("OLLAMA_NUM_PARALLEL", fmt.Sprint(parallel))
+						// xollama-hook: slots-live -- ollama's count is stock llama.cpp's;
+						// opencoti takes XOLLAMA_PARALLEL for a GGUF completion model.
+						t.Setenv("XOLLAMA_ENGINE", "llamacpp")
 						ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 						defer cancel()
 						s := InitScheduler(ctx)

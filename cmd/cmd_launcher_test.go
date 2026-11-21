@@ -50,7 +50,7 @@ func TestRootCommandHelpAndLauncher(t *testing.T) {
 				http.Error(w, "launcher heartbeat", http.StatusServiceUnavailable)
 			}))
 			defer server.Close()
-			t.Setenv("OLLAMA_HOST", server.URL)
+			t.Setenv("XOLLAMA_HOST", server.URL)
 
 			var output bytes.Buffer
 			root := NewCLI()

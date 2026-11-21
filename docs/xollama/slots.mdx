@@ -231,6 +231,9 @@ or `{"slots": {"dynamic": false}}` for one model. That restores Ollama's fixed
 split: `XOLLAMA_PARALLEL` slots on opencoti (`OLLAMA_NUM_PARALLEL` on stock
 llama.cpp), each with its own share of the cache.
 
+An MLX model (safetensors) never runs on opencoti and always takes
+`OLLAMA_NUM_PARALLEL`, which the MLX runner generates concurrently on.
+
 Worth doing for a model where predictable per-request speed matters more than
 throughput — a fixed split cannot be slowed down by a neighbour, because there
 is no neighbour.
