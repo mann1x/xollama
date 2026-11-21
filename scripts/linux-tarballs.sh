@@ -29,6 +29,11 @@ set -euo pipefail
 
 out=${1:?usage: $0 <assemble-out-dir> <dist-dir>}
 dist=${2:?usage: $0 <assemble-out-dir> <dist-dir>}
+# Absolute: `docker run -v` reads a relative path as a volume name (refused on
+# the arm64 runner, 2026-11-21).
+mkdir -p "$dist"
+out=$(cd "$out" && pwd)
+dist=$(cd "$dist" && pwd)
 arch=${ARCH:-amd64}
 repo=$(git rev-parse --show-toplevel)
 case "$arch" in
