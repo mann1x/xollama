@@ -34,6 +34,17 @@ paths:
   part into shared memory without an error (mail #2362, `num_gpu 99` on the
   RX 9070 XT). Stock llama.cpp and integrated GPUs keep upstream's figures.
   Guards: `llm/engine_overcommit_test.go`.
+- **The engine's device names are its own** (`engine-device-names` hook,
+  `llm/engine_device_names.go`): a pinned load starts the engine with a
+  visible-devices filter and it numbers what it sees from 0 (discovery's
+  Vulkan2 is its Vulkan0). `engineKey` maps a device to the engine's name by
+  backend and description, in order, unless every device of the load is under
+  its own name; `Overcommitted`, `GetDeviceInfos` and `VRAMByGPU` look up
+  through it. Without it a pinned 9070 XT load read 100% VRAM past the card
+  and the card looked empty with the model on it (eleven2go, 2026-11-21,
+  bug-362). Stock llama.cpp keeps upstream's lookup. A fixture that names the
+  card as discovery does tests nothing here: take the engine's real lines.
+  Guards: `llm/engine_device_names_test.go`.
 - **A runner's number does not outlive the runner** (`stale-free` hook,
   `discover/refresh_stale.go`, hooked in `discover/runner.go`):
   `noteListedFree` records what a listing measured (`listedFree`, guarded by
@@ -62,7 +73,7 @@ paths:
   unload; without the runners the table showed a card's free memory from
   before the model loaded (eleven2go 3090: 22.8 GiB free under 15.1 GiB).
   Guard: `TestTheDevicesRouteAsksTheLoadedRunners`.
-- Registry rows `free-at-load`, `engine-overcommit`, `stale-free`, `delete-unload` in
+- Registry rows `free-at-load`, `engine-overcommit`, `engine-device-names`, `stale-free`, `delete-unload` in
   `docs/protocols/UPSTREAM-SYNC.md`; prose in
   `docs/features/device-selection.md`.
 

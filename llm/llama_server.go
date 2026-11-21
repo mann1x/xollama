@@ -185,6 +185,8 @@ type llamaServerRunner struct {
 	// the GPU driver reports accurately). Keys match vramByDevice (e.g., "CUDA0").
 	systemFreeAtLoad map[string]uint64
 
+	engineDevices map[string]string // xollama-hook: engine-device-names -- the engine's own name and description of each device it uses
+
 	// gpus is the list of GPU devices assigned to this runner at creation time,
 	// used to map DeviceIDs to device names for VRAMByGPU lookups.
 	gpus []ml.DeviceInfo
@@ -3649,7 +3651,7 @@ func (s *llamaServerRunner) GetDeviceInfos(ctx context.Context) []ml.DeviceInfo 
 	infos := make([]ml.DeviceInfo, len(s.gpus))
 	for i, gpu := range s.gpus {
 		infos[i] = gpu
-		used := s.vramByDevice[gpu.Name]
+		used := s.vramByDevice[s.engineKey(gpu)] // xollama-hook: engine-device-names
 
 		// Our accounting: total minus what we allocated
 		var accountedFree uint64
@@ -3661,7 +3663,8 @@ func (s *llamaServerRunner) GetDeviceInfos(ctx context.Context) []ml.DeviceInfo 
 		// we've allocated since. This captures external consumers on platforms
 		// where the driver reports accurately.
 		systemFree := accountedFree // default to our accounting
-		if sysFree, ok := s.systemFreeAtLoad[gpu.Name]; ok {
+		// xollama-hook: engine-device-names -- the engine's own name for gpu
+		if sysFree, ok := s.systemFreeAtLoad[s.engineKey(gpu)]; ok {
 			if used < sysFree {
 				systemFree = sysFree - used
 			} else {
@@ -3922,6 +3925,7 @@ func (w *memoryParsingWriter) parseLineLocked(line []byte) {
 		if mib, err := strconv.ParseUint(string(match[2]), 10, 64); err == nil {
 			recordFreeAtLoad(w.runner.systemFreeAtLoad, devName, mib*1024*1024) // xollama-hook: free-at-load
 		}
+		w.runner.noteEngineDevice(line) // xollama-hook: engine-device-names
 	}
 	if match := offloadedLayersRegex.FindSubmatch(line); match != nil {
 		loaded, loadedErr := strconv.ParseUint(string(match[1]), 10, 64)
@@ -4077,7 +4081,7 @@ func (s *llamaServerRunner) VRAMByGPU(id ml.DeviceID) uint64 {
 	// --list-devices stdout, which matches the buffer log prefix.
 	for _, gpu := range s.gpus {
 		if gpu.DeviceID == id {
-			return s.vramByDevice[gpu.Name]
+			return s.vramByDevice[s.engineKey(gpu)] // xollama-hook: engine-device-names
 		}
 	}
 	return 0

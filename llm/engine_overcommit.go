@@ -28,11 +28,12 @@ func (s *llamaServerRunner) Overcommitted() uint64 {
 		if g.Integrated {
 			continue
 		}
-		free, ok := s.systemFreeAtLoad[g.Name]
+		key := s.engineKey(g)
+		free, ok := s.systemFreeAtLoad[key]
 		if !ok {
 			continue
 		}
-		if used := s.vramByDevice[g.Name]; used > free {
+		if used := s.vramByDevice[key]; used > free {
 			over += used - free
 		}
 	}
