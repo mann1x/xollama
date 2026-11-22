@@ -41,6 +41,11 @@ type CloudAccountsRequest struct {
 	Action  string `json:"action"`
 	Account string `json:"account,omitempty"`
 	Label   string `json:"label,omitempty"`
+	// APIKey, with add or signin, makes the account authenticate with this
+	// ollama.com API key instead of a connected key. It is checked with
+	// ollama.com before it is kept, stored in the account's directory (0600)
+	// and never returned.
+	APIKey string `json:"api_key,omitempty"`
 
 	Parallel *int  `json:"parallel,omitempty"`
 	Disabled *bool `json:"disabled,omitempty"`
@@ -61,8 +66,11 @@ type CloudAccountInfo struct {
 	Parallel    int    `json:"parallel"`
 	ParallelSet int    `json:"parallel_set,omitempty"`
 	State       string `json:"state"`
-	Disabled    bool   `json:"disabled,omitempty"`
-	VerifiedAt  string `json:"verified_at,omitempty"`
+	// Auth is "api_key" for an account on an API key, empty for a
+	// connected key.
+	Auth       string `json:"auth,omitempty"`
+	Disabled   bool   `json:"disabled,omitempty"`
+	VerifiedAt string `json:"verified_at,omitempty"`
 	// Primary marks the account `xollama signin` set.
 	Primary bool `json:"primary,omitempty"`
 	// Excluded marks a primary kept out of cloud-model use.

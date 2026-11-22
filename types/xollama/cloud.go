@@ -65,7 +65,20 @@ type CloudAccount struct {
 	Disabled   bool   `json:"disabled,omitempty"`
 	SignedOut  bool   `json:"signed_out,omitempty"`
 	VerifiedAt string `json:"verified_at,omitempty"`
+	// Auth is how the account authenticates: "" (CloudAuthKey) an ed25519
+	// key connected through the connect page, CloudAuthAPIKey an ollama.com
+	// API key. Neither is kept here: both live in the account's directory.
+	Auth string `json:"auth,omitempty"`
 }
+
+// How an account authenticates.
+const (
+	CloudAuthKey    = ""
+	CloudAuthAPIKey = "api_key"
+)
+
+// UsesAPIKey reports an account that authenticates with an API key.
+func (a CloudAccount) UsesAPIKey() bool { return a.Auth == CloudAuthAPIKey }
 
 // planParallel is how many requests an ollama.com plan runs at once. The
 // same table as Cerebriline's OLLAMA_PLAN_CONCURRENCY
@@ -161,6 +174,9 @@ func (c *CloudSettings) Validate() error {
 	for _, a := range c.Accounts {
 		if !cloudIDPattern.MatchString(a.ID) {
 			return fmt.Errorf("cloud: account id %q is not eight hex digits", a.ID)
+		}
+		if a.Auth != CloudAuthKey && a.Auth != CloudAuthAPIKey {
+			return fmt.Errorf("cloud: account %q: auth must be empty (a connected key) or %q, not %q", a.Label, CloudAuthAPIKey, a.Auth)
 		}
 		if !ValidCloudLabel(a.Label) {
 			return fmt.Errorf("cloud: label %q must be 1 to 32 letters, digits, '.', '_' or '-', starting with a letter or digit", a.Label)

@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ollama/ollama/auth"
 	"github.com/ollama/ollama/types/xollama"
 )
 
@@ -88,10 +87,7 @@ type cloudLease struct {
 
 // ctx is parent signing as the lease's account.
 func (l *cloudLease) ctx(parent context.Context) context.Context {
-	if l.m.keyPath == "" {
-		return parent
-	}
-	return auth.WithKeyFile(parent, l.m.keyPath)
+	return cloudCredCtx(parent, l.m.keyPath)
 }
 
 func (l *cloudLease) release() {
@@ -147,7 +143,7 @@ func (p *cloudPool) refreshLocked() {
 		if !a.Usable() {
 			continue
 		}
-		kp, err := cloudKeyPath(a.ID)
+		kp, err := cloudCredPath(a)
 		if err != nil {
 			continue
 		}
@@ -440,9 +436,7 @@ var cloudBalanceRaw = func(ctx context.Context, keyPath string) ([]byte, error) 
 		return nil, err
 	}
 	sctx := ctx
-	if keyPath != "" {
-		sctx = auth.WithKeyFile(ctx, keyPath)
-	}
+	sctx = cloudCredCtx(sctx, keyPath)
 	if err := cloudProxySignRequest(sctx, req); err != nil {
 		return nil, err
 	}

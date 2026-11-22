@@ -64,6 +64,29 @@ The primary account is the one `xollama signin` sets. It does not count toward
 the 25. Registry pulls and pushes, web search and `/api/me` always use it;
 `--primary exclude` only keeps it off cloud models.
 
+## Accounts on an API key
+
+An account can use an ollama.com API key (create one at
+[ollama.com/settings/keys](https://ollama.com/settings/keys)) instead of a
+connected key, with no browser step:
+
+```shell
+xollama tweak server cloud add work-3 --api-key < work-3.key
+xollama tweak server cloud login work-3 --api-key     # a new key, typed hidden
+```
+
+`--api-key` reads the key from standard input, hidden when that is a terminal,
+so it never appears in the shell's history or the process list. The server asks
+ollama.com whose key it is before keeping it: a key ollama.com refuses is not
+kept (and an account's old key stays), and a key of an ollama.com account already
+in the pool is refused. The key is stored in the account's directory under
+`~/.ollama/xollama-cloud/` (mode 0600), never in the settings file, and never
+shown again. `login --api-key` also moves an account from a connected key to an
+API key, signing the old key out at ollama.com; `login` without it moves it back.
+
+`logout` and `remove` forget the key on this server. ollama.com has no route to
+revoke an API key, so revoke it at ollama.com yourself when nothing else uses it.
+
 ## How requests are shared
 
 Each account takes as many cloud requests at once as its plan allows, or its
@@ -78,8 +101,10 @@ minutes when it does not say), and the next ready account takes its place. A
 request refused that way before any of its answer reached the client is sent
 again on the next account, so the client sees no error. The same goes for an
 account whose key ollama.com no longer accepts (401), which is left out for 10
-minutes. A 429 (too many requests on that account, for example from another
-device using it) never takes an account out: the request goes to another account
+minutes. Measured on a free account (2026-11-22): ollama.com runs 3 requests at once
+and queues a fourth and fifth rather than refusing them, so the server's own
+queue mostly saves the wait at ollama.com. A 429 (too many requests on that
+account, for example from another device using it) never takes an account out: the request goes to another account
 with a free slot, or the 429 reaches the client.
 
 When every account has run out, a cloud request gets a 402 naming the time the

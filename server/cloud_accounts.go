@@ -67,6 +67,79 @@ func cloudKeyPath(id string) (string, error) {
 	return filepath.Join(home, ".ollama", "xollama-cloud", id, "id_ed25519"), nil
 }
 
+// cloudAPIKeyFile is the name of an account's API key file in its
+// directory; a key being checked before it replaces the old one is
+// cloudAPIKeyFile + ".new".
+const cloudAPIKeyFile = "api_key"
+
+// cloudCredPath is the file an account authenticates with: its API key, or
+// its private key.
+func cloudCredPath(a xollama.CloudAccount) (string, error) {
+	p, err := cloudKeyPath(a.ID)
+	if err != nil || !a.UsesAPIKey() {
+		return p, err
+	}
+	return filepath.Join(filepath.Dir(p), cloudAPIKeyFile), nil
+}
+
+// cloudCredCtx makes requests on ctx authenticate with the credential at
+// path: an API key file (by its name), else a private key. "" is the
+// primary's, upstream's own signing.
+func cloudCredCtx(ctx context.Context, path string) context.Context {
+	switch {
+	case path == "":
+		return ctx
+	case strings.HasPrefix(filepath.Base(path), cloudAPIKeyFile):
+		return auth.WithAPIKeyFile(ctx, path)
+	default:
+		return auth.WithKeyFile(ctx, path)
+	}
+}
+
+// writeCloudAPIKey stores key as the account's API key file, or beside it
+// as the ".new" file being checked, mode 0600 in a 0700 directory, owned as
+// the store's files are.
+func writeCloudAPIKey(id, key string, checking bool) (string, error) {
+	key = strings.TrimSpace(key)
+	if key == "" || len(key) > 512 || strings.ContainsAny(key, " \t\r\n") {
+		return "", cloudRefuse(http.StatusBadRequest, "an ollama.com API key is one word of at most 512 characters")
+	}
+	p, err := cloudCredPath(xollama.CloudAccount{ID: id, Auth: xollama.CloudAuthAPIKey})
+	if err != nil {
+		return "", err
+	}
+	if checking {
+		p += ".new"
+	}
+	if err := fsowner.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return "", err
+	}
+	return p, fsowner.WriteFile(p, []byte(key+"\n"), 0o600)
+}
+
+// checkCloudAPIKey writes key beside the account's credential and asks
+// ollama.com whose it is. A key ollama.com refuses is removed and refused;
+// one it accepts replaces the account's API key file. The account's entry is
+// the caller's: verifyCloudAccount records who it is.
+func checkCloudAPIKey(ctx context.Context, id, label, key string) error {
+	p, err := writeCloudAPIKey(id, key, true)
+	if err != nil {
+		return err
+	}
+	cctx, cancel := context.WithTimeout(ctx, cloudCallTimeout)
+	defer cancel()
+	u, err := cloudWhoami(cctx, p)
+	if notConnected(u, err) {
+		_ = os.Remove(p)
+		return cloudRefuse(http.StatusBadRequest, "ollama.com does not accept this API key for %q (create one at https://ollama.com/settings/keys)", label)
+	}
+	if err != nil {
+		_ = os.Remove(p)
+		return cloudRefuse(http.StatusBadGateway, "ollama.com did not answer for %q: %v", label, err)
+	}
+	return os.Rename(p, strings.TrimSuffix(p, ".new"))
+}
+
 // newCloudKey makes the account's key, mode 0600, owned as the store's
 // files are (store-ownership), and returns its public key.
 func newCloudKey(id string) (string, error) {
@@ -122,10 +195,7 @@ var cloudOrigin = func() *url.URL { return &url.URL{Scheme: "https", Host: "olla
 // cloudWhoami asks ollama.com who the key at keyPath belongs to; "" is the
 // primary key.
 var cloudWhoami = func(ctx context.Context, keyPath string) (*api.UserResponse, error) {
-	if keyPath != "" {
-		ctx = auth.WithKeyFile(ctx, keyPath)
-	}
-	return api.NewClient(cloudOrigin(), http.DefaultClient).Whoami(ctx)
+	return api.NewClient(cloudOrigin(), http.DefaultClient).Whoami(cloudCredCtx(ctx, keyPath))
 }
 
 // cloudDisconnect removes the key at keyPath from its ollama.com account,
@@ -266,6 +336,7 @@ func runCloudAction(ctx context.Context, req api.CloudAccountsRequest) (*api.Clo
 			return nil, cloudRefuse(http.StatusBadRequest, "label %q must be 1 to 32 letters, digits, '.', '_' or '-', starting with a letter or digit", label)
 		}
 		var id, pub string
+		withKey := strings.TrimSpace(req.APIKey) != ""
 		cs, err = updateCloud(func(cs *xollama.CloudSettings) error {
 			if len(cs.Accounts) >= xollama.MaxCloudAccounts {
 				return cloudRefuse(http.StatusConflict, "%d accounts are already added; that is the most beside the primary", xollama.MaxCloudAccounts)
@@ -277,23 +348,57 @@ func runCloudAction(ctx context.Context, req api.CloudAccountsRequest) (*api.Clo
 			if id, err = newCloudID(); err != nil {
 				return err
 			}
-			if pub, err = newCloudKey(id); err != nil {
+			a := xollama.CloudAccount{ID: id, Label: label}
+			if withKey {
+				// Checked before the entry exists: a refused key adds nothing.
+				if err := checkCloudAPIKey(ctx, id, label, req.APIKey); err != nil {
+					removeCloudDir(id)
+					return err
+				}
+				a.Auth = xollama.CloudAuthAPIKey
+			} else if pub, err = newCloudKey(id); err != nil {
 				return err
 			}
-			cs.Accounts = append(cs.Accounts, xollama.CloudAccount{ID: id, Label: label})
+			cs.Accounts = append(cs.Accounts, a)
 			return nil
 		})
 		if err != nil {
 			return nil, err
 		}
-		target, connect = id, cloudConnectURL(label, pub)
+		target = id
+		if !withKey {
+			connect = cloudConnectURL(label, pub)
+			break
+		}
+		if cs, target, err = verifyCloudAccount(ctx, id); err != nil {
+			// The same ollama.com account as another: the new entry goes.
+			_, _ = updateCloud(func(cs *xollama.CloudSettings) error {
+				if i, ok := cs.Find(id); ok {
+					cs.Accounts = append(cs.Accounts[:i], cs.Accounts[i+1:]...)
+				}
+				return nil
+			})
+			removeCloudDir(id)
+			return nil, err
+		}
 	case api.CloudSignin:
+		if strings.TrimSpace(req.APIKey) != "" {
+			cs, target, err = signinCloudAPIKey(ctx, req)
+			break
+		}
 		cs, err = updateCloud(func(cs *xollama.CloudSettings) error {
 			i, err := named(cs)
 			if err != nil {
 				return err
 			}
 			a := &cs.Accounts[i]
+			if a.UsesAPIKey() {
+				// Back to a connected key: the API key goes.
+				if p, err := cloudCredPath(*a); err == nil {
+					_ = os.Remove(p)
+				}
+				a.Auth = xollama.CloudAuthKey
+			}
 			p, err := cloudKeyPath(a.ID)
 			if err != nil {
 				return err
@@ -408,6 +513,19 @@ func orEmpty(cs *xollama.CloudSettings) *xollama.CloudSettings {
 // signoutCloudKey removes the account's key at ollama.com. A key the
 // account no longer knows is signed out already.
 func signoutCloudKey(ctx context.Context, a xollama.CloudAccount) error {
+	if a.UsesAPIKey() {
+		// ollama.com has no route that revokes an API key: the server
+		// forgets it, and the operator revokes it at ollama.com.
+		p, err := cloudCredPath(a)
+		if err != nil {
+			return err
+		}
+		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		slog.Info("cloud account's API key removed from this server; revoke it at https://ollama.com/settings/keys if it is no longer used anywhere", "account", a.Label)
+		return nil
+	}
 	p, err := cloudKeyPath(a.ID)
 	if err != nil {
 		return err
@@ -431,6 +549,50 @@ func signoutCloudKey(ctx context.Context, a xollama.CloudAccount) error {
 	return nil
 }
 
+// removeCloudDir removes an account's directory, keys and all.
+func removeCloudDir(id string) {
+	if p, err := cloudKeyPath(id); err == nil {
+		_ = os.RemoveAll(filepath.Dir(p))
+	}
+}
+
+// signinCloudAPIKey gives an existing account an API key: a new one for an
+// API-key account, or in place of its connected key, which is signed out at
+// ollama.com first. The key is checked before anything is replaced.
+func signinCloudAPIKey(ctx context.Context, req api.CloudAccountsRequest) (*xollama.CloudSettings, string, error) {
+	cur := orEmpty(serverCloud())
+	i, ok := cur.Find(req.Account)
+	if !ok {
+		return nil, "", cloudRefuse(http.StatusNotFound, "no cloud account named %q", req.Account)
+	}
+	a := cur.Accounts[i]
+	if err := checkCloudAPIKey(ctx, a.ID, a.Label, req.APIKey); err != nil {
+		return nil, "", err
+	}
+	if !a.UsesAPIKey() {
+		if a.State() != xollama.CloudSignedOut {
+			if err := signoutCloudKey(ctx, a); err != nil {
+				slog.Warn("cloud account's connected key not signed out at ollama.com; remove it there by hand", "account", a.Label, "error", err)
+			}
+		}
+		if p, err := cloudKeyPath(a.ID); err == nil {
+			_ = os.Remove(p)
+		}
+	}
+	if _, err := updateCloud(func(cs *xollama.CloudSettings) error {
+		i, ok := cs.Find(a.ID)
+		if !ok {
+			return cloudRefuse(http.StatusNotFound, "no cloud account named %q", req.Account)
+		}
+		cs.Accounts[i].Auth = xollama.CloudAuthAPIKey
+		cs.Accounts[i].SignedOut, cs.Accounts[i].VerifiedAt, cs.Accounts[i].Account = false, "", ""
+		return nil
+	}); err != nil {
+		return nil, "", err
+	}
+	return verifyCloudAccount(ctx, a.ID)
+}
+
 // verifyCloudAccount asks ollama.com who the account's key belongs to. A key
 // not connected yet keeps the account pending, not an error. A key
 // connected to an account already in the pool (another added one, or the
@@ -443,7 +605,7 @@ func verifyCloudAccount(ctx context.Context, name string) (*xollama.CloudSetting
 		return nil, "", cloudRefuse(http.StatusNotFound, "no cloud account named %q", name)
 	}
 	a := cur.Accounts[i]
-	p, err := cloudKeyPath(a.ID)
+	p, err := cloudCredPath(a)
 	if err != nil {
 		return nil, "", err
 	}
@@ -467,6 +629,10 @@ func verifyCloudAccount(ctx context.Context, name string) (*xollama.CloudSetting
 		if pu, perr := cloudWhoami(cctx, ""); perr == nil && pu != nil && pu.Name != "" && cloudAccountHash(pu) == hash {
 			dup = "the primary account"
 		}
+	}
+	if dup != "" && a.UsesAPIKey() {
+		_ = os.Remove(p)
+		return nil, "", cloudRefuse(http.StatusConflict, "the API key for %q belongs to the same ollama.com account as %s; it was not kept. Use a key of another ollama.com account", a.Label, dup)
 	}
 	if dup != "" {
 		if pub, perr := cloudPublicKey(p); perr == nil {
@@ -526,7 +692,7 @@ func cloudAccountsView(ctx context.Context, cs *xollama.CloudSettings) *api.Clou
 		resp.Accounts = append(resp.Accounts, api.CloudAccountInfo{
 			ID: a.ID, Label: a.Label, Plan: a.Plan,
 			Parallel: cs.AccountParallel(a), ParallelSet: a.Parallel,
-			State: a.State(), Disabled: a.Disabled, VerifiedAt: a.VerifiedAt,
+			State: a.State(), Auth: a.Auth, Disabled: a.Disabled, VerifiedAt: a.VerifiedAt,
 		})
 	}
 	resp.Capacity = cloudCapacity(cs, resp.Accounts)

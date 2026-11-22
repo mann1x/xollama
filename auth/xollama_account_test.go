@@ -82,3 +82,28 @@ func TestARequestSignsWithItsAccountsKey(t *testing.T) {
 		t.Fatal("a request without an account was not signed by ~/.ollama/id_ed25519")
 	}
 }
+
+func TestAnAPIKeyAccountSendsItsKey(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	writeKey(t, filepath.Join(home, ".ollama", defaultPrivateKey))
+	p := filepath.Join(home, ".ollama", "xollama-cloud", "0a1b2c3d", "api_key")
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte("abc.def\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tok, err := Sign(WithAPIKeyFile(context.Background(), p), []byte("POST,/api/chat?ts=1"))
+	if err != nil || tok != "Bearer abc.def" {
+		t.Fatalf("Sign = %q, %v; want the account's key as a Bearer header", tok, err)
+	}
+	// A key file gone is an error, never the primary's signature.
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
+	if tok, err := Sign(WithAPIKeyFile(context.Background(), p), []byte("x")); err == nil {
+		t.Fatalf("Sign with a missing key file = %q, want an error", tok)
+	}
+}

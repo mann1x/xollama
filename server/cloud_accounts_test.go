@@ -21,14 +21,25 @@ import (
 // account, and which keys were disconnected.
 type fakeOllamaCom struct {
 	users        map[string]*api.UserResponse // by key file; "" is the primary
+	apiKeys      map[string]*api.UserResponse // by the API key itself
 	disconnected []string
 }
 
 func withFakeOllamaCom(t *testing.T) *fakeOllamaCom {
 	t.Helper()
-	f := &fakeOllamaCom{users: map[string]*api.UserResponse{}}
+	f := &fakeOllamaCom{users: map[string]*api.UserResponse{}, apiKeys: map[string]*api.UserResponse{}}
 	whoami, disconnect := cloudWhoami, cloudDisconnect
 	cloudWhoami = func(_ context.Context, keyPath string) (*api.UserResponse, error) {
+		if strings.HasPrefix(filepath.Base(keyPath), cloudAPIKeyFile) {
+			data, err := os.ReadFile(keyPath)
+			if err != nil {
+				return nil, err
+			}
+			if u, ok := f.apiKeys[strings.TrimSpace(string(data))]; ok {
+				return u, nil
+			}
+			return nil, api.AuthorizationError{StatusCode: http.StatusUnauthorized}
+		}
 		if u, ok := f.users[keyPath]; ok {
 			return u, nil
 		}
@@ -265,5 +276,88 @@ func TestPoolSettingsAndAccountsAtOnceSetTheCapacity(t *testing.T) {
 	bad := -1
 	if code, _, _ := cloudCall(t, local, api.CloudAccountsRequest{Action: api.CloudPool, AccountsAtOnce: &bad}); code != http.StatusBadRequest {
 		t.Fatalf("negative accounts_at_once: %d, want 400", code)
+	}
+}
+
+func TestAnAPIKeyAccountIsCheckedBeforeItIsKept(t *testing.T) {
+	sp := settingsHome(t)
+	f := withFakeOllamaCom(t)
+	f.users[""] = user("me", "pro")
+	f.apiKeys["good.key"] = user("dummy", "free")
+
+	code, _, body := cloudCall(t, local, api.CloudAccountsRequest{Action: api.CloudAdd, Label: "bad", APIKey: "wrong.key"})
+	if code != http.StatusBadRequest || !strings.Contains(body, "does not accept this API key") {
+		t.Fatalf("add with a refused key: %d %s, want 400 saying so (a 401 reads as this server's own key)", code, body)
+	}
+	home, _ := os.UserHomeDir()
+	if ents, _ := os.ReadDir(filepath.Join(home, ".ollama", "xollama-cloud")); len(ents) != 0 {
+		t.Fatalf("a refused key left %d account directories", len(ents))
+	}
+
+	code, resp, body := cloudCall(t, local, api.CloudAccountsRequest{Action: api.CloudAdd, Label: "dummy", APIKey: "good.key"})
+	if code != http.StatusOK || resp.Account == nil {
+		t.Fatalf("add with a good key: %d %s", code, body)
+	}
+	a := resp.Account
+	if a.State != xollama.CloudSignedIn || a.Auth != xollama.CloudAuthAPIKey || a.Plan != "free" || resp.ConnectURL != "" {
+		t.Fatalf("account = %+v (connect %q), want signed in on its API key, plan free, no connect page", a, resp.ConnectURL)
+	}
+	kp := filepath.Join(filepath.Dir(keyFileOf(t, a.ID)), cloudAPIKeyFile)
+	if st, err := os.Stat(kp); err != nil || st.Mode().Perm() != 0o600 {
+		t.Fatalf("API key file %s: %v, want mode 0600", kp, err)
+	}
+	if _, err := os.Stat(keyFileOf(t, a.ID)); !os.IsNotExist(err) {
+		t.Fatalf("an API-key account made a private key too: %v", err)
+	}
+	data, _ := os.ReadFile(sp)
+	if strings.Contains(string(data), "good.key") || strings.Contains(body, "good.key") {
+		t.Fatal("the API key is in the settings file or the answer")
+	}
+
+	// The same ollama.com account again, by another key: refused, nothing kept.
+	f.apiKeys["same.account"] = f.apiKeys["good.key"]
+	if code, _, body := cloudCall(t, local, api.CloudAccountsRequest{Action: api.CloudAdd, Label: "twice", APIKey: "same.account"}); code != http.StatusConflict {
+		t.Fatalf("add of the same account: %d %s, want 409", code, body)
+	}
+	if _, v, _ := cloudCall(t, local, api.CloudAccountsRequest{Action: api.CloudList}); len(v.Accounts) != 2 {
+		t.Fatalf("accounts = %+v, want the primary and dummy only", v.Accounts)
+	}
+
+	// A new key for it: a refused one leaves the old one in place.
+	if code, _, _ := cloudCall(t, local, api.CloudAccountsRequest{Action: api.CloudSignin, Account: "dummy", APIKey: "wrong.key"}); code != http.StatusBadRequest {
+		t.Fatalf("signin with a refused key: %d, want 400", code)
+	}
+	if got, _ := os.ReadFile(kp); strings.TrimSpace(string(got)) != "good.key" {
+		t.Fatalf("a refused key replaced the account's: %q", got)
+	}
+
+	// Logout forgets the key here; ollama.com is not asked to disconnect it.
+	_, out, _ := cloudCall(t, local, api.CloudAccountsRequest{Action: api.CloudSignout, Account: "dummy"})
+	if out.Account == nil || out.Account.State != xollama.CloudSignedOut || len(f.disconnected) != 0 {
+		t.Fatalf("after logout: %+v, disconnected %v", out.Account, f.disconnected)
+	}
+	if _, err := os.Stat(kp); !os.IsNotExist(err) {
+		t.Fatalf("logout kept the API key file: %v", err)
+	}
+}
+
+func TestAConnectedAccountCanMoveToAnAPIKey(t *testing.T) {
+	settingsHome(t)
+	f := withFakeOllamaCom(t)
+	a := addAccount(t, "x")
+	k := keyFileOf(t, a.Account.ID)
+	u := user("x", "pro")
+	f.users[k] = u
+	cloudCall(t, local, api.CloudAccountsRequest{Action: api.CloudVerify, Account: "x"})
+	f.apiKeys["x.key"] = u
+	code, in, body := cloudCall(t, local, api.CloudAccountsRequest{Action: api.CloudSignin, Account: "x", APIKey: "x.key"})
+	if code != http.StatusOK || in.Account.Auth != xollama.CloudAuthAPIKey || in.Account.State != xollama.CloudSignedIn {
+		t.Fatalf("signin with a key: %d %s", code, body)
+	}
+	if len(f.disconnected) != 1 || f.disconnected[0] != k {
+		t.Fatalf("disconnected = %v, want the connected key signed out", f.disconnected)
+	}
+	if _, err := os.Stat(k); !os.IsNotExist(err) {
+		t.Fatalf("the old private key is still there: %v", err)
 	}
 }

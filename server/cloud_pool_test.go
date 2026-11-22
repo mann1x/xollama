@@ -342,3 +342,37 @@ func TestTheStatusRouteNamesNoPerson(t *testing.T) {
 		t.Fatalf("council cloud_parallel with a pool = %d, want the pool's 6", n)
 	}
 }
+
+func TestAPooledAPIKeyAccountSendsItsKey(t *testing.T) {
+	cs := &xollama.CloudSettings{Primary: xollama.CloudPrimaryExclude, Accounts: []xollama.CloudAccount{
+		{ID: "0000000a", Label: "k", Plan: "free", Auth: xollama.CloudAuthAPIKey, VerifiedAt: "2026-11-22T00:00:00Z"},
+	}}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if _, err := writeCloudAPIKey("0000000a", "pooled.key", false); err != nil {
+		t.Fatal(err)
+	}
+	oldPool, oldFn := theCloudPool, cloudSettingsFn
+	theCloudPool, cloudSettingsFn = &cloudPool{}, func() *xollama.CloudSettings { return cs }
+	t.Cleanup(func() { theCloudPool, cloudSettingsFn = oldPool, oldFn })
+
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"model":"m","message":{"role":"assistant","content":"ok"},"done":true}`)
+	}))
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+	oldBase, oldHost := cloudProxyBaseURL, cloudProxySigningHost
+	cloudProxyBaseURL, cloudProxySigningHost = srv.URL, u.Hostname()
+	t.Cleanup(func() { cloudProxyBaseURL, cloudProxySigningHost = oldBase, oldHost })
+
+	if code, body := chatThroughProxy(t); code != http.StatusOK {
+		t.Fatalf("chat = %d %s", code, body)
+	}
+	if len(got) != 1 || got[0] != "Bearer pooled.key" {
+		t.Fatalf("ollama.com saw Authorization %q, want the account's API key", got)
+	}
+}

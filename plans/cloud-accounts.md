@@ -1,6 +1,6 @@
 # Several Ollama Cloud accounts on one server
 
-**Status:** ACTIVE. Phases 1–3 built 2026-11-22: keys, the `cloud` section, signing by account, the admin route, `xollama tweak server cloud` (1); the pool, both send paths, the council default (2); `/api/xollama/cloud`, `/api/xollama/cloud/balance`, `cloud_accounts_v1` (3). Phase 4 (Cerebriline) mailed; Phase 0 and the live gate wait for real accounts. Owner's decisions in §6; build order 1–3, then 0 and 5. **Owner:** xollama. Cerebriline's side is
+**Status:** ACTIVE. Phases 1–3 built 2026-11-22: keys, the `cloud` section, signing by account, the admin route, `xollama tweak server cloud` (1); the pool, both send paths, the council default (2); `/api/xollama/cloud`, `/api/xollama/cloud/balance`, `cloud_accounts_v1` (3). API-key accounts added (§3.8). Phase 0 measured and the live check passed on the owner's dummy account, except the 402 exhaustion body. Phase 4: Cerebriline built it (cline cb47c75291); its live check is mailed. Owner's decisions in §6; build order 1–3, then 0 and 5. **Owner:** xollama. Cerebriline's side is
 the `ollama` session's (`ollama@solidpc`), by mail.
 
 ## 1. What the owner asked for (2026-11-22, condensed)
@@ -243,6 +243,31 @@ with no arguments, and these subcommands:
      client error;
    - Cerebriline's cap following `parallel_now`.
    Row in `docs/protocols/VALIDATION.md` when it ships.
+
+## 3.8 Accounts on an API key (owner, 2026-11-22)
+
+An account can be an ollama.com API key instead of a connected ed25519 key.
+`auth.Sign` answers `Bearer <key>` for a context naming the key's file (one
+more line in the `cloud-accounts` hook), so the passthrough and the stub client
+send it with no other change. The key is checked with `POST /api/me` before it
+is kept, stored in the account's directory, never in the settings; the CLI
+reads it from stdin. Logout forgets it (ollama.com has no revoke route).
+
+## Phase 0, measured (2026-11-22, the owner's dummy account: free, $5 purchased)
+
+| Question | Answer |
+|---|---|
+| API key auth | `Authorization: Bearer <key>` works on `POST /api/me`, `/api/balance`, `/api/usage?range=24h\|7d\|30d`, `/api/chat`, `/v1/chat/completions`, with `?ts=` |
+| Bad key | `401 {"error":"invalid credentials"}` |
+| 4th+ request at once (free = 3) | queued by ollama.com, not refused: 5 at once → 3 at ~2.4 s, 2 at ~4.5 s |
+| `/api/me` | `{"ID":…,"Plan":"free",…}` (GET is 405) |
+| `/api/balance` (free + purchased) | `included{balance_usd 0, allowance_usd 0, period{from,until}}`, `purchased{balance_usd}`; no `session`/`weekly` |
+| 402 body at exhaustion | not measured (would spend the $5) |
+
+Live check of the built pool with that account (`/srv/ml/xcloud/live.sh`):
+add/login by API key, chat on both routes through it (primary excluded and
+keyless), 5 at once → `in_use 3, queued 2`, balance route, logout → 402 from
+the pool, remove. All as designed.
 
 ## 4a. As built (2026-11-22)
 

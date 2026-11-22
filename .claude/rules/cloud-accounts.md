@@ -37,6 +37,28 @@ paths:
   never add a second signing path. No key on the context is upstream's
   signing: off means off. Guard `TestARequestSignsWithItsAccountsKey` (fails
   with the hook removed).
+- **An account on an API key** (`Auth: "api_key"`, `CloudAuthAPIKey`): the key
+  lives in `<account dir>/api_key` (0600, `writeCloudAPIKey`), never in the
+  settings or an answer. `auth.WithAPIKeyFile`; the `accountBearer` hook at the
+  top of `auth.Sign` returns `Bearer <key>`, which every caller sets as the
+  Authorization header (measured: ollama.com takes it on `/api/chat`,
+  `/v1/chat/completions` with `?ts=`, `POST /api/me`, `/api/balance`,
+  `/api/usage`). `cloudCredPath` / `cloudCredCtx` pick the file and the
+  context (dispatch by the file name `api_key*`). A key is checked as
+  `api_key.new` before it replaces anything (`checkCloudAPIKey`); a refused
+  key is **400**, never 401 — the CLI reads a 401 from an xOllama server as
+  "this server wants its own API key" (live check, 2026-11-22). Logout only
+  deletes the file: ollama.com has no revoke route. Guards
+  `TestAnAPIKeyAccountSendsItsKey`, `TestAPooledAPIKeyAccountSendsItsKey`
+  (both fail with the hook removed), `TestAnAPIKeyAccountIsCheckedBeforeItIsKept`,
+  `TestAConnectedAccountCanMoveToAnAPIKey`. The CLI reads the key from stdin
+  only (`readCloudAPIKey`), never a flag value.
+- **Measured (Phase 0, free account with $5 purchased, 2026-11-22)**: plan
+  `free`; 5 requests at once → 3 served, 2 queued by ollama.com (no 429); a bad
+  key → `401 {"error":"invalid credentials"}`; `/api/balance` is
+  `included{balance_usd, allowance_usd, period{from,until}}` +
+  `purchased{balance_usd}` with no `session`/`weekly` on that plan. The 402
+  exhaustion body is still unmeasured. Live script `/srv/ml/xcloud/live.sh`.
 - **The settings hold no email and no key material**: label, plan, a hash
   of the ollama.com id (`cloudAccountHash`) to refuse the same account twice,
   the operator's numbers. Guard `TestAVerifiedAccountKeepsItsPlanButNoEmail`.

@@ -5,12 +5,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/types/xollama"
@@ -28,6 +30,8 @@ func cloudCommand(opts Options) *cobra.Command {
     xollama tweak server cloud list
     xollama tweak server cloud add work-2               make a key, print its connect page, wait
     xollama tweak server cloud login work-2             connect an account again
+    xollama tweak server cloud add work-3 --api-key     use an ollama.com API key (read from stdin)
+    xollama tweak server cloud login work-3 --api-key   give an account a new API key
     xollama tweak server cloud logout work-2            remove its key at ollama.com, keep it listed
     xollama tweak server cloud set work-2 --parallel 2  change one account
     xollama tweak server cloud set work-2 --disable
@@ -40,6 +44,13 @@ Each account is a key the server makes for it. "add" prints that key's connect
 page: open it in a browser signed in to the ollama.com account you are adding
 (switch the browser's account, or use a private window, between accounts).
 The server checks the key with ollama.com and records the account's plan.
+
+An account can use an ollama.com API key instead (https://ollama.com/settings/keys):
+--api-key reads it from standard input, hidden when that is a terminal, so it
+never shows in the shell's history or the process list. The server checks it
+with ollama.com before keeping it, stores it in the account's directory (0600)
+and never shows it again. logout and remove forget the key here; revoke it at
+ollama.com yourself, since ollama.com has no route to do it for you.
 
 The primary account is the one ` + "`xollama signin`" + ` sets. It is account 0 and does not
 count toward the 25 accounts that can be added. Registry pulls and pushes, web
@@ -62,6 +73,7 @@ machine.`,
 
 	wait := func(c *cobra.Command) {
 		c.Flags().Duration("wait", 10*time.Minute, "How long to wait for the connect page (0: do not wait)")
+		c.Flags().Bool("api-key", false, "Use an ollama.com API key, read from standard input, instead of a connect page")
 	}
 	add := &cobra.Command{
 		Use:   "add LABEL",
@@ -236,6 +248,20 @@ func cloudMenu(cmd *cobra.Command, opts Options) error {
 			if choice == "login" {
 				action = api.CloudSignin
 			}
+			how, err := ask("Sign in with the connect page or an API key? (page, key)")
+			if err != nil {
+				return err
+			}
+			if strings.HasPrefix(strings.ToLower(strings.TrimSpace(how)), "k") {
+				key, err := readCloudAPIKey(cmd, a)
+				if err == nil {
+					err = cloudSigninAPIKey(cmd, client, action, name, key)
+				}
+				if err != nil {
+					a.printf("  ! %v\n", err)
+				}
+				break
+			}
 			if err := cloudSignin(cmd, opts, action, name); err != nil {
 				a.printf("  ! %v\n", err)
 			}
@@ -316,6 +342,13 @@ func cloudSignin(cmd *cobra.Command, opts Options, action, name string) error {
 	if err != nil {
 		return err
 	}
+	if withKey, _ := cmd.Flags().GetBool("api-key"); withKey {
+		key, err := readCloudAPIKey(cmd, newAsker(cmd.InOrStdin(), cmd.OutOrStdout()))
+		if err != nil {
+			return err
+		}
+		return cloudSigninAPIKey(cmd, client, action, name, key)
+	}
 	req := &api.CloudAccountsRequest{Action: action, Account: name}
 	if action == api.CloudAdd {
 		req.Label, req.Account = name, ""
@@ -336,6 +369,49 @@ func cloudSignin(cmd *cobra.Command, opts Options, action, name string) error {
 		return nil
 	}
 	return cloudWaitConnected(cmd.Context(), client, out, label, wait)
+}
+
+// cloudSigninAPIKey adds an account on an API key, or gives one a new key.
+// The server answers once ollama.com has checked it: there is nothing to
+// wait for.
+func cloudSigninAPIKey(cmd *cobra.Command, client *api.Client, action, name, key string) error {
+	req := &api.CloudAccountsRequest{Action: action, Account: name, APIKey: key}
+	if action == api.CloudAdd {
+		req.Label, req.Account = name, ""
+	}
+	resp, err := client.CloudAccounts(cmd.Context(), req)
+	if err != nil {
+		return err
+	}
+	out := cmd.OutOrStdout()
+	if a := resp.Account; a != nil {
+		plan := a.Plan
+		if plan == "" {
+			plan = "unknown"
+		}
+		fmt.Fprintf(out, "%q is signed in with its API key (plan %s, %d requests at once).\n", a.Label, plan, a.Parallel)
+	}
+	printCloud(out, resp)
+	return nil
+}
+
+// readCloudAPIKey reads an API key from standard input: hidden after a
+// prompt when it is a terminal, else its first line.
+func readCloudAPIKey(cmd *cobra.Command, a *asker) (string, error) {
+	if f, ok := cmd.InOrStdin().(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		fmt.Fprint(cmd.OutOrStdout(), "ollama.com API key (not shown): ")
+		b, err := term.ReadPassword(int(f.Fd()))
+		fmt.Fprintln(cmd.OutOrStdout())
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(b)), nil
+	}
+	line, err := a.readLine()
+	if err != nil || line == "" {
+		return "", errors.New("no API key on standard input")
+	}
+	return line, nil
 }
 
 // cloudPollEvery is how often a waiting add asks the server again.
@@ -425,6 +501,9 @@ func printCloud(w io.Writer, resp *api.CloudAccountsResponse) {
 			state += ", excluded from cloud models"
 		case a.Disabled:
 			state += ", disabled"
+		}
+		if a.Auth == xollama.CloudAuthAPIKey {
+			state += " (API key)"
 		}
 		at := strconv.Itoa(a.Parallel)
 		if a.ParallelSet > 0 {

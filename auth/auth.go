@@ -51,6 +51,9 @@ func NewNonce(r io.Reader, length int) (string, error) {
 }
 
 func Sign(ctx context.Context, bts []byte) (string, error) {
+	if token, ok, err := accountBearer(ctx); ok { // xollama-hook: cloud-accounts
+		return token, err
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
