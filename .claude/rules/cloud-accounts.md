@@ -6,6 +6,13 @@ paths:
   - api/xollama_cloud.go
   - server/cloud_accounts.go
   - server/cloud_accounts_test.go
+  - server/cloud_pool.go
+  - server/cloud_pool_test.go
+  - server/cloud_proxy.go
+  - server/cloud_send.go
+  - server/cloud_status.go
+  - server/council_cloud.go
+  - server/identity.go
   - server/routes.go
   - types/xollama/cloud.go
   - types/xollama/cloud_test.go
@@ -47,10 +54,36 @@ paths:
   validated, and `writeSettings` removes the file when nothing is left.
 - ollama.com is reached through `cloudWhoami` / `cloudDisconnect`; tests
   replace them (`withFakeOllamaCom`). Never call the real ollama.com in a test.
+- **The pool** (`server/cloud_pool.go`): slots per account; the first
+  `accounts_at_once` ready accounts (primary first) are active; a request takes
+  the active account with the most free slots, else waits in a strict FIFO
+  (`grantLocked` hands slots to waiters in order; never let a newcomer barge
+  past a waiter). No cloud section, no pool: `acquire` returns nil, nil and the
+  caller takes upstream's path (`TestWithoutACloudSectionThereIsNoPool`).
+- **Outcomes** (`classifyCloud`): 402 or a usage-limit text = exhausted (out
+  until the balance's reset, `cloudBalanceResets`, else `cloudExhaustedFor`
+  15 min); 401 = left out `cloudSignedOutFor` (10 min); 429 = busy, never
+  exhausted (`TestA429NeverMarksAnAccountExhausted`). A request is sent again
+  on another account only before anything reached the client: the passthrough
+  reads the status before copying, the stub path checks `c.Writer.Written()`.
+- **Two hooks send through the pool and nothing else does**: `sendCloudRequest`
+  in `proxyCloudRequestWithPath` (only `cloudPoolPaths`, the inference routes)
+  and `cloudStubCall` around the stub's `client.Generate` / `client.Chat`.
+  `/api/me`, usage, balance, show and web search stay on the primary.
+- **Goroutines get their swappable functions passed in** (`learnReset(m,
+  cloudBalanceResets)`): reading the package var from the goroutine raced with
+  a test's cleanup under `-race`.
+- **What a client reads** (`server/cloud_status.go`): `/api/xollama/cloud`
+  (`CloudPoolStatus`: counts, labels, plans, states; no email, id, home path or
+  key; `TestTheStatusRouteNamesNoPerson`) and `/api/xollama/cloud/balance`
+  (each account's `/api/balance`, at most once a minute per account). Feature
+  `cloud_accounts_v1`. `council.cloud_parallel` defaults to `capacity()` (at
+  most 16); the council's slot channel is made once per model, so a changed
+  pool reaches a council on its next server start.
 - Plan `plans/cloud-accounts.md`; docs `docs/xollama/cloud-accounts.mdx`;
   Registry row `cloud-accounts`.
 
 ```sh
 go test ./auth/ ./types/xollama/ ./cmd/tweak/ -run 'Account|Cloud|AddPrints|PoolAndSet'
-go test ./server/ -run 'Cloud|Account|OllamaCom'
+go test ./server/ -run 'Cloud|Account|OllamaCom|Pool|Exhausted|RunOut|429|OwnKey|PulledCloud|NamesNoPerson|Balance'
 ```

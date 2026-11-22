@@ -64,6 +64,53 @@ The primary account is the one `xollama signin` sets. It does not count toward
 the 25. Registry pulls and pushes, web search and `/api/me` always use it;
 `--primary exclude` only keeps it off cloud models.
 
+## How requests are shared
+
+Each account takes as many cloud requests at once as its plan allows, or its
+`--parallel`. The **active** accounts are the first `--accounts-at-once` that are
+ready: the primary first, then the added ones in order. A cloud request goes to
+the active account with the most free slots. With every slot taken it waits its
+turn, in order, and leaves the queue if its client gives up.
+
+When ollama.com says an account has reached its usage limit (HTTP 402), the
+account leaves the active set until its balance says it resets (or for 15
+minutes when it does not say), and the next ready account takes its place. A
+request refused that way before any of its answer reached the client is sent
+again on the next account, so the client sees no error. The same goes for an
+account whose key ollama.com no longer accepts (401), which is left out for 10
+minutes. A 429 (too many requests on that account, for example from another
+device using it) never takes an account out: the request goes to another account
+with a free slot, or the 429 reaches the client.
+
+When every account has run out, a cloud request gets a 402 naming the time the
+first one comes back.
+
+Registry pulls and pushes, `/api/me`, `/api/usage`, `/api/balance`, model
+details and web search keep using the primary account.
+
+## What a client can read
+
+`GET /api/xollama/cloud` reports the pool, with no email, account id or key:
+
+```json
+{"accounts": 4, "accounts_at_once": 3, "parallel": 9, "parallel_now": 9,
+ "in_use": 2, "queued": 0, "exhausted": 1, "next_reset": "2026-11-23T00:00:00Z",
+ "pool": [{"label": "work-2", "plan": "pro", "parallel": 3, "in_use": 1, "state": "active"}]}
+```
+
+`parallel` is what the configuration gives; `parallel_now` leaves out the accounts
+that ran out. A client that caps its cloud requests per ollama.com account (as
+Cerebriline does from `/api/me`) should cap them per server at `parallel_now`
+instead, when `/api/xollama` lists the feature `cloud_accounts_v1` and `accounts`
+is above 0. With no accounts configured the route answers `{"accounts": 0}`.
+
+`GET /api/xollama/cloud/balance` is each pooled account's `/api/balance`, read at
+most once a minute per account: ollama.com allows 10 balance reads a minute per
+user, across all of that user's devices.
+
+A council's cloud members run as many at once as the pool serves (at most 16),
+unless `council.cloud_parallel` says otherwise.
+
 <Note>
 Accounts are managed only from the server's own machine, never through a proxy,
 as the server's settings are. The route is `POST /api/xollama/cloud/accounts`.

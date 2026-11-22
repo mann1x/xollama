@@ -1,6 +1,6 @@
 # Several Ollama Cloud accounts on one server
 
-**Status:** ACTIVE. Phase 1 built 2026-11-22 (keys, the `cloud` section, signing by account, the admin route, `xollama tweak server cloud`); Phase 2 next. Owner's decisions in §6; build order 1–3, then 0 and 5. **Owner:** xollama. Cerebriline's side is
+**Status:** ACTIVE. Phases 1–3 built 2026-11-22: keys, the `cloud` section, signing by account, the admin route, `xollama tweak server cloud` (1); the pool, both send paths, the council default (2); `/api/xollama/cloud`, `/api/xollama/cloud/balance`, `cloud_accounts_v1` (3). Phase 4 (Cerebriline) mailed; Phase 0 and the live gate wait for real accounts. Owner's decisions in §6; build order 1–3, then 0 and 5. **Owner:** xollama. Cerebriline's side is
 the `ollama` session's (`ollama@solidpc`), by mail.
 
 ## 1. What the owner asked for (2026-11-22, condensed)
@@ -244,7 +244,18 @@ with no arguments, and these subcommands:
    - Cerebriline's cap following `parallel_now`.
    Row in `docs/protocols/VALIDATION.md` when it ships.
 
-## 5. Guards (to be written with the code)
+## 4a. As built (2026-11-22)
+
+- One deviation from §3.4: the balance is not polled every minute while the
+  pool is in use. It is read once, when an account runs out, to learn its
+  reset (`learnReset`), and on demand by `/api/xollama/cloud/balance` (cached
+  a minute per account). Polling to find an account at 0% before a request
+  fails is left for Phase 0, once a real balance body is in hand.
+- The council's `cloud_parallel` default follows the pool's capacity, but its
+  slot channel is made once per council model, so a changed pool reaches a
+  council at the next server start.
+
+## 5. Guards
 
 - No `cloud` section: no semaphore, and requests signed with the default key
   (upstream byte for byte).

@@ -467,7 +467,7 @@ func (s *Server) GenerateHandler(c *gin.Context) {
 		}
 
 		client := api.NewClient(remoteURL, http.DefaultClient)
-		err = client.Generate(c.Request.Context(), &req, fn)
+		err = cloudStubCall(c, remoteURL, func(ctx context.Context) error { return client.Generate(ctx, &req, fn) }) // xollama-hook: cloud-accounts
 		if err != nil {
 			var authError api.AuthorizationError
 			if errors.As(err, &authError) {
@@ -2584,6 +2584,8 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	// xollama-hook: system-settings — see plans/system-settings.md
 	r.POST(api.XollamaSettingsPath, s.SettingsHandler)
 	r.POST(api.XollamaCloudAccountsPath, s.CloudAccountsHandler) // xollama-hook: cloud-accounts
+	r.GET(api.XollamaCloudPath, s.CloudPoolHandler)              // xollama-hook: cloud-accounts
+	r.GET(api.XollamaCloudBalancePath, s.CloudBalanceHandler)    // xollama-hook: cloud-accounts
 	r.POST(api.XollamaLinkProbePath, s.LinkProbeHandler)
 	r.POST(api.XollamaMediaPullPath, s.MediaPullHandler) // xollama-hook: media
 	r.POST(api.XollamaNoticePath, s.NoticeHandler)       // xollama-hook: notices
@@ -3598,7 +3600,7 @@ func (s *Server) ChatHandler(c *gin.Context) {
 		}
 
 		client := api.NewClient(remoteURL, http.DefaultClient)
-		err = client.Chat(c.Request.Context(), &req, fn)
+		err = cloudStubCall(c, remoteURL, func(ctx context.Context) error { return client.Chat(ctx, &req, fn) }) // xollama-hook: cloud-accounts
 		if err != nil {
 			var authError api.AuthorizationError
 			if errors.As(err, &authError) {

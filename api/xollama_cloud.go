@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"time"
 )
 
 // XollamaCloudAccountsPath manages the server's Ollama Cloud accounts
@@ -87,6 +89,72 @@ type CloudAccountsResponse struct {
 func (c *Client) CloudAccounts(ctx context.Context, req *CloudAccountsRequest) (*CloudAccountsResponse, error) {
 	var resp CloudAccountsResponse
 	if err := c.do(ctx, http.MethodPost, XollamaCloudAccountsPath, req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// XollamaCloudPath is the pool of cloud accounts as a client sees it, for
+// sizing its own concurrency: how many cloud requests the server serves at
+// once, and how many it can serve now. It names no email, id or key.
+const XollamaCloudPath = "/api/xollama/cloud"
+
+// XollamaCloudBalancePath is each pooled account's /api/balance, as last
+// read (at most once a minute per account), so a client polling it never
+// spends the accounts' own rate limit.
+const XollamaCloudBalancePath = "/api/xollama/cloud/balance"
+
+// FeatureCloudAccounts: the server reports its pool of Ollama Cloud accounts
+// at XollamaCloudPath. A client capping its cloud requests per ollama.com
+// account caps them per server at the pool's parallel_now instead, when
+// accounts > 0.
+const FeatureCloudAccounts = "cloud_accounts_v1"
+
+// CloudPoolStatus is the pool now. With no pool configured only Accounts (0)
+// is set: the server serves cloud models through its primary account alone,
+// as upstream does, and a client keeps its own per-account cap.
+type CloudPoolStatus struct {
+	// Accounts is how many accounts the pool holds (the primary included
+	// unless excluded); AccountsAtOnce how many serve at the same time (0:
+	// all).
+	Accounts       int `json:"accounts"`
+	AccountsAtOnce int `json:"accounts_at_once,omitempty"`
+	// Parallel is the requests at once the configuration gives, with every
+	// account ready; ParallelNow leaves out the accounts that ran out.
+	Parallel    int `json:"parallel"`
+	ParallelNow int `json:"parallel_now"`
+	InUse       int `json:"in_use"`
+	Queued      int `json:"queued"`
+	Exhausted   int `json:"exhausted"`
+	// NextReset is when the first account that ran out comes back.
+	NextReset *time.Time         `json:"next_reset,omitempty"`
+	Pool      []CloudPoolAccount `json:"pool,omitempty"`
+}
+
+// CloudPoolAccount is one account of the pool.
+type CloudPoolAccount struct {
+	Label    string `json:"label"`
+	Plan     string `json:"plan,omitempty"`
+	Parallel int    `json:"parallel"`
+	InUse    int    `json:"in_use"`
+	// State is "active" (taking requests), "ready" (waiting its turn
+	// beyond accounts_at_once), "exhausted" or "signed_out".
+	State string     `json:"state"`
+	Until *time.Time `json:"until,omitempty"`
+}
+
+// CloudBalance is one account's /api/balance as ollama.com answered it.
+type CloudBalance struct {
+	Label   string          `json:"label"`
+	Balance json.RawMessage `json:"balance,omitempty"`
+	Error   string          `json:"error,omitempty"`
+	ReadAt  *time.Time      `json:"read_at,omitempty"`
+}
+
+// CloudPool reads the pool.
+func (c *Client) CloudPool(ctx context.Context) (*CloudPoolStatus, error) {
+	var resp CloudPoolStatus
+	if err := c.do(ctx, http.MethodGet, XollamaCloudPath, nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
