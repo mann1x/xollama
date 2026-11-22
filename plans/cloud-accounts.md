@@ -251,9 +251,11 @@ with no arguments, and these subcommands:
   reset (`learnReset`), and on demand by `/api/xollama/cloud/balance` (cached
   a minute per account). Polling to find an account at 0% before a request
   fails is left for Phase 0, once a real balance body is in hand.
-- The council's `cloud_parallel` default follows the pool's capacity, but its
-  slot channel is made once per council model, so a changed pool reaches a
-  council at the next server start.
+- The council's `cloud_parallel` default follows the pool's capacity. Each
+  council turn reads it when it starts (`councilCloud.slots`, remade when the
+  size changes), so a changed pool reaches a council at its next turn; a turn
+  already running finishes on the count it started with, and the pool's own
+  queue still bounds every account.
 
 ## 5. Guards
 

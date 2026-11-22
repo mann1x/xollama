@@ -78,8 +78,9 @@ paths:
   key; `TestTheStatusRouteNamesNoPerson`) and `/api/xollama/cloud/balance`
   (each account's `/api/balance`, at most once a minute per account). Feature
   `cloud_accounts_v1`. `council.cloud_parallel` defaults to `capacity()` (at
-  most 16); the council's slot channel is made once per model, so a changed
-  pool reaches a council on its next server start.
+  most 16), read at each council turn's start (`councilCloud.slots` remakes
+  the count when its size changes), so a changed pool reaches a council at its
+  next turn.
 - Plan `plans/cloud-accounts.md`; docs `docs/xollama/cloud-accounts.mdx`;
   Registry row `cloud-accounts`.
 
