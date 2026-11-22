@@ -58,7 +58,7 @@ paths:
   key → `401 {"error":"invalid credentials"}`; `/api/balance` is
   `included{balance_usd, allowance_usd, period{from,until}}` +
   `purchased{balance_usd}` with no `session`/`weekly` on that plan. The 402
-  exhaustion body is still unmeasured. Live script `/srv/ml/xcloud/live.sh`.
+  exhaustion body is still unmeasured. Live script `scripts/gates/cloud-accounts.sh`.
 - **The settings hold no email and no key material**: label, plan, a hash
   of the ollama.com id (`cloudAccountHash`) to refuse the same account twice,
   the operator's numbers. Guard `TestAVerifiedAccountKeepsItsPlanButNoEmail`.

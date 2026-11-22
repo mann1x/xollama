@@ -1,6 +1,6 @@
 # Several Ollama Cloud accounts on one server
 
-**Status:** ACTIVE. Phases 1–3 built 2026-11-22: keys, the `cloud` section, signing by account, the admin route, `xollama tweak server cloud` (1); the pool, both send paths, the council default (2); `/api/xollama/cloud`, `/api/xollama/cloud/balance`, `cloud_accounts_v1` (3). API-key accounts added (§3.8). Phase 0 measured and the live check passed on the owner's dummy account, except the 402 exhaustion body. Phase 4: Cerebriline built it (cline cb47c75291); its live check is mailed. Owner's decisions in §6; build order 1–3, then 0 and 5. **Owner:** xollama. Cerebriline's side is
+**Status:** ACTIVE. Phases 1–3 built 2026-11-22: keys, the `cloud` section, signing by account, the admin route, `xollama tweak server cloud` (1); the pool, both send paths, the council default (2); `/api/xollama/cloud`, `/api/xollama/cloud/balance`, `cloud_accounts_v1` (3). API-key accounts added (§3.8). Phase 0 measured and the live check passed on the owner's dummy account, except the 402 exhaustion body. Phase 4 done: Cerebriline caps per server (cline cb47c75291, messages a1f98a0455) and passed all five live checks against a pooled dev server on 2026-11-22. Open: the 402 exhaustion body (unmeasured) and the hand-over between two real accounts (one funded account only); both are covered by the fake-ollama.com tests. Live script: `scripts/gates/cloud-accounts.sh`. Owner's decisions in §6; build order 1–3, then 0 and 5. **Owner:** xollama. Cerebriline's side is
 the `ollama` session's (`ollama@solidpc`), by mail.
 
 ## 1. What the owner asked for (2026-11-22, condensed)
@@ -264,7 +264,7 @@ reads it from stdin. Logout forgets it (ollama.com has no revoke route).
 | `/api/balance` (free + purchased) | `included{balance_usd 0, allowance_usd 0, period{from,until}}`, `purchased{balance_usd}`; no `session`/`weekly` |
 | 402 body at exhaustion | not measured (would spend the $5) |
 
-Live check of the built pool with that account (`/srv/ml/xcloud/live.sh`):
+Live check of the built pool with that account (`scripts/gates/cloud-accounts.sh`):
 add/login by API key, chat on both routes through it (primary excluded and
 keyless), 5 at once → `in_use 3, queued 2`, balance route, logout → 402 from
 the pool, remove. All as designed.
