@@ -19,4 +19,5 @@ jobs:
         env:
           OLLAMA_NO_START: 1 # do not start app
       - name: Verify ollama is available
-        run: ollama --version
+        # xollama-hook: install-check -- the fork's install.sh installs xollama, from the Latest release's tarballs (docs/protocols/RELEASE.md)
+        run: xollama --version

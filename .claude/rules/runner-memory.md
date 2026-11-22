@@ -4,6 +4,8 @@ paths:
   - llm/engine_free_at_load_test.go
   - llm/engine_overcommit.go
   - llm/engine_overcommit_test.go
+  - llm/engine_device_names.go
+  - llm/engine_device_names_test.go
   - llm/llama_server.go
   - discover/refresh_stale.go
   - discover/refresh_stale_test.go
@@ -78,7 +80,7 @@ paths:
   `docs/features/device-selection.md`.
 
 ```sh
-go test ./llm/ -run 'FreeAtLoad|LastDeviceLine|Overcommitted|AllOnTheGPU|IntegratedGPUs'
+go test ./llm/ -run 'FreeAtLoad|LastDeviceLine|Overcommitted|AllOnTheGPU|IntegratedGPUs|EngineRenumbered|DeviceNames|NamesAsXollamaDoes|IdenticalCards'
 go test ./discover/ -run 'StaleFree|OutliveTheRunner'
 go test ./server/ -run 'Delete|UnloadByAName'
 ```
