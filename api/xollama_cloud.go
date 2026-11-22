@@ -122,13 +122,16 @@ const FeatureCloudAccounts = "cloud_accounts_v1"
 // is set: the server serves cloud models through its primary account alone,
 // as upstream does, and a client keeps its own per-account cap.
 type CloudPoolStatus struct {
-	// Accounts is how many accounts the pool holds (the primary included
-	// unless excluded); AccountsAtOnce how many serve at the same time (0:
-	// all).
+	// Accounts is how many accounts are configured for cloud models (the
+	// primary unless excluded, and every added one), whatever their state:
+	// 0 only when the server has no pool. AccountsAtOnce is how many serve
+	// at the same time (0: all).
 	Accounts       int `json:"accounts"`
 	AccountsAtOnce int `json:"accounts_at_once,omitempty"`
-	// Parallel is the requests at once the configuration gives, with every
-	// account ready; ParallelNow leaves out the accounts that ran out.
+	// Parallel is the requests at once the signed-in, enabled accounts give,
+	// with every one ready; ParallelNow leaves out the accounts that ran out
+	// or whose key ollama.com refused. A pool with nothing usable has
+	// Accounts > 0 and ParallelNow 0.
 	Parallel    int `json:"parallel"`
 	ParallelNow int `json:"parallel_now"`
 	InUse       int `json:"in_use"`
@@ -146,7 +149,8 @@ type CloudPoolAccount struct {
 	Parallel int    `json:"parallel"`
 	InUse    int    `json:"in_use"`
 	// State is "active" (taking requests), "ready" (waiting its turn
-	// beyond accounts_at_once), "exhausted" or "signed_out".
+	// beyond accounts_at_once), "exhausted", "signed_out", "pending" (its
+	// connect page not opened yet) or "disabled".
 	State string     `json:"state"`
 	Until *time.Time `json:"until,omitempty"`
 }

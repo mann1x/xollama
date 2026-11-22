@@ -71,7 +71,18 @@ type cloudPool struct {
 
 	primaryPlan    string
 	primaryAskedAt time.Time
+	// primaryOut: ollama.com said the primary's key is connected to no
+	// account. It is listed, but takes no requests until it signs in.
+	primaryOut bool
 }
+
+// How often the primary's sign-in is asked of ollama.com: rarely while it
+// is signed in (its plan), often while it is not, so `xollama signin`
+// reaches the pool within minutes.
+const (
+	cloudPrimaryRecheck    = time.Hour
+	cloudPrimaryOutRecheck = 2 * time.Minute
+)
 
 var theCloudPool = &cloudPool{}
 
@@ -113,8 +124,9 @@ func (e errCloudExhausted) Error() string {
 // each account's slots in use and its exhaustion.
 func (p *cloudPool) refreshLocked() {
 	cs := cloudSettingsFn()
+	p.askPrimaryLocked(cs)
 	data, _ := json.Marshal(cs)
-	sig := string(data) + "\x00" + p.primaryPlan
+	sig := fmt.Sprintf("%s\x00%s\x00%t", data, p.primaryPlan, p.primaryOut)
 	if sig == p.sig {
 		return
 	}
@@ -136,7 +148,7 @@ func (p *cloudPool) refreshLocked() {
 		}
 		members = append(members, m)
 	}
-	if cs.PrimaryIncluded() {
+	if cs.PrimaryIncluded() && !p.primaryOut {
 		keep(&cloudMember{label: "primary", plan: p.primaryPlan, parallel: cs.AccountParallel(xollama.CloudAccount{Plan: p.primaryPlan})})
 	}
 	for _, a := range cs.Accounts {
@@ -150,36 +162,74 @@ func (p *cloudPool) refreshLocked() {
 		keep(&cloudMember{id: a.ID, label: a.Label, keyPath: kp, plan: a.Plan, parallel: cs.AccountParallel(a)})
 	}
 	p.on, p.atOnce, p.members = true, cs.AccountsAtOnce, members
-	p.askPrimaryPlanLocked(cs)
 	p.grantLocked()
 }
 
-// askPrimaryPlanLocked learns the primary's plan in the background, at most
-// once an hour, so its slots follow its plan.
-func (p *cloudPool) askPrimaryPlanLocked(cs *xollama.CloudSettings) {
-	if !cs.PrimaryIncluded() || time.Since(p.primaryAskedAt) < time.Hour {
+// askPrimaryLocked asks ollama.com in the background whether the primary
+// is signed in, and its plan: hourly while it is, every
+// cloudPrimaryOutRecheck while it is not. Until the first answer the primary
+// takes requests (a 401 then benches it, markSignedOut). An answer that
+// changes either rebuilds the members.
+func (p *cloudPool) askPrimaryLocked(cs *xollama.CloudSettings) {
+	every := cloudPrimaryRecheck
+	if p.primaryOut {
+		every = cloudPrimaryOutRecheck
+	}
+	if !cs.PrimaryIncluded() || time.Since(p.primaryAskedAt) < every {
 		return
 	}
+	first := p.primaryAskedAt.IsZero()
 	p.primaryAskedAt = time.Now()
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), cloudCallTimeout)
+	whoami := cloudWhoami
+	ask := func(timeout time.Duration) (out bool, plan string, ok bool) {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
-		u, err := cloudWhoami(ctx, "")
-		if err != nil || u == nil || u.Name == "" {
-			return
+		u, err := whoami(ctx, "")
+		out = notConnected(u, err)
+		if err != nil && !out {
+			return false, "", false // ollama.com did not answer: nothing learned
 		}
-		plan := strings.TrimSpace(u.Plan)
-		if plan == "" {
-			plan = "free"
+		plan = p.primaryPlan
+		if !out {
+			if plan = strings.TrimSpace(u.Plan); plan == "" {
+				plan = "free"
+			}
+		}
+		return out, plan, true
+	}
+	learn := func(out bool, plan string) bool {
+		if out != p.primaryOut {
+			slog.Info("cloud pool: primary account", "signed_in", !out)
+		}
+		changed := out != p.primaryOut || plan != p.primaryPlan
+		p.primaryOut, p.primaryPlan = out, plan
+		return changed
+	}
+	if first {
+		// The first answer is waited for (once per process, at most
+		// cloudPrimaryFirstAsk): a client reading the pool right after a
+		// start must not see an unsigned primary's slots.
+		if out, plan, ok := ask(cloudPrimaryFirstAsk); ok {
+			learn(out, plan)
+		}
+		return
+	}
+	go func() {
+		out, plan, ok := ask(cloudCallTimeout)
+		if !ok {
+			return
 		}
 		p.mu.Lock()
 		defer p.mu.Unlock()
-		if plan != p.primaryPlan {
-			p.primaryPlan = plan
+		if learn(out, plan) {
 			p.refreshLocked()
 		}
 	}()
 }
+
+// cloudPrimaryFirstAsk bounds the wait for the first answer about the
+// primary.
+const cloudPrimaryFirstAsk = 5 * time.Second
 
 // activeLocked is the first accounts_at_once ready members not excluded.
 func (p *cloudPool) activeLocked(now time.Time, exclude []*cloudMember) []*cloudMember {

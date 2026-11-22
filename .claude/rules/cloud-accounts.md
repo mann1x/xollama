@@ -95,6 +95,19 @@ paths:
 - **Goroutines get their swappable functions passed in** (`learnReset(m,
   cloudBalanceResets)`): reading the package var from the goroutine raced with
   a test's cleanup under `-race`.
+- **`accounts` is every configured account, never only the usable ones**
+  (`status`): signed out, pending and disabled are listed with their state and
+  count 0 in `parallel`/`parallel_now`. With only the usable ones counted, a
+  logout read as `accounts 0` = "no pool", and Cerebriline fell back to the
+  `/api/me` cap of the (excluded, unsigned) primary (live check, 2026-11-22).
+  Guard `TestAConfiguredPoolNeverReadsAsNoPool`.
+- **The primary's sign-in is the pool's to learn** (`askPrimaryLocked`, run
+  from every `refreshLocked`): the first answer waited for (`cloudPrimaryFirstAsk`
+  5 s, once per process, so a client's first reading is right), then in the
+  background hourly, every `cloudPrimaryOutRecheck` (2 min) while signed out.
+  A primary known signed out is listed `signed_out` and is no member. Before
+  this, the ask ran only when the settings changed. Guard
+  `TestAPrimaryThatIsNotSignedInTakesNoRequests`.
 - **What a client reads** (`server/cloud_status.go`): `/api/xollama/cloud`
   (`CloudPoolStatus`: counts, labels, plans, states; no email, id, home path or
   key; `TestTheStatusRouteNamesNoPerson`) and `/api/xollama/cloud/balance`

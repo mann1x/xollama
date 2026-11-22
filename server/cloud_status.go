@@ -49,6 +49,23 @@ func (p *cloudPool) status() api.CloudPoolStatus {
 		}
 		st.Pool = append(st.Pool, a)
 	}
+	// Accounts configured but not taking requests are listed too, so a
+	// configured pool never reads as no pool (accounts 0).
+	cs := cloudSettingsFn()
+	if cs.PrimaryIncluded() && p.primaryOut {
+		st.Pool = append(st.Pool, api.CloudPoolAccount{Label: "primary", Plan: p.primaryPlan, State: "signed_out"})
+	}
+	for _, a := range cs.Accounts {
+		if a.Usable() {
+			continue
+		}
+		state := a.State()
+		if a.Disabled {
+			state = "disabled"
+		}
+		st.Pool = append(st.Pool, api.CloudPoolAccount{Label: a.Label, Plan: a.Plan, Parallel: cs.AccountParallel(a), State: state})
+	}
+	st.Accounts = len(st.Pool)
 	if t := p.earliestResetLocked(now); !t.IsZero() {
 		st.NextReset = timePtr(t)
 	}

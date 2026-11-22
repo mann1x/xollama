@@ -123,11 +123,20 @@ details and web search keep using the primary account.
  "pool": [{"label": "work-2", "plan": "pro", "parallel": 3, "in_use": 1, "state": "active"}]}
 ```
 
-`parallel` is what the configuration gives; `parallel_now` leaves out the accounts
-that ran out. A client that caps its cloud requests per ollama.com account (as
+`accounts` counts every account configured for cloud models (the primary unless
+excluded, and every added one), whatever its state: one signed out, still waiting
+for its connect page, or disabled is listed in `pool` with that state and adds
+nothing to `parallel`. `parallel` is what the signed-in, enabled accounts give;
+`parallel_now` leaves out the ones that ran out. A pool with nothing usable answers
+`accounts` above 0 and `parallel_now` 0.
+
+The server asks ollama.com whether the primary is signed in: at start (waited
+for, at most 5 seconds), then hourly, or every 2 minutes while it is not. A
+primary that is not signed in is listed as `signed_out` and takes no requests;
+`xollama signin` brings it in within 2 minutes. A client that caps its cloud requests per ollama.com account (as
 Cerebriline does from `/api/me`) should cap them per server at `parallel_now`
 instead, when `/api/xollama` lists the feature `cloud_accounts_v1` and `accounts`
-is above 0. With no accounts configured the route answers `{"accounts": 0}`.
+is above 0. With no pool configured the route answers `{"accounts": 0}`.
 
 `GET /api/xollama/cloud/balance` is each pooled account's `/api/balance`, read at
 most once a minute per account: ollama.com allows 10 balance reads a minute per

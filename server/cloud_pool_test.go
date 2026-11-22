@@ -376,3 +376,59 @@ func TestAPooledAPIKeyAccountSendsItsKey(t *testing.T) {
 		t.Fatalf("ollama.com saw Authorization %q, want the account's API key", got)
 	}
 }
+
+func TestAConfiguredPoolNeverReadsAsNoPool(t *testing.T) {
+	acc := accounts(0, "a", "b", "c")
+	acc[1].SignedOut = true
+	acc[2].Disabled = true
+	cs := &xollama.CloudSettings{Primary: xollama.CloudPrimaryExclude, Accounts: acc}
+	testPool(t, cs)
+	st := theCloudPool.status()
+	if st.Accounts != 3 || st.ParallelNow != 3 {
+		t.Fatalf("status = %+v, want 3 accounts listed, a's 3 usable", st)
+	}
+	states := map[string]string{}
+	for _, a := range st.Pool {
+		states[a.Label] = a.State
+	}
+	if states["a"] != "active" || states["b"] != "signed_out" || states["c"] != "disabled" {
+		t.Fatalf("states = %v", states)
+	}
+	// Nothing usable: still a pool, with nothing to serve now.
+	cs.Accounts[0].SignedOut = true
+	if st := theCloudPool.status(); st.Accounts != 3 || st.ParallelNow != 0 {
+		t.Fatalf("nothing usable: %+v, want accounts 3, parallel_now 0", st)
+	}
+}
+
+func TestAPrimaryThatIsNotSignedInTakesNoRequests(t *testing.T) {
+	cs := &xollama.CloudSettings{Accounts: accounts(0, "a")}
+	testPool(t, cs)
+	asked := make(chan struct{}, 4)
+	old := cloudWhoami
+	cloudWhoami = func(_ context.Context, keyPath string) (*api.UserResponse, error) {
+		if keyPath == "" {
+			asked <- struct{}{}
+			return nil, api.AuthorizationError{StatusCode: http.StatusUnauthorized}
+		}
+		return nil, errors.New("unexpected")
+	}
+	t.Cleanup(func() { cloudWhoami = old })
+	theCloudPool.status()
+	<-asked
+	var st api.CloudPoolStatus
+	for range 200 {
+		if st = theCloudPool.status(); st.ParallelNow == 3 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if st.Accounts != 2 || st.ParallelNow != 3 || st.Pool[len(st.Pool)-1].Label != "primary" || st.Pool[len(st.Pool)-1].State != "signed_out" {
+		t.Fatalf("status = %+v, want the primary listed signed out and only a serving", st)
+	}
+	l, err := theCloudPool.acquire(context.Background(), nil)
+	if err != nil || l.m.label != "a" {
+		t.Fatalf("acquire = %v %v, want a", l, err)
+	}
+	l.release()
+}
