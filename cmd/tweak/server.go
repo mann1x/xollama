@@ -91,7 +91,7 @@ server behind TLS.`,
 	serverCmd.Flags().Bool("dry-run", false, "Show the resulting defaults without writing them")
 	serverCmd.Flags().Bool("json", false, "Print the resulting defaults as JSON")
 	serverCmd.Flags().BoolP("yes", "y", false, "Do not ask for confirmation, and unload running models when a change needs it")
-	serverCmd.AddCommand(gpuCommand(opts))
+	serverCmd.AddCommand(gpuCommand(opts), cloudCommand(opts))
 	return serverCmd
 }
 

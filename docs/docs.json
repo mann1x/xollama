@@ -207,6 +207,7 @@
               "/xollama/opencoti-tuning",
               "/xollama/default-port",
               "/xollama/api-key",
+              "/xollama/cloud-accounts",
               "/xollama/engine-args"
             ]
           }

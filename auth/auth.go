@@ -51,12 +51,16 @@ func NewNonce(r io.Reader, length int) (string, error) {
 }
 
 func Sign(ctx context.Context, bts []byte) (string, error) {
+	if token, ok, err := accountBearer(ctx); ok { // xollama-hook: cloud-accounts
+		return token, err
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
 
 	keyPath := filepath.Join(home, ".ollama", defaultPrivateKey)
+	keyPath = accountKeyPath(ctx, keyPath) // xollama-hook: cloud-accounts
 	privateKeyFile, err := os.ReadFile(keyPath)
 	if err != nil {
 		slog.Info(fmt.Sprintf("Failed to load private key: %v", err))

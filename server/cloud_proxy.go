@@ -214,16 +214,16 @@ func proxyCloudRequestWithPath(c *gin.Context, body []byte, path string, disable
 		outReq.Header.Set("Content-Type", "application/json")
 	}
 
-	if err := cloudProxySignRequest(outReq.Context(), outReq); err != nil {
-		slog.Warn("cloud proxy signing failed", "error", err)
-		writeCloudUnauthorized(c, path)
-		return
-	}
-
 	// TODO(drifkin): Add phase-specific proxy timeouts.
 	// Connect/TLS/TTFB should have bounded timeouts, but once streaming starts
 	// we should not enforce a short total timeout for long-lived responses.
-	resp, err := http.DefaultClient.Do(outReq)
+	// xollama-hook: cloud-accounts — sign (as a pooled account when the server
+	// has a cloud section) and send; upstream's sign-then-send otherwise.
+	resp, err := sendCloudRequest(outReq, body, path)
+	if errors.Is(err, errCloudSigning) {
+		writeCloudUnauthorized(c, path)
+		return
+	}
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return

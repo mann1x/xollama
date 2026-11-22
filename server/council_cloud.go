@@ -29,6 +29,11 @@ func councilCloudParallel(m *Model) int {
 	if m != nil && m.Xollama != nil && m.Xollama.Council != nil && m.Xollama.Council.CloudParallel > 0 {
 		return m.Xollama.Council.CloudParallel
 	}
+	// With several cloud accounts the default is what they serve at once
+	// (plans/cloud-accounts.md), still at most MaxCouncilCloudParallel.
+	if n := theCloudPool.capacity(); n > 0 {
+		return min(n, xollama.MaxCouncilCloudParallel)
+	}
 	return xollama.DefaultCouncilCloudParallel
 }
 
