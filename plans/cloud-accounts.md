@@ -1,6 +1,6 @@
 # Several Ollama Cloud accounts on one server
 
-**Status:** PLANNED (2026-11-22; owner's decisions in §6, build order 1–3 then 0 and 5). **Owner:** xollama. Cerebriline's side is
+**Status:** ACTIVE. Phase 1 built 2026-11-22 (keys, the `cloud` section, signing by account, the admin route, `xollama tweak server cloud`); Phase 2 next. Owner's decisions in §6; build order 1–3, then 0 and 5. **Owner:** xollama. Cerebriline's side is
 the `ollama` session's (`ollama@solidpc`), by mail.
 
 ## 1. What the owner asked for (2026-11-22, condensed)

@@ -2583,6 +2583,7 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.POST(api.XollamaAPIKeyPath, s.APIKeyHandler) // xollama-hook: api-key
 	// xollama-hook: system-settings — see plans/system-settings.md
 	r.POST(api.XollamaSettingsPath, s.SettingsHandler)
+	r.POST(api.XollamaCloudAccountsPath, s.CloudAccountsHandler) // xollama-hook: cloud-accounts
 	r.POST(api.XollamaLinkProbePath, s.LinkProbeHandler)
 	r.POST(api.XollamaMediaPullPath, s.MediaPullHandler) // xollama-hook: media
 	r.POST(api.XollamaNoticePath, s.NoticeHandler)       // xollama-hook: notices

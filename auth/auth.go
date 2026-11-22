@@ -57,6 +57,7 @@ func Sign(ctx context.Context, bts []byte) (string, error) {
 	}
 
 	keyPath := filepath.Join(home, ".ollama", defaultPrivateKey)
+	keyPath = accountKeyPath(ctx, keyPath) // xollama-hook: cloud-accounts
 	privateKeyFile, err := os.ReadFile(keyPath)
 	if err != nil {
 		slog.Info(fmt.Sprintf("Failed to load private key: %v", err))

@@ -1,0 +1,70 @@
+---
+title: Ollama Cloud accounts
+---
+
+A server signed in to ollama.com (`xollama signin`) serves cloud models through
+that one account, and an account takes only so many requests at once: 3 on
+pay-as-you-go and Pro, 10 on Max and Team. xollama can hold **up to 25 more
+accounts** and serve cloud models through all of them.
+
+Each account is a key the server makes for it and keeps in
+`~/.ollama/xollama-cloud/<id>/`. Registering that key with an ollama.com account
+is the same connect page `xollama signin` uses. The server's settings file keeps
+only each account's label, plan and a hash that tells accounts apart: no email
+and no key.
+
+## Add an account
+
+```shell
+xollama tweak server cloud add work-2
+```
+
+The command prints a connect page. Open it in a browser **signed in to the
+ollama.com account you are adding**, and confirm. The command waits until
+ollama.com answers for the new key, then records the account's plan:
+
+```
+Connected: "work-2", plan pro, 3 requests at once.
+
+Cloud accounts: 1 added, all at once, requests per account: plan's; up to 6 cloud requests at once
+
+ACCOUNT  PLAN  AT ONCE  STATE
+primary  pro   3        signed in
+work-2   pro   3        signed in
+```
+
+To add several accounts, switch the browser's ollama.com account between them,
+or use a private window for each. An account that is already in the list, or is
+the primary, is refused and its new key disconnected again: the same account
+twice would count its requests twice.
+
+`Ctrl-C` while waiting leaves the account pending. Open the page later and run
+`xollama tweak server cloud login work-2` to check it.
+
+## Manage them
+
+| Command | Does |
+|---|---|
+| `xollama tweak server cloud` | lists the accounts, then asks what to do |
+| `… cloud list` | lists them |
+| `… cloud login ACCOUNT` | a new connect page for an account whose key ollama.com no longer accepts |
+| `… cloud logout ACCOUNT` | removes the account's key at ollama.com; the account stays listed, signed out |
+| `… cloud set ACCOUNT --parallel N` | its requests at once (`plan` goes back to the plan's) |
+| `… cloud set ACCOUNT --disable` / `--enable` | keeps it off cloud models, or lets it back |
+| `… cloud set ACCOUNT --label NEW` | renames it |
+| `… cloud remove ACCOUNT` | signs it out, then deletes its key and its entry |
+| `… cloud --accounts-at-once N` | how many accounts take requests at the same time (`all` by default) |
+| `… cloud --parallel-per-account N` | requests at once for every account (`plan` by default) |
+| `… cloud --primary exclude` | keeps the primary account off cloud models |
+
+With Pro accounts and `--accounts-at-once 3`, the server serves up to 9 cloud
+requests at once.
+
+The primary account is the one `xollama signin` sets. It does not count toward
+the 25. Registry pulls and pushes, web search and `/api/me` always use it;
+`--primary exclude` only keeps it off cloud models.
+
+<Note>
+Accounts are managed only from the server's own machine, never through a proxy,
+as the server's settings are. The route is `POST /api/xollama/cloud/accounts`.
+</Note>
