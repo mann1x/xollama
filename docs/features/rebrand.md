@@ -124,7 +124,14 @@ Three things the rename had to get right beyond string replacement:
 - **`scripts/install.sh` downloaded from `ollama.com/download`.** Left alone it
   would have installed *stock ollama* under the xollama name. It now points at
   this fork's GitHub releases, and honours `XOLLAMA_VERSION` over
-  `OLLAMA_VERSION`.
+  `OLLAMA_VERSION`. Until `v0.40.17-rc.1.xollama` it asked for tarballs no
+  release carried (the PR's `test-install` check found it, 2026-11-21); every
+  release now publishes them (`scripts/linux-tarballs.sh`, the release's
+  `linux` job): `xollama-linux-<arch>.tar.zst` and `-opencoti.tar.zst`, always
+  installed, `-mlx` on an NVIDIA amd64 host (`XOLLAMA_MLX=0` skips it),
+  `-jetpack5` / `-jetpack6` on JetPack. No ROCm: AMD runs on Vulkan. The CUDA
+  12 add-on is gone (the base and the engine carry CUDA 12).
+  `XOLLAMA_DOWNLOAD_BASE` points it at a draft's files for G12.
 - **`scripts/install.ps1` required an Authenticode signature by `O=Ollama
   Inc.`** and threw otherwise. This fork is not signed by Ollama Inc. and must
   not pretend to be, so the check could not simply be retargeted; dropping it

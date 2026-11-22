@@ -42,7 +42,7 @@ esac
 # xollama publishes its releases on GitHub. ollama.com/download serves UPSTREAM
 # ollama, so leaving it here would quietly install stock ollama under our name.
 # GitHub encodes the version in the path rather than a query string, so the
-# version selection lives in the base URL and VER_PARAM stays empty.
+# version selection lives in the base URL and DOWNLOAD_PARAM stays empty.
 XOLLAMA_RELEASES="https://github.com/mann1x/xollama/releases"
 XOLLAMA_PICK_VERSION="${XOLLAMA_VERSION:-${OLLAMA_VERSION:-}}"
 if [ -n "$XOLLAMA_PICK_VERSION" ]; then
@@ -50,7 +50,10 @@ if [ -n "$XOLLAMA_PICK_VERSION" ]; then
 else
     DOWNLOAD_BASE="${XOLLAMA_RELEASES}/latest/download"
 fi
-VER_PARAM=""
+# XOLLAMA_DOWNLOAD_BASE: a directory URL holding a release's assets, for
+# checking a release before it is published (RELEASE.md, G12).
+DOWNLOAD_BASE="${XOLLAMA_DOWNLOAD_BASE:-$DOWNLOAD_BASE}"
+DOWNLOAD_PARAM=""
 
 ###########################################
 # macOS
@@ -144,7 +147,7 @@ download_and_extract() {
     local filename="$3"
 
     # Check if .tar.zst is available
-    if curl --fail --silent --head --location "${url_base}/${filename}.tar.zst${VER_PARAM}" >/dev/null 2>&1; then
+    if curl --fail --silent --head --location "${url_base}/${filename}.tar.zst${DOWNLOAD_PARAM}" >/dev/null 2>&1; then
         # zst file exists - check if we have zstd tool
         if ! available zstd; then
             error "This version requires zstd for extraction. Please install zstd and try again:
@@ -155,7 +158,7 @@ download_and_extract() {
 
         status "Downloading ${filename}.tar.zst"
         curl --fail --show-error --location --progress-bar \
-            "${url_base}/${filename}.tar.zst${VER_PARAM}" | \
+            "${url_base}/${filename}.tar.zst${DOWNLOAD_PARAM}" | \
             zstd -d | $SUDO tar -xf - -C "${dest_dir}"
         return 0
     fi
@@ -163,7 +166,7 @@ download_and_extract() {
     # Fall back to .tgz for older versions
     status "Downloading ${filename}.tgz"
     curl --fail --show-error --location --progress-bar \
-        "${url_base}/${filename}.tgz${VER_PARAM}" | \
+        "${url_base}/${filename}.tgz${DOWNLOAD_PARAM}" | \
         $SUDO tar -xzf - -C "${dest_dir}"
 }
 
@@ -179,26 +182,30 @@ fi
 status "Installing xollama to $OLLAMA_INSTALL_DIR"
 $SUDO install -o0 -g0 -m755 -d $BINDIR
 $SUDO install -o0 -g0 -m755 -d "$OLLAMA_INSTALL_DIR/lib/ollama"
+# Every release publishes these per architecture (scripts/linux-tarballs.sh):
+# the base (bin/xollama, the CPU runtime, CUDA 12 and 13 and Vulkan for stock
+# llama.cpp) and the opencoti engine with every library beside it, the engine
+# xollama runs by default. Both always.
 download_and_extract "$DOWNLOAD_BASE" "$OLLAMA_INSTALL_DIR" "xollama-linux-${ARCH}"
+download_and_extract "$DOWNLOAD_BASE" "$OLLAMA_INSTALL_DIR" "xollama-linux-${ARCH}-opencoti"
 
 if [ "$OLLAMA_INSTALL_DIR/bin/xollama" != "$BINDIR/xollama" ] ; then
     status "Making xollama accessible in the PATH in $BINDIR"
-    $SUDO ln -sf "$OLLAMA_INSTALL_DIR/xollama" "$BINDIR/xollama"
+    $SUDO ln -sf "$OLLAMA_INSTALL_DIR/bin/xollama" "$BINDIR/xollama"
 fi
 
-# The legacy CUDA payload. cuda_v13 and opencoti-llamafile both floor at compute
-# 7.5, so Maxwell, Pascal and Volta (a GTX 1080 Ti, a Tesla V100) are served by
-# cuda_v12 or not at all -- and "not at all" means a silent fall back to CPU,
-# which reads as "it is slow" rather than "it is missing something". Detect the
-# hardware and fetch the tier rather than leaving it to be discovered.
-if available nvidia-smi ; then
-    OLDEST_CC=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null \
-        | tr -d ' ' | awk -F. 'NF==2 {printf "%d\n", $1*10+$2}' | sort -n | head -1)
-    if [ -n "$OLDEST_CC" ] && [ "$OLDEST_CC" -lt 75 ] ; then
-        status "Detected an NVIDIA GPU below compute 7.5; adding the legacy CUDA 12 payload"
-        download_and_extract "$DOWNLOAD_BASE" "$OLLAMA_INSTALL_DIR" "xollama-linux-${ARCH}-cuda12"
+# MLX (CUDA) serves only what opencoti cannot, safetensors models; it runs on
+# NVIDIA alone, as the Windows installer decides. XOLLAMA_MLX=0 skips it.
+if [ "$ARCH" = "amd64" ] && [ "${XOLLAMA_MLX:-1}" != "0" ] ; then
+    if available nvidia-smi || { available lspci && lspci -d '10de:' 2>/dev/null | grep -q 'NVIDIA'; } ; then
+        status "NVIDIA GPU found; adding the MLX runtime"
+        download_and_extract "$DOWNLOAD_BASE" "$OLLAMA_INSTALL_DIR" "xollama-linux-${ARCH}-mlx"
     fi
 fi
+
+# Maxwell, Pascal and Volta (compute below 7.5) need no download of their own:
+# the base carries llama.cpp's cuda_v12 and the engine archive its CUDA 12
+# library, which it selects itself when every NVIDIA card is older than 7.5.
 
 # Check for NVIDIA JetPack systems with additional downloads
 if [ -f /etc/nv_tegra_release ] ; then
@@ -212,7 +219,7 @@ if [ -f /etc/nv_tegra_release ] ; then
 fi
 
 install_success() {
-    status 'The xollama API is now available at 127.0.0.1:11434.'
+    status 'The xollama API is now available at 127.0.0.1:22434.'
     status 'Install complete. Run "xollama" from the command line.'
 }
 trap install_success EXIT
@@ -328,10 +335,11 @@ if ! check_gpu lspci nvidia && ! check_gpu lshw nvidia && ! check_gpu lspci amdg
 fi
 
 if check_gpu lspci amdgpu || check_gpu lshw amdgpu; then
-    download_and_extract "$DOWNLOAD_BASE" "$OLLAMA_INSTALL_DIR" "xollama-linux-${ARCH}-rocm"
-
+    # AMD runs on Vulkan (the engine's library and llama.cpp's, both installed
+    # above); xollama ships no ROCm payload. It needs the distribution's Mesa
+    # Vulkan driver (RADV).
     install_success
-    status "AMD GPU ready."
+    status "AMD GPU ready (Vulkan)."
     exit 0
 fi
 

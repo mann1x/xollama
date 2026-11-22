@@ -116,6 +116,7 @@ func logPredictionMiss(m *Model, llama interface{ MemorySize() (uint64, uint64) 
 	if m == nil || llama == nil {
 		return
 	}
+	logOvercommit(m, llama)
 	_, took := llama.MemorySize()
 	v, ok := predictedLoads.LoadAndDelete(m.ModelPath)
 	if !ok {
@@ -128,4 +129,21 @@ func logPredictionMiss(m *Model, llama interface{ MemorySize() (uint64, uint64) 
 	slog.Info("the load took more GPU memory than predicted", "model", cmp.Or(m.ShortName, m.Name),
 		"predicted", format.HumanBytes2(predicted), "took", format.HumanBytes2(took),
 		"over", fmt.Sprintf("%d%%", (took-predicted)*100/predicted))
+}
+
+// logOvercommit says at Warn when the engine put more on a GPU than the GPU
+// had free (llm's Overcommitted): on Windows the driver pages the rest into
+// shared system memory and generation slows to a crawl without an error
+// (eleven2go, 2026-11-21, mail #2362: num_gpu 99, about 3 tok/s). /api/ps
+// reports that part as off the GPU.
+func logOvercommit(m *Model, llama any) {
+	o, ok := llama.(interface{ Overcommitted() uint64 })
+	if !ok {
+		return
+	}
+	if over := o.Overcommitted(); over > 0 {
+		slog.Warn("the engine placed more on the GPU than it had free; the rest is paged out of the card or the load will fail",
+			"model", cmp.Or(m.ShortName, m.Name), "over", format.HumanBytes2(over),
+			"hint", "lower num_gpu, or unload the models beside it")
+	}
 }

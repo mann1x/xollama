@@ -40,6 +40,9 @@ var archFeatures = map[string]string{
 	"ricursive": "arch_ricursive_v1",
 	// #31589 (2026-11-06): xing4_0.
 	"xing4_0": "arch_xing4_0_v1",
+	// llama.cpp b12257 (upstream v0.40.17) adds one; c14 r18 does not have it.
+	// #31779 (2026-11-06): Kimi K3.1 Pro, text only.
+	"kimi-k31": "arch_kimi_k31_v1",
 }
 
 // ArchFeature is the pin feature that says the engine serves GGUF architecture

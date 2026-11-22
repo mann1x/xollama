@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ollama/ollama/api"
 	"github.com/ollama/ollama/format"
 	"github.com/ollama/ollama/fs/gguf"
 	"github.com/ollama/ollama/llm"
@@ -69,7 +70,15 @@ func predictVRAM(req *LlmRequest, f *gguf.Model, gpus []ml.DeviceInfo, predicted
 // needsEviction decides whether a load that has to share its GPUs evicts.
 // predicted and free are what upstream compares, and for stock llama.cpp the
 // answer is upstream's.
-func needsEviction(req *LlmRequest, f *gguf.Model, loadGpus []ml.DeviceInfo, predicted, free uint64) bool {
+//
+// A num_gpu that reaches every layer goes to the engine as -ngl, and its fit
+// then moves nothing off the card ("n_gpu_layers already set by user to 99,
+// abort"): no weights stay in host memory, so they must fit whole. Without
+// that, a 15.9 GiB model went beside nothing onto a 15.1 GiB RX 9070 XT while
+// the 3090 was being freed, and Windows paged the rest into shared memory
+// (eleven2go, 2026-11-21, mail #2362: about 3 tok/s). The cache still goes to
+// host memory when the card is short (the engine's rolling window).
+func needsEviction(req *LlmRequest, f *gguf.Model, loadGpus []ml.DeviceInfo, opts api.Options, predicted, free uint64) bool {
 	if !llm.WouldUseOpencoti(llamaServerConfigForModel(req.model), loadGpus) {
 		return predicted > free*80/100
 	}
@@ -83,6 +92,16 @@ func needsEviction(req *LlmRequest, f *gguf.Model, loadGpus []ml.DeviceInfo, pre
 		return predicted > free
 	}
 	weights := llm.PredictOpencotiVRAM(req.model.ModelPath, f, llamaServerConfigForModel(req.model), 0, 0, 0, 1, 0).Weights
+	if explicitFullGPUOffload(opts, f) {
+		if weights > free {
+			slog.Info("num_gpu puts every layer on this GPU and the model's weights do not fit beside the loaded models",
+				"model", req.model.ShortName,
+				"num_gpu", opts.NumGPU,
+				"weights", format.HumanBytes2(weights),
+				"available", format.HumanBytes2(free))
+			return true
+		}
+	}
 	onCard := weights * (100 - maxWeightsOffCardPercent) / 100
 	if free >= onCard {
 		if predicted > free {
@@ -99,6 +118,14 @@ func needsEviction(req *LlmRequest, f *gguf.Model, loadGpus []ml.DeviceInfo, pre
 		"weights", format.HumanBytes2(weights),
 		"available", format.HumanBytes2(free))
 	return true
+}
+
+// explicitFullGPUOffload reports whether the load's num_gpu reaches every
+// layer (the repeating blocks and the output), so the engine is told to place
+// them all. A smaller num_gpu is an explicit partial offload, which the
+// pre-flight leaves to upstream (explicitPartialGPUOffload).
+func explicitFullGPUOffload(opts api.Options, f *gguf.Model) bool {
+	return opts.NumGPU > 0 && f != nil && uint64(opts.NumGPU) >= f.KV().BlockCount()+1
 }
 
 // sharesHostMemory reports whether a load on these devices has no host memory

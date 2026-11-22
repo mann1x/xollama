@@ -339,6 +339,17 @@ the card it is placed on (`maxWeightsOffCardPercent`; owner, 2026-10-11:
 the part of the cache the card cannot hold in host memory (the rolling
 window). A load that does not fit whole says so at Info.
 
+A `num_gpu` that reaches every layer is the exception: it goes to the engine
+as `-ngl`, and the engine's fit then moves nothing off the card ("n_gpu_layers
+already set by user to 99, abort"), so the weights must fit whole or the load
+evicts (`explicitFullGPUOffload`). On eleven2go (2026-11-21, mail #2362) a
+15.9 GiB model with `num_gpu 99` went onto a 15.1 GiB RX 9070 XT while the
+3090 was being freed; Windows paged the rest into shared memory and it
+generated at about 3 tok/s. What the engine put on a card past its free memory
+at load (`Overcommitted`, `llm/engine_overcommit.go`) is reported by
+`/api/ps` as off the GPU and said at Warn after the load (`engine-overcommit`
+hook); stock llama.cpp and integrated GPUs keep upstream's figures.
+
 When something does have to go, `findRunnerToUnloadOn` evicts a runner on the
 GPUs the load can use (idle first, as upstream orders them); `busyGPUs` knows
 which runner is on which card by PCI ID, so the CUDA and Vulkan copies of one

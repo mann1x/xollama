@@ -609,9 +609,24 @@ jobs:
           "./$bin" --version 2>&1 | tee version.txt
           grep -q "$VERSION" version.txt || { echo "::error::the binary does not report $VERSION"; exit 1; }
           objdump -T "$bin" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
+      # The install tarballs scripts/install.sh unpacks (owner, 2026-11-21:
+      # part of every release). Cut from the same assembly the container image
+      # is made of, around the binary just built: upstream's GPU tarballs from
+      # the pin's gpu rows, the fork's CPU runtime, the engine and its files.
+      - name: free disk for the payload
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h / | tail -1
+      - name: assemble the payload
+        working-directory: repo
+        run: |
+          mkdir -p ../asm/rootfs/bin
+          cp "xollama-linux-$ARCH" ../asm/rootfs/bin/xollama
+          SKIP_GO=1 LIST_DIR="$PWD/../asm/lists" ASSET_DIR="$PWD/../assets" scripts/docker-assemble.sh ../asm
+      - name: cut the install tarballs
+        working-directory: repo
+        run: scripts/linux-tarballs.sh ../asm ../dist && ls -la ../dist
       - name: attach to the draft
         working-directory: repo
-        run: gh release upload "$TAG" "xollama-linux-$ARCH" --clobber
+        run: gh release upload "$TAG" "xollama-linux-$ARCH" ../dist/xollama-linux-"$ARCH"*.tar.zst --clobber
 
   # The Apple silicon app, as scripts/build_darwin.sh builds it on the Mac
   # mini: runtime, opencoti engine from the pin, Developer ID signature,
@@ -804,7 +819,12 @@ jobs:
           mkdir assets && cd assets
           gh release download "$TAG" --clobber
           rm -f sha256sum.txt
-          want=(payload-id.txt xOllama-darwin.zip xOllama.dmg xOllamaSetup.exe xOllamaUpdate.exe xollama-linux-amd64 xollama-linux-arm64 xollama-windows-amd64.exe)
+          # The tarballs are what scripts/install.sh downloads; a release
+          # without them cannot be installed on Linux.
+          want=(payload-id.txt xOllama-darwin.zip xOllama.dmg xOllamaSetup.exe xOllamaUpdate.exe xollama-linux-amd64 xollama-linux-arm64 xollama-windows-amd64.exe
+            xollama-linux-amd64.tar.zst xollama-linux-amd64-opencoti.tar.zst xollama-linux-amd64-mlx.tar.zst
+            xollama-linux-arm64.tar.zst xollama-linux-arm64-opencoti.tar.zst xollama-linux-arm64-jetpack5.tar.zst xollama-linux-arm64-jetpack6.tar.zst)
+          mapfile -t want < <(printf '%s\n' "${want[@]}" | LC_ALL=C sort)
           have=$(find . -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort | xargs)
           [ "$have" = "${want[*]}" ] || { echo "::error::assets are '$have', expected '${want[*]}'"; exit 1; }
           grep -Eqx '[0-9a-f]{64}' payload-id.txt || { echo "::error::payload-id.txt is not a sha256"; exit 1; }
@@ -847,7 +867,7 @@ jobs:
             echo "| llama.cpp | \`$llama\`: CPU runtime \`$RUNTIME_TAG\`, CUDA 13 and Vulkan backends from upstream v$UPSTREAM |"
             echo "| engine | $engine |"
             echo "| macOS | \`xOllama.dmg\` (Apple silicon, Developer ID signed, notarized and stapled); \`xOllama-darwin.zip\` is what the app's updater takes. MLX runtime: upstream v$UPSTREAM's, from \`mann1x/ollama $LINUX_RUNTIME_TAG\` |"
-            echo "| Linux | \`xollama-linux-amd64\`, \`xollama-linux-arm64\` (glibc 2.28 and newer; the binary alone, no runtime) |"
+            echo "| Linux | \`curl -fsSL https://raw.githubusercontent.com/mann1x/xollama/main/scripts/install.sh | sh\` installs \`xollama-linux-<arch>.tar.zst\` (binary, CPU runtime, CUDA 12/13 and Vulkan for llama.cpp) and \`-opencoti.tar.zst\` (the engine), plus \`-mlx\` (amd64, NVIDIA) or \`-jetpack5\`/\`-jetpack6\` (arm64); glibc 2.28 and newer. \`xollama-linux-amd64\`, \`xollama-linux-arm64\`: the binary alone |"
             echo "| container image | \`mannixita/xollama:$VERSION\` and \`ghcr.io/mann1x/xollama:$VERSION\`, amd64 and arm64; CPU runtime \`mann1x/ollama $LINUX_RUNTIME_TAG\`. Built from this tag after the release is published |"
             echo "| payload id | \`$id\` |"
             echo "| update | $delta |"

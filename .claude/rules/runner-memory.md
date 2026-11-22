@@ -2,12 +2,17 @@
 paths:
   - llm/engine_free_at_load.go
   - llm/engine_free_at_load_test.go
+  - llm/engine_overcommit.go
+  - llm/engine_overcommit_test.go
+  - llm/engine_device_names.go
+  - llm/engine_device_names_test.go
   - llm/llama_server.go
   - discover/refresh_stale.go
   - discover/refresh_stale_test.go
   - discover/runner.go
   - server/xollama_delete_unload.go
   - server/xollama_delete_unload_test.go
+  - server/load_log.go
   - server/routes.go
   - docs/features/device-selection.md
 ---
@@ -23,6 +28,25 @@ paths:
   (eleven2go, 2026-11-16, mails #2309/#2310). `XOLLAMA_ENGINE=llamacpp`
   keeps the last line. Guards: `TestFreeAtLoadIsTheFirstDeviceLine`,
   `TestStockEngineKeepsTheLastDeviceLine`.
+- **A runner past its card is not 100% VRAM** (`engine-overcommit` hook,
+  `llm/engine_overcommit.go`, one marked line in `MemorySize`): on opencoti,
+  device buffers past the engine's first free-at-load line for a discrete GPU
+  (`Overcommitted`) are taken off `size_vram`, and `logOvercommit`
+  (`server/load_log.go`) says so at Warn after the load. Windows pages that
+  part into shared memory without an error (mail #2362, `num_gpu 99` on the
+  RX 9070 XT). Stock llama.cpp and integrated GPUs keep upstream's figures.
+  Guards: `llm/engine_overcommit_test.go`.
+- **The engine's device names are its own** (`engine-device-names` hook,
+  `llm/engine_device_names.go`): a pinned load starts the engine with a
+  visible-devices filter and it numbers what it sees from 0 (discovery's
+  Vulkan2 is its Vulkan0). `engineKey` maps a device to the engine's name by
+  backend and description, in order, unless every device of the load is under
+  its own name; `Overcommitted`, `GetDeviceInfos` and `VRAMByGPU` look up
+  through it. Without it a pinned 9070 XT load read 100% VRAM past the card
+  and the card looked empty with the model on it (eleven2go, 2026-11-21,
+  bug-362). Stock llama.cpp keeps upstream's lookup. A fixture that names the
+  card as discovery does tests nothing here: take the engine's real lines.
+  Guards: `llm/engine_device_names_test.go`.
 - **A runner's number does not outlive the runner** (`stale-free` hook,
   `discover/refresh_stale.go`, hooked in `discover/runner.go`):
   `noteListedFree` records what a listing measured (`listedFree`, guarded by
@@ -51,12 +75,12 @@ paths:
   unload; without the runners the table showed a card's free memory from
   before the model loaded (eleven2go 3090: 22.8 GiB free under 15.1 GiB).
   Guard: `TestTheDevicesRouteAsksTheLoadedRunners`.
-- Registry rows `free-at-load`, `stale-free`, `delete-unload` in
+- Registry rows `free-at-load`, `engine-overcommit`, `engine-device-names`, `stale-free`, `delete-unload` in
   `docs/protocols/UPSTREAM-SYNC.md`; prose in
   `docs/features/device-selection.md`.
 
 ```sh
-go test ./llm/ -run 'FreeAtLoad|LastDeviceLine'
+go test ./llm/ -run 'FreeAtLoad|LastDeviceLine|Overcommitted|AllOnTheGPU|IntegratedGPUs|EngineRenumbered|DeviceNames|NamesAsXollamaDoes|IdenticalCards'
 go test ./discover/ -run 'StaleFree|OutliveTheRunner'
 go test ./server/ -run 'Delete|UnloadByAName'
 ```

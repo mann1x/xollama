@@ -72,20 +72,20 @@ func TestALoadEvictsOnlyWhenItsWeightsDoNotFit(t *testing.T) {
 	gpus := []ml.DeviceInfo{vulkan}
 	huge := weights * 100 // a cache far past the card, as upstream predicted it
 
-	if needsEviction(req, f, gpus, huge, weights) {
+	if needsEviction(req, f, gpus, req.opts, huge, weights) {
 		t.Error("evicted although the weights fit: the cache is the engine's to place")
 	}
 	// A fifth of the weights may go to host memory, not more.
-	if needsEviction(req, f, gpus, huge, weights*80/100) {
+	if needsEviction(req, f, gpus, req.opts, huge, weights*80/100) {
 		t.Error("evicted with exactly 20% of the weights off the card")
 	}
-	if !needsEviction(req, f, gpus, huge, weights*80/100-1) {
+	if !needsEviction(req, f, gpus, req.opts, huge, weights*80/100-1) {
 		t.Error("not evicted with more than 20% of the weights off the card")
 	}
 
 	// Off means off: stock llama.cpp keeps upstream's 80% of the prediction.
 	t.Setenv("XOLLAMA_ENGINE", "llamacpp")
-	if !needsEviction(req, f, gpus, 81, 100) || needsEviction(req, f, gpus, 80, 100) {
+	if !needsEviction(req, f, gpus, req.opts, 81, 100) || needsEviction(req, f, gpus, req.opts, 80, 100) {
 		t.Error("with XOLLAMA_ENGINE=llamacpp the decision is not upstream's")
 	}
 	want := llm.PredictServerVRAM(req.model.ModelPath, f, 4096) + slotCeilingVRAM(req, f, gpus, 1)
@@ -158,10 +158,10 @@ func TestALoadThatDoesNotFitEvictsWhereTheGPUSharesHostMemory(t *testing.T) {
 	}
 	// The Mac mini's figures: the weights alone pass the 20% rule.
 	predicted, free := uint64(10800)<<20, uint64(8900)<<20
-	if !needsEviction(req, f, gpus, predicted, free) {
+	if !needsEviction(req, f, gpus, req.opts, predicted, free) {
 		t.Error("a load that does not fit whole was started beside the loaded models")
 	}
-	if needsEviction(req, f, gpus, free, free) {
+	if needsEviction(req, f, gpus, req.opts, free, free) {
 		t.Error("evicted although the load fits whole")
 	}
 }
@@ -313,5 +313,49 @@ func TestAnUnloadOnSharedMemoryWaitsForTheHostsMemory(t *testing.T) {
 	}
 	if s.waitForHostMemory(&runnerRef{llama: &mockLlm{}, gpus: []ml.DeviceID{metal}, vramSize: 1}) != nil {
 		t.Error("a stock llama.cpp runner waits for host memory: off means off")
+	}
+}
+
+// A num_gpu that reaches every layer is passed as -ngl, and the engine's fit
+// then keeps nothing in host memory, so the weights must fit whole (mail
+// #2362: num_gpu 99, a 15.9 GiB model onto a 15.1 GiB RX 9070 XT, paged into
+// shared memory on Windows). The cache is still the engine's to place.
+func TestAnExplicitNumGPUMustFitTheWeightsWhole(t *testing.T) {
+	cuda, vulkan := elevenCards()
+	skipUnlessOpencotiServesBoth(t, cuda, vulkan)
+	ctx, done := context.WithTimeout(t.Context(), 5*time.Second)
+	defer done()
+	req := newScenarioRequest(t, ctx, "num-gpu-model", 10, nil, nil).req
+	f, err := llm.LoadModel(req.model.ModelPath, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(req.model.ModelPath)
+	if err != nil || fi.Size() == 0 {
+		t.Fatalf("the scenario's model has no size: %v", err)
+	}
+	weights := uint64(fi.Size())
+	gpus := []ml.DeviceInfo{vulkan}
+	huge := weights * 100
+
+	opts := req.opts
+	opts.NumGPU = 99
+	if !needsEviction(req, f, gpus, opts, huge, weights-1) {
+		t.Error("num_gpu 99 loaded beside the models with the weights a byte short of the card")
+	}
+	if needsEviction(req, f, gpus, opts, huge, weights) {
+		t.Error("num_gpu 99 evicted although the weights fit: the cache is the engine's to place")
+	}
+	// Without num_gpu the engine fits the layers itself: a fifth may stay in host memory.
+	opts.NumGPU = -1
+	if needsEviction(req, f, gpus, opts, huge, weights*80/100) {
+		t.Error("the automatic fit lost its fifth of the weights in host memory")
+	}
+
+	// Off means off: stock llama.cpp keeps upstream's 80% of the prediction.
+	t.Setenv("XOLLAMA_ENGINE", "llamacpp")
+	opts.NumGPU = 99
+	if !needsEviction(req, f, gpus, opts, 81, 100) || needsEviction(req, f, gpus, opts, 80, 100) {
+		t.Error("with XOLLAMA_ENGINE=llamacpp the decision is not upstream's")
 	}
 }

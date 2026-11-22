@@ -1960,7 +1960,7 @@ func TestConvertMessage_ServerToolUse(t *testing.T) {
 		},
 	}
 
-	messages, err := convertMessage(msg)
+	messages, err := newMessageConverter(nil).convertMessage(msg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2001,7 +2001,7 @@ func TestConvertMessage_WebSearchToolResult(t *testing.T) {
 		},
 	}
 
-	messages, err := convertMessage(msg)
+	messages, err := newMessageConverter(nil).convertMessage(msg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2036,7 +2036,7 @@ func TestConvertMessage_WebSearchToolResultEmptyStillCreatesToolMessage(t *testi
 		},
 	}
 
-	messages, err := convertMessage(msg)
+	messages, err := newMessageConverter(nil).convertMessage(msg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2070,7 +2070,7 @@ func TestConvertMessage_WebSearchToolResultErrorStillCreatesToolMessage(t *testi
 		},
 	}
 
-	messages, err := convertMessage(msg)
+	messages, err := newMessageConverter(nil).convertMessage(msg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
