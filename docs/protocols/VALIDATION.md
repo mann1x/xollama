@@ -688,7 +688,8 @@ registries, `:dev` moved. Promoted 2026-10-08, Discord announced.
   `mlxrunner` and `mlxrunner/sample` on solidPC (no MLX runtime there), and
   `TestTheCLIFallsBackToTheStockPortOnlyForAnXollama` fails when another
   service holds port 8191.
-- **Last run (`v0.40.17-xollama.1`, tree `ebfab3cb4`, 2026-11-22; the dry-run head `0b80d81bc` adds only records):** `gofmt` nothing, build, every package `ok` (server, llm, types, council, cmd, discover, model, thinking, auth, api, envconfig), `0 issues`, 67 hooks, `0 commit(s) in origin/main..HEAD touch the llama.cpp inputs; 0 not from the fork or upstream`. Security check: Dependabot 112 (no delta), govulncheck 0 reachable.
+- **Last run (`v0.40.17-xollama.2`, tree of `efd6e47c0` plus records, 2026-11-24):** `gofmt` nothing, build, every package `ok` (server, llm, types, council, cmd, discover, model, thinking, api with `TestDefaultOptionsSamplingMatchesLlamaCpp`, auth, envconfig, openai, anthropic, middleware), `0 issues`, 67 hooks, `0 commit(s) in origin/main..HEAD touch the llama.cpp inputs; 0 not from the fork or upstream`. Security check: Dependabot 112 (no delta), govulncheck 0 reachable.
+- **Before (`v0.40.17-xollama.1`, tree `ebfab3cb4`, 2026-11-22; the dry-run head `0b80d81bc` adds only records):** `gofmt` nothing, build, every package `ok` (server, llm, types, council, cmd, discover, model, thinking, auth, api, envconfig), `0 issues`, 67 hooks, `0 commit(s) in origin/main..HEAD touch the llama.cpp inputs; 0 not from the fork or upstream`. Security check: Dependabot 112 (no delta), govulncheck 0 reachable.
 - **Before (`v0.40.17-rc.1.xollama` first dry-run draft, run 44954357653, head `01caf80be`, payload `1690dc3a`, 2026-11-21; the fix `bb1301f55` again on 2026-11-22):** `gofmt` nothing, build, every package `ok`, `0 issues`, 65 hooks (66 with `engine-device-names`), `18 commit(s) … 0 not from the fork or upstream`.
 
 ### G2. Hosted CI on the release PR
