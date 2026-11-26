@@ -413,6 +413,28 @@ var fields = []field{
 		},
 	},
 	{
+		name:  "keep-alive",
+		env:   "OLLAMA_KEEP_ALIVE",
+		path:  "keep_alive",
+		title: "Keep alive — how long the model stays loaded after its last request",
+		help: "A duration (30m, 1h), a number of seconds, or forever (-1). It applies when a\n" +
+			"request names no keep_alive, on every route, the media ones included. A model\n" +
+			"kept forever still unloads with `xollama stop` or keep_alive 0, and the\n" +
+			"scheduler can still evict it for another load. Unset leaves the server-wide\n" +
+			"OLLAMA_KEEP_ALIVE in charge.",
+		kind:    kindOpenChoice,
+		choices: func(*xollama.Config) []string { return []string{"5m", "30m", "1h", "forever"} },
+		get:     func(c *xollama.Config) string { return c.KeepAlive },
+		set: func(c *xollama.Config, v string) error {
+			s, err := xollama.NormalizeKeepAlive(open(v))
+			if err != nil {
+				return err
+			}
+			c.KeepAlive = s
+			return nil
+		},
+	},
+	{
 		name:  "kv-k",
 		env:   "XOLLAMA_K_CACHE_TYPE",
 		path:  "kv.k",

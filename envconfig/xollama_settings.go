@@ -220,6 +220,7 @@ var restartOverrides = []string{
 	"CUDA_VISIBLE_DEVICES", "HIP_VISIBLE_DEVICES", "ROCR_VISIBLE_DEVICES",
 	"GGML_VK_VISIBLE_DEVICES", "GPU_DEVICE_ORDINAL", "HSA_OVERRIDE_GFX_VERSION",
 	"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY",
+	"XOLLAMA_PRELOAD_MODELS",
 }
 
 // CheckOverride says whether name may be set in the tweak file, and why not.

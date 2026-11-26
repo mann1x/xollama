@@ -52,6 +52,12 @@ settings mean is in the page each section links to.
 | `--slots-vram-reserve` | `slots.vram_reserve_mib` | N, unset | VRAM reserve — free memory that must remain before admitting a slot | yes | `XOLLAMA_SLOTS_VRAM_RESERVE` |
 | `--slots-swa-budget` | `slots.swa_seq_budget` | N, unset | Sliding-window sequence budget | yes | `XOLLAMA_SWA_SEQ_BUDGET` |
 
+## Staying loaded
+
+| Flag | Setting | Values | What it is | Server | Falls back to |
+|---|---|---|---|---|---|
+| `--keep-alive` | `keep_alive` | 5m, 30m, 1h, forever, unset | Keep alive — how long the model stays loaded after its last request |  | `OLLAMA_KEEP_ALIVE` |
+
 ## Sessions and shared prefixes
 
 | Flag | Setting | Values | What it is | Server | Falls back to |
@@ -278,4 +284,4 @@ settings mean is in the page each section links to.
 | `--clear` | Remove the model's xollama config entirely (an attached drafter stays; `--drafter=none` detaches it) |
 | `-y`, `--yes` | Do not ask for confirmation before writing |
 
-170 settings. `xollama tweak model --help` prints the same list as your build has it.
+171 settings. `xollama tweak model --help` prints the same list as your build has it.

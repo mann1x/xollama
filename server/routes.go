@@ -2812,6 +2812,7 @@ func Serve(ln net.Listener) error {
 		s.defaultNumCtx = 4096
 	}
 	slog.Info("vram-based default context", "total_vram", format.HumanBytes2(totalVRAM), "default_num_ctx", s.defaultNumCtx)
+	go s.preloadModels(ctx, envconfig.PreloadModels()) // xollama-hook: preload
 
 	err = srvr.Serve(ln)
 	// If server is closed from the signal handler, wait for the ctx to be done

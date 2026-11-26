@@ -183,6 +183,7 @@
               "/xollama/council",
               "/xollama/council-integration",
               "/xollama/media",
+              "/xollama/preload",
               "/xollama/think-budget",
               "/xollama/tokenize",
               "/xollama/tool-call-progress",

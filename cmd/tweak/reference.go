@@ -14,6 +14,7 @@ var referenceSections = []struct{ section, heading string }{
 	{"flash_attention", "Engine"},
 	{"kv", "KV cache"},
 	{"slots", "Concurrent requests"},
+	{"keep_alive", "Staying loaded"},
 	{"session", "Sessions and shared prefixes"},
 	{"dca", "Long context (DCA)"},
 	{"fit", "Fitting the model in memory"},

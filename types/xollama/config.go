@@ -114,6 +114,16 @@ type Config struct {
 	// Notices names the model's generation-notice templates for a create
 	// (notices.go). Never stored: the MediaTypeNotices layer is the truth.
 	Notices *Notices `json:"notices,omitempty"`
+
+	// KeepAlive is how long the model stays loaded after its last request
+	// when the request names no keep_alive (keep_alive.go): a duration
+	// ("30m"), a number of seconds, or -1 for as long as nothing unloads or
+	// evicts it. Empty leaves OLLAMA_KEEP_ALIVE in charge.
+	//
+	// It raises no schema version: an older build reads it as an unknown
+	// field and the model runs the same, only unloading after the server's
+	// default.
+	KeepAlive string `json:"keep_alive,omitempty"`
 }
 
 // Slots holds this model's serving-capacity settings.
@@ -394,6 +404,9 @@ func (c *Config) Validate() error {
 	if c.Version > SchemaVersion {
 		return fmt.Errorf("xollama config: schema version %d is newer than this build understands (%d); upgrade xollama", c.Version, SchemaVersion)
 	}
+	if _, _, err := ParseKeepAlive(c.KeepAlive); err != nil {
+		return err
+	}
 	if c.Devices != nil {
 		if err := c.Devices.validate(); err != nil {
 			return err
@@ -640,6 +653,7 @@ func (c *Config) IsZero() bool {
 	}
 	return c.Engine == "" &&
 		c.FlashAttention == "" &&
+		c.KeepAlive == "" &&
 		c.Draft.IsZero() &&
 		c.Notices.IsZero() &&
 		(c.KV == nil || c.KV.RollingWindow == "") &&

@@ -85,7 +85,7 @@ func mediaTwin(m *Model) *Model {
 		// twin as to any model (selectModelDevices), so `tweak model` decides
 		// which GPU serves an image, a transcription or a clip. Without it the
 		// media engine always took the GPU with the most free memory.
-		Xollama: &xollama.Config{Version: m.Xollama.Version, Media: m.Xollama.Media, Devices: m.Xollama.Devices},
+		Xollama: &xollama.Config{Version: m.Xollama.Version, Media: m.Xollama.Media, Devices: m.Xollama.Devices, KeepAlive: m.Xollama.KeepAlive},
 		// Neither GGUF nor safetensors: the capability walk then reads no
 		// weights' metadata, and the scheduler sees no completion model.
 		Config: model.ConfigV2{ModelFormat: "media"},

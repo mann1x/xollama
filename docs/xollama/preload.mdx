@@ -1,0 +1,104 @@
+---
+title: Preloading models and keeping them loaded
+---
+
+A model loads on its first request, and after its last request it stays loaded
+for the server's `OLLAMA_KEEP_ALIVE` (5 minutes unless you set it). xOllama adds
+two settings for a model that should be ready before anyone asks for it and
+should stay ready:
+
+- **`XOLLAMA_PRELOAD_MODELS`** loads models when the server starts.
+- **A model's own keep-alive** (`xollama tweak model --keep-alive`) says how
+  long that model stays loaded after its last request.
+
+The two are separate on purpose. The preload list only says what to load at
+start. How long a model stays loaded is that model's own setting, whether it was
+preloaded or loaded by a request.
+
+## Load models at start
+
+```shell
+XOLLAMA_PRELOAD_MODELS=mannix/flux2-klein:4b,mannix/whisper:large-v3-turbo,mannix/kittentts:mini-0.8 xollama serve
+```
+
+Or in the server's settings file, so it survives a restart of the service:
+
+```shell
+xollama tweak envs XOLLAMA_PRELOAD_MODELS=mannix/flux2-klein:4b,mannix/whisper:large-v3-turbo
+```
+
+The variable is read once, at start, so a change takes effect when the server
+restarts.
+
+- Names are separated by commas, and each one is loaded once, in the order
+  given, after the server has found its GPUs.
+- Text, embedding and media models (image, speech, transcription, video, sound
+  effects) all work. A model that is both a language model and has media loads
+  both in one engine, as its first request would.
+- A cloud model has nothing to load and is skipped.
+- A model that cannot be loaded (not pulled, too big, the engine refuses it) is
+  logged as a warning and skipped. The server starts anyway.
+- A preloaded model is placed and counted like any other load:
+  `OLLAMA_MAX_LOADED_MODELS` and the media caps
+  (`XOLLAMA_MAX_LOADED_IMAGE_MODELS`, `..._SPEECH_...`,
+  `..._TRANSCRIPTION_...`, all 1 by default) apply. Models of different kinds
+  each have their own cap, so an image model, a transcriber and a speech model
+  can all stay loaded together.
+
+The server log says what happened to each model:
+
+```
+level=INFO msg="preloaded model" model=mannix/flux2-klein:4b keep_alive=-1
+level=INFO msg="preloaded model" model=mannix/whisper:large-v3-turbo keep_alive="5m0s (OLLAMA_KEEP_ALIVE; set the model's own with xollama tweak model --keep-alive)"
+```
+
+## Keep a model loaded
+
+Without a keep-alive of its own, a preloaded model unloads after
+`OLLAMA_KEEP_ALIVE`, as any model does. To keep it ready, give the model its
+own keep-alive:
+
+```shell
+xollama tweak model mannix/flux2-klein:4b --keep-alive=forever
+xollama tweak model mannix/whisper:large-v3-turbo --keep-alive=1h
+```
+
+The value is what a request's `keep_alive` takes: a duration (`30m`, `1h`), a
+number of seconds, or `forever` (stored as `-1`). `--keep-alive=unset` removes
+it.
+
+Which keep-alive wins, most specific first:
+
+1. The request's own `keep_alive`, when it sends one.
+2. The model's keep-alive.
+3. The server's `OLLAMA_KEEP_ALIVE`.
+
+The media routes (`/v1/images/generations`, `/v1/audio/speech`,
+`/v1/audio/transcriptions` and the others) never send a keep-alive, so for a
+media model the model's own setting is the one that counts. Some chat clients
+send `keep_alive` on every request; when one does, that value wins, as it does
+upstream.
+
+A keep-alive takes effect when the model is loaded. Changing it with
+`tweak model` writes a new model config, so the model is loaded again on its
+next request with the new value.
+
+## Unloading a model kept forever
+
+A model kept forever is still an ordinary loaded model:
+
+- `xollama stop <model>`, or a request with `"keep_alive": 0`, unloads it at
+  once (when its current request ends, if it is busy).
+- `xollama rm <model>` unloads it before removing it.
+- The scheduler can still evict it when another model needs the memory. A model
+  kept forever is evicted only after the models that would expire sooner.
+
+Once stopped, it loads again on its next request, and stays loaded for its
+keep-alive.
+
+## Older servers
+
+`keep_alive` in a model's config needs no newer schema. A server before this
+feature ignores it and unloads the model after its `OLLAMA_KEEP_ALIVE`; the
+model runs the same. `XOLLAMA_PRELOAD_MODELS` is ignored by a server that does
+not have it.

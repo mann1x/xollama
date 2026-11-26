@@ -315,6 +315,10 @@ var (
 	// so a client choosing among several models of a kind has the operator's
 	// answer instead of a guess.
 	MediaDefaults = String("XOLLAMA_MEDIA_DEFAULTS")
+	// PreloadModels are loaded when the server starts, comma separated, text
+	// and media models alike (preload hook, server/xollama_preload.go). How
+	// long each stays is its own keep_alive, never this list's.
+	PreloadModels = String("XOLLAMA_PRELOAD_MODELS")
 	// MaxLoadedImageModels, MaxLoadedSpeechModels,
 	// MaxLoadedTranscriptionModels, MaxLoadedVideoModels and
 	// MaxLoadedSFXModels cap the media
@@ -588,6 +592,8 @@ func AsMap() map[string]EnvVar {
 	ret["XOLLAMA_MAX_LOADED_VIDEO_MODELS"] = EnvVar{"XOLLAMA_MAX_LOADED_VIDEO_MODELS", MaxLoadedVideoModels(), "Video engines loaded at once (default 1; 0 shares OLLAMA_MAX_LOADED_MODELS)"}
 	ret["XOLLAMA_MAX_LOADED_SFX_MODELS"] = EnvVar{"XOLLAMA_MAX_LOADED_SFX_MODELS", MaxLoadedSFXModels(), "Sound-effects engines loaded at once (default 1; 0 shares OLLAMA_MAX_LOADED_MODELS)"}
 	ret["XOLLAMA_MAX_LOADED_DECISION_MODELS"] = EnvVar{"XOLLAMA_MAX_LOADED_DECISION_MODELS", MaxLoadedDecisionModels(), "Decision models loaded at once (default 1; 0, or XOLLAMA_ENGINE=llamacpp, shares OLLAMA_MAX_LOADED_MODELS)"}
+	// xollama-hook: preload
+	ret["XOLLAMA_PRELOAD_MODELS"] = EnvVar{"XOLLAMA_PRELOAD_MODELS", PreloadModels(), "Models loaded when the server starts, comma separated; each stays loaded for its own keep_alive (xollama tweak model --keep-alive)"}
 	return ret
 }
 

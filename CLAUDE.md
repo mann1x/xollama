@@ -205,6 +205,7 @@ children before `mlx` on every OS, for a pull and a model on disk
 Every GGUF load is named before the engine starts (`load-log` hook in
 `server/sched.go`, `server/load_log.go`): `loading model`, `model file` and
 `model placement`, from what the estimator already parsed, on every engine.
+**Preload and keep-alive**: `XOLLAMA_PRELOAD_MODELS` loads models at start (`preloadModels`, `server/xollama_preload.go`, `preload` hook in `Serve`); how long any model stays is its own `keep_alive` (`xollama tweak model --keep-alive`, `types/xollama/keep_alive.go`), read in `load()` after the request's (`modelKeepAlive`, `server/xollama_keep_alive.go`, `keep-alive` hook) and carried by the media twin — see `.claude/rules/preload.md` and `docs/xollama/preload.mdx`.
 **Internal-only packages** under `internal/`: `internal/cloud` (cloud host
 policy), `internal/modelref` (model reference parsing), `internal/onboarding`
 (first-run app state; on Windows it, the app/server logs, `ollama.pid` and the

@@ -599,6 +599,7 @@ func (s *Scheduler) load(req *LlmRequest, systemInfo ml.SystemInfo, gpus []ml.De
 	if req.sessionDuration != nil {
 		sessionDuration = req.sessionDuration.Duration
 	}
+	sessionDuration = modelKeepAlive(req.model, req.sessionDuration, sessionDuration) // xollama-hook: keep-alive
 
 	s.loadedMu.Lock()
 	llama := s.activeLoading
