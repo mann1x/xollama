@@ -59,12 +59,12 @@
 # for byte under the new tag (inputs unchanged, so `built` stays d0508358);
 # the gpu rows are upstream v0.40.2's rebuilt archives.
 repo      mann1x/ollama
-tag       v0.40.17-thinkbudget
+tag       v0.40.18-thinkbudget
 asset     ollama-linux-amd64-runtime.tgz
-sha256    79d10f0fcb65707b36166cbfe59864e3f8e660cde31324363fce7e2439db875d
-inputs    a8ea4e5183cf9bdd6c4a63f64992bd50451478b4e8a0a5b1869b5ddcaf90611d
-built     2bdc832e55fec37a35eccda2caa371ce975b2f2b
+sha256    3988af67fa1b05668205abb797f652f3ccb15fc9bf4ba11dcf56a197d6efa5f6
+inputs    9b9ad64463545f4076504ccf5c34c5432e44b60bc7d5120be80786f98dee9b3c
+built     ca52c59127c3ab227407d0bfd36f3be8a3b82904
 
-upstream  v0.40.17
-gpu       ollama-linux-amd64.tar.zst      1df9d6228bac5a22e420b242708c0d10e5b886db97bab99d446a41760f4e79af
-gpu       ollama-linux-amd64-mlx.tar.zst  441e56b7ae4787028ea859fe9d1db98777f8017bc560f5ec9314438e699e3ca9
+upstream  v0.40.18
+gpu       ollama-linux-amd64.tar.zst      b82649006cb5b54ed1237fa2d1a26a7f939a4fd03150033759acbff7ff315adf
+gpu       ollama-linux-amd64-mlx.tar.zst  6c99df4416bd7b60379bc46efdcf6d580a3de489d5f4928af99156cfc1886b65

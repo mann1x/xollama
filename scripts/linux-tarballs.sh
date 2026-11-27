@@ -15,8 +15,8 @@
 #                                          helper (lib/ollama/engines/payload/.cosmo)
 #   xollama-linux-<arch>-<name>.tar.zst    one per further `gpu` row of the pin,
 #                                          upstream's ollama-linux-<arch>-<name>
-#                                          files: mlx (amd64), jetpack5 and
-#                                          jetpack6 (arm64)
+#                                          files: mlx (amd64) and jetpack6 (arm64;
+#                                          upstream dropped jetpack5 in v0.40.18)
 #
 #   ARCH=<amd64|arm64> scripts/linux-tarballs.sh <assemble-out-dir> <dist-dir>
 #

@@ -216,7 +216,7 @@ cmake --build build --parallel 8
 ```
 
 Valid values only: `cuda_v12`, `cuda_v13`, `rocm_v7_1`, `rocm_v7_2`, `vulkan`,
-`cuda_jetpack5`, `cuda_jetpack6`. Narrow to local hardware to cut build time:
+`cuda_jetpack6`. Narrow to local hardware to cut build time:
 
 ```sh
 cmake -B build . -DOLLAMA_LLAMA_BACKENDS=cuda_v13 -DCMAKE_CUDA_ARCHITECTURES=native
@@ -358,7 +358,7 @@ actually built and where the payload landed.
 
 **`CMake Error: Unknown backend "cuda"` / backend silently missing from `build/lib/ollama`**
 The value list is exact. Use one of `cuda_v12`, `cuda_v13`, `rocm_v7_1`,
-`rocm_v7_2`, `vulkan`, `cuda_jetpack5`, `cuda_jetpack6`. Re-configure from scratch:
+`rocm_v7_2`, `vulkan`, `cuda_jetpack6`. Re-configure from scratch:
 
 ```sh
 rm -rf build && cmake -B build . -DOLLAMA_LLAMA_BACKENDS=cuda_v13

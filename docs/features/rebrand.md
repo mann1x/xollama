@@ -129,7 +129,7 @@ Three things the rename had to get right beyond string replacement:
   release now publishes them (`scripts/linux-tarballs.sh`, the release's
   `linux` job): `xollama-linux-<arch>.tar.zst` and `-opencoti.tar.zst`, always
   installed, `-mlx` on an NVIDIA amd64 host (`XOLLAMA_MLX=0` skips it),
-  `-jetpack5` / `-jetpack6` on JetPack. No ROCm: AMD runs on Vulkan. The CUDA
+  `-jetpack6` on JetPack 6 (upstream dropped JetPack 5 in v0.40.18). No ROCm: AMD runs on Vulkan. The CUDA
   12 add-on is gone (the base and the engine carry CUDA 12).
   `XOLLAMA_DOWNLOAD_BASE` points it at a draft's files for G12.
 - **`scripts/install.ps1` required an Authenticode signature by `O=Ollama

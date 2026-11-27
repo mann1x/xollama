@@ -24,9 +24,10 @@ paths:
     stages beside it, and its prebuilt dlopen helper
     (`lib/ollama/engines/payload/.cosmo`);
   - one per further `gpu` row of the runtime pin: `xollama-linux-amd64-mlx`,
-    `xollama-linux-arm64-jetpack5`, `xollama-linux-arm64-jetpack6`.
+    `xollama-linux-arm64-jetpack6` (upstream dropped JetPack 5 in v0.40.18,
+    #19865, and its row went with it).
 - **Part of every release** (owner, 2026-11-21): `publish` refuses a release
-  without all seven tarballs. The pins are `llama/runtime-pin-linux.txt`
+  without all six tarballs. The pins are `llama/runtime-pin-linux.txt`
   (amd64) and `llama/runtime-pin-linux-arm64.txt` (arm64).
 - The dlopen helper is compiled in AlmaLinux 8, the Linux binary's floor, so
   `scripts/linux-tarballs.sh` needs docker and zstd.

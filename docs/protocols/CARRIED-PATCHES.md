@@ -27,6 +27,43 @@ first if a patch looks missing or out of date.
    other row in this file keys on the PR number, and these cannot. They are
    listed apart, below.
 
+**Status as of 2026-11-27: the set moved to upstream v0.40.18 (32 patches, same set and `patches[]` order).** Manifest at think-budget `3a48d813` (`base: v0.40.18`, integration `2c679212`, release `v0.40.18-thinkbudget` @ `ca52c591`, run 46055681348; fork bump #2435, after #2433). Upstream v0.40.18 is 4 commits over v0.40.17 (101 files): llama.cpp b12257 -> b12651 (adds `inkling2`, `inkling2_loop`, `domynedge`, `zaya1`, `kokoro`, `tiny-voca`, `zonos3` and `moshi`, routed to stock llama-server in `llm/engine/arch.go`), JetPack 5 removed (#19865: no `ollama-linux-arm64-jetpack5` asset, preset or Dockerfile stage; our pin row, release asset and installer branch went with it), MLX kernels reworked (MLX and MLX-C unchanged, the archives rebuilt). Consumed on branch `sync/upstream-v0.40.18`: the upstream tag merge `a92ea2620` (five conflicts: `release.yaml`, `test-llamacpp-update.yaml`, `build_linux.sh` and `install.sh` keep xollama's asset names without jetpack5; `mlxrunner/model/root_test.go` took upstream's file, and `up-mlxrunner-manifest-list` brought the fork's union back), then the 32 patches at the shas below, each its own `--no-ff` merge in `patches[]` order. A conflicted file was resolved to ours only where `HEAD` already held every line the patch adds, or where the patch's diff equals its v0.40.17 version already merged (`gemma4-toolcall-in-thinking`, `up-modelfile-roundtrip`, `up-llama-server-memory-lines`: later patches rework those lines); `llama/compat/` files took the patch's side, the README from `up-compat-readme` last. Proof: our delta over the fork's v0.40.18 integration `2c679212` equals our delta over its v0.40.17 tree `658f163b` (with `up-engine-sampling-defaults`) file for file, in all 930 files, except the four jetpack5 conflict files and the fork's own `PATCHES.json`; the `llama/` subtree equals `2c679212`'s; `check-compat-origin` 16 commits, 0 bad. The llama inputs digest (README excluded) is `9b9ad644`, the fork's.
+
+| PR | branch | manifest sha | v0.40.18 merge |
+|---|---|---|---|
+| #17563 | `up-repeat-guard` | `85fc6eb2` | `30f501b63` |
+| #17564 | `up-truncated-tool-calls` | `073c31dd` | `46ec46d88` |
+| #17565 | `up-gemma4-object-close` | `06cec22e` | `650505cf4` |
+| #17566 | `up-think-budget` | `d07a5176` | `f4467e08a` |
+| #17567 | `up-mlx-libdl` | `73ba0855` | `78fc20abb` |
+| #17626 | `up-gemma4-stray-channel-name` | `c866b600` | `5fb7883d3` |
+| #17914 | `qwen3coder-tolerate-malformed-tool-calls` | `73d4f789` | `54fb4db13` |
+| #18212 | `up-reasoning-budget-line-boundary` | `2bea0f1c` | `33f0e56f4` |
+| #18281 | `up-native-thinking-replay` | `c139a87e` | `39279f3bc` |
+| #18288 | `up-gemma4-stray-closer` | `5776a16a` | `ef82aea1a` |
+| #18289 | `up-jinja-runner-reuse` | `bca0d0ad` | `29560dfa5` |
+| fork-only | `gemma4-toolcall-in-thinking` | `7f09c15a` | `594fef126` |
+| #18624 | `qwen35-toolcall-in-thinking` | `1fd23786` | `570ea2715` |
+| fork-only | `up-gemma4-unparsed-tool-call-content` | `357c79c6` | `20ff1b503` |
+| fork-only | `up-toolcall-tags` | `4a93d9ff` | `d156293f7` |
+| fork-only | `up-codex-request-count-mtime` | `a23dbf2a` | `d99469af2` |
+| fork-only | `up-fileutil-root-permission-tests` | `bea39702` | `baa457c1c` |
+| fork-only | `up-gofmt-vision-test-data` | `3e53d219` | `b254555e3` |
+| fork-only | `up-integration-goroutine-fatal` | `0914c89a` | `ccd9263d4` |
+| fork-only | `up-lfm2-think-off-discard` | `374e9a54` | `409a89b8e` |
+| fork-only | `up-gemma4-assistant-shape` | `11db0adc` | `40a3c2d63` |
+| fork-only | `up-gemma4-swallowed-key` | `d6a92fc9` | `8635e1324` |
+| fork-only | `up-response-scope-think-budget` | `90d1bd68` | `80ea7b428` |
+| fork-only | `up-modelfile-roundtrip` | `48393bc0` | `9e1943462` |
+| fork-only | `up-qwen35-empty-think-history` | `45bb040d` | `e6849f68b` |
+| fork-only | `up-mlxrunner-manifest-list` | `8fe1ded8` | `71c6fedef` |
+| fork-only | `up-gemma4-channel-in-thinking` | `900970f6` | `bac6e4878` |
+| fork-only | `up-llama-server-memory-lines` | `d29609a8` | `0dc2d60ed` |
+| fork-only | `up-qwen-unclosed-tool-call` | `30224809` | `230a2f6bd` |
+| fork-only | `up-completion-generation-prompt` | `7ca7cd68` | `097d5245d` |
+| fork-only | `up-compat-readme` | `35447387` | `10b2ca86a` |
+| fork-only | `up-engine-sampling-defaults` | `b9d8b420` | `a36684d7b` |
+
 **Status as of 2026-11-21: the set moved to upstream v0.40.17 (31 patches, same set and `patches[]` order).** Manifest at think-budget `2bdc832e` (`base: v0.40.17`, integration `7c9e2df4`, release `v0.40.17-thinkbudget` @ `2bdc832e`, run 44933861333; fork bump #2373, after #2372). Upstream v0.40.17 is 30 commits over v0.40.16 (278 files): llama.cpp b12177 -> b12257 (adds `kimi-k31`, routed to stock llama-server in `llm/engine/arch.go`), MLX and MLX-C moved (concurrent MLX generation #19197, Inkling 2 on MLX with its renderer and parser), one runner shared across shift settings (#19748: `reloadReason`, `launchContextShift`, `shift:false` enforced per request), disabled thinking as the lowest supported level (#19684), tool schema keywords (#19686). Consumed on branch `sync/upstream-v0.40.17`: the upstream tag merge `5995dfdfd` (11 conflicts; the `llama/` inputs taken whole from v0.40.17 so the merge equals one parent; `llm/llama_server.go`, `llm/llama_server_test.go`, `llm/server.go`, `server/routes.go` and `server/sched.go` resolved by a three-way merge of our dev against the fork's integrations, base `86f44e59` (v0.40.16) and theirs `7c9e2df4` (v0.40.17), so only our hooks met upstream's lines: the media hook moved onto `reloadReason`'s new shift check, the memory-line regex took `h_nextn`, the completion literals took `FormatFrames`), then the 31 patches at the shas below, each its own `--no-ff` merge in `patches[]` order. Every Go merge left the tree unchanged; the README came from `up-compat-readme` last (its conflict resolved to the fork's side, so the `llama/` subtree equals that parent's). Proof: our delta over the fork's v0.40.17 integration equals our delta over its v0.40.16 integration file for file, except the resolved hook lines and a block order in `model/parsers/parsers.go` (taken from the fork after the merges); the `llama/` subtree equals `7c9e2df4`'s; `check-compat-origin` 17 commits, 0 bad. The llama inputs digest (README excluded) is `a8ea4e51`, the fork's.
 
 | PR | branch | manifest sha | v0.40.17 merge |
