@@ -43,6 +43,23 @@ var archFeatures = map[string]string{
 	// llama.cpp b12257 (upstream v0.40.17) adds one; c14 r18 does not have it.
 	// #31779 (2026-11-06): Kimi K3.1 Pro, text only.
 	"kimi-k31": "arch_kimi_k31_v1",
+	// llama.cpp b12651 (upstream v0.40.18) adds eight; c14 r20 has none.
+	// #32217 (2026-11-15): Inkling 2, text and vision.
+	"inkling2": "arch_inkling2_v1",
+	// #32694 (2026-11-20): Inkling 2 Mini.
+	"inkling2_loop": "arch_inkling2_loop_v1",
+	// #32559 (2026-11-20): Domyn Edge 4B.
+	"domynedge": "arch_domynedge_v1",
+	// #32071 (2026-11-18): Zyphra Zaya1 8B.
+	"zaya1": "arch_zaya1_v1",
+	// #32413 (2026-11-17): Kokoro TTS (mtmd).
+	"kokoro": "arch_kokoro_v1",
+	// #32427 (2026-11-18): tiny-voca (mtmd).
+	"tiny-voca": "arch_tiny_voca_v1",
+	// #32020 (2026-11-15): Zonos3-mini TTS (mtmd).
+	"zonos3": "arch_zonos3_v1",
+	// #32491 (2026-11-21): kyutai Hibiki full-duplex speech (mtmd).
+	"moshi": "arch_moshi_v1",
 }
 
 // ArchFeature is the pin feature that says the engine serves GGUF architecture
