@@ -108,9 +108,6 @@ jobs:
             target: publish-llama-server-cuda_v13
             payload: cuda_v13
           - arch: arm64
-            target: publish-llama-server-cuda_jetpack5
-            payload: cuda_jetpack5
-          - arch: arm64
             target: publish-llama-server-cuda_jetpack6
             payload: cuda_jetpack6
     steps:
@@ -218,7 +215,6 @@ jobs:
             copy_payload vulkan
             copy_payload rocm_v7_2
           else
-            copy_payload cuda_jetpack5
             copy_payload cuda_jetpack6
           fi
 
@@ -247,7 +243,6 @@ jobs:
               lib/ollama/mlx*)          echo "${COMPONENT}" >>xollama-linux-${{ matrix.arch }}-mlx.tar.in ;;
               lib/ollama/include*)      echo "${COMPONENT}" >>xollama-linux-${{ matrix.arch }}-mlx.tar.in ;;
               lib/ollama/*_LICENSE|lib/ollama/*_NOTICE) echo "${COMPONENT}" >>xollama-linux-${{ matrix.arch }}.tar.in ;;
-              lib/ollama/cuda_jetpack5) echo "${COMPONENT}" >>xollama-linux-${{ matrix.arch }}-jetpack5.tar.in ;;
               lib/ollama/cuda_jetpack6) echo "${COMPONENT}" >>xollama-linux-${{ matrix.arch }}-jetpack6.tar.in ;;
               lib/ollama/rocm_v*)       echo "${COMPONENT}" >>xollama-linux-${{ matrix.arch }}-rocm.tar.in ;;
             esac
@@ -283,12 +278,6 @@ jobs:
       - if: matrix.arch == 'arm64'
         uses: actions/upload-artifact@v4
         with:
-          name: xollama-linux-arm64-jetpack5.tar.zst
-          path: xollama-linux-arm64-jetpack5.tar.zst
-          compression-level: 0
-      - if: matrix.arch == 'arm64'
-        uses: actions/upload-artifact@v4
-        with:
           name: xollama-linux-arm64-jetpack6.tar.zst
           path: xollama-linux-arm64-jetpack6.tar.zst
           compression-level: 0
@@ -311,6 +300,7 @@ jobs:
             cuda-components:
               - '"cudart"'
               - '"nvcc"'
+              - '"nvml_dev"'
               - '"cublas"'
               - '"cublas_dev"'
             cuda-version: '12.8'
@@ -322,6 +312,7 @@ jobs:
             cuda-components:
               - '"cudart"'
               - '"nvcc"'
+              - '"nvml_dev"'
               - '"cublas"'
               - '"cublas_dev"'
               - '"crt"'
@@ -338,6 +329,7 @@ jobs:
             cuda-components:
               - '"cudart"'
               - '"nvcc"'
+              - '"nvml_dev"'
               - '"cublas_dev"'
               - '"crt"'
               - '"nvvm"'
@@ -394,7 +386,7 @@ jobs:
             C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA
             C:\Program Files\AMD\ROCm
             C:\VulkanSDK
-          key: ${{ matrix.install }}${{ matrix.cuda-cross-install }}
+          key: ${{ matrix.install }}${{ matrix.cuda-cross-install }}-${{ join(matrix.cuda-components, '-') }}-${{ join(matrix.cuda-cross-components, '-') }}
       - if: startsWith(matrix.preset, 'CUDA ')
         name: Install CUDA ${{ matrix.cuda-version }}
         run: |
@@ -461,7 +453,7 @@ jobs:
             C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA
             C:\Program Files\AMD\ROCm
             C:\VulkanSDK
-          key: ${{ matrix.install }}${{ matrix.cuda-cross-install }}
+          key: ${{ matrix.install }}${{ matrix.cuda-cross-install }}-${{ join(matrix.cuda-components, '-') }}-${{ join(matrix.cuda-cross-components, '-') }}
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
         with:

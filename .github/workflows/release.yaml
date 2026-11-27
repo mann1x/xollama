@@ -129,6 +129,7 @@ jobs:
             cuda-components:
               - '"cudart"'
               - '"nvcc"'
+              - '"nvml_dev"'
               - '"cublas"'
               - '"cublas_dev"'
             cuda-version: '12.8'
@@ -140,6 +141,7 @@ jobs:
             cuda-components:
               - '"cudart"'
               - '"nvcc"'
+              - '"nvml_dev"'
               - '"cublas"'
               - '"cublas_dev"'
               - '"crt"'
@@ -156,6 +158,7 @@ jobs:
             cuda-components:
               - '"cudart"'
               - '"nvcc"'
+              - '"nvml_dev"'
               - '"cublas_dev"'
               - '"crt"'
               - '"nvvm"'
@@ -247,7 +250,7 @@ jobs:
             C:\Program Files\AMD\ROCm
             C:\VulkanSDK
             C:\Program Files\NVIDIA\CUDNN
-          key: ${{ matrix.install }}-${{ matrix.cudnn-install }}${{ matrix.cuda-cross-install }}
+          key: ${{ matrix.install }}-${{ matrix.cudnn-install }}${{ matrix.cuda-cross-install }}-${{ join(matrix.cuda-components, '-') }}-${{ join(matrix.cuda-cross-components, '-') }}
       - if: startsWith(matrix.preset, 'CUDA ') || startsWith(matrix.preset, 'MLX ')
         name: Install CUDA ${{ matrix.cuda-version }}
         run: |
@@ -334,7 +337,7 @@ jobs:
             C:\Program Files\AMD\ROCm
             C:\VulkanSDK
             C:\Program Files\NVIDIA\CUDNN
-          key: ${{ matrix.install }}-${{ matrix.cudnn-install }}${{ matrix.cuda-cross-install }}
+          key: ${{ matrix.install }}-${{ matrix.cudnn-install }}${{ matrix.cuda-cross-install }}-${{ join(matrix.cuda-components, '-') }}-${{ join(matrix.cuda-cross-components, '-') }}
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
         with:
@@ -556,8 +559,6 @@ jobs:
           - arch: arm64
             target: llama-server-cuda_v13
           - arch: arm64
-            target: jetpack-5
-          - arch: arm64
             target: jetpack-6
     runs-on: ${{ matrix.arch == 'arm64' && 'linux-arm64' || 'linux' }}
     environment: release
@@ -634,7 +635,6 @@ jobs:
               type=registry,ref=ollama/release:cache-arm64-llama-server-cpu
               type=registry,ref=ollama/release:cache-arm64-llama-server-cuda_v12
               type=registry,ref=ollama/release:cache-arm64-llama-server-cuda_v13
-              type=registry,ref=ollama/release:cache-arm64-jetpack-5
               type=registry,ref=ollama/release:cache-arm64-jetpack-6
               type=registry,ref=${{ vars.DOCKER_REPO }}:latest
           - os: linux
@@ -771,7 +771,6 @@ jobs:
               lib/ollama/mlx*)           echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}-mlx.tar.in ;;
               lib/ollama/include*)       echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}-mlx.tar.in ;;
               lib/ollama/*_LICENSE|lib/ollama/*_NOTICE) echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}.tar.in ;;
-              lib/ollama/cuda_jetpack5)  echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}-jetpack5.tar.in ;;
               lib/ollama/cuda_jetpack6)  echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}-jetpack6.tar.in ;;
               lib/ollama/rocm_v*)        echo $COMPONENT >>xollama-${{ matrix.os }}-${{ matrix.arch }}-rocm.tar.in ;;
             esac
