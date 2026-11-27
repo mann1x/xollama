@@ -48,9 +48,15 @@ paths:
   opencoti engine to `POST /shutdown` first and waits up to 10 s
   (`engine-graceful-stop`, `graceful_shutdown_v1`; planned since 2026-10-04,
   0555). Before it, xOllama's SIGKILL meant no profile was ever written.
-- Known at r19 (2026-11-27, mail #2411): the automatic cache plus an attached
-  NextN head segfaults in the auto-MTP warm-up (exit 139) on the release bytes;
-  either alone loads. An engine fix, never a workaround here.
+- Known at r19 (2026-11-27, mails #2411, #2417): the release bytes segfault in
+  the auto-MTP warm-up whenever a NextN head is attached, MoE cache or not
+  (dense qwen3.5:2b too, every KV type; r18 passes); and the automatic cache
+  said "pays" yet halved decode on Qwen3.6 27B A3B under a 9000 MiB target
+  (17 vs 34 tok/s; a fixed 2048 MiB 35.6). Engine fixes, never a workaround
+  here; re-check the docs' "never slower" line on the fixed engine. Crash
+  cause (opencoti bug-4394, #2421): the warm-up thread built `/props`, whose
+  per-device block calls CUDA from a non-main thread (glibc TLS fault, Linux +
+  CUDA only). Both are fixed in the engine-only re-cut c14 r20.
 
 ```sh
 go test ./llm/ -run 'MoECache|ShutDown|DoesNotExit|PCIAddress'
