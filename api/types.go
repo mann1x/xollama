@@ -1389,6 +1389,12 @@ type ProcessModelResponse struct {
 	//
 	// xollama-hook: drafter
 	Drafter *DrafterState `json:"drafter,omitempty"`
+
+	// MoECache is the engine's MoE expert cache on each device of the load
+	// (opencoti's moe_cache_state_v1), where it keeps a record.
+	//
+	// xollama-hook: moe-cache
+	MoECache []MoECacheDevice `json:"moe_cache,omitempty"`
 }
 
 type TokenResponse struct {

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ollama/ollama/ml"
+	"github.com/ollama/ollama/types/xollama"
 )
 
 // The engine names a device by its own enumeration, not xollama's. A load
@@ -22,7 +23,10 @@ import (
 // engineDeviceLineRegex reads the engine's own name and description of each
 // device it uses; the description may itself hold parentheses ("AMD
 // Radeon(TM) Graphics"), the id is the last group before the free memory.
-var engineDeviceLineRegex = regexp.MustCompile(`using device (\S+)\s+\((.*)\)\s+\([^()]*\)\s+-\s+\d+\s+MiB free`)
+// Since c14 r19 (device_pci_v1) the line ends with the card's PCI address,
+// after the free memory ("- 23332 MiB free pci=0000:11:00.0"); Metal has
+// none.
+var engineDeviceLineRegex = regexp.MustCompile(`using device (\S+)\s+\((.*)\)\s+\([^()]*\)\s+-\s+\d+\s+MiB free(?:\s+pci=(\S+))?`)
 
 // noteEngineDevice records the engine's name and description of a device it
 // uses. Recording alone changes nothing; engineKey reads it.
@@ -35,6 +39,12 @@ func (r *llamaServerRunner) noteEngineDevice(line []byte) {
 		r.engineDevices = make(map[string]string)
 	}
 	r.engineDevices[string(m[1])] = string(m[2])
+	if pci, ok := xollama.CanonicalPCIID(string(m[3])); ok {
+		if r.enginePCI == nil {
+			r.enginePCI = make(map[string]string)
+		}
+		r.enginePCI[string(m[1])] = pci
+	}
 }
 
 // engineKey is the name the engine gives g in its output, the key of
@@ -46,6 +56,18 @@ func (r *llamaServerRunner) noteEngineDevice(line []byte) {
 func (r *llamaServerRunner) engineKey(g ml.DeviceInfo) string {
 	if !r.usedOpencoti || len(r.engineDevices) == 0 {
 		return g.Name
+	}
+	// The card's PCI address, where both sides know it, is the answer: one
+	// address for one card, whatever either side numbered it (c14 r19,
+	// device_pci_v1). It goes first: two identical cards the two sides
+	// number differently agree by name and description, and only the
+	// address tells them apart.
+	if want, ok := xollama.CanonicalPCIID(g.PCIID); ok {
+		for name, pci := range r.enginePCI {
+			if pci == want && devicePrefix(name) == devicePrefix(g.Name) {
+				return name
+			}
+		}
 	}
 	// One answer per load: when every device of it is under its own name
 	// with its own description, the engine saw them unfiltered. Asked per

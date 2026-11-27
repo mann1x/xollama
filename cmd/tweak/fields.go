@@ -325,6 +325,20 @@ func opencotiOnly(what string) func(*xollama.Config) string {
 	}
 }
 
+// moeCacheOn is the reason a MoE cache detail cannot be stated: on a model
+// pinned to llamacpp, or with the cache stated off.
+func moeCacheOn(what string) func(*xollama.Config) string {
+	return func(c *xollama.Config) string {
+		if why := opencotiOnly(what)(c); why != "" {
+			return why
+		}
+		if c.Fit != nil && c.Fit.MoECache == xollama.MoECacheOff {
+			return what + " has nothing to act on with moe-cache off"
+		}
+		return ""
+	}
+}
+
 // offParent is the reason a setting cannot be stated while the switch it
 // describes is off. Nil -- not stated -- is not off: the environment may still
 // turn the feature on, and the number would then apply.
@@ -889,6 +903,71 @@ var fields = []field{
 			fit(c).MoEStrategy = s
 			return nil
 		},
+	},
+	{
+		name:  "moe-cache",
+		path:  "fit.moe_cache",
+		title: "MoE cache — keep a MoE model's hot experts in VRAM when they do not all fit",
+		help: "auto is the engine's default: with one GPU it measures at load whether the\n" +
+			"cache pays and makes one only if it does. off never makes one. A size in MiB\n" +
+			"is a fixed cache (the total over the GPUs, and the only way to have one on two\n" +
+			"or more). With a cache the experts in RAM are pinned memory, not page cache.\n" +
+			"`xollama ps` shows what the engine decided. Needs a c14 r19 engine.",
+		kind:    kindOpenChoice,
+		choices: func(*xollama.Config) []string { return append(xollama.MoECacheChoices(), "2048") },
+		blocked: opencotiOnly("the MoE cache"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Fit != nil, func() string { return c.Fit.MoECache })
+		},
+		set: func(c *xollama.Config, v string) error {
+			s := open(v)
+			if s != "" && !xollama.ValidMoECache(s) {
+				return fmt.Errorf("want auto, off, a size in MiB or unset (got %q)", v)
+			}
+			fit(c).MoECache = s
+			return nil
+		},
+	},
+	{
+		name:  "moe-cache-cpu-share",
+		path:  "fit.moe_cache_cpu_share",
+		title: "MoE cache CPU share (advanced) — the misses the CPU computes once the cache is full",
+		help: "Unset is the engine's default, and the right answer almost always: it measures\n" +
+			"each GPU's link at load, uploads every miss on a fast one, and on a slow one\n" +
+			"computes a miss on the CPU unless the expert is used often enough to pay its\n" +
+			"upload. A share from 0 to 1 fixes it instead: 0 uploads every miss, 1 computes\n" +
+			"every miss on the CPU.",
+		kind:    kindFloat,
+		quiet:   true,
+		blocked: moeCacheOn("the MoE cache CPU share"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Fit != nil, func() string { return showFloatPtr(c.Fit.MoECacheCPUShare) })
+		},
+		set: func(c *xollama.Config, v string) error {
+			if err := setFloatPtr(v, &fit(c).MoECacheCPUShare); err != nil {
+				return err
+			}
+			if p := c.Fit.MoECacheCPUShare; p != nil && *p > 1 {
+				return fmt.Errorf("want a share from 0 to 1 (got %q)", v)
+			}
+			return nil
+		},
+	},
+	{
+		name:  "moe-cache-warm-start",
+		path:  "fit.moe_cache_warm_start",
+		title: "MoE cache warm start — remember the hot experts from one load to the next",
+		help: "on is the engine's default: when the model unloads the engine saves which\n" +
+			"experts were hot, and the next load uploads them at once. off neither reads\n" +
+			"nor writes the profile. To start over without turning it off, use\n" +
+			"--forget-moe-profile.",
+		kind:    kindTri,
+		quiet:   true,
+		blocked: moeCacheOn("the MoE cache warm start"),
+		get: func(c *xollama.Config) string {
+			return orEmpty(c.Fit != nil, func() string { return tri(c.Fit.MoECacheWarmStart) })
+		},
+		set: func(c *xollama.Config, v string) error { return setTri(v, &fit(c).MoECacheWarmStart) },
 	},
 	{
 		name:  "admission-poolless",

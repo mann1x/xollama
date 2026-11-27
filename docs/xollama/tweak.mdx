@@ -673,6 +673,8 @@ These settings are on `tweak model` and, as defaults, on `tweak server`:
 | `--slot-initial-ctx`, `--slot-shrink-idle-ms` | `tuning.slot_*` | start small, grow on demand, shrink when idle |
 | `--gpu-share-weight` | `tuning.gpu_share_weight` | share against other engines on one GPU |
 | `--moe-strategy` | `fit.moe_strategy` | `auto`; `experts-gpu`; `kv-gpu` (c14 engine) |
+| `--moe-cache` | `fit.moe_cache` | `auto`; `off`; a size in MiB — the MoE expert cache (c14 r19 engine; see [The MoE expert cache](/xollama/moe-cache)) |
+| `--moe-cache-cpu-share`, `--moe-cache-warm-start` | `fit.moe_cache_*` | the share of misses on the CPU (advanced); the hot-expert profile; `--forget-moe-profile` deletes it |
 | `--vulkan-matvec-tune` | `kv.vulkan_matvec_tune` | off; on times the decode kernel on this GPU, for a longer first boot (c14 engine) |
 | `--mtp-policy` | `draft.auto_mtp_policy` | `measured`; `allocator`; `taper`; `always`; `adaptive` (c14 engine); `off` |
 | `--draft-tokens` | `draft.tokens` | 4 for an attached drafter, opencoti's choice for a built-in head; a length; `0` for off |

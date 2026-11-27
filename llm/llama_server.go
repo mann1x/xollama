@@ -186,6 +186,7 @@ type llamaServerRunner struct {
 	systemFreeAtLoad map[string]uint64
 
 	engineDevices map[string]string // xollama-hook: engine-device-names -- the engine's own name and description of each device it uses
+	enginePCI     map[string]string // xollama-hook: engine-device-names -- the PCI address the engine gives each of them (c14 r19, device_pci_v1)
 
 	// gpus is the list of GPU devices assigned to this runner at creation time,
 	// used to map DeviceIDs to device names for VRAMByGPU lookups.
@@ -711,6 +712,7 @@ func startLlamaServer(launch llamaServerLaunchConfig, out io.Writer) (cmd *exec.
 			envs["HOME"] = payloadHome
 		}
 		envs = engine.WithVulkanCache(envs)
+		envs = withMoECacheEnvs(envs, launch.config.Xollama) // xollama-hook: moe-cache -- see llm/engine_moe_cache.go
 	}
 
 	// Set up library paths for GPU backend discovery
@@ -3622,6 +3624,10 @@ func (s *llamaServerRunner) stopProcess() error {
 		}
 		slog.Debug("stopping llama-server", "pid", s.Pid())
 		s.stopping.Store(true) // xollama-hook: engine-select
+		// xollama-hook: engine-graceful-stop -- see llm/engine_graceful_stop.go
+		if s.stopGracefully() {
+			return nil
+		}
 		if err := s.cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			return err
 		}

@@ -2587,6 +2587,8 @@ func (s *Server) GenerateRoutes() (http.Handler, error) {
 	r.GET(api.XollamaCloudPath, s.CloudPoolHandler)              // xollama-hook: cloud-accounts
 	r.GET(api.XollamaCloudBalancePath, s.CloudBalanceHandler)    // xollama-hook: cloud-accounts
 	r.POST(api.XollamaLinkProbePath, s.LinkProbeHandler)
+	// xollama-hook: moe-cache — see server/xollama_moe_cache.go
+	r.POST(api.XollamaMoECacheForgetPath, s.MoECacheForgetHandler)
 	r.POST(api.XollamaMediaPullPath, s.MediaPullHandler) // xollama-hook: media
 	r.POST(api.XollamaNoticePath, s.NoticeHandler)       // xollama-hook: notices
 	r.GET("/api/status", s.StatusHandler)
@@ -3088,6 +3090,7 @@ func (s *Server) PsHandler(c *gin.Context) {
 		}
 		// xollama-hook: drafter — see server/drafter_state.go
 		mr.Drafter = psDrafter(c.Request.Context(), v.llama)
+		mr.MoECache = psMoECache(c.Request.Context(), v.llama) // xollama-hook: moe-cache
 
 		models = append(models, mr)
 	}

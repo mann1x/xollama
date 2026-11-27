@@ -143,6 +143,10 @@ const (
 	FeatureVulkanMatvecTune = "vulkan_matvec_tune_v1"
 	FeatureAutoMTPAdaptive  = "auto_mtp_adaptive_v1"
 	FeatureMoEStrategy      = "moe_strategy_v1"
+	// FeatureMoECache is --moe-cache-mib and --moe-cache-cpu-share (c14 r19).
+	FeatureMoECache = "moe_cache_v1"
+	// FeatureMoECacheState is the per-device moe_cache object on /props.
+	FeatureMoECacheState = "moe_cache_state_v1"
 )
 
 // FeatureIdleSlotPoolSafe is an engine whose idle-slot clear skips a slot

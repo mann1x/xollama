@@ -46,6 +46,7 @@ func appendEnginePolicyArgs(args []string, x *xollama.Config, usedOpencoti bool)
 	if x.Fit != nil && x.Fit.MoEStrategy != "" {
 		args = append(args, "--moe-strategy", x.Fit.MoEStrategy)
 	}
+	args = appendMoECacheArgs(args, x.Fit)
 	if x.KV != nil && x.KV.VulkanMatvecTune != nil {
 		v := "off"
 		if *x.KV.VulkanMatvecTune {
@@ -79,6 +80,7 @@ func enginePolicyRefusal(x *xollama.Config, usedOpencoti bool) error {
 	return errors.Join(
 		check(x.KV != nil && x.KV.VulkanMatvecTune != nil, "kv.vulkan_matvec_tune", engine.FeatureVulkanMatvecTune),
 		check(x.Fit != nil && x.Fit.MoEStrategy != "", "fit.moe_strategy", engine.FeatureMoEStrategy),
+		check(x.StatesMoECache(), "fit.moe_cache", engine.FeatureMoECache),
 		check(x.Draft != nil && x.Draft.AutoMTPPolicy == xollama.AutoMTPAdaptive, "draft.auto_mtp_policy adaptive", engine.FeatureAutoMTPAdaptive),
 	)
 }

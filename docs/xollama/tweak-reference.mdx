@@ -81,6 +81,9 @@ settings mean is in the page each section links to.
 | `--fit` | `fit.enabled` | on, off, unset | Automatic fit — the engine places layers and KV in the memory there is | yes |  |
 | `--vram-target` | `fit.vram_target_mib` | N, unset | VRAM target — the memory the fit and the rolling KV may use | yes |  |
 | `--moe-strategy` | `fit.moe_strategy` | auto, experts-gpu, kv-gpu, unset | MoE strategy — what the fit gives the device first on a MoE model | yes |  |
+| `--moe-cache` | `fit.moe_cache` | auto, off, 2048, unset | MoE cache — keep a MoE model's hot experts in VRAM when they do not all fit | yes |  |
+| `--moe-cache-cpu-share` | `fit.moe_cache_cpu_share` | N, unset | MoE cache CPU share (advanced) — the misses the CPU computes once the cache is full | yes |  |
+| `--moe-cache-warm-start` | `fit.moe_cache_warm_start` | on, off, unset | MoE cache warm start — remember the hot experts from one load to the next | yes |  |
 
 ## Engine tuning
 
@@ -284,4 +287,4 @@ settings mean is in the page each section links to.
 | `--clear` | Remove the model's xollama config entirely (an attached drafter stays; `--drafter=none` detaches it) |
 | `-y`, `--yes` | Do not ask for confirmation before writing |
 
-171 settings. `xollama tweak model --help` prints the same list as your build has it.
+174 settings. `xollama tweak model --help` prints the same list as your build has it.

@@ -22,11 +22,21 @@ type Fit struct {
 	// fit gives the device first when it does not all fit. Unset is the
 	// engine's default, auto.
 	MoEStrategy string `json:"moe_strategy,omitempty"`
+	// The MoE expert cache (opencoti c14 r19, moe_cache_v1): see moe_cache.go.
+	MoECache          string   `json:"moe_cache,omitempty"`
+	MoECacheCPUShare  *float64 `json:"moe_cache_cpu_share,omitempty"`
+	MoECacheWarmStart *bool    `json:"moe_cache_warm_start,omitempty"`
 }
 
 // IsZero reports whether f states nothing.
 func (f *Fit) IsZero() bool {
-	return f == nil || (f.Enabled == nil && f.VRAMTargetMiB == 0 && f.MoEStrategy == "")
+	return f == nil || (!f.statesPolicy() && f.moeCacheIsZero())
+}
+
+// statesPolicy reports whether f states one of the fit policies of schema v6
+// and v10; the MoE cache raises no version (moe_cache.go).
+func (f *Fit) statesPolicy() bool {
+	return f != nil && (f.Enabled != nil || f.VRAMTargetMiB != 0 || f.MoEStrategy != "")
 }
 
 // MoE strategies, the engine's --moe-strategy values.
@@ -82,7 +92,7 @@ func (c *Config) setsC14Policies() bool {
 }
 
 func (c *Config) setsEnginePolicies() bool {
-	return !c.Fit.IsZero() ||
+	return c.Fit.statesPolicy() ||
 		(c.KV != nil && (c.KV.RollingWindow != "" || c.KV.AdmissionPoolless != "")) ||
 		(c.Draft != nil && c.Draft.AutoMTPPolicy != "")
 }
@@ -140,6 +150,9 @@ func (c *Config) validateEnginePolicies() error {
 		if err := opencotiOnly("fit.moe_strategy"); err != nil {
 			return err
 		}
+	}
+	if err := c.validateMoECache(opencotiOnly); err != nil {
+		return err
 	}
 	if c.Fit != nil {
 		if c.Fit.VRAMTargetMiB < 0 {

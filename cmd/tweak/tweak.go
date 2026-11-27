@@ -103,6 +103,7 @@ changes -- its weights, template, system prompt and parameters are untouched.`,
 	modelCmd.Flags().Bool("dry-run", false, "Show the resulting config without writing it")
 	modelCmd.Flags().Bool("json", false, "Print the resulting xollama.json to stdout")
 	modelCmd.Flags().BoolP("yes", "y", false, "Do not ask for confirmation before writing")
+	modelCmd.Flags().Bool("forget-moe-profile", false, "Delete the model's MoE cache warm-start profile (unloads the model first)")
 
 	return modelCmd
 }
@@ -146,6 +147,15 @@ func runModel(cmd *cobra.Command, args []string, opts Options) error {
 	client, err := api.ClientFromEnvironment()
 	if err != nil {
 		return err
+	}
+
+	if forget, _ := cmd.Flags().GetBool("forget-moe-profile"); forget {
+		if err := forgetMoEProfile(cmd, client, name); err != nil {
+			return err
+		}
+		if !anyFieldFlag(cmd) {
+			return nil
+		}
 	}
 
 	current, drafter, err := showModel(cmd.Context(), client, name)

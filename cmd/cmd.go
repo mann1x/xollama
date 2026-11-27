@@ -1326,6 +1326,18 @@ func ListRunningHandler(cmd *cobra.Command, args []string) error {
 			fmt.Printf("%s: drafter %s\n", m.Name, tweak.DrafterStateText(m.Drafter))
 		}
 	}
+	// xollama-hook: moe-cache — what the engine did with the MoE cache, under
+	// the table like the drafter.
+	for _, m := range models.Models {
+		if len(args) > 0 && !strings.HasPrefix(m.Name, args[0]) {
+			continue
+		}
+		for _, d := range m.MoECache {
+			if t := tweak.MoECacheText(d); t != "" {
+				fmt.Printf("%s: MoE cache on %s %s\n", m.Name, d.Device, t)
+			}
+		}
+	}
 
 	return nil
 }

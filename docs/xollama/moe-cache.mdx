@@ -1,0 +1,168 @@
+---
+title: The MoE expert cache
+---
+
+A mixture-of-experts model (Qwen3 A3B, Gemma 4 26B-A4B, gpt-oss, and others
+with `expert_count` in their GGUF) has far more weights than it uses for any
+one token: each token runs a handful of its experts. When the model does not
+fit your GPU, the opencoti engine keeps some expert layers in RAM, and those
+layers normally run on the CPU. That is usually what makes a large MoE model
+slow on a card too small for it.
+
+The MoE expert cache keeps the experts those RAM layers use most in a slice of
+VRAM, so most tokens still run them on the GPU. A decode picks the same experts
+again and again, so a cache of a fraction of the RAM experts catches most of
+them. Only the misses are uploaded, or computed on the CPU when uploading would
+cost more.
+
+It needs the opencoti engine of c14 r19 or later; stock llama.cpp has no such
+cache, and a model pinned to it refuses these settings.
+
+## What happens without any setting
+
+Nothing to do for most people. With one GPU, the engine decides on its own at
+every load:
+
+1. Its fit places what it can on the GPU, as before.
+2. If expert layers are left in RAM, it measures on your GPU how long an expert
+   takes to upload and how long it takes on the CPU.
+3. Only if the cache comes out faster does it move more expert layers to RAM,
+   give the VRAM they free to the cache, and load. Otherwise it keeps the fit's
+   placement and makes no cache.
+
+A model that fits the GPU whole never gets a cache: there is nothing to cache.
+With two or more GPUs the engine does not size a cache by itself; set a size
+(below) to have one.
+
+opencoti measured, decode tok/s with the automatic cache and without it,
+Gemma 4 26B-A4B Q4_K_M:
+
+| GPU | automatic | off |
+|---|---|---|
+| RTX 5080 (CUDA) | 155.7 | about 110 |
+| RTX 3090 (CUDA, 15 GiB cap) | 72.5 to 75.2 | 66.3 |
+| RX 9070 XT (Vulkan, 15 GiB cap) | 83 to 87 | 74.7 |
+| RTX 3090 (Vulkan, PCIe x4 slot, fast CPU) | declined: 76.6 | 76.4 to 77.5 |
+
+On the last host the engine measured that the cache would not pay and kept the
+CPU layers; by design the automatic cache is never slower than no cache.
+
+## See what the engine decided
+
+`xollama ps` says it under its table, one line per GPU of the model. For
+Qwen3.6 27B A3B on an RTX 3090 with a 9000 MiB VRAM target:
+
+```
+mannix/qwen3.6-27b-a3b-coder:Q4_K_M: MoE cache on CUDA0 on (automatic: measured to pay), 2452 MiB for 13369 MiB of experts in RAM, 41 expert layers in RAM (the fit alone: 34)
+```
+
+The possible answers:
+
+| What `ps` says | Meaning |
+|---|---|
+| `on (automatic: measured to pay)` | The engine made a cache because it measured it faster. |
+| `on (fixed size)` | You set a size with `--moe-cache`. |
+| `off (automatic: measured not to pay)` | It measured; the CPU layers were faster on this machine. |
+| `off (automatic: the measurement could not run)` | No cache; the fit's placement was kept. |
+| `off (automatic sizing is for one GPU ...)` | Two or more GPUs: set a size to have a cache. |
+| no line | No cache was asked for, and none was needed or possible. |
+
+The whole record, with the measurements behind the decision, is in
+`GET /api/ps` under each model's `moe_cache`.
+
+## Change it for a model
+
+```shell
+xollama tweak model mannix/qwen3.6-27b-a3b-coder:Q4_K_M --moe-cache=off
+xollama tweak model mannix/qwen3.6-27b-a3b-coder:Q4_K_M --moe-cache=4096
+xollama tweak model mannix/qwen3.6-27b-a3b-coder:Q4_K_M --moe-cache=auto
+xollama tweak model mannix/qwen3.6-27b-a3b-coder:Q4_K_M --moe-cache=unset
+```
+
+Or run `xollama tweak model <model>` and answer the MoE cache question in the
+walk.
+
+| `--moe-cache` | What it does |
+|---|---|
+| unset | The engine's default: the automatic cache described above. |
+| `auto` | The same, stated for this model. It beats an operator's `OPENCOTI_MOE_CACHE_AUTO=0`. |
+| `off` | No automatic cache for this model. |
+| a size in MiB | A fixed cache of that size, the total over all the model's GPUs. The automatic sizing is off. The only way to have a cache on two or more GPUs. |
+
+`auto` needs the fit on (`--fit`) and the `auto` MoE strategy
+(`--moe-strategy`); a size works without them. A combination that cannot do
+anything is refused with the reason.
+
+To set the default for every model on the server, the same flags go to
+`xollama tweak server` (a model's own setting still wins):
+
+```shell
+xollama tweak server --moe-cache=off
+```
+
+### Advanced: the CPU share
+
+```shell
+xollama tweak model <model> --moe-cache-cpu-share=0.5
+```
+
+Once the cache is full, a miss is either uploaded to the GPU or computed on the
+CPU from the expert in RAM. Unset, the engine measures each GPU's link at load:
+on a fast link it uploads every miss, on a slow one it computes a miss on the
+CPU unless that expert is used often enough to pay its upload. That is the
+right answer almost always. A share from 0 to 1 fixes the split instead: 0
+uploads every miss, 1 computes every miss on the CPU.
+
+## Memory: the experts in RAM are pinned
+
+With a cache, the experts kept in RAM are loaded into pinned memory instead of
+being mapped from the model file, so they upload at the link's full speed.
+Pinned memory cannot be paged out:
+
+- The model's RAM use is real, resident memory for as long as it is loaded,
+  not page cache the system can reclaim.
+- **On Windows it counts in full against the commit limit** (RAM plus page
+  file). A model whose experts used to sit in mapped page cache now holds them
+  as committed memory. If a load is refused for the commit limit, enlarge the
+  page file, or turn the cache off for that model.
+- The automatic cache can put more expert layers in RAM than the fit alone
+  (the "41 expert layers in RAM (the fit alone: 34)" above). VRAM use stays
+  within what the fit had.
+
+## Warm start
+
+When a model unloads, the engine saves which experts were hot, and the next
+load of the same model uploads them at once, so the first tokens hit the cache
+too. The profile is a small file per model under the engine's private home
+directory (`<install>/lib/ollama/engines/payload/.llamafile/moe-cache/`, or
+`~/.ollama/engines/payload/...` when that is not writable), never your own
+`~/.llamafile`. A profile only changes which experts are warm at load, never
+the output.
+
+To start over, for example after changing how you use a model:
+
+```shell
+xollama tweak model <model> --forget-moe-profile
+```
+
+The server unloads the model first (the engine writes the profile as it
+unloads), then deletes that model's profile. A model serving a request is
+refused; try again when it is idle. To never keep one:
+
+```shell
+xollama tweak model <model> --moe-cache-warm-start=off
+```
+
+An engine update starts every model from no profile: the engine's directory
+is cleared when a different engine arrives.
+
+## Limits
+
+- One GPU for the automatic cache; a fixed size for two or more.
+- The text differs slightly with the cache on: a cached expert is computed on
+  the GPU, an uncached one on the CPU, and the two round differently. It is
+  not less correct, but a greedy answer is not byte-identical to one without
+  the cache.
+- A drafter's context never gets a cache.
+- Changing `--moe-cache` writes a new model config, so the model loads again
+  on its next request with the new setting.

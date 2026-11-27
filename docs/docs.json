@@ -184,6 +184,7 @@
               "/xollama/council-integration",
               "/xollama/media",
               "/xollama/preload",
+              "/xollama/moe-cache",
               "/xollama/think-budget",
               "/xollama/tokenize",
               "/xollama/tool-call-progress",
