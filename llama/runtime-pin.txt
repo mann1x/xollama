@@ -22,7 +22,7 @@
 # This file is outside the digested paths on purpose, so committing it does not
 # invalidate itself.
 
-tag      runtime-windows-amd64-b12651-40f184b68d2b
+tag      runtime-windows-amd64-b12734-5f4371ae698f
 asset    xollama-runtime-windows-amd64.zip
-sha256   2d3d0e3b3d4a8a3e2800eb1544803d3483314a5ed75f586542c1aa4d6ed8a743
-inputs   40f184b68d2ba573efb1845b329e052ef0ff94a8c43afef40b3684ffcf059f68
+sha256   9af9caa4f5cc700d6bab33505731bea20669e5c208b72d036bb32d0e4253b0dc
+inputs   5f4371ae698fc3e0212243f7c4b2191c0d0bdaf08a9aaa216126cd949f92cd36
