@@ -27,6 +27,43 @@ first if a patch looks missing or out of date.
    other row in this file keys on the PR number, and these cannot. They are
    listed apart, below.
 
+**Status as of 2026-11-28: the set moved to upstream v0.40.19 (32 patches, same set and `patches[]` order, no patch changed in content).** Manifest at think-budget `c6cabf81` (`base: v0.40.19`, integration `a063ad88`, release `v0.40.19-thinkbudget` @ `3d396c35`, run 46118960992; fork bump #2439, after #2438). Upstream v0.40.19 is 3 commits over v0.40.18 (14 files): llama.cpp b12651 -> b12734 (#19917; no new architecture, `check-engine-archs` passes: DFlash keys and tensors only), qwen4_exp Engram history buffers on MLX (#19913), inkling2 speedups (#19881); MLX and MLX-C unchanged. The owner's call (2026-11-28): v0.40.18 is not released on its own, the next release is on v0.40.19. Consumed on branch `sync/upstream-v0.40.18`, on top of the v0.40.18 sync: the upstream tag merge (clean), then the 32 patches at the shas below, each its own `--no-ff` merge in `patches[]` order. Every patch's sorted +/- delta over v0.40.19 equals its v0.40.18 sha's over v0.40.18, and every v0.40.18 sha was already merged, so every merge was required to leave the tree unchanged, and did; a conflicted file (18 of the 32 merges) took `HEAD`'s side under that check. Proof: our delta over the fork's v0.40.19 integration `a063ad88` equals our delta over its v0.40.18 integration `2c679212` file for file, in all 930 files, except the fork's own `PATCHES.json` and `thinkbudget-release-notes.md`; the `llama/` subtree equals `a063ad88`'s apart from our runtime pins. The llama inputs digest (README excluded) is `9b321c09`, the fork's.
+
+| PR | branch | manifest sha | v0.40.19 merge |
+|---|---|---|---|
+| #17563 | `up-repeat-guard` | `477e2df0` | `8c5ff13f2` |
+| #17564 | `up-truncated-tool-calls` | `1cd2c900` | `0394a33e1` |
+| #17565 | `up-gemma4-object-close` | `2b9ebe9d` | `f38a9a1d1` |
+| #17566 | `up-think-budget` | `5424e18e` | `6cff7f358` |
+| #17567 | `up-mlx-libdl` | `dfc1e1bc` | `2abdf0b52` |
+| #17626 | `up-gemma4-stray-channel-name` | `d4ea3b50` | `f8e65dbcd` |
+| #17914 | `qwen3coder-tolerate-malformed-tool-calls` | `901b323a` | `f2621b2d9` |
+| #18212 | `up-reasoning-budget-line-boundary` | `0f057478` | `e5a197f23` |
+| #18281 | `up-native-thinking-replay` | `df88b544` | `f39ff4235` |
+| #18288 | `up-gemma4-stray-closer` | `5e0b1f2c` | `35337bd18` |
+| #18289 | `up-jinja-runner-reuse` | `eb197205` | `0d05e26c9` |
+| fork-only | `gemma4-toolcall-in-thinking` | `f5946e79` | `1255da650` |
+| #18624 | `qwen35-toolcall-in-thinking` | `9070c874` | `dce65c6b7` |
+| fork-only | `up-gemma4-unparsed-tool-call-content` | `b8bb08b5` | `f7f74f264` |
+| fork-only | `up-toolcall-tags` | `290bb6b5` | `befa23728` |
+| fork-only | `up-codex-request-count-mtime` | `8ee8e373` | `aa522c5ab` |
+| fork-only | `up-fileutil-root-permission-tests` | `2215fee1` | `e37d5fc99` |
+| fork-only | `up-gofmt-vision-test-data` | `0c8c95b6` | `dd5e84b4d` |
+| fork-only | `up-integration-goroutine-fatal` | `15756770` | `069465ace` |
+| fork-only | `up-lfm2-think-off-discard` | `29bf892d` | `8ff5f0914` |
+| fork-only | `up-gemma4-assistant-shape` | `dee002ce` | `54163c084` |
+| fork-only | `up-gemma4-swallowed-key` | `8bd45b3e` | `a6bc81e65` |
+| fork-only | `up-response-scope-think-budget` | `0aca1bf5` | `fcb26010c` |
+| fork-only | `up-modelfile-roundtrip` | `41d57eb0` | `913a2f098` |
+| fork-only | `up-qwen35-empty-think-history` | `7b979177` | `b84c0eb0c` |
+| fork-only | `up-mlxrunner-manifest-list` | `fc0266e5` | `b07679584` |
+| fork-only | `up-gemma4-channel-in-thinking` | `4ba2ff3f` | `4bb7e8ee1` |
+| fork-only | `up-llama-server-memory-lines` | `c2e69e30` | `497b26da2` |
+| fork-only | `up-qwen-unclosed-tool-call` | `1e41fcc4` | `c0a688fe9` |
+| fork-only | `up-completion-generation-prompt` | `e80d4aaa` | `ba7792f8a` |
+| fork-only | `up-compat-readme` | `29f69d90` | `29e5d16d6` |
+| fork-only | `up-engine-sampling-defaults` | `e582938e` | `25cf66064` |
+
 **Status as of 2026-11-27: the set moved to upstream v0.40.18 (32 patches, same set and `patches[]` order).** Manifest at think-budget `3a48d813` (`base: v0.40.18`, integration `2c679212`, release `v0.40.18-thinkbudget` @ `ca52c591`, run 46055681348; fork bump #2435, after #2433). Upstream v0.40.18 is 4 commits over v0.40.17 (101 files): llama.cpp b12257 -> b12651 (adds `inkling2`, `inkling2_loop`, `domynedge`, `zaya1`, `kokoro`, `tiny-voca`, `zonos3` and `moshi`, routed to stock llama-server in `llm/engine/arch.go`), JetPack 5 removed (#19865: no `ollama-linux-arm64-jetpack5` asset, preset or Dockerfile stage; our pin row, release asset and installer branch went with it), MLX kernels reworked (MLX and MLX-C unchanged, the archives rebuilt). Consumed on branch `sync/upstream-v0.40.18`: the upstream tag merge `a92ea2620` (five conflicts: `release.yaml`, `test-llamacpp-update.yaml`, `build_linux.sh` and `install.sh` keep xollama's asset names without jetpack5; `mlxrunner/model/root_test.go` took upstream's file, and `up-mlxrunner-manifest-list` brought the fork's union back), then the 32 patches at the shas below, each its own `--no-ff` merge in `patches[]` order. A conflicted file was resolved to ours only where `HEAD` already held every line the patch adds, or where the patch's diff equals its v0.40.17 version already merged (`gemma4-toolcall-in-thinking`, `up-modelfile-roundtrip`, `up-llama-server-memory-lines`: later patches rework those lines); `llama/compat/` files took the patch's side, the README from `up-compat-readme` last. Proof: our delta over the fork's v0.40.18 integration `2c679212` equals our delta over its v0.40.17 tree `658f163b` (with `up-engine-sampling-defaults`) file for file, in all 930 files, except the four jetpack5 conflict files and the fork's own `PATCHES.json`; the `llama/` subtree equals `2c679212`'s; `check-compat-origin` 16 commits, 0 bad. The llama inputs digest (README excluded) is `9b9ad644`, the fork's.
 
 | PR | branch | manifest sha | v0.40.18 merge |
